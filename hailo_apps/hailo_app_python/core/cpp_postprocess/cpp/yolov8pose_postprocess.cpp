@@ -225,7 +225,7 @@ std::vector<Decodings> decode_boxes_and_keypoints(std::vector<HailoTensorPtr> ra
         // Keypoints setup
         float32_t qp_scale_kpts = raw_keypoints[i]->quant_info().qp_scale;
         float32_t qp_zp_kpts = raw_keypoints[i]->quant_info().qp_zp;
-        hailo_format_type_t keypoints_format = raw_keypoints[i]->vstream_info().format.type;
+        hailo_format_type_t keypoints_format = raw_keypoints[i]->format().type;
         if (keypoints_format == HAILO_FORMAT_TYPE_UINT8)
         {
             throw std::runtime_error("This postprocess does not support uint8 keypoints format, download the updated HEF version.");
