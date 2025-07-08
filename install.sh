@@ -160,6 +160,7 @@ echo "📦 Installing package (editable + post-install)…"
 pip install -e .
 
 echo "🔧 Running post-install script…"
+echo "❌❌❌ The CPP post process should be fixed 📦📦  ❌❌❌❌"
 
 hailo-post-install --group "$DOWNLOAD_GROUP"
 
