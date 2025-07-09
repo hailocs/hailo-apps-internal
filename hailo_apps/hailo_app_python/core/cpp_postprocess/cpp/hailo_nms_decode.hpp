@@ -73,16 +73,13 @@ public:
         static const hailo_format_order_t HAILO_NMS_BY_CLASS_VALUE =
             static_cast<hailo_format_order_t>(22);
 
-        // Grab the format out of your tensor
-        const hailo_format_t fmt = _nms_output_tensor->format();
+        auto fmt = _nms_output_tensor->format();
 
-        // Verify this is an NMS output (either old NHWC-based NMS or the BY_CLASS variant)
-        if (fmt.order != HAILO_FORMAT_ORDER_HAILO_NMS
-            && fmt.order != HAILO_NMS_BY_CLASS_VALUE)
-        {
+        // every NMS‐style output in HailoRT now simply carries is_nms==true
+        if (!fmt.is_nms) {
             throw std::invalid_argument(
                 "Output tensor '" + _nms_output_tensor->name() +
-                "' is not an NMS tensor (order=" + std::to_string(fmt.order) + ")");
+                "' is not an NMS tensor (is_nms=false)");
         }
     };
 
@@ -93,7 +90,7 @@ public:
         NMS output decode method
         ------------------------
 
-        decodes the nms buffer received from the output tensor of the network.
+        decodes the nms buffer received from the output tensor of the network.https://chatgpt.com/c/686e7b9e-0224-8004-9233-01af3352a9aa
         returns a vector of DetectonObject filtered by the detection threshold.
 
         The data is sorted by the number of the classes.
