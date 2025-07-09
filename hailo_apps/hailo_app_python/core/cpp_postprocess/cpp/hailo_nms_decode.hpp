@@ -8,6 +8,8 @@
 #include <cstring>
 #include "hailo/hailort.h"
 #include "hailo_objects.hpp"
+#include "hailo/hailo_gst_tensor_metadata.hpp"     // for hailo_format_t, HAILO_FORMAT_ORDER_HAILO_NMS
+#include "hailo_tensors.hpp"                       // for HailoTensorPtr
 #include "common/structures.hpp"
 #include "common/nms.hpp"
 #include "common/labels/coco_ninety.hpp"
@@ -67,9 +69,21 @@ public:
         // if ((HAILO_FORMAT_ORDER_HAILO_NMS != _vstream_info.format.order) && (HAILO_FORMAT_ORDER_HAILO_NMS_BY_CLASS != _vstream_info.format.order))
         //     throw std::invalid_argument("Output tensor " + _nms_output_tensor->name() + " is not an NMS type");
 
-        // Verify this tensor is actually NMS output
-        if (!_nms_output_tensor->is_nms())
-            throw std::invalid_argument("Output tensor " + _nms_output_tensor->name() + " is not an NMS type");
+        // Some older HailoRT versions don't define the "by-class" value, so we hard-code it:
+        static const hailo_format_order_t HAILO_NMS_BY_CLASS_VALUE =
+            static_cast<hailo_format_order_t>(22);
+
+        // Grab the format out of your tensor
+        const hailo_format_t fmt = _nms_output_tensor->format();
+
+        // Verify this is an NMS output (either old NHWC-based NMS or the BY_CLASS variant)
+        if (fmt.order != HAILO_FORMAT_ORDER_HAILO_NMS
+            && fmt.order != HAILO_NMS_BY_CLASS_VALUE)
+        {
+            throw std::invalid_argument(
+                "Output tensor '" + _nms_output_tensor->name() +
+                "' is not an NMS tensor (order=" + std::to_string(fmt.order) + ")");
+        }
     };
 
     template <typename T, typename BBoxType>

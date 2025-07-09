@@ -30,6 +30,9 @@
 #include "xtensor/xstrided_view.hpp"
 #include "xtensor/xview.hpp"
 
+#include "hailo_tensors.hpp"                   // for HailoTensorPtr
+#include "hailo/hailo_gst_tensor_metadata.hpp" // for hailo_format_type_t, HAILO_FORMAT_TYPE_UINT16
+
 using namespace xt::placeholders;
 
 #define SCORE_THRESHOLD 0.6
@@ -224,16 +227,10 @@ std::vector<Decodings> decode_boxes_and_keypoints(std::vector<HailoTensorPtr> ra
 
         // Keypoints setup
         float32_t qp_scale_kpts = raw_keypoints[i]->quant_info().qp_scale;
-        float32_t qp_zp_kpts = raw_keypoints[i]->quant_info().qp_zp;
-        // hailo_format_type_t keypoints_format = raw_keypoints[i]->format().type;
-        // if (keypoints_format == HAILO_FORMAT_TYPE_UINT8)
-        // {
-        //     throw std::runtime_error("This postprocess does not support uint8 keypoints format, download the updated HEF version.");
-        // }
+        float32_t qp_zp_kpts    = raw_keypoints[i]->quant_info().qp_zp;
 
-
-        // Reject uint8 format—this postprocess only supports uint16 keypoints
-        if (! raw_keypoints[i]->is_uint16()) {
+        // Reject anything that isn't uint16—this postprocess only supports uint16 keypoints
+        if (raw_keypoints[i]->format().type != HAILO_FORMAT_TYPE_UINT16) {
             throw std::runtime_error(
                 "This postprocess does not support uint8 keypoints format; "
                 "please download an updated HEF that uses uint16 keypoints."
