@@ -67,11 +67,8 @@ public:
         // if ((HAILO_FORMAT_ORDER_HAILO_NMS != _vstream_info.format.order) && (HAILO_FORMAT_ORDER_HAILO_NMS_BY_CLASS != _vstream_info.format.order))
         //     throw std::invalid_argument("Output tensor " + _nms_output_tensor->name() + " is not an NMS type");
 
-        // HAILO_FORMAT_ORDER_HAILO_NMS_BY_CLASS is defined only in hailort 3.19 to support earlier versions we set the value manually
-        // Should be fixed later
-        static const hailo_format_order_t HAILO_NMS_BY_CLASS_VALUE = (hailo_format_order_t)22;
-        hailo_tensor_format_t format = _nms_output_tensor->format();
-        if ((HAILO_FORMAT_ORDER_HAILO_NMS != format.order) && (HAILO_NMS_BY_CLASS_VALUE != format.order))
+        // Verify this tensor is actually NMS output
+        if (!_nms_output_tensor->is_nms())
             throw std::invalid_argument("Output tensor " + _nms_output_tensor->name() + " is not an NMS type");
     };
 
