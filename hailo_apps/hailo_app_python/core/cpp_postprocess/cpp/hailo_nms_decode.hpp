@@ -70,9 +70,6 @@ public:
         //     throw std::invalid_argument("Output tensor " + _nms_output_tensor->name() + " is not an NMS type");
 
         // Some older HailoRT versions don't define the "by-class" value, so we hard-code it:
-        static const hailo_format_order_t HAILO_NMS_BY_CLASS_VALUE =
-            static_cast<hailo_format_order_t>(22);
-
         auto fmt = _nms_output_tensor->format();
 
         // every NMS‐style output in HailoRT now simply carries is_nms==true
