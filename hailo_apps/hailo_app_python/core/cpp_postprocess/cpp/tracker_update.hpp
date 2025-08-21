@@ -9,4 +9,5 @@
 
 __BEGIN_DECLS
 void filter(HailoROIPtr roi);
+void filter_reid(HailoROIPtr roi);
 __END_DECLS

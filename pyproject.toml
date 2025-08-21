@@ -39,6 +39,7 @@ hailo-pose =                "hailo_apps.hailo_app_python.apps.pose_estimation.po
 hailo-seg =                 "hailo_apps.hailo_app_python.apps.instance_segmentation.instance_segmentation_pipeline:main"
 hailo-detect-simple =       "hailo_apps.hailo_app_python.apps.detection_simple.detection_pipeline_simple:main"
 hailo-face-recon =          "hailo_apps.hailo_app_python.apps.face_recognition.face_recognition:main"
+hailo-rtsp =                "hailo_apps.hailo_app_python.apps.rtsp.rtsp:main"
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*"]

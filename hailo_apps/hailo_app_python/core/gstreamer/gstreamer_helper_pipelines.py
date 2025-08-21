@@ -18,6 +18,8 @@ def get_source_type(input_source):
         return 'libcamera'
     elif input_source.startswith('0x'):
         return 'ximage'
+    elif input_source.startswith('rtsp://'):
+        return 'rtsp'
     else:
         return 'file'
 
@@ -78,7 +80,7 @@ def SOURCE_PIPELINE(video_source, video_width=640, video_height=640,
             source_element = (
                 f'v4l2src device={video_source} name={name} ! '
                 f'video/x-raw, width=640, height=480 ! '
-                'videoflip name=videoflip video-direction=horiz ! '
+                f'videoflip name=videoflip_{name} video-direction=horiz ! '
             )
         else:
             # Use compressed format for webcam
@@ -87,7 +89,7 @@ def SOURCE_PIPELINE(video_source, video_width=640, video_height=640,
                 f'v4l2src device={video_source} name={name} ! image/jpeg, framerate=30/1, width={width}, height={height} ! '
                 f'{QUEUE(name=f"{name}_queue_decode")} ! '
                 f'decodebin name={name}_decodebin ! '
-                f'videoflip name=videoflip video-direction=horiz ! '
+                f'videoflip name=videoflip_{name} video-direction=horiz ! '
             )
     elif source_type == 'rpi':
         source_element = (
@@ -105,6 +107,12 @@ def SOURCE_PIPELINE(video_source, video_width=640, video_height=640,
             f'ximagesrc xid={video_source} ! '
             f'{QUEUE(name=f"{name}queue_scale_")} ! '
             f'videoscale ! '
+        )
+    elif source_type == 'rtsp':  # RTSP stream handling
+        source_element = (
+            f'rtspsrc location="{video_source}" name={name} ! '
+            f'{QUEUE(name=f"{name}_queue_decode")} ! '
+            f'decodebin name={name}_decodebin ! '
         )
     else:
         source_element = (
@@ -404,6 +412,69 @@ def CROPPER_PIPELINE(
         f'{QUEUE(name=f"{name}_bypass_q", max_size_buffers=bypass_max_size_buffers)} ! {name}_agg.sink_0 '
         # pipeline for the actual inference
         f'{name}_cropper. ! {inner_pipeline} ! {name}_agg.sink_1 '
+        # aggregator output
+        f'{name}_agg. ! {QUEUE(name=f"{name}_output_q")} '
+    )
+
+def TILE_CROPPER_PIPELINE(
+    inner_pipeline,
+    name='tile_cropper_wrapper',
+    internal_offset=True,
+    scale_level=2,
+    tiling_mode=1,
+    tiles_along_x_axis=4,
+    tiles_along_y_axis=3,
+    overlap_x_axis=0.1,
+    overlap_y_axis=0.08,
+    iou_threshold=0.3,
+    border_threshold=0.1
+):
+    """
+    Wraps an inner pipeline with hailotilecropper and hailotileaggregator.
+    The tile cropper divides the input frame into tiles based on the specified tiling parameters.
+    Each tile is processed by the inner pipeline, and the aggregator combines the results from all tiles.
+
+    Example use case: After a detection pipeline stage, crop the frame into tiles for further processing 
+    (e.g., object recognition or classification) and aggregate the results.
+
+    Args:
+        inner_pipeline (str): The pipeline string to be wrapped for processing each tile.
+        name (str): A prefix name for pipeline elements. Defaults to 'tile_cropper_wrapper'.
+        internal_offset (bool): If True, uses internal offsets for cropping. Defaults to True.
+        scale_level (int): The scaling level for the tiles. Defaults to 2.
+        tiling_mode (int): The tiling mode (e.g., 1 for uniform tiling). Defaults to 1.
+        tiles_along_x_axis (int): Number of tiles along the x-axis. Defaults to 4.
+        tiles_along_y_axis (int): Number of tiles along the y-axis. Defaults to 3.
+        overlap_x_axis (float): Overlap percentage between tiles along the x-axis. Defaults to 0.1.
+        overlap_y_axis (float): Overlap percentage between tiles along the y-axis. Defaults to 0.08.
+        iou_threshold (float): Intersection-over-Union (IoU) threshold for combining detections. Defaults to 0.3.
+        border_threshold (float): Threshold for handling detections near tile borders. Defaults to 0.1.
+
+    Returns:
+        str: A pipeline string representing hailotilecropper + hailotileaggregator around the inner_pipeline.
+
+    Note:
+        Single scaling requires tiling_mode=0 & border_threshold=0.
+    """
+    return (
+        f'{QUEUE(name=f"{name}_input_q")} ! '
+        f'hailotilecropper name={name}_cropper '
+        f'internal-offset={str(internal_offset).lower()} '
+        f'tiling-mode={str(tiling_mode).lower()} '
+        + (f'scale-level={str(scale_level).lower()} ' if scale_level != 0 else '') +
+        f'tiles-along-x-axis={str(tiles_along_x_axis).lower()} '
+        f'tiles-along-y-axis={str(tiles_along_y_axis).lower()} '
+        f'overlap-x-axis={str(overlap_x_axis).lower()} '
+        f'overlap-y-axis={str(overlap_y_axis).lower()} '
+        f'hailotileaggregator name={name}_agg '
+        f'flatten-detections=true '
+        f'iou-threshold={str(iou_threshold).lower()} '
+        + (f'border-threshold={str(border_threshold).lower()} ' if border_threshold != 0 else '') +
+        # bypass
+        f'{name}_cropper. ! '
+        f'{QUEUE(name=f"{name}_bypass_q")} ! {name}_agg. '
+        # pipeline for the actual inference
+        f'{name}_cropper. ! {inner_pipeline} ! {name}_agg. '
         # aggregator output
         f'{name}_agg. ! {QUEUE(name=f"{name}_output_q")} '
     )

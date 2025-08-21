@@ -95,7 +95,7 @@ class DatabaseHandler:
         Returns:
             record: The newly created record record as dict.
 
-        Note: sample file path id != iamge id
+        Note: sample file path id != image id
 
         In case after this insertion there are more than 256 records in the table, the table will be indexed by the embedding column.
         """
