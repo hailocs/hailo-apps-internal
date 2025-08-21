@@ -1,4 +1,3 @@
-
 class BaseUIElements:
     def __init__(self):
         # Buttons

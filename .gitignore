@@ -36,3 +36,5 @@ tmp_venv
 
 venv_hailo_apps/
 
+resources/
+resources

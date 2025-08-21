@@ -1,151 +1,127 @@
-#!/usr/bin/env python3
 import argparse
-from pathlib import Path
-import sys
-import os
-import shutil
+import grp
 import os
 import pwd
-import grp
+import shutil
 import subprocess
+from pathlib import Path
 
-from hailo_apps.hailo_app_python.core.common.defines import (
-    RESOURCES_ROOT_PATH_DEFAULT,
-    RESOURCES_DIRS_MAP
-)
+from hailo_apps.hailo_app_python.core.common.hailo_logger import get_logger
 
-from hailo_apps.hailo_app_python.core.installation.download_resources import download_resources
-from hailo_apps.hailo_app_python.core.installation.compile_cpp import compile_postprocess
-from hailo_apps.hailo_app_python.core.common.installation_utils import (
-    create_symlink,
-)
-from hailo_apps.hailo_app_python.core.common.config_utils import (
-    load_and_validate_config,
-)
+hailo_logger = get_logger(__name__)
+
+
+from hailo_apps.hailo_app_python.core.common.config_utils import load_and_validate_config
 from hailo_apps.hailo_app_python.core.common.core import load_environment
 from hailo_apps.hailo_app_python.core.common.defines import (
-    RESOURCES_ROOT_PATH_DEFAULT,
-    RESOURCES_PATH_KEY,
-    RESOURCES_PATH_DEFAULT,
-    REPO_ROOT,
-    RESOURCES_GROUP_DEFAULT,
     DEFAULT_CONFIG_PATH,
     DEFAULT_DOTENV_PATH,
-    DEFAULT_RESOURCES_CONFIG_PATH
+    RESOURCES_DIRS_MAP,
+    RESOURCES_GROUP_DEFAULT,
+    RESOURCES_PATH_DEFAULT,
+    RESOURCES_PATH_KEY,
+    RESOURCES_ROOT_PATH_DEFAULT,
 )
+from hailo_apps.hailo_app_python.core.common.installation_utils import create_symlink
+from hailo_apps.hailo_app_python.core.installation.compile_cpp import compile_postprocess
+from hailo_apps.hailo_app_python.core.installation.download_resources import download_resources
 from hailo_apps.hailo_app_python.core.installation.set_env import (
     handle_dot_env,
-    set_environment_vars
-)
-from hailo_apps.hailo_app_python.core.common.defines import (
-    RESOURCES_ROOT_PATH_DEFAULT,
-    RESOURCES_DIRS_MAP
+    set_environment_vars,
 )
 
-def setup_resource_dirs():   
+
+def setup_resource_dirs():
+    """Create resource directories for Hailo applications.
+    Also sets ownership and permissions.
     """
-    Create resource directories for Hailo applications.
-    This function creates the necessary directories for storing models and videos.
-    It also sets the ownership and permissions for these directories.
-    """
-    # 1) Figure out which user actually invoked sudo (or fallback to the current user)
+    hailo_logger.debug("Entering setup_resource_dirs()")
+
+    # Determine installation user
     sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user:
-        install_user = sudo_user
-    else:
-        install_user = pwd.getpwuid(os.getuid()).pw_name
+    install_user = sudo_user or pwd.getpwuid(os.getuid()).pw_name
+    hailo_logger.debug(f"Detected installation user: {install_user}")
 
-    # 2) Lookup that user's primary group name
-    pw   = pwd.getpwnam(install_user)
+    # Get group name
+    pw = pwd.getpwnam(install_user)
     grpname = grp.getgrgid(pw.pw_gid).gr_name
+    hailo_logger.debug(f"Detected group: {grpname}")
 
-
-    # 3) Create each subdir (using sudo so you don’t have to run the whole script as root)
+    # Create subdirectories
     for sub in RESOURCES_DIRS_MAP:
         target = sub
+        hailo_logger.debug(f"Creating directory: {target}")
         subprocess.run(["sudo", "mkdir", "-p", str(target)], check=True)
 
-    # 4) chown -R user:group and chmod -R 755
-    subprocess.run([
-        "sudo", "chown", "-R",
-        f"{install_user}:{grpname}", str(RESOURCES_ROOT_PATH_DEFAULT)
-    ], check=True)
-    subprocess.run([
-        "sudo", "chmod", "-R", "755", str(RESOURCES_ROOT_PATH_DEFAULT)
-    ], check=True)
-
-    # # 5) Create the storage directory if it doesn't exist
-    # if storage_dir is not None:
-    #     os.makedirs(storage_dir, exist_ok=True)
-
-def post_install():
-    """
-    Post-installation script for Hailo Apps Infra.
-    This script sets up the environment, creates resource directories,
-    downloads resources, and compiles post-process.
-    """
-    parser = argparse.ArgumentParser(
-        description="Post-installation script for Hailo Apps Infra"
+    # Set permissions
+    hailo_logger.debug(f"Setting ownership to {install_user}:{grpname}")
+    subprocess.run(
+        ["sudo", "chown", "-R", f"{install_user}:{grpname}", str(RESOURCES_ROOT_PATH_DEFAULT)],
+        check=True,
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=DEFAULT_CONFIG_PATH,
-        help="Name of the virtualenv to create"
-    )
-    parser.add_argument(
-        "--group",
-        type=str,
-        default=RESOURCES_GROUP_DEFAULT,
-        help="HailoRT version to install"
-    )
-    parser.add_argument(
-        "--dotenv",
-        type=str,
-        default=DEFAULT_DOTENV_PATH,
-        help="Path to the .env file to load environment variables from"
-    )          
-    args = parser.parse_args()
-    handle_dot_env()  # this loads the .env file if it exists
-    config = load_and_validate_config(args.config)
-    set_environment_vars(config, args.dotenv)  # this sets env vars like HAILO_ARCH
+    hailo_logger.debug("Setting directory permissions to 755")
+    subprocess.run(["sudo", "chmod", "-R", "755", str(RESOURCES_ROOT_PATH_DEFAULT)], check=True)
 
-    load_environment()  # this sets env vars like HAILO_ARCH
-
-    setup_resource_dirs()
+    hailo_logger.info("✅ Resource directories created successfully.")
     print("✅ Resource directories created successfully.")
 
-    # Make sure the resources directory doesnt exist before creating a symlink
+
+def post_install():
+    """Post-installation setup for Hailo Apps Infra."""
+    hailo_logger.debug("Starting post_install()")
+    parser = argparse.ArgumentParser(description="Post-installation script for Hailo Apps Infra")
+    parser.add_argument(
+        "--config", type=str, default=DEFAULT_CONFIG_PATH, help="Path to config file"
+    )
+    parser.add_argument(
+        "--group", type=str, default=RESOURCES_GROUP_DEFAULT, help="Resource group to download"
+    )
+    parser.add_argument("--dotenv", type=str, default=DEFAULT_DOTENV_PATH, help="Path to .env file")
+    args = parser.parse_args()
+
+    hailo_logger.debug(f"Arguments parsed: {args}")
+
+    handle_dot_env()  # Load .env if exists
+    config = load_and_validate_config(args.config)
+    hailo_logger.debug(f"Loaded configuration: {config}")
+
+    set_environment_vars(config, args.dotenv)
+    load_environment()
+
+    setup_resource_dirs()
+
+    # Prepare resources symlink
     resources_path = Path(os.getenv(RESOURCES_PATH_KEY, RESOURCES_PATH_DEFAULT))
     if resources_path.exists():
+        hailo_logger.warning(f"{resources_path} already exists — removing before symlink creation.")
         if resources_path.is_symlink():
-            print(f"⚠️ Warning: {resources_path} already exists (symlink). Removing it...")
             resources_path.unlink()
         elif resources_path.is_dir():
-            print(f"⚠️ Warning: {resources_path} already exists (dir). Removing it...")
             shutil.rmtree(resources_path)
         else:
-            print(f"⚠️ Warning: {resources_path} already exists (file). Removing it...")
             resources_path.unlink()
-    # Create symlink for resources directory
-    print(f"🔗 Linking resources directory to {resources_path}...")
+
+    hailo_logger.info(f"Creating symlink from {RESOURCES_ROOT_PATH_DEFAULT} to {resources_path}")
     create_symlink(RESOURCES_ROOT_PATH_DEFAULT, resources_path)
 
     print("⬇️ Downloading resources...")
+    hailo_logger.info("Starting resource download...")
     download_resources(group=args.group)
+    hailo_logger.info(f"Resources downloaded to {resources_path}")
     print(f"Resources downloaded to {resources_path}")
 
     print("⚙️ Compiling post-process...")
+    hailo_logger.info("Compiling C++ post-process module...")
     compile_postprocess()
 
-    print("✅ Hailo Infra Post-instllation complete.")
+    hailo_logger.info("✅ Hailo Infra Post-installation complete.")
+    print("✅ Hailo Infra Post-installation complete.")
+
 
 def main():
-    """
-    Main function to run the post-installation script.
-    """
+    hailo_logger.debug("Executing main() in post_install.py")
     post_install()
+
 
 if __name__ == "__main__":
     main()
-    # This script is intended to be run as a post-installation step

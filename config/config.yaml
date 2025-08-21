@@ -9,3 +9,4 @@ server_url: "http://dev-public.hailo.ai/2025_01" # URL of the server to download
 storage_dir: "hailo_temp_resources" # Directory to store the deb and whl files , this is the default if set to auot or empty 
 tappas_variant: "auto" # Options : "tappas" or " tappa-core"  or "Auto"
 tappas_postproc_path: "auto" # Path to the post-processing script for Tappas, relative to the current working directory. If set to "auto", it will be detected automatically.
+log_level: "warning" # Options: "debug", "info", "warning", "error", "critical"

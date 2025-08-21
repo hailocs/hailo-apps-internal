@@ -1,40 +1,56 @@
+# region imports
 import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
+
+gi.require_version("Gst", "1.0")
 import numpy as np
-from .defines import (
-    HAILO_RGB_VIDEO_FORMAT,
-    HAILO_NV12_VIDEO_FORMAT,
-    HAILO_YUYV_VIDEO_FORMAT
-)
+from gi.repository import Gst
+
+from .defines import HAILO_NV12_VIDEO_FORMAT, HAILO_RGB_VIDEO_FORMAT, HAILO_YUYV_VIDEO_FORMAT
+from .hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
+# endregion imports
+
 
 def get_caps_from_pad(pad: Gst.Pad):
+    hailo_logger.debug("Getting caps from pad...")
     caps = pad.get_current_caps()
     if caps:
-        # We can now extract information from the caps
         structure = caps.get_structure(0)
         if structure:
-            # Extracting some common properties
-            format = structure.get_value('format')
-            width = structure.get_value('width')
-            height = structure.get_value('height')
+            format = structure.get_value("format")
+            width = structure.get_value("width")
+            height = structure.get_value("height")
+            hailo_logger.debug(
+                f"Caps extracted - Format: {format}, Width: {width}, Height: {height}"
+            )
             return format, width, height
-    else:
-        return None, None, None
+    hailo_logger.warning("No caps found on pad.")
+    return None, None, None
+
 
 def handle_rgb(map_info, width, height):
-    # The copy() method is used to create a copy of the numpy array. This is necessary because the original numpy array is created from buffer data, and it does not own the data it represents. Instead, it's just a view of the buffer's data.
+    hailo_logger.debug(f"Handling RGB frame - Width: {width}, Height: {height}")
     return np.ndarray(shape=(height, width, 3), dtype=np.uint8, buffer=map_info.data).copy()
 
+
 def handle_nv12(map_info, width, height):
+    hailo_logger.debug(f"Handling NV12 frame - Width: {width}, Height: {height}")
     y_plane_size = width * height
-    uv_plane_size = width * height // 2
-    y_plane = np.ndarray(shape=(height, width), dtype=np.uint8, buffer=map_info.data[:y_plane_size]).copy()
-    uv_plane = np.ndarray(shape=(height//2, width//2, 2), dtype=np.uint8, buffer=map_info.data[y_plane_size:]).copy()
+    width * height // 2
+    y_plane = np.ndarray(
+        shape=(height, width), dtype=np.uint8, buffer=map_info.data[:y_plane_size]
+    ).copy()
+    uv_plane = np.ndarray(
+        shape=(height // 2, width // 2, 2), dtype=np.uint8, buffer=map_info.data[y_plane_size:]
+    ).copy()
     return y_plane, uv_plane
 
+
 def handle_yuyv(map_info, width, height):
+    hailo_logger.debug(f"Handling YUYV frame - Width: {width}, Height: {height}")
     return np.ndarray(shape=(height, width, 2), dtype=np.uint8, buffer=map_info.data).copy()
+
 
 FORMAT_HANDLERS = {
     HAILO_RGB_VIDEO_FORMAT: handle_rgb,
@@ -42,59 +58,45 @@ FORMAT_HANDLERS = {
     HAILO_YUYV_VIDEO_FORMAT: handle_yuyv,
 }
 
+
 def get_numpy_from_buffer(buffer, format, width, height):
-    """
-    Converts a GstBuffer to a numpy array based on provided format, width, and height.
-
-    Args:
-        buffer (GstBuffer): The GStreamer Buffer to convert.
-        format (str): The video format ('RGB', 'NV12', 'YUYV', etc.).
-        width (int): The width of the video frame.
-        height (int): The height of the video frame.
-
-    Returns:
-        np.ndarray: A numpy array representing the buffer's data, or a tuple of arrays for certain formats.
-    """
-    # Map the buffer to access data
+    hailo_logger.debug(
+        f"Converting GstBuffer to numpy - Format: {format}, Width: {width}, Height: {height}"
+    )
     success, map_info = buffer.map(Gst.MapFlags.READ)
     if not success:
+        hailo_logger.error("Buffer mapping failed")
         raise ValueError("Buffer mapping failed")
 
     try:
-        # Handle different formats based on the provided format parameter
         handler = FORMAT_HANDLERS.get(format)
         if handler is None:
+            hailo_logger.error(f"Unsupported format: {format}")
             raise ValueError(f"Unsupported format: {format}")
+        hailo_logger.debug(f"Using handler: {handler.__name__}")
         return handler(map_info, width, height)
     finally:
         buffer.unmap(map_info)
+        hailo_logger.debug("Buffer unmapped successfully")
+
 
 def get_numpy_from_buffer_efficient(buffer, format, width, height):
-    """
-    Converts a GstBuffer to a numpy array based on provided format, width, and height.
-
-    Args:
-        buffer (GstBuffer): The GStreamer Buffer to convert.
-        format (str): The video format ('RGB', 'NV12', 'YUYV', etc.).
-        width (int): The width of the video frame.
-        height (int): The height of the video frame.
-
-    Returns:
-        np.ndarray: A numpy array representing the buffer's data, or a tuple of arrays for certain formats.
-    """
-    # Pre-validate the format and cache the handler
+    hailo_logger.debug(
+        f"Efficient conversion GstBuffer to numpy - Format: {format}, Width: {width}, Height: {height}"
+    )
     handler = FORMAT_HANDLERS.get(format)
     if handler is None:
+        hailo_logger.error(f"Unsupported format: {format}")
         raise ValueError(f"Unsupported format: {format}")
 
-    # Map the buffer to access data
     success, map_info = buffer.map(Gst.MapFlags.READ)
     if not success:
+        hailo_logger.error("Buffer mapping failed")
         raise ValueError("Buffer mapping failed")
 
     try:
-        # Directly call the handler with the mapped data
+        hailo_logger.debug(f"Using handler: {handler.__name__}")
         return handler(map_info, width, height)
     finally:
-        # Unmap the buffer to release resources
         buffer.unmap(map_info)
+        hailo_logger.debug("Buffer unmapped successfully")

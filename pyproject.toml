@@ -25,7 +25,9 @@ dependencies = [
     "fastrtc",
     "lancedb",
     "matplotlib",
-    "Pillow"
+    "Pillow",
+    "ruff>=0.5.7",
+    "pre-commit>=3.7.0"
 ]
 
 [project.scripts]
@@ -53,3 +55,47 @@ include = ["hailo_apps*"]
 "hailo_apps" = [
     "config/*.yaml",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+# Optional: keep Ruff off non-Python/third-party dirs
+exclude = [
+  ".git", ".hg", ".mypy_cache", ".ruff_cache", ".venv", "venv", "build", "dist",
+  "__pycache__", "site-packages",
+  "hailo_apps/**/resources/**",
+  "hailo_apps/**/cpp/**",
+]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style  = "double"
+line-ending  = "lf"
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "B",   # bugbear
+  "UP",  # pyupgrade
+  "C4",  # comprehensions
+  "W",   # pycodestyle warnings
+  "RUF", # ruff-specific rules
+]
+ignore = [
+  "E402",  # allow gi.require_version before imports
+  "F403",  # star import used
+  "F405",  # star import names undefined
+  "E501",  # line length handled by formatter
+]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party  = ["hailo_apps"]
+
+# Example (use later if you want targeted ignores instead of global E402/F403/F405):
+# [tool.ruff.lint.per-file-ignores]
+# "hailo_apps/**/gstreamer/*.py" = ["E402"]
+# "**/__init__.py"               = ["F401"]

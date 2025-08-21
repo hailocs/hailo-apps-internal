@@ -8,11 +8,15 @@ AUTO_DETECT = "auto"
 HAILO_TAPPAS = "hailo-tappas"
 HAILO_TAPPAS_CORE = "hailo-tappas-core"
 HAILO_TAPPAS_CORE_PYTHON = "hailo-tappas-core-python-binding"
-HAILO_TAPPAS_CORE_PYTHON_NAMES = [HAILO_TAPPAS_CORE_PYTHON, "tappas-core-python-binding" , HAILO_TAPPAS_CORE]
+HAILO_TAPPAS_CORE_PYTHON_NAMES = [
+    HAILO_TAPPAS_CORE_PYTHON,
+    "tappas-core-python-binding",
+    HAILO_TAPPAS_CORE,
+]
 HAILORT_PACKAGE = "hailort"
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
-RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources" # Do Not Change!
+RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources"  # Do Not Change!
 
 # Core defaults
 ARM_POSSIBLE_NAME = ["arm", "aarch64"]
@@ -42,13 +46,13 @@ VENV_CREATE_CMD = "python3 -m venv"
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 # Default config paths (now in top-level “config” folder)
-DEFAULT_CONFIG_PATH            = str(REPO_ROOT / "config" / "config.yaml")
-DEFAULT_RESOURCES_CONFIG_PATH  = str(REPO_ROOT / "config" / "resources_config.yaml")
+DEFAULT_CONFIG_PATH = str(REPO_ROOT / "config" / "config.yaml")
+DEFAULT_RESOURCES_CONFIG_PATH = str(REPO_ROOT / "config" / "resources_config.yaml")
 
 # Symlink, dotenv, local resources defaults
-DEFAULT_RESOURCES_SYMLINK_PATH = str(REPO_ROOT / "resources")        # e.g. created by post-install
-DEFAULT_DOTENV_PATH            = str(REPO_ROOT / ".env")             # your env file lives here
-DEFAULT_LOCAL_RESOURCES_PATH   = str(REPO_ROOT / "local_resources")  # bundled GIFs, JSON, etc.
+DEFAULT_RESOURCES_SYMLINK_PATH = str(REPO_ROOT / "resources")  # e.g. created by post-install
+DEFAULT_DOTENV_PATH = str(REPO_ROOT / ".env")  # your env file lives here
+DEFAULT_LOCAL_RESOURCES_PATH = str(REPO_ROOT / "local_resources")  # bundled GIFs, JSON, etc.
 
 # Supported config options
 VALID_HAILORT_VERSION = [AUTO_DETECT, "4.20.0", "4.21.0", "4.22.0"]
@@ -101,8 +105,7 @@ STORAGE_PATH_DEFAULT = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "storage_deb_whl_
 import subprocess
 
 TAPPAS_POSTPROC_PATH_DEFAULT = subprocess.check_output(
-    ["pkg-config", "--variable=tappas_postproc_lib_dir", "hailo-tappas-core"],
-    text=True
+    ["pkg-config", "--variable=tappas_postproc_lib_dir", "hailo-tappas-core"], text=True
 ).strip()
 
 # Resource groups for download_resources
@@ -112,11 +115,13 @@ RESOURCES_GROUP_HAILO8 = "hailo8"
 RESOURCES_GROUP_HAILO8L = "hailo8l"
 RESOURCES_GROUP_RETRAIN = "retrain"
 
-RESOURCES_GROUPS_MAP = [ RESOURCES_GROUP_DEFAULT,
-                        RESOURCES_GROUP_ALL,
-                        RESOURCES_GROUP_HAILO8,
-                        RESOURCES_GROUP_HAILO8L,
-                        RESOURCES_GROUP_RETRAIN]
+RESOURCES_GROUPS_MAP = [
+    RESOURCES_GROUP_DEFAULT,
+    RESOURCES_GROUP_ALL,
+    RESOURCES_GROUP_HAILO8,
+    RESOURCES_GROUP_HAILO8L,
+    RESOURCES_GROUP_RETRAIN,
+]
 
 # YAML config file keys
 RESOURCES_CONFIG_DEFAULTS_KEY = "defaults"
@@ -193,12 +198,12 @@ POSE_ESTIMATION_MODEL_NAME_H8 = "yolov8m_pose"
 POSE_ESTIMATION_MODEL_NAME_H8L = "yolov8s_pose"
 
 # Face recognition pipeline defaults
-FACE_DETECTION_PIPELINE = 'face_detection'
-FACE_DETECTION_MODEL_NAME_H8 = 'scrfd_10g'
-FACE_DETECTION_MODEL_NAME_H8L = 'scrfd_2.5g'
-FACE_RECOGNITION_PIPELINE = 'face_recognition'
-FACE_RECOGNITION_MODEL_NAME_H8 = 'arcface_mobilefacenet'
-FACE_RECOGNITION_MODEL_NAME_H8L = 'arcface_mobilefacenet_h8l'
+FACE_DETECTION_PIPELINE = "face_detection"
+FACE_DETECTION_MODEL_NAME_H8 = "scrfd_10g"
+FACE_DETECTION_MODEL_NAME_H8L = "scrfd_2.5g"
+FACE_RECOGNITION_PIPELINE = "face_recognition"
+FACE_RECOGNITION_MODEL_NAME_H8 = "arcface_mobilefacenet"
+FACE_RECOGNITION_MODEL_NAME_H8L = "arcface_mobilefacenet_h8l"
 FACE_DETECTION_POSTPROCESS_SO_FILENAME = "libscrfd.so"
 FACE_RECOGNITION_POSTPROCESS_SO_FILENAME = "libface_recognition_post.so"
 FACE_ALIGN_POSTPROCESS_SO_FILENAME = "libvms_face_align.so"
@@ -248,7 +253,7 @@ INSTALL_LOG = "env_setup.log"
 
 # Testing defaults
 TEST_RUN_TIME = 10  # seconds
-TERM_TIMEOUT = 5    # seconds
+TERM_TIMEOUT = 5  # seconds
 
 # USB device discovery
 UDEV_CMD = "udevadm"
@@ -272,7 +277,7 @@ HAILO_NV12_VIDEO_FORMAT = "NV12"
 # Video examples
 BASIC_PIPELINES_VIDEO_EXAMPLE_NAME = "example.mp4"
 BASIC_PIPELINES_VIDEO_EXAMPLE_640_NAME = "example_640.mp4"
-BARCODE_VIDEO_EXAMPLE_NAME = 'barcode.mp4'
+BARCODE_VIDEO_EXAMPLE_NAME = "barcode.mp4"
 
 # Photos resources
 HAILO_LOGO_PHOTO_NAME = "logo.png"

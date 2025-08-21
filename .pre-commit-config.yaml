@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint in venv)
+        entry: bash -lc 'source venv_hailo_apps/bin/activate && ruff check --fix --unsafe-fixes'
+        language: system
+        types: [python]
+
+      - id: ruff-format
+        name: ruff (format in venv)
+        entry: bash -lc 'source venv_hailo_apps/bin/activate && ruff format'
+        language: system
+        types: [python]

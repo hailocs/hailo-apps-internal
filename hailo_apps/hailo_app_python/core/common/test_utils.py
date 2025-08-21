@@ -1,18 +1,25 @@
-"""  
-Pipeline test utilities.  
-"""  
-import os  
-import subprocess  
-import signal  
-import time  
-import pytest  
-from .defines import TEST_RUN_TIME, TERM_TIMEOUT  
+"""Pipeline test utilities."""
 
-def get_pipeline_args(suite="default",hef_path=None, override_usb_camera=None , override_video_input=None, override_labels_json=None):
-    """
-    Returns a list of additional arguments based on the specified test suite.
-    
-    Supported suites (comma‑separated):
+import os
+import signal
+import subprocess
+import time
+
+import pytest
+
+from .defines import TERM_TIMEOUT, TEST_RUN_TIME
+
+
+def get_pipeline_args(
+    suite="default",
+    hef_path=None,
+    override_usb_camera=None,
+    override_video_input=None,
+    override_labels_json=None,
+):
+    """Returns a list of additional arguments based on the specified test suite.
+
+    Supported suites (comma separated):
       - "usb_camera": Set the '--input' argument to the USB camera device
                      determined by get_usb_video_devices().
       - "rpi_camera": Set the '--input' argument to "rpi".
@@ -88,31 +95,35 @@ def get_pipeline_args(suite="default",hef_path=None, override_usb_camera=None , 
             args += ["--mode", "run"]
     return args
 
-def run_pipeline_generic(cmd: list[str], log_file: str, run_time: int = TEST_RUN_TIME, term_timeout: int = TERM_TIMEOUT):  
-    """  
-    Run a command, terminate after run_time, capture logs.  
-    """  
-    with open(log_file, 'w') as f:  
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
-        time.sleep(run_time)  
-        proc.send_signal(signal.SIGTERM)  
-        try:  
-            proc.wait(timeout=term_timeout)  
-        except subprocess.TimeoutExpired:  
-            proc.kill()  
-            pytest.fail(f"Command didn't terminate: {' '.join(cmd)}")  
-        out, err = proc.communicate()  
-        f.write('stdout:\n' + out.decode() + '\n')  
-        f.write('stderr:\n' + err.decode() + '\n')  
-        return out, err  
-  
-def run_pipeline_module_with_args(module: str, args: list[str], log_file: str, **kwargs):  
-    return run_pipeline_generic(['python', '-u', '-m', module] + args, log_file, **kwargs)  
-  
-def run_pipeline_pythonpath_with_args(script: str, args: list[str], log_file: str, **kwargs):  
-    env = os.environ.copy()  
-    env['PYTHONPATH'] = './hailo_apps_infra'  
-    return run_pipeline_generic(['python', '-u', script] + args, log_file, **kwargs)  
-  
-def run_pipeline_cli_with_args(cli: str, args: list[str], log_file: str, **kwargs):  
-    return run_pipeline_generic([cli] + args, log_file, **kwargs)  
+
+def run_pipeline_generic(
+    cmd: list[str], log_file: str, run_time: int = TEST_RUN_TIME, term_timeout: int = TERM_TIMEOUT
+):
+    """Run a command, terminate after run_time, capture logs."""
+    with open(log_file, "w") as f:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(run_time)
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.wait(timeout=term_timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            pytest.fail(f"Command didn't terminate: {' '.join(cmd)}")
+        out, err = proc.communicate()
+        f.write("stdout:\n" + out.decode() + "\n")
+        f.write("stderr:\n" + err.decode() + "\n")
+        return out, err
+
+
+def run_pipeline_module_with_args(module: str, args: list[str], log_file: str, **kwargs):
+    return run_pipeline_generic(["python", "-u", "-m", module, *args], log_file, **kwargs)
+
+
+def run_pipeline_pythonpath_with_args(script: str, args: list[str], log_file: str, **kwargs):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "./hailo_apps_infra"
+    return run_pipeline_generic(["python", "-u", script, *args], log_file, **kwargs)
+
+
+def run_pipeline_cli_with_args(cli: str, args: list[str], log_file: str, **kwargs):
+    return run_pipeline_generic([cli, *args], log_file, **kwargs)

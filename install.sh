@@ -8,6 +8,7 @@ DOWNLOAD_GROUP="default"
 VENV_NAME="venv_hailo_apps"
 PYHAILORT_PATH=""
 PYTAPPAS_PATH=""
+NO_INSTALL=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,6 +26,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --all)
       DOWNLOAD_GROUP="all"
+      shift
+      ;;
+    -x)
+      NO_INSTALL=true
+      echo "Skipping installation of Python packages."
       shift
       ;;
     *)
@@ -84,6 +90,12 @@ if [[ "$PYTAPPAS_VERSION" == "-1" ]]; then
   echo "❌ Python TAPPAS binding is not installed."
   echo "Will be installed in the virtualenv."
   INSTALL_TAPPAS_CORE=true
+fi
+
+if [[ "$NO_INSTALL" = true ]]; then
+  echo "Skipping installation of Python packages."
+  INSTALL_HAILORT=false
+  INSTALL_TAPPAS_CORE=false
 fi
 
 VENV_PATH="${SCRIPT_DIR}/${VENV_NAME}"
