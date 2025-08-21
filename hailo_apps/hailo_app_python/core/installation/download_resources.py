@@ -99,6 +99,9 @@ def download_resources(
         hailo_arch = HAILO8_ARCH
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
 
+    download_arch = hailo_arch
+    if hailo_arch == "hailo10h":
+        download_arch = "hailo15h"
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
     hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
 
@@ -148,7 +151,7 @@ def download_resources(
                         dest = resource_root / RESOURCES_VIDEOS_DIR_NAME / filename
             else:
                 name = entry
-                url = f"{base_url}/{model_zoo_version}/{hailo_arch}/{name}{HAILO_FILE_EXTENSION}"
+                url = f"{base_url}/{model_zoo_version}/{download_arch}/{name}{HAILO_FILE_EXTENSION}"
                 dest = (
                     resource_root
                     / RESOURCES_MODELS_DIR_NAME
