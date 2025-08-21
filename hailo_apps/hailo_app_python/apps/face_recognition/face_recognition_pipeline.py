@@ -172,10 +172,10 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         self.hef_path_recognition = get_resource_path(
             pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME
         )
-        if self.arch == "hailo8":
-            self.detection_func = "scrfd_10g_letterbox"
-        else:  # hailo8l
+        if self.arch == "hailo8l":
             self.detection_func = "scrfd_2_5g_letterbox"
+        else:  # hailo8 & hailo10h
+            self.detection_func = "scrfd_10g_letterbox"
         self.recognition_func = "filter"
         self.cropper_func = "face_recognition"
         self.tracker_update_func = "filter"
