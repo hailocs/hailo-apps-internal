@@ -113,8 +113,7 @@ def set_environment_vars(config, env_path: Path | None = None) -> None:
     os.environ.update({k: v for k, v in env_vars.items() if v is not None})
     _persist_env_vars(env_vars, env_path)
 
-
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         description="Set environment variables for Hailo installation."
     )
@@ -131,3 +130,6 @@ if __name__ == "__main__":
     handle_dot_env(env_path=Path(args.env_path))
     config = load_and_validate_config(args.config)
     set_environment_vars(config, env_path=Path(args.env_path))
+
+if __name__ == "__main__":
+    main()

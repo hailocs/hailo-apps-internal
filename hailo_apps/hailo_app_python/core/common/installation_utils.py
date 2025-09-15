@@ -14,6 +14,7 @@ from .defines import (
     HAILO8L_ARCH_CAPS,
     HAILO10H_ARCH,
     HAILO10H_ARCH_CAPS,
+    HAILO15H_ARCH_CAPS,
     HAILO_FW_CONTROL_CMD,
     HAILO_TAPPAS,
     HAILO_TAPPAS_CORE,
@@ -107,7 +108,7 @@ def detect_hailo_arch() -> str | None:
             if HAILO8_ARCH_CAPS in line:
                 hailo_logger.info("Detected Hailo architecture: HAILO8")
                 return HAILO8_ARCH
-            if HAILO10H_ARCH_CAPS in line:
+            if HAILO10H_ARCH_CAPS in line or HAILO15H_ARCH_CAPS in line:
                 hailo_logger.info("Detected Hailo architecture: HAILO10H")
                 return HAILO10H_ARCH
     except Exception as e:
