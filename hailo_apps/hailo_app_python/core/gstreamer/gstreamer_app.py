@@ -163,7 +163,7 @@ class GStreamerApp:
         user_data.use_frame = self.options_menu.use_frame
 
         self.sync = (
-            "false" if (self.options_menu.disable_sync or self.source_type != "file") else "true"
+            "false" if (self.source_type == "file" or self.options_menu.disable_sync) else "true"
         )
         self.show_fps = self.options_menu.show_fps
 
@@ -245,12 +245,14 @@ class GStreamerApp:
     def on_eos(self):
         hailo_logger.debug("on_eos() called")
         if self.source_type == "file":
-            if self.sync == "false":
-                hailo_logger.debug("Pausing pipeline before rewind due to sync=false")
-                print("Pausing pipeline for rewind... some warnings are expected.")
-                self.pipeline.set_state(Gst.State.PAUSED)
+            # Always pause before rewind to ensure stateful elements reset cleanly
+            hailo_logger.debug("Pausing pipeline before rewind")
+            print("Pausing pipeline for rewind... some warnings are expected.")
+            self.pipeline.set_state(Gst.State.PAUSED)
 
-            success = self.pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH, 0)
+            # Perform a robust flushing seek to 0 with key-unit/accurate flags
+            seek_flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT | Gst.SeekFlags.ACCURATE
+            success = self.pipeline.seek_simple(Gst.Format.TIME, seek_flags, 0)
             if success:
                 hailo_logger.debug("Video rewound successfully")
                 print("Video rewound successfully. Restarting playback...")
