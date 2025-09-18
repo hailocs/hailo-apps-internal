@@ -64,6 +64,11 @@ VALID_HAILO_ARCH = [AUTO_DETECT, HAILO8_ARCH, HAILO8L_ARCH, HAILO10H_ARCH]
 VALID_SERVER_URL = ["http://dev-public.hailo.ai/2025_01" , "http://dev-public.hailo.ai/2025_07"]
 VALID_TAPPAS_VARIANT = [AUTO_DETECT, HAILO_TAPPAS, HAILO_TAPPAS_CORE , None]
 
+VALID_H8_TAPPAS_VERSION = ["3.30.0", "3.31.0", "3.32.0"]
+VALID_H10_TAPPAS_VERSION = ["5.0.0" , "5.1.0"]
+VALID_H8_MODEL_ZOO_VERSION = ["v2.13.0", "v2.14.0", "v2.15.0" , "v2.16.0"]
+VALID_H10_MODEL_ZOO_VERSION = ["v5.0.0" , "v5.0.1"]
+
 # Config key constants
 HAILORT_VERSION_KEY = "hailort_version"
 TAPPAS_VERSION_KEY = "tappas_version"
