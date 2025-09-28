@@ -163,7 +163,7 @@ class GStreamerApp:
         user_data.use_frame = self.options_menu.use_frame
 
         self.sync = (
-            "false" if (self.source_type == "file" or self.options_menu.disable_sync) else "true"
+            "true" if (self.source_type == "file" and not self.options_menu.disable_sync) else "false"
         )
         self.show_fps = self.options_menu.show_fps
 
