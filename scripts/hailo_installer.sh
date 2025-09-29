@@ -4,7 +4,7 @@
 # from the deb server. It performs several checks:
 #   - Checks system architecture (x86_64, aarch64, or Raspberry Pi)
 #   - For Raspberry Pi: if 'hailo-all' is not installed, points to RPi docs and exits.
-#   - Validates Python version (supported: 3.8, 3.9, 3.10, 3.11)
+#   - Validates Python version (supported: 3.10, 3.11, 3.12, 3.13)
 #   - Checks the kernel version (warns if not officially supported)
 #   - Downloads and installs the following:
 #       * HailoRT driver deb
@@ -13,7 +13,7 @@
 #       * HailoRT Python bindings whl
 #       * Tapas core Python bindings whl
 #
-# The deb server is hosted at: http://dev-public.hailo.ai/2025_01
+# The deb server is hosted at: http://dev-public.hailo.ai/
 # Owner: Sergii Tishchenko
 #
 #
@@ -23,14 +23,14 @@ set -e
 # --- Configurable Variables ---
 
 # Base URL of the deb server
-BASE_URL="http://dev-public.hailo.ai/2025-07"
+BASE_URL="http://dev-public.hailo.ai/2025-10"
 
 # Default version numbers for packages (if using --version, you can adjust these)
 
-HAILORT_VERSION_H8="4.22.0"
-TAPPAS_CORE_VERSION_H8="5.0.0"
-HAILORT_VERSION_H10="5.0.0"
-TAPPAS_CORE_VERSION_H10="5.0.0"
+HAILORT_VERSION_H8="4.23.0"
+TAPPAS_CORE_VERSION_H8="5.1.0"
+HAILORT_VERSION_H10="5.1.0"
+TAPPAS_CORE_VERSION_H10="5.1.0"
 
 HAILORT_VERSION=""
 TAPPAS_CORE_VERSION=""
@@ -88,7 +88,7 @@ while [[ "$#" -gt 0 ]]; do
                 TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H10"
             fi
             ;;
-        --download-only) 
+        --download-only)
             DOWNLOAD_ONLY="true"
             ;;
         --output-dir=*)
@@ -154,7 +154,7 @@ install_file() {
       python3 -m pip install "$path" --break-system-packages
     else
       echo "Installing with --user flag (user site-packages)"
-      python3 -m pip install "$path" --user --break-system-packages 
+      python3 -m pip install "$path" --user --break-system-packages
     fi
   else
     echo "Unknown file type: $file"
@@ -169,6 +169,17 @@ if [[ "$ARCH" == "aarch64" && "$KERNEL" == *"rpi"* ]]; then
     ARCH="rpi"
 fi
 echo "Detected architecture: $ARCH"
+
+# Ubuntu version detection
+UBUNTU_VERSION=""
+if [[ -f /etc/os-release ]]; then
+  . /etc/os-release
+  if [[ "$ID" == "ubuntu" ]]; then
+    UBUNTU_VERSION="$VERSION_ID"
+    echo "Detected Ubuntu version: $UBUNTU_VERSION"
+  fi
+fi
+
 
 # Raspberry Pi detection (same behavior as before, but skip entirely if download-only)
 if [[ "$ARCH" == *"arm"* && "$DOWNLOAD_ONLY" != "true" ]]; then
@@ -195,7 +206,7 @@ else
   if command -v python3 &>/dev/null; then
     PYTHON_VERSION="$(python3 --version 2>&1 | awk '{print $2}')"
     echo "Detected Python: $PYTHON_VERSION"
-    if [[ "$PYTHON_VERSION" =~ ^3\.(8|9|10|11) ]]; then
+    if [[ "$PYTHON_VERSION" =~ ^3\.(10|11|12|13) ]]; then
       PY_VER_MAJOR="$(echo "$PYTHON_VERSION" | cut -d. -f1)"
       PY_VER_MINOR="$(echo "$PYTHON_VERSION" | cut -d. -f2)"
       PY_TAG="cp${PY_VER_MAJOR}${PY_VER_MINOR}-cp${PY_VER_MAJOR}${PY_VER_MINOR}"
@@ -204,7 +215,7 @@ else
         echo "Unsupported Python version ($PYTHON_VERSION). Falling back to cp310-cp310 for download-only."
         PY_TAG="cp310-cp310"
       else
-        echo "Unsupported Python version. Supported: 3.8/3.9/3.10/3.11"
+        echo "Unsupported Python version. Supported: 3.10/3.11/3.12/3.13"
         exit 1
       fi
     fi
@@ -250,7 +261,22 @@ case "$ARCH" in
   x86_64|amd64)
     echo "Configuring AMD64 package names..."
     ARCH_FILES+=("hailort_${HAILORT_VERSION}_amd64.deb")
-    ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64.deb")
+    # Select Ubuntu-specific package if available
+    if [[ -n "$UBUNTU_VERSION" ]]; then
+      if [[ "$UBUNTU_VERSION" == "22.04" ]]; then
+        ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64_ub22.deb")
+        echo "Using Ubuntu 22.04 specific package"
+      elif [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+        ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64_ub24.deb")
+        echo "Using Ubuntu 24.04 specific package"
+      else
+        ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64.deb")
+        echo "Using generic AMD64 package for Ubuntu $UBUNTU_VERSION"
+      fi
+    else
+      ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64.deb")
+      echo "Using generic AMD64 package (no Ubuntu detection)"
+    fi
     ARCH_FILES+=("hailort-${HAILORT_VERSION}-${PY_TAG}-linux_x86_64.whl")
     ;;
   aarch64|arm64)

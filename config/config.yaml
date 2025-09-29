@@ -5,6 +5,6 @@ host_arch: "auto" # Options: "rpi" (Raspberry Pi), "x86" (desktop/server), "arm"
 hailo_arch: "auto" # Options: "hailo8", "hailo8l", "hailo10h" or "auto" (detect from device)
 resources_path: "resources" # Path to the resources directory, relative to the current working directory
 virtual_env_name: "venv_hailo_apps" # Name of the virtual environment to be created
-server_url: "http://dev-public.hailo.ai/2025_07" # URL of the server to download models from , This is static
+server_url: "http://dev-public.hailo.ai/2025_10" # URL of the server to download models from , This is static
 tappas_postproc_path: "auto" # Path to the post-processing script for Tappas, relative to the current working directory. If set to "auto", it will be detected automatically.
 log_level: "warning" # Options: "debug", "info", "warning", "error", "critical"
