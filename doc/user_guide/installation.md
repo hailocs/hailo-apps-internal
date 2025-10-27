@@ -34,7 +34,7 @@ git clone https://github.com/hailo-ai/hailo-apps-infra.git
 cd hailo-apps-infra
 
 # 2. Run the automated installation script
-./install.sh
+sudo ./install.sh
 ```
 
 The installation script will:
@@ -46,10 +46,10 @@ The installation script will:
 For more options, such as using a custom virtual environment name:
 ```bash
 # Use a custom virtual environment name
-./install.sh --venv-name my_custom_env
+sudo ./install.sh --venv-name my_custom_env
 
 # Download all available models (not just the default ones)
-./install.sh --all
+sudo ./install.sh --all
 ```
 
 
@@ -62,7 +62,7 @@ The `hailo_installer.sh` script handles the installation of the HailoRT and Tapp
 
 1. **HailoRT and TAPPAS-CORE Installation:**
 ```bash
-./scripts/hailo_installer.sh
+sudo ./scripts/hailo_installer.sh
 ```
 This installs the default versions of HailoRT and TAPPAS-CORE.
 On the Raspberry Pi, use their apt server.
@@ -142,6 +142,78 @@ hailo-download-resources --arch hailo8 --group hailo8
 ```
 
 The downloader automatically organizes resources into appropriate directories under the `resources/` folder, with models separated by architecture and videos/configs in dedicated subdirectories.
+
+---
+
+
+## Installing Hailo Packages
+
+This section explains how to install all necessary **Hailo runtime components** using the automated installer script `scripts/hailo_installer.sh`.
+The script supports both **Hailo-8** and **Hailo-10** architectures and can either **download** or **install** all required `.deb` and `.whl` packages from the official Hailo Debian server.
+
+* If running **Raspberry Pi OS**, follow the **official installation guide** on
+  [raspberrypi.com/documentation/computers/ai.html](https://www.raspberrypi.com/documentation/computers/ai.html).
+* If running **Ubuntu on RPi**, use this installer script.
+
+### Overview
+
+The installer performs the following tasks automatically:
+
+* Detects your **system architecture** (`x86_64`, `aarch64`, or Raspberry Pi).
+* Validates your **Python version** (supported: `3.10 – 3.13`).
+* Checks **kernel compatibility** and warns if not officially supported.
+* Downloads and installs:
+
+  * `hailort` PCIe driver and runtime `.deb` packages
+  * `hailo-tappas-core` `.deb` package
+  * `hailort` Python wheel
+  * `hailo_tappas_core_python_binding` wheel
+
+The packages are fetched from:
+
+```
+http://dev-public.hailo.ai/<date>/<Hailo8|Hailo10>/
+```
+
+### Usage
+
+```bash
+chmod +x scripts/hailo_installer.sh
+sudo ./scripts/hailo_installer.sh [options]
+```
+
+#### Common Options
+
+| Option                      | Description                                                                       |                                     |
+| --------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
+| `--hw-arch=`           | hailo10,hailo8                                                                          | Target hardware platform. Required. |
+| `--hailort-version=VER`     | Override HailoRT version (default: 4.23.0 for H8, 5.1.0 for H10).                 |                                     |
+| `--tappas-core-version=VER` | Override TAPPAS Core version.                                                     |                                     |
+| `--venv-name=NAME`          | Name of the Python virtual environment (default: `hailo_venv`).                   |                                     |
+| `--download-only`           | Only download the packages without installing them.                               |                                     |
+| `--output-dir=DIR`          | Change where packages are saved (default: `/usr/local/hailo/resources/packages`). |                                     |
+| `--py-tag=TAG`              | Manually specify Python wheel tag (e.g., `cp311-cp311`).                          |                                     |
+| `-h                         | --help`                                                                           | Show help menu.                     |
+
+### Examples
+
+#### Install for Hailo-8 on Ubuntu 24.04
+
+```bash
+sudo ./scripts/hailo_installer.sh --hw-arch=hailo8
+```
+
+#### Download Only (No Installation)
+
+```bash
+./scripts/hailo_installer.sh --hw-arch=hailo10 --download-only
+```
+
+Packages will be saved under:
+
+```
+/usr/local/hailo/resources/packages/<hailo8|hailo10>/
+```
 
 ---
 

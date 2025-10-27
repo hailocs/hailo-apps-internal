@@ -30,3 +30,6 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[Instance Segmentation](../hailo_apps/hailo_app_python/apps/instance_segmentation/README.md)**
 *   **[Pose Estimation](../hailo_apps/hailo_app_python/apps/pose_estimation/README.md)**
 *   **[Face Recognition](../hailo_apps/hailo_app_python/apps/face_recognition/README.md)**
+*   **[Tiling](../hailo_apps/hailo_app_python/apps/tiling/README.md)**
+*   **[Multisource](../hailo_apps/hailo_app_python/apps/multisource/README.md)**
+*   **[REID Multisource](../hailo_apps/hailo_app_python/apps/reid_multisource/README.md)**

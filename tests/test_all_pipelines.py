@@ -470,6 +470,136 @@ def test_hailo8l_models_on_hailo8():
         assert "traceback" not in err_str, f"{hef} had a traceback: {err_str}"
 
 
+def run_hailo8l_model_on_hailo8(pipeline_type, model_name, extra_args=None):
+    """Helper function to run a Hailo8L model on Hailo 8 architecture.
+    
+    Args:
+        pipeline_type: Type of pipeline (detection, pose_estimation, segmentation, face_recognition, etc.)
+        model_name: Name of the Hailo8L model to run
+        extra_args: Additional arguments to pass to the pipeline
+    
+    Returns:
+        tuple: (stdout, stderr, success)
+    """
+    hailo_arch = detect_hailo_arch()
+    if hailo_arch != HAILO8_ARCH:
+        logger.warning(f"Not running on Hailo 8 architecture (current: {hailo_arch})")
+        return b"", b"", False
+
+    # Create logs directory
+    log_dir = "logs/h8l_on_h8_tests"
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Build full HEF path for Hailo8L model
+    hef_full_path = os.path.join(RESOURCES_ROOT_PATH_DEFAULT, "models", HAILO8L_ARCH, f"{model_name}.hef")
+    
+    # Determine CLI command based on pipeline type
+    cli_commands = {
+        "detection": "hailo-detect",
+        "pose_estimation": "hailo-pose", 
+        "segmentation": "hailo-seg",
+        "face_recognition": "hailo-face-recon",
+        "multisource": "hailo-multisource",
+        "reid": "hailo-reid"
+    }
+    
+    cli_command = cli_commands.get(pipeline_type)
+    if not cli_command:
+        logger.error(f"Unknown pipeline type: {pipeline_type}")
+        return b"", b"", False
+
+    # Prepare CLI arguments
+    args = ["--hef-path", hef_full_path]
+    if extra_args:
+        args.extend(extra_args)
+
+    # Create log file path
+    log_file_path = os.path.join(log_dir, f"{pipeline_type}_{model_name}.log")
+
+    try:
+        logger.info(f"Testing {pipeline_type} with Hailo8L model: {model_name} on Hailo 8")
+        stdout, stderr = run_pipeline_cli_with_args(cli_command, args, log_file_path)
+
+        # Check for errors
+        err_str = stderr.decode().lower() if stderr else ""
+        success = "error" not in err_str and "traceback" not in err_str
+        return stdout, stderr, success
+
+    except Exception as e:
+        logger.error(f"Exception while testing {model_name} on Hailo 8: {e}")
+        return b"", str(e).encode(), False
+
+
+def test_hailo8l_models_on_hailo8_comprehensive():
+    """Comprehensive test that runs all Hailo8L models on Hailo 8 for all supported pipeline types."""
+    hailo_arch = detect_hailo_arch()
+    if hailo_arch != HAILO8_ARCH:
+        pytest.skip(f"Skipping Hailo-8L model test on {hailo_arch}")
+
+    # Define Hailo8L models for each pipeline type
+    h8l_models = {
+        "detection": ["yolov5m_wo_spp", "yolov6n", "yolov8s", "yolov8m", "yolov11n", "yolov11s"],
+        "pose_estimation": ["yolov8s_pose"],
+        "segmentation": ["yolov5m_seg", "yolov5n_seg"],
+        "face_recognition": ["scrfd_2.5g", "arcface_mobilefacenet_h8l"]
+    }
+
+    logger.info(f"Running comprehensive Hailo8L model test on Hailo 8")
+    
+    all_results = {}
+    total_tests = 0
+    total_passed = 0
+
+    # Test each pipeline type
+    for pipeline_type, models in h8l_models.items():
+        if not models:
+            continue
+
+        logger.info(f"Testing {pipeline_type} pipeline with {len(models)} Hailo8L models")
+        all_results[pipeline_type] = {}
+
+        for model in models:
+            total_tests += 1
+            stdout, stderr, success = run_hailo8l_model_on_hailo8(pipeline_type, model)
+
+            all_results[pipeline_type][model] = {
+                "success": success,
+                "stdout": stdout.decode() if stdout else "",
+                "stderr": stderr.decode() if stderr else "",
+            }
+
+            if success:
+                total_passed += 1
+                logger.info(f"✓ {pipeline_type}: {model}")
+            else:
+                logger.error(f"✗ {pipeline_type}: {model}")
+
+    # Generate summary report
+    logger.info("\nHailo8L on Hailo 8 Test Summary:")
+    logger.info(f"Total tests: {total_tests}")
+    logger.info(f"Passed: {total_passed}")
+    logger.info(f"Failed: {total_tests - total_passed}")
+
+    # Log detailed results
+    for pipeline_type, results in all_results.items():
+        failed_models = [model for model, result in results.items() if not result["success"]]
+        if failed_models:
+            logger.error(f"{pipeline_type} failed models: {failed_models}")
+
+    # Assert overall success
+    if total_passed < total_tests:
+        failed_details = []
+        for pipeline_type, results in all_results.items():
+            for model, result in results.items():
+                if not result["success"]:
+                    failed_details.append(f"{pipeline_type}/{model}: {result['stderr']}")
+
+        failure_summary = "\n".join(failed_details)
+        pytest.fail(
+            f"Hailo8L on Hailo 8 testing failed. {total_passed}/{total_tests} tests passed.\n\nFailures:\n{failure_summary}"
+        )
+
+
 if __name__ == "__main__":
     # You can run specific tests like this:
     # pytest test_file.py::test_all_hefs_by_pipeline -v

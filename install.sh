@@ -8,6 +8,7 @@ VENV_NAME="venv_hailo_apps"
 PYHAILORT_PATH=""
 PYTAPPAS_PATH=""
 NO_INSTALL=false
+NO_SYSTEM_PYTHON=false
 ENV_FILE="${SCRIPT_DIR}/.env"
 
 
@@ -31,6 +32,7 @@ OPTIONS:
     -pt, --pytappas PATH        Path to custom PyTappas wheel file
     --all                       Download all available models/resources
     -x, --no-install           Skip installation of Python packages
+    --no-system-python         Don't use system site-packages (default: use system site-packages unless on x86)
     -h, --help                  Show this help message and exit
 
 EXAMPLES:
@@ -38,6 +40,7 @@ EXAMPLES:
     $0 -n my_venv               # Use custom virtual environment name
     $0 --all                    # Install with all models/resources
     $0 -x                       # Skip Python package installation
+    $0 --no-system-python       # Don't use system site-packages
     $0 -ph /path/to/pyhailort.whl -pt /path/to/pytappas.whl  # Use custom wheel files
 
 DESCRIPTION:
@@ -85,6 +88,10 @@ while [[ $# -gt 0 ]]; do
       echo "Skipping installation of Python packages."
       shift
       ;;
+    --no-system-python)
+      NO_SYSTEM_PYTHON=true
+      shift
+      ;;
     -h|--help)
       show_help
       exit 0
@@ -98,7 +105,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SUMMARY_LINE=$(
-  sudo -u "${SUDO_USER:-$USER}" -H ./scripts/check_installed_packages.sh 2>&1 \
+  as_original_user ./scripts/check_installed_packages.sh 2>&1 \
     | sed -n 's/^SUMMARY: //p'
 )
 
@@ -156,20 +163,55 @@ fi
 
 VENV_PATH="${SCRIPT_DIR}/${VENV_NAME}"
 
+# Detect architecture
+ARCH=$(uname -m)
+IS_X86=false
+if [[ "$ARCH" == "x86_64" || "$ARCH" == "i386" || "$ARCH" == "i686" ]]; then
+  IS_X86=true
+fi
+
+# Determine whether to use system site-packages
+USE_SYSTEM_SITE_PACKAGES=true
+if [[ "$NO_SYSTEM_PYTHON" = true ]]; then
+  USE_SYSTEM_SITE_PACKAGES=false
+  echo "🔧 Using --no-system-python flag: virtualenv will not use system site-packages"
+else
+  echo "🔧 Using system site-packages for virtualenv"
+fi
+
 if [[ -d "${VENV_PATH}" ]]; then
   echo "🗑️  Removing existing virtualenv at ${VENV_PATH}"
-  rm -rf "${VENV_PATH}"
+  # Try removing as regular user first, fallback to sudo if needed
+  if ! as_original_user rm -rf "${VENV_PATH}" 2>/dev/null; then
+    echo "  ⚠️  Regular user removal failed, trying with sudo..."
+    sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "${VENV_PATH}" 2>/dev/null || true
+    as_original_user rm -rf "${VENV_PATH}"
+  fi
 fi
 
 echo "🧹 Cleaning up build artifacts..."
-find . -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
-rm -rf build/ dist/ 2>/dev/null || true
+# Try cleaning as regular user first, fallback to sudo if needed
+if ! as_original_user find . -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null; then
+  echo "  ⚠️  Regular user cleanup failed, fixing ownership..."
+  sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" . 2>/dev/null || true
+  as_original_user find . -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
+fi
+
+if ! as_original_user rm -rf build/ dist/ 2>/dev/null; then
+  echo "  ⚠️  Regular user cleanup failed, fixing ownership..."
+  sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" . 2>/dev/null || true
+  as_original_user rm -rf build/ dist/ 2>/dev/null || true
+fi
 echo "✅ Build artifacts cleaned"
 
 # Remove existing .env file if it exists
 if [[ -f "${ENV_FILE}" ]]; then
   echo "🗑️  Removing existing .env file at ${ENV_FILE}"
-  as_original_user rm -f "${ENV_FILE}"
+  if ! as_original_user rm -f "${ENV_FILE}" 2>/dev/null; then
+    echo "  ⚠️  Regular user removal failed, trying with sudo..."
+    sudo chown "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "${ENV_FILE}" 2>/dev/null || true
+    as_original_user rm -f "${ENV_FILE}"
+  fi
 fi
 
 # Create .env file with proper ownership and permissions
@@ -180,8 +222,14 @@ echo "✅ Created .env file at ${ENV_FILE}"
 sudo apt-get install -y meson
 sudo apt install python3-gi python3-gi-cairo
 
-echo "🌱 Creating virtualenv '${VENV_NAME}' (with system site-packages)…"
-python3 -m venv --system-site-packages "${VENV_PATH}"
+# Create virtual environment with or without system site-packages
+if [[ "$USE_SYSTEM_SITE_PACKAGES" = true ]]; then
+  echo "🌱 Creating virtualenv '${VENV_NAME}' (with system site-packages)…"
+  as_original_user python3 -m venv --system-site-packages "${VENV_PATH}"
+else
+  echo "🌱 Creating virtualenv '${VENV_NAME}' (without system site-packages)…"
+  as_original_user python3 -m venv "${VENV_PATH}"
+fi
 
 if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
   echo "❌ Could not find activate at ${VENV_PATH}/bin/activate"
@@ -189,7 +237,6 @@ if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
 fi
 
 echo "🔌 Activating venv: ${VENV_NAME}"
-source "${VENV_PATH}/bin/activate"
 
 if [[ -n "$PYHAILORT_PATH" ]]; then
   echo "Using custom HailoRT Python binding path: $PYHAILORT_PATH"
@@ -197,7 +244,7 @@ if [[ -n "$PYHAILORT_PATH" ]]; then
     echo "❌ HailoRT Python binding not found at $PYHAILORT_PATH"
     exit 1
   fi
-  pip install "$PYHAILORT_PATH"
+  as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install '$PYHAILORT_PATH'"
   INSTALL_HAILORT=false
 fi
 if [[ -n "$PYTAPPAS_PATH" ]]; then
@@ -206,36 +253,183 @@ if [[ -n "$PYTAPPAS_PATH" ]]; then
     echo "❌ TAPPAS Python binding not found at $PYTAPPAS_PATH"
     exit 1
   fi
-  pip install "$PYTAPPAS_PATH"
+  as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install '$PYTAPPAS_PATH'"
   INSTALL_TAPPAS_CORE=false
 fi
 
-echo "📦 Installing Python Hailo packages…"
-FLAGS=""
-if [[ "$INSTALL_TAPPAS_CORE" = true ]]; then
-  echo "Installing TAPPAS core Python binding"
-  FLAGS="--tappas-core-version=${TAPPAS_CORE_VERSION}"
-fi
-if [[ "$INSTALL_HAILORT" = true ]]; then
-  echo "Installing HailoRT Python binding"
-  FLAGS="${FLAGS} --hailort-version=${HAILORT_VERSION}"
-fi
+  echo '📦 Installing Python Hailo packages…'
+  FLAGS=''
+  if [[ '${INSTALL_TAPPAS_CORE}' = true ]]; then
+    echo 'Installing TAPPAS core Python binding'
+    FLAGS='--tappas-core-version=${TAPPAS_CORE_VERSION}'
+  fi
+  if [[ '${INSTALL_HAILORT}' = true ]]; then
+    echo 'Installing HailoRT Python binding'
+    FLAGS=\"\${FLAGS} --hailort-version=${HAILORT_VERSION}\"
+  fi
 
 if [[ -z "$FLAGS" ]]; then
   echo "No Hailo Python packages to install."
 else
   echo "Installing Hailo Python packages with flags: ${FLAGS}"
-  ./scripts/hailo_python_installation.sh ${FLAGS}
+  as_original_user ./scripts/hailo_python_installation.sh ${FLAGS}
 fi
 
-python3 -m pip install --upgrade pip setuptools wheel
+as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -m pip install --upgrade pip setuptools wheel"
 
 echo "📦 Installing package (editable + post-install)…"
-pip install -e .
+as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install -e ."
+
+# Create Hailo resources directories with correct permissions
+echo "📁 Creating Hailo resources directories..."
+
+RESOURCES_ROOT="/usr/local/hailo/resources"
+ORIGINAL_USER="${SUDO_USER:-$USER}"
+
+# Create the directory structure
+sudo mkdir -p ${RESOURCES_ROOT}/models/{hailo8,hailo8l,hailo10h}
+sudo mkdir -p ${RESOURCES_ROOT}/{videos,so,photos,json,packages}
+sudo mkdir -p ${RESOURCES_ROOT}/face_recon/{train,samples}
+
+# Set ownership to current user and their primary group
+sudo chown -R ${ORIGINAL_USER}:${ORIGINAL_USER} ${RESOURCES_ROOT}
+
+# Set permissions: rwxr-xr-x for directories (775 for group access)
+sudo chmod -R 775 ${RESOURCES_ROOT}
+
+# Ensure the user can write to these directories
+sudo chmod -R u+w ${RESOURCES_ROOT}
+
+echo "✅ Hailo resources directories created successfully"
+echo "   Owner: ${ORIGINAL_USER}:${ORIGINAL_USER}"
+echo "   Location: ${RESOURCES_ROOT}"
 
 echo "🔧 Running post-install script…"
 
-hailo-post-install --group "$DOWNLOAD_GROUP"
+# Fix resources directory permissions if needed
+echo "🔍 Checking resources directory permissions..."
+if [[ -d "resources" ]]; then
+    # Check if it's a symlink and test the target directory
+    if [[ -L "resources" ]]; then
+        target_dir=$(readlink "resources")
+        echo "  🔗 Resources is a symlink pointing to: $target_dir"
+        # Test if user can write to the target directory
+        if ! as_original_user test -w "$target_dir" 2>/dev/null; then
+            echo "  ⚠️  Target directory requires sudo permissions, fixing ownership..."
+            sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "$target_dir" 2>/dev/null || true
+        fi
+        # Also fix the symlink itself
+        if ! as_original_user test -w "resources" 2>/dev/null; then
+            echo "  ⚠️  Symlink requires sudo permissions, fixing ownership..."
+            sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "resources" 2>/dev/null || true
+        fi
+    else
+        # It's a regular directory
+        if ! as_original_user test -w "resources" 2>/dev/null; then
+            echo "  ⚠️  Resources directory requires sudo permissions, fixing ownership..."
+            sudo chown -R "${SUDO_USER:-$USER}:${SUDO_USER:-$USER}" "resources" 2>/dev/null || true
+        fi
+    fi
+fi
+
+if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && hailo-post-install --group '$DOWNLOAD_GROUP'"; then
+    echo ""
+    echo "❌ Post-installation failed!"
+    echo "This usually means:"
+    echo "  - C++ compilation failed (check for permission issues in build directories)"
+    echo "  - Resource download failed (check network connection)"
+    echo "  - Environment setup failed"
+    echo ""
+    echo "Please check the error messages above and try again."
+    echo "If you see permission errors, you may need to clean up old build directories with sudo."
+    exit 1
+fi
+
+echo ""
+echo "🔍 Verifying installation..."
+
+# Verification function
+verify_installation() {
+    local success=true
+    
+    echo "  📁 Checking virtual environment..."
+    if [[ -f "${VENV_PATH}/bin/activate" ]]; then
+        echo "    ✅ Virtual environment created successfully"
+    else
+        echo "    ❌ Virtual environment not found"
+        success=false
+    fi
+    
+    echo "  🐍 Checking Python packages..."
+    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo_apps; print(\"Hailo Apps version:\", hailo_apps.__file__)'" 2>/dev/null; then
+        echo "    ✅ Hailo Apps package installed successfully"
+    else
+        echo "    ❌ Hailo Apps package not properly installed"
+        success=false
+    fi
+    
+    echo "  📦 Checking HailoRT Python bindings..."
+    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo; print(\"HailoRT available\")'" 2>/dev/null; then
+        echo "    ✅ HailoRT Python bindings available"
+    else
+        echo "    ⚠️  HailoRT Python bindings not available (may need system installation)"
+    fi
+    
+    echo "  📦 Checking TAPPAS Python bindings..."
+    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo_platform; print(\"TAPPAS available\")'" 2>/dev/null; then
+        echo "    ✅ TAPPAS Python bindings available"
+    else
+        echo "    ⚠️  TAPPAS Python bindings not available (may need system installation)"
+    fi
+    
+    echo "  📁 Checking resources directory..."
+    if [[ -d "resources" && -L "resources" ]]; then
+        echo "    ✅ Resources symlink created successfully"
+        if [[ -d "resources/models" ]]; then
+            local model_count=$(find resources/models -name "*.hef" 2>/dev/null | wc -l)
+            echo "    ✅ Found $model_count model files"
+        else
+            echo "    ⚠️  Models directory not found"
+        fi
+    else
+        echo "    ❌ Resources directory not properly set up"
+        success=false
+    fi
+    
+    
+    echo "  📄 Checking environment file..."
+    if [[ -f ".env" ]]; then
+        echo "    ✅ Environment file created successfully"
+    else
+        echo "    ❌ Environment file not found"
+        success=false
+    fi
+    
+    echo "  🔨 Checking C++ postprocess compilation..."
+    # Check for compiled C++ libraries in the expected location
+    if [[ -d "/usr/local/hailo/resources/so" ]]; then
+        local so_count=$(find /usr/local/hailo/resources/so -name "*.so" 2>/dev/null | wc -l)
+        if [[ $so_count -gt 0 ]]; then
+            echo "    ✅ Found $so_count compiled C++ postprocess libraries"
+        else
+            echo "    ⚠️  No compiled C++ postprocess libraries found"
+            echo "       This may affect some advanced features"
+        fi
+    else
+        echo "    ⚠️  C++ library directory not found"
+        echo "       This may affect some advanced features"
+    fi
+    
+    return 0
+}
+
+# Run verification
+verify_installation
+
+echo ""
+echo "✅ Installation process completed!"
+echo "Virtual environment: ${VENV_NAME}"
+echo "Location: ${VENV_PATH}"
 
 echo "✅ All done! Your package is now in '${VENV_NAME}'."
 echo "source setup_env.sh to setup the environment"

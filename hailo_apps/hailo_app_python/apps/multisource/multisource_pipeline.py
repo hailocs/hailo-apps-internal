@@ -13,9 +13,9 @@ from gi.repository import Gst
 import hailo
 from hailo_apps.hailo_app_python.core.common.core import get_default_parser, get_resource_path, get_resource_path
 from hailo_apps.hailo_app_python.core.common.installation_utils import detect_hailo_arch
-from hailo_apps.hailo_app_python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_PARAMS_JSON_NAME, RESOURCES_JSON_DIR_NAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
+from hailo_apps.hailo_app_python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
 from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_helper_pipelines import get_source_type, USER_CALLBACK_PIPELINE, TRACKER_PIPELINE, QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class
+from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 # endregion imports
 
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
@@ -25,8 +25,8 @@ class GStreamerMultisourceApp(GStreamerApp):
         if parser == None:
             parser = get_default_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
-        parser.add_argument("--width", default='640', help="Video width (resolution) for ALL the sources. Default is 640.")
-        parser.add_argument("--height", default='640', help="Video height (resolution) for ALL the sources. Default is 640.")
+        parser.add_argument("--width", default=640, help="Video width (resolution) for ALL the sources. Default is 640.")
+        parser.add_argument("--height", default=640, help="Video height (resolution) for ALL the sources. Default is 640.")
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 
@@ -46,7 +46,6 @@ class GStreamerMultisourceApp(GStreamerApp):
         self.post_function_name = DETECTION_POSTPROCESS_FUNCTION
         self.video_sources_types = [(video_source, get_source_type(video_source)) for video_source in (self.options_menu.sources.split(',') if self.options_menu.sources else [self.video_source, self.video_source])]  # Default to 2 sources if none specified
         self.num_sources = len(self.video_sources_types)
-        self.algo_params = json.load(open(get_resource_path(pipeline_name=None, resource_type=RESOURCES_JSON_DIR_NAME, model=MULTI_SOURCE_PARAMS_JSON_NAME), "r+"))
         self.video_height = self.options_menu.height
         self.video_width = self.options_menu.width
 
@@ -64,14 +63,14 @@ class GStreamerMultisourceApp(GStreamerApp):
         for id in range(self.num_sources):
             sources_string += SOURCE_PIPELINE(video_source=self.video_sources_types[id][0],
                                               video_width=self.video_width, video_height=self.video_height,
-                                              frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=True)
+                                              frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=False)
             sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path=src_{id} "
             sources_string += f"! robin.sink_{id} "
             router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}')} ! {DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps, name=f'hailo_display_{id}')} "
 
         self.thresholds_str = (
-            f"nms-score-threshold={self.algo_params['nms_score_threshold']} "
-            f"nms-iou-threshold={self.algo_params['nms_iou_threshold']} "
+            f"nms-score-threshold=0.3 "
+            f"nms-iou-threshold=0.45 "
             f"output-format-type=HAILO_FORMAT_TYPE_FLOAT32"
         )
 
@@ -88,8 +87,7 @@ class GStreamerMultisourceApp(GStreamerApp):
             inference_string += f"src_{id}::input-streams=\"<sink_{id}>\" "
 
         pipeline_string = sources_string + inference_string + router_string
-
-        # print(pipeline_string)
+        print(pipeline_string)
         return pipeline_string
 
     def generate_callbacks(self):
@@ -116,20 +114,10 @@ class GStreamerMultisourceApp(GStreamerApp):
             callback_function = getattr(self, f'src_{id}_callback', None)
             identity_pad.add_probe(Gst.PadProbeType.BUFFER, callback_function, self.user_data)
 
-def app_callback(pad, info, user_data):
-    buffer = info.get_buffer()
-    if buffer is None:
-        return Gst.PadProbeReturn.OK
-    roi = hailo.get_roi_from_buffer(buffer)
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-    for detection in detections:
-        track_id = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)[0].get_id()
-        print(f'Unified callback, {roi.get_stream_id()}_{detection.get_label()}_{track_id}')
-    return Gst.PadProbeReturn.OK
-
 def main():
     # Create an instance of the user app callback class
     user_data = app_callback_class()
+    app_callback = dummy_callback
     app = GStreamerMultisourceApp(app_callback, user_data)
     app.run()
 

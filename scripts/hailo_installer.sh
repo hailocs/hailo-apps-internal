@@ -24,6 +24,8 @@ set -e
 
 # Base URL of the deb server
 BASE_URL="http://dev-public.hailo.ai/2025-10"
+declare -a DOWNLOADED_URLS=()
+
 
 # Default version numbers for packages (if using --version, you can adjust these)
 
@@ -134,6 +136,7 @@ download_file() {
     echo "Retrying ${rel}..."
     wget "$url" -O "$dst"
   fi
+  DOWNLOADED_URLS+=("$url")
 }
 
 install_file() {
@@ -305,15 +308,28 @@ esac
 # -------- Download --------
 echo "Downloading common files..."
 for f in "${common_files[@]}"; do
+  echo "$f"
   download_file "$f"
 done
 
 echo "Downloading arch-specific files..."
 for f in "${ARCH_FILES[@]}"; do
+  echo "$f"
   download_file "$f"
 done
 
 echo "All files downloaded to: ${TARGET_DIR}"
+
+# ---- Print direct links ----
+if ((${#DOWNLOADED_URLS[@]})); then
+  echo
+  echo "=== Direct download links ==="
+  for u in "${DOWNLOADED_URLS[@]}"; do
+    echo "$u"
+  done
+  echo "============================="
+  echo
+fi
 
 # -------- Install (skipped if download-only) --------
 if [[ "$DOWNLOAD_ONLY" == "true" ]]; then

@@ -6,8 +6,9 @@ import subprocess
 import time
 
 import pytest
+from pathlib import Path
 
-from .defines import TERM_TIMEOUT, TEST_RUN_TIME
+from .defines import TERM_TIMEOUT, TEST_RUN_TIME, RESOURCES_ROOT_PATH_DEFAULT, RESOURCES_VIDEOS_DIR_NAME, BASIC_PIPELINES_VIDEO_EXAMPLE_NAME
 
 
 def get_pipeline_args(
@@ -31,8 +32,6 @@ def get_pipeline_args(
       - "show_fps": Append the flag "--show-fps".
       - "dump_dot": Append the flag "--dump-dot".
       - "labels": Append the flag "--labels-json" followed by "resources/labels.json".
-      - "ui": Append the flag "--ui".
-      - "visualize": Append the flag "--visualize".
       - "mode-train": Set the '--mode' argument to train.
       - "mode-delete": Set the '--mode' argument to delete.
       - "mode-run": Set the '--mode' argument to run.
@@ -83,16 +82,16 @@ def get_pipeline_args(
                 json_file = "resources/labels.json"
             # Append or override --input (here we simply add the argument)
             args += ["--labels-json", json_file]
-        elif s == "ui":
-            args.append("--ui")
-        elif s == "visualize":
-            args.append("--visualize")
         elif s == "mode-train":
             args += ["--mode", "train"]
         elif s == "mode-delete":
             args += ["--mode", "delete"]
         elif s == "mode-run":
             args += ["--mode", "run"]
+        elif s == "single_scaling":  # for tiling pipeline
+            args += ["--single_scaling"]
+        elif s == "sources":  # for multisource pipeline
+            args += ["--sources", f"/dev/video0,{str(Path(RESOURCES_ROOT_PATH_DEFAULT) / RESOURCES_VIDEOS_DIR_NAME / BASIC_PIPELINES_VIDEO_EXAMPLE_NAME)}"]
     return args
 
 

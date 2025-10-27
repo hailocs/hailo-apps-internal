@@ -170,8 +170,12 @@ def app_callback(pad, info, user_data):
     return Gst.PadProbeReturn.OK
 
 
-if __name__ == "__main__":
+def main():
     hailo_logger.info("Starting Instance Segmentation App with custom callback.")
     user_data = user_app_callback_class()
     app = GStreamerInstanceSegmentationApp(app_callback, user_data)
     app.run()
+
+
+if __name__ == "__main__":
+    main()

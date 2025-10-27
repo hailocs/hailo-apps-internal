@@ -129,8 +129,12 @@ def get_keypoints():
     }
 
 
-if __name__ == "__main__":
+def main():
     hailo_logger.info("Starting Pose Estimation App...")
     user_data = user_app_callback_class()
     app = GStreamerPoseEstimationApp(app_callback, user_data)
     app.run()
+
+
+if __name__ == "__main__":
+    main()

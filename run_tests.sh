@@ -26,5 +26,8 @@ python -m pytest --log-cli-level=INFO \
     "${TESTS_DIR}/test_sanity_check.py" \
     "${TESTS_DIR}/test_all_pipelines.py" \
     "${TESTS_DIR}/test_face_recon.py" \
+    "${TESTS_DIR}/test_tiling.py" \
+    "${TESTS_DIR}/test_reid.py" \
+    "${TESTS_DIR}/test_multisource.py" \
 
 echo "All tests completed successfully."

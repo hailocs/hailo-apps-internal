@@ -75,19 +75,19 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
             self.video_height,
         )
 
-        # Detect architecture if not provided
-        if self.options_menu.arch is None:
-            detected_arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
-            if detected_arch is None:
-                hailo_logger.error("Could not auto-detect Hailo architecture.")
+        # Determine the architecture if not specified
+        if self.options_menu.arch is None:    
+            arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
+            if not arch:
+                hailo_logger.error("Could not detect Hailo architecture.")
                 raise ValueError(
                     "Could not auto-detect Hailo architecture. Please specify --arch manually."
                 )
-            self.arch = detected_arch
-            hailo_logger.info("Auto-detected Hailo architecture: %s", self.arch)
+            self.arch = arch
+            hailo_logger.debug(f"Auto-detected Hailo architecture: {self.arch}")
         else:
             self.arch = self.options_menu.arch
-            hailo_logger.debug("Using user-specified architecture: %s", self.arch)
+            hailo_logger.debug("Using user-specified arch: %s", self.arch)
 
         # Set HEF path
         if self.options_menu.hef_path:

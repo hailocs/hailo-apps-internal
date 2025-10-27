@@ -70,8 +70,12 @@ def app_callback(pad, info, user_data):
     return Gst.PadProbeReturn.OK
 
 
-if __name__ == "__main__":
+def main():
     hailo_logger.info("Starting Depth callback runner...")
     user_data = user_app_callback_class()
     app = GStreamerDepthApp(app_callback, user_data)
     app.run()
+
+
+if __name__ == "__main__":
+    main()

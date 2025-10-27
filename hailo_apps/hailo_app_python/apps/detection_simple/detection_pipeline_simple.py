@@ -1,9 +1,11 @@
 # region imports
 # Standard library imports
+import os
 import setproctitle
 
 from hailo_apps.hailo_app_python.core.common.core import get_default_parser, get_resource_path
 from hailo_apps.hailo_app_python.core.common.defines import (
+    HAILO_ARCH_KEY,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
@@ -71,20 +73,18 @@ class GStreamerDetectionApp(GStreamerApp):
                 model=SIMPLE_DETECTION_VIDEO_NAME,
             )
         # Determine the architecture if not specified
-        if self.options_menu.arch is None:
-            detected_arch = detect_hailo_arch()
-            hailo_logger.info(f"Detected Hailo architecture: {detected_arch}")
-            if detected_arch is None:
-                hailo_logger.error(
-                    "Could not auto-detect Hailo architecture. Please specify --arch manually."
-                )
+        if self.options_menu.arch is None:    
+            arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
+            if not arch:
+                hailo_logger.error("Could not detect Hailo architecture.")
                 raise ValueError(
                     "Could not auto-detect Hailo architecture. Please specify --arch manually."
                 )
-            self.arch = detected_arch
+            self.arch = arch
+            hailo_logger.debug(f"Auto-detected Hailo architecture: {self.arch}")
         else:
             self.arch = self.options_menu.arch
-            hailo_logger.info(f"Using Hailo architecture: {self.arch}")
+            hailo_logger.debug("Using user-specified arch: %s", self.arch)
 
         if self.options_menu.hef_path is not None:
             self.hef_path = self.options_menu.hef_path

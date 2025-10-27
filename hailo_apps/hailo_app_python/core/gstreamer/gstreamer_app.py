@@ -13,6 +13,28 @@ import setproctitle
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, GObject, Gst
 
+# Suppress GStreamer buffer warnings by installing a custom log handler
+# These warnings are cosmetic in GStreamer 1.26+ with complex pipelines
+_suppressed_gstreamer_patterns = ["write map requested on non-writable buffer"]
+
+def _gstreamer_log_filter(log_domain, log_level, message, user_data):
+    """
+    Custom GLib log handler that filters out specific GStreamer warnings.
+
+    This handler suppresses cosmetic warnings that appear in GStreamer 1.26+ when
+    complex pipelines (like instance segmentation) use buffers with multiple references.
+    These warnings don't indicate functional problems - GStreamer handles them internally.
+    """
+    # Suppress messages containing our specific patterns
+    if message and not any(pattern in message for pattern in _suppressed_gstreamer_patterns):
+        # For non-suppressed messages, use default behavior (print to stderr)
+        if log_level & (GLib.LogLevelFlags.LEVEL_ERROR | GLib.LogLevelFlags.LEVEL_CRITICAL):
+            sys.stderr.write(f"({log_domain}): CRITICAL: {message}\n")
+            sys.stderr.flush()
+
+# Install the custom log handler for all GStreamer logs
+GLib.log_set_handler("GStreamer", GLib.LogLevelFlags.LEVEL_MASK, _gstreamer_log_filter, None)
+
 from hailo_apps.hailo_app_python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
@@ -232,38 +254,99 @@ class GStreamerApp:
             if not hasattr(self, "qos_count"):
                 self.qos_count = 0
             self.qos_count += 1
-            hailo_logger.warning(f"QoS message #{self.qos_count}")
-            if self.qos_count > 50 and self.qos_count % 10 == 0:
+            # Only log every 100th QoS message to avoid spam
+            # QoS messages are normal during pipeline rebuild/startup
+            if self.qos_count % 100 == 0:
                 qos_element = message.src.get_name()
-                hailo_logger.warning(f"Lots of QoS messages from {qos_element}")
-                print(f"\033[91mQoS message received from {qos_element}\033[0m")
-                print(
-                    f"\033[91mLots of QoS messages received: {self.qos_count}, consider optimizing...\033[0m"
-                )
+                hailo_logger.warning(f"QoS messages: {self.qos_count} total (from {qos_element})")
+                print(f"\033[93mQoS messages: {self.qos_count} total\033[0m")
         return True
 
     def on_eos(self):
         hailo_logger.debug("on_eos() called")
         if self.source_type == "file":
-            # Always pause before rewind to ensure stateful elements reset cleanly
-            hailo_logger.debug("Pausing pipeline before rewind")
-            print("Pausing pipeline for rewind... some warnings are expected.")
-            self.pipeline.set_state(Gst.State.PAUSED)
-
-            # Perform a robust flushing seek to 0 with key-unit/accurate flags
-            seek_flags = Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT | Gst.SeekFlags.ACCURATE
-            success = self.pipeline.seek_simple(Gst.Format.TIME, seek_flags, 0)
-            if success:
-                hailo_logger.debug("Video rewound successfully")
-                print("Video rewound successfully. Restarting playback...")
-            else:
-                hailo_logger.error("Error rewinding video")
-                print("Error rewinding video.", file=sys.stderr)
-
-            self.pipeline.set_state(Gst.State.PLAYING)
+            hailo_logger.debug("File source detected; rebuilding pipeline")
+            print("End-of-stream reached. Rebuilding pipeline...")
+            # Use GLib.idle_add to defer pipeline rebuild and avoid blocking
+            GLib.idle_add(self._rebuild_pipeline)
         else:
             hailo_logger.debug("Non-file source detected; shutting down")
             self.shutdown()
+
+    def _rebuild_pipeline(self):
+        """
+        Completely rebuild the pipeline from scratch for clean looping.
+
+        This destroys the old pipeline object and creates a new one,
+        which is the only truly clean way to loop with stateful elements like trackers.
+
+        Returns:
+            False to remove this idle callback after execution.
+        """
+        hailo_logger.debug("_rebuild_pipeline() executing")
+
+        try:
+            # Step 1: Stop and destroy the old pipeline
+            hailo_logger.debug("Stopping old pipeline")
+            if self.pipeline:
+                self.pipeline.set_state(Gst.State.NULL)
+                # Wait briefly for NULL state
+                self.pipeline.get_state(2 * Gst.SECOND)
+                # Remove bus watch
+                bus = self.pipeline.get_bus()
+                bus.remove_signal_watch()
+                # Dereference the pipeline
+                self.pipeline = None
+
+            hailo_logger.debug("Old pipeline destroyed")
+
+            # Small delay to ensure all resources are released
+            import time
+            time.sleep(0.2)
+
+            # Step 2: Rebuild the pipeline from scratch
+            hailo_logger.debug("Creating new pipeline")
+            pipeline_string = self.get_pipeline_string()
+            hailo_logger.debug(f"New pipeline string: {pipeline_string}")
+
+            self.pipeline = Gst.parse_launch(pipeline_string)
+
+            # Step 3: Reattach bus callback
+            hailo_logger.debug("Reattaching bus callback")
+            bus = self.pipeline.get_bus()
+            bus.add_signal_watch()
+            bus.connect("message", self.bus_call, self.loop)
+
+            # Step 4: Reattach pad probe if needed
+            if not self.options_menu.disable_callback:
+                identity = self.pipeline.get_by_name("identity_callback")
+                if identity:
+                    hailo_logger.debug("Reattaching pad probe to identity_callback")
+                    identity.get_static_pad("src").add_probe(
+                        Gst.PadProbeType.BUFFER, self.app_callback, self.user_data
+                    )
+
+            # Step 5: Start the new pipeline
+            hailo_logger.debug("Starting new pipeline")
+            ret = self.pipeline.set_state(Gst.State.PLAYING)
+            if ret == Gst.StateChangeReturn.FAILURE:
+                hailo_logger.error("Failed to start new pipeline")
+                print("Error: Failed to start new pipeline.", file=sys.stderr)
+                self.loop.quit()
+                return False
+
+            hailo_logger.debug("Pipeline rebuilt and restarted successfully")
+            print("Pipeline rebuilt successfully.")
+
+        except Exception as e:
+            hailo_logger.error(f"Exception during pipeline rebuild: {e}")
+            print(f"Error rebuilding pipeline: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            self.loop.quit()
+
+        # Return False to remove this idle callback
+        return False
 
     def shutdown(self, signum=None, frame=None):
         hailo_logger.warning("Shutdown initiated")

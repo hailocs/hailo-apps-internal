@@ -20,7 +20,10 @@ The following applications are available. Each one is a self-contained GStreamer
 | `hailo-pose`          | [Pose Estimation](../../hailo_apps/hailo_app_python/apps/pose_estimation/README.md)         | Detects human pose keypoints (e.g., joints and limbs) in real-time.                                                                                               |
 | `hailo-seg`           | [Instance Segmentation](../../hailo_apps/hailo_app_python/apps/instance_segmentation/README.md)   | Provides pixel-level masks for each detected object, distinguishing different instances from one another.                                                         |
 | `hailo-depth`         | [Depth Estimation](../../hailo_apps/hailo_app_python/apps/depth/README.md)        | Estimates the depth of a scene from a single 2D camera input.                                                                                                     |
-| `hailo-face-recon`    | [Face Recognition](../../hailo_apps/hailo_app_python/apps/face_recognition/README.md)        | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA.                                            |
+| `hailo-face-recon`    | [Face Recognition](../../hailo_apps/hailo_app_python/apps/face_recognition/README.md)        | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA.
+| `hailo-tiling`    | [Tiling](../../hailo_apps/hailo_app_python/apps/tiling/README.md)        | Single & multi scale tiling splitting each frame into several tiles which are processed independently - effective for detecting small objects in high-resolution frames.
+| `hailo-multisource`    | [Multisource](../../hailo_apps/hailo_app_python/apps/multisource/README.md)        | Demonstrating parallel processing on multiple streams from a combination of various inputs (USB cameras, files, RTSP, etc.).
+| `hailo-reid`    | [REID Multisource](../../hailo_apps/hailo_app_python/apps/reid_multisource/README.md)        | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.                                            |
 
 ## How to Run an Application
 
@@ -61,6 +64,11 @@ hailo-detect --input /dev/video0
 **Run with a video file:**
 ```bash
 hailo-detect --input your_video.mp4
+```
+
+**Run with an RTSP (Real-Time Streaming Protocol):**
+```bash
+hailo-detect --input rtsp://username:password@ip_address:port/path
 ```
 
 ## Customizing with Command-Line Arguments

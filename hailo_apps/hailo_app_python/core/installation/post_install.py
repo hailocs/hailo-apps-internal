@@ -1,9 +1,6 @@
 import argparse
-import grp
 import os
-import pwd
 import shutil
-import subprocess
 from pathlib import Path
 
 from hailo_apps.hailo_app_python.core.common.hailo_logger import get_logger
@@ -16,7 +13,6 @@ from hailo_apps.hailo_app_python.core.common.core import load_environment
 from hailo_apps.hailo_app_python.core.common.defines import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_DOTENV_PATH,
-    RESOURCES_DIRS_MAP,
     RESOURCES_GROUP_DEFAULT,
     RESOURCES_PATH_DEFAULT,
     RESOURCES_PATH_KEY,
@@ -29,41 +25,6 @@ from hailo_apps.hailo_app_python.core.installation.set_env import (
     handle_dot_env,
     set_environment_vars,
 )
-
-
-def setup_resource_dirs():
-    """Create resource directories for Hailo applications.
-    Also sets ownership and permissions.
-    """
-    hailo_logger.debug("Entering setup_resource_dirs()")
-
-    # Determine installation user
-    sudo_user = os.environ.get("SUDO_USER")
-    install_user = sudo_user or pwd.getpwuid(os.getuid()).pw_name
-    hailo_logger.debug(f"Detected installation user: {install_user}")
-
-    # Get group name
-    pw = pwd.getpwnam(install_user)
-    grpname = grp.getgrgid(pw.pw_gid).gr_name
-    hailo_logger.debug(f"Detected group: {grpname}")
-
-    # Create subdirectories
-    for sub in RESOURCES_DIRS_MAP:
-        target = sub
-        hailo_logger.debug(f"Creating directory: {target}")
-        subprocess.run(["sudo", "mkdir", "-p", str(target)], check=True)
-
-    # Set permissions
-    hailo_logger.debug(f"Setting ownership to {install_user}:{grpname}")
-    subprocess.run(
-        ["sudo", "chown", "-R", f"{install_user}:{grpname}", str(RESOURCES_ROOT_PATH_DEFAULT)],
-        check=True,
-    )
-    hailo_logger.debug("Setting directory permissions to 755")
-    subprocess.run(["sudo", "chmod", "-R", "755", str(RESOURCES_ROOT_PATH_DEFAULT)], check=True)
-
-    hailo_logger.info("✅ Resource directories created successfully.")
-    print("✅ Resource directories created successfully.")
 
 
 def post_install():
@@ -87,8 +48,6 @@ def post_install():
 
     set_environment_vars(config, args.dotenv)
     load_environment()
-
-    setup_resource_dirs()
 
     # Prepare resources symlink
     resources_path = Path(os.getenv(RESOURCES_PATH_KEY, RESOURCES_PATH_DEFAULT))

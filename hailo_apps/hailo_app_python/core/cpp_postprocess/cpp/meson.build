@@ -135,19 +135,6 @@ shared_library('vms_croppers',
 )
 
 ################################################
-# TRACKER UPDATE SOURCES
-################################################
-tracker_update_sources = [
-    'tracker_update.cpp',
-]
-shared_library('tracker_update',
-    tracker_update_sources,
-    dependencies : postprocess_dep,
-    gnu_symbol_visibility : 'default',
-    install: true,
-    install_dir: '/usr/local/hailo/resources/so',
-)
-################################################
 # REPVGG REID POST SOURCES
 ################################################
 
