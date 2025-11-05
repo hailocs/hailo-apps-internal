@@ -10,62 +10,28 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
 
-from hailo_apps.python.core.common.config_utils import load_config
+# Try to import from local installation folder first, then fallback to path
+try:
+    from .config_utils import load_config
+except ImportError:
+    # Fallback: import from path
+    import importlib.util
+    from pathlib import Path
+    current_file = Path(__file__).resolve()
+    config_utils_path = current_file.parent / "config_utils.py"
+    if config_utils_path.exists():
+        spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
+        config_utils_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config_utils_module)
+        load_config = config_utils_module.load_config
+    else:
+        raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import *
 from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 
-def create_default_config():
-    hailo_logger.debug("Creating default resources configuration")
-    return {
-        "default": [
-            "yolov6n",
-            "scdepthv3",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example.mp4",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example_640.mp4",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/face_recognition.mp4",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/scrfd.json",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/barcode_labels.json",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5m_seg.json",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json",
-        ],
-        "hailo8": ["yolov8m", "yolov5m_seg", "yolov8m_pose", "scrfd_10g", "arcface_mobilefacenet"],
-        "hailo8l": [
-            "yolov8s",
-            "yolov5n_seg",
-            "yolov8s_pose",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/scrfd_2.5g.hef",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/arcface_mobilefacenet_h8l.hef",
-        ],
-        "all": [
-            "yolov8s_pose",
-            "yolov8s",
-            "yolov8m_pose",
-            "yolov8m",
-            "yolov6n",
-            "yolov5n_seg",
-            "yolov5m_wo_spp",
-            "yolov5m_seg",
-            "yolov11s",
-            "yolov11n",
-            "scdepthv3",
-        ],
-        "retrain": [
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef",
-            "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/barcode.mp4",
-        ],
-    }
 
-
-def create_config_at_path(config_path: str | None = None):
-    cfg_path = Path(config_path or "/usr/local/hailo/resources/resources_config.yaml")
-    hailo_logger.debug(f"Creating default config file at {cfg_path}")
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cfg_path, "w") as f:
-        yaml.dump(create_default_config(), f, default_flow_style=False, indent=2)
-    hailo_logger.info(f"Default configuration created at {cfg_path}")
-    return cfg_path
 
 
 def download_file(url: str, dest_path: Path):
@@ -103,7 +69,7 @@ def download_resources(
         download_arch = "hailo15h"
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-        model_zoo_version = "v5.0.0"
+        model_zoo_version = "v5.1.0"
     if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
         model_zoo_version = "v2.17.0"
     hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
@@ -119,12 +85,19 @@ def download_resources(
     elif hailo_arch == HAILO8L_ARCH:
         groups.append(RESOURCES_GROUP_HAILO8L)
     elif hailo_arch == HAILO10H_ARCH:
-        groups.append(RESOURCES_GROUP_HAILO8)
+        groups.append(RESOURCES_GROUP_HAILO10H)
 
     seen = set()
     items = []
     for grp in groups:
-        for entry in config.get(grp, []):
+        # Handle both "hailo10" and "hailo10h" config keys for backward compatibility
+        config_key = grp
+        if grp == RESOURCES_GROUP_HAILO10H:
+            # Try "hailo10h" first, fallback to "hailo10"
+            if "hailo10h" not in config and "hailo10" in config:
+                config_key = "hailo10"
+        
+        for entry in config.get(config_key, []):
             key = entry if isinstance(entry, str) else next(iter(entry.keys()))
             if key not in seen:
                 seen.add(key)

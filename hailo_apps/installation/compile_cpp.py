@@ -10,13 +10,14 @@ hailo_logger = get_logger(__name__)
 def compile_postprocess():
     hailo_logger.debug("Entering compile_postprocess()")
 
-    # 1) locate hailo_apps_infra package
+    # 1) locate hailo_apps package
     here = Path(__file__).resolve()
-    pkg_root = here.parents[3]
+    # Path structure: hailo_apps/installation/compile_cpp.py -> hailo_apps/postprocess/
+    pkg_root = here.parent.parent
     hailo_logger.debug(f"Resolved package root: {pkg_root}")
 
-    # 2) point at the correct folder structure: python/core/cpp_postprocess
-    pp_dir = pkg_root / "python" / "core" / "cpp_postprocess"
+    # 2) point at the correct folder structure: hailo_apps/postprocess
+    pp_dir = pkg_root / "postprocess"
     hailo_logger.debug(f"Postprocess directory: {pp_dir}")
 
     if not (pp_dir / "meson.build").exists():

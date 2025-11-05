@@ -8,7 +8,6 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 hailo_logger = get_logger(__name__)
 
 
-from hailo_apps.python.core.common.config_utils import load_and_validate_config
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (
     DEFAULT_CONFIG_PATH,
@@ -19,9 +18,9 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_ROOT_PATH_DEFAULT,
 )
 from hailo_apps.python.core.common.installation_utils import create_symlink
-from hailo_apps.python.core.installation.compile_cpp import compile_postprocess
-from hailo_apps.python.core.installation.download_resources import download_resources
-from hailo_apps.python.core.installation.set_env import (
+from hailo_apps.installation.compile_cpp import compile_postprocess
+from hailo_apps.installation.download_resources import download_resources
+from hailo_apps.installation.set_env import (
     handle_dot_env,
     set_environment_vars,
 )
@@ -42,12 +41,26 @@ def post_install():
 
     hailo_logger.debug(f"Arguments parsed: {args}")
 
-    handle_dot_env()  # Load .env if exists
+    # Set environment variables (will use existing .env if set_env was already run)
+    handle_dot_env(args.dotenv)
+    # Try to import from local installation folder first, then fallback to path
+    try:
+        from .config_utils import load_and_validate_config
+    except ImportError:
+        # Fallback: import from path
+        import importlib.util
+        current_file = Path(__file__).resolve()
+        config_utils_path = current_file.parent / "config_utils.py"
+        if config_utils_path.exists():
+            spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
+            config_utils_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config_utils_module)
+            load_and_validate_config = config_utils_module.load_and_validate_config
+        else:
+            raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
     config = load_and_validate_config(args.config)
-    hailo_logger.debug(f"Loaded configuration: {config}")
-
     set_environment_vars(config, args.dotenv)
-    load_environment()
+    load_environment(args.dotenv)
 
     # Prepare resources symlink
     resources_path = Path(os.getenv(RESOURCES_PATH_KEY, RESOURCES_PATH_DEFAULT))

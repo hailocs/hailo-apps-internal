@@ -388,7 +388,7 @@ def test_environment_variables():
         logger.warning("hailo-tappas-core is installed but TAPPAS_POST_PROC_DIR is not set")
 
     # Check if .env file exists
-    env_file = Path(__file__).resolve().parents[1] / ".env"
+    env_file = Path(__file__).resolve().parents[1] / "resources" / ".env"
     if env_file.exists():
         logger.info(f".env file exists at {env_file}")
         # Optionally read and check the content

@@ -16,6 +16,11 @@ hailo10:
   - "https://dev-public.hailo.ai/v5.1.0/blob/Qwen2-VL-2B-Instruct.hef"
   - "https://dev-public.hailo.ai/v5.1.0/blob/Qwen2-1.5B-Instruct.hef"
   - "https://dev-public.hailo.ai/v5.1.0/blob/Whisper-Base.hef"
+  - yolov8m
+  - yolov5m_seg
+  - yolov8m_pose
+  - scrfd_10g
+  - arcface_mobilefacenet
 
 hailo8:
   - yolov8m

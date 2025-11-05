@@ -316,6 +316,6 @@ To remove the environment and downloaded resources:
 deactivate
 
 # Delete project files and logs
-sudo rm -rf venv_hailo_apps/ resources/ hailort.log .env hailo_apps.egg-info
+sudo rm -rf venv_hailo_apps/ resources/ hailort.log hailo_apps.egg-info
 ```
 To uninstall system packages, use `apt remove`.

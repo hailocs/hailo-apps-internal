@@ -31,10 +31,10 @@ dependencies = [
 
 [project.scripts]
 get-usb-camera =            "hailo_apps.python.core.common.camera_utils:main"
-hailo-post-install =        "hailo_apps.python.core.installation.post_install:main"
-hailo-compile-postprocess = "hailo_apps.python.core.installation.compile_cpp:main"
-hailo-set-env =             "hailo_apps.python.core.installation.set_env:main"
-hailo-download-resources =  "hailo_apps.python.core.installation.download_resources:main"
+hailo-post-install =        "hailo_apps.installation.post_install:main"
+hailo-compile-postprocess = "hailo_apps.installation.compile_cpp:main"
+hailo-set-env =             "hailo_apps.installation.set_env:main"
+hailo-download-resources =  "hailo_apps.installation.download_resources:main"
 hailo-detect =              "hailo_apps.python.pipeline_apps.detection.detection:main"
 hailo-depth =               "hailo_apps.python.pipeline_apps.depth.depth:main"
 hailo-pose =                "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation:main"
@@ -49,13 +49,13 @@ hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.re
 include = ["hailo_apps*"]
 
 [tool.setuptools.package-data]
-"hailo_apps.python.core.cpp_postprocess" = [
+"hailo_apps.postprocess" = [
     "meson.build",
     "compile_postprocess.sh",
     "cpp/**/*",
 ]
-"hailo_apps" = [
-    "config/*.yaml",
+"hailo_apps.config" = [
+    "*.yaml",
 ]
 
 [tool.ruff]
