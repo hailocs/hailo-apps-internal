@@ -128,7 +128,7 @@ if __name__ == "__main__":
     parser = get_default_parser()
     options_menu = parser.parse_args()
     if options_menu.input is None:
-        video_source = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / RESOURCES_VIDEOS_DIR_NAME / BASIC_PIPELINES_VIDEO_EXAMPLE_NAME)
+        print('Please provide an input source using the "--input" argument: "usb" for USB camera or "rpi" for Raspberry Pi camera.')
     elif options_menu.input == USB_CAMERA:
         video_source = get_usb_video_devices()
         if video_source:
