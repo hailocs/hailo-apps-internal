@@ -1,6 +1,6 @@
 # Hailo GenAI Chat Examples
 
-This directory contains three basic example applications demonstrating the use of Hailo's GenAI platform for different AI tasks: 
+This directory contains three basic example applications demonstrating the use of Hailo's GenAI platform for different AI tasks:
 - Large Language Models (LLM)
 - Vision Language Models (VLM)
 - Speech-to-Text (Whisper)
@@ -11,7 +11,7 @@ For full GenAI applications, please see: [VLM full application](../VLM_Chat) and
 
 - Open WebUI example with Hailo Ollama API
 - `llm_chat.py` - Text-based conversational AI using Large Language Models
-- `vlm_chat.py` - Image analysis and description using Vision Language Models  
+- `vlm_chat.py` - Image analysis and description using Vision Language Models
 - `whisper_chat.py` - Audio transcription using Whisper speech-to-text models
 
 ## Usage
@@ -39,7 +39,7 @@ Models are specifically optimized for Hailo hardware, providing efficient, high-
    - Download the appropriate package for your architecture
    - Install the package:
      ```bash
-     sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_<arch>.deb
+     sudo apt install hailo_gen_ai_model_zoo_<ver>_<arch>.deb
      ```
 
 3. **Start Hailo-Ollama Service:**
