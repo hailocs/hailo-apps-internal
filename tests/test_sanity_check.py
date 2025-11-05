@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from hailo_apps.hailo_app_python.core.common.installation_utils import (
+from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
     detect_pkg_installed,

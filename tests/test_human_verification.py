@@ -16,17 +16,17 @@ from pathlib import Path
 
 import pytest
 
-from hailo_apps.hailo_app_python.core.common.camera_utils import is_rpi_camera_available
-from hailo_apps.hailo_app_python.core.common.defines import (
+from hailo_apps.python.core.common.camera_utils import is_rpi_camera_available
+from hailo_apps.python.core.common.defines import (
     RESOURCES_ROOT_PATH_DEFAULT,
     RESOURCES_VIDEOS_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
 )
-from hailo_apps.hailo_app_python.core.common.installation_utils import (
+from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
 )
-from hailo_apps.hailo_app_python.core.common.test_utils import (
+from hailo_apps.python.core.common.test_utils import (
     get_pipeline_args,
     run_pipeline_cli_with_args,
     run_pipeline_module_with_args,
@@ -45,47 +45,47 @@ TERM_TIMEOUT = 5  # seconds
 APPS = [
     {
         "name": "detection",
-        "script": "hailo_apps/hailo_app_python/apps/detection/detection_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py",
         "description": "Object Detection App - detects objects in video frames"
     },
     {
         "name": "depth",
-        "script": "hailo_apps/hailo_app_python/apps/depth/depth_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/depth/depth_pipeline.py",
         "description": "Depth Estimation App - estimates depth from video frames"
     },
     {
         "name": "face_recognition",
-        "script": "hailo_apps/hailo_app_python/apps/face_recognition/face_recognition.py",
+        "script": "hailo_apps/python/pipeline_apps/face_recognition/face_recognition.py",
         "description": "Face Recognition App - detects and recognizes faces"
     },
     {
         "name": "instance_segmentation",
-        "script": "hailo_apps/hailo_app_python/apps/instance_segmentation/instance_segmentation_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py",
         "description": "Instance Segmentation App - segments individual object instances"
     },
     {
         "name": "pose_estimation",
-        "script": "hailo_apps/hailo_app_python/apps/pose_estimation/pose_estimation_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py",
         "description": "Pose Estimation App - estimates human pose keypoints"
     },
     {
         "name": "detection_simple",
-        "script": "hailo_apps/hailo_app_python/apps/detection_simple/detection_pipeline_simple.py",
+        "script": "hailo_apps/python/pipeline_apps/detection_simple/detection_pipeline_simple.py",
         "description": "Simple Detection App - simplified object detection"
     },
     {
         "name": "multisource",
-        "script": "hailo_apps/hailo_app_python/apps/multisource/multisource_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/multisource/multisource_pipeline.py",
         "description": "Multisource App - processes multiple video sources"
     },
     {
         "name": "reid_multisource",
-        "script": "hailo_apps/hailo_app_python/apps/reid_multisource/reid_multisource_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource_pipeline.py",
         "description": "REID Multisource App - person re-identification across multiple sources"
     },
     {
         "name": "tiling",
-        "script": "hailo_apps/hailo_app_python/apps/tiling/tiling_pipeline.py",
+        "script": "hailo_apps/python/pipeline_apps/tiling/tiling_pipeline.py",
         "description": "Tiling App - processes video using tiling approach"
     },
 ]

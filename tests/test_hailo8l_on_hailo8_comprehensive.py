@@ -12,13 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from hailo_apps.hailo_app_python.core.common.installation_utils import detect_hailo_arch
-from hailo_apps.hailo_app_python.core.common.defines import (
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+from hailo_apps.python.core.common.defines import (
     HAILO8_ARCH,
     HAILO8L_ARCH,
     RESOURCES_ROOT_PATH_DEFAULT,
 )
-from hailo_apps.hailo_app_python.core.common.test_utils import (
+from hailo_apps.python.core.common.test_utils import (
     run_pipeline_cli_with_args,
     check_hailo8l_on_hailo8_warning,
     check_qos_performance_warning,

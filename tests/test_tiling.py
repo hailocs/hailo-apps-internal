@@ -7,7 +7,7 @@ import logging
 import pytest
 
 # Local application-specific imports
-from hailo_apps.hailo_app_python.core.common.test_utils import (
+from hailo_apps.python.core.common.test_utils import (
     run_pipeline_module_with_args,
     run_pipeline_pythonpath_with_args,
     run_pipeline_cli_with_args,
@@ -27,8 +27,8 @@ os.makedirs(log_dir, exist_ok=True)
 def pipeline():
     return {
         "name": "tiling",
-        "module": "hailo_apps.hailo_app_python.apps.tiling.tiling_pipeline",
-        "script": "hailo_apps/hailo_app_python/apps/tiling/tiling_pipeline.py",
+        "module": "hailo_apps.python.pipeline_apps.tiling.tiling_pipeline",
+        "script": "hailo_apps/python/pipeline_apps/tiling/tiling_pipeline.py",
         "cli": "hailo-tiling"
     }
 

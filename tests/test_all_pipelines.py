@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from hailo_apps.hailo_app_python.core.common.camera_utils import is_rpi_camera_available
-from hailo_apps.hailo_app_python.core.common.core import get_resource_path
-from hailo_apps.hailo_app_python.core.common.defines import (
+from hailo_apps.python.core.common.camera_utils import is_rpi_camera_available
+from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.defines import (
     BARCODE_VIDEO_EXAMPLE_NAME,
     HAILO8_ARCH,
     HAILO8L_ARCH,
@@ -16,12 +16,12 @@ from hailo_apps.hailo_app_python.core.common.defines import (
 )
 
 # Import installation utilities
-from hailo_apps.hailo_app_python.core.common.installation_utils import (
+from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
 )
-from hailo_apps.hailo_app_python.core.common.defines import X86_NAME_I, RPI_NAME_I
-from hailo_apps.hailo_app_python.core.common.test_utils import (
+from hailo_apps.python.core.common.defines import X86_NAME_I, RPI_NAME_I
+from hailo_apps.python.core.common.test_utils import (
     get_pipeline_args,
     run_pipeline_cli_with_args,
     run_pipeline_module_with_args,
@@ -38,38 +38,38 @@ logger = logging.getLogger("test_run_everything")
 pipelines = [
     {
         "name": "detection",
-        "module": "hailo_apps.hailo_app_python.apps.detection.detection_pipeline",
-        "script": "hailo_apps/hailo_app_python/apps/detection/detection_pipeline.py",
+        "module": "hailo_apps.python.pipeline_apps.detection.detection_pipeline",
+        "script": "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py",
         "cli": "hailo-detect",
     },
     {
         "name": "pose_estimation",
-        "module": "hailo_apps.hailo_app_python.apps.pose_estimation.pose_estimation_pipeline",
-        "script": "hailo_apps/hailo_app_python/apps/pose_estimation/pose_estimation_pipeline.py",
+        "module": "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_pipeline",
+        "script": "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py",
         "cli": "hailo-pose",
     },
     {
         "name": "depth",
-        "module": "hailo_apps.hailo_app_python.apps.depth.depth_pipeline",
-        "script": "hailo_apps/hailo_app_python/apps/depth/depth_pipeline.py",
+        "module": "hailo_apps.python.pipeline_apps.depth.depth_pipeline",
+        "script": "hailo_apps/python/pipeline_apps/depth/depth_pipeline.py",
         "cli": "hailo-depth",
     },
     {
         "name": "instance_segmentation",
-        "module": "hailo_apps.hailo_app_python.apps.instance_segmentation.instance_segmentation_pipeline",
-        "script": "hailo_apps/hailo_app_python/apps/instance_segmentation/instance_segmentation_pipeline.py",
+        "module": "hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation_pipeline",
+        "script": "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py",
         "cli": "hailo-seg",
     },
     {
         "name": "simple_detection",
-        "module": "hailo_apps.hailo_app_python.apps.detection_simple.detection_pipeline_simple",
-        "script": "hailo_apps/hailo_app_python/apps/detection_simple/detection_pipeline_simple.py",
+        "module": "hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple",
+        "script": "hailo_apps/python/pipeline_apps/detection_simple/detection_pipeline_simple.py",
         "cli": "hailo-detect-simple",
     },
     {
         "name": "face_recognition",
-        "module": "hailo_apps.hailo_app_python.apps.face_recognition.face_recognition",
-        "script": "hailo_apps/hailo_app_python/apps/face_recognition/face_recognition.py",
+        "module": "hailo_apps.python.pipeline_apps.face_recognition.face_recognition",
+        "script": "hailo_apps/python/pipeline_apps/face_recognition/face_recognition.py",
         "cli": "hailo-face-recon",
     },
 ]
@@ -477,7 +477,7 @@ def test_retraining_defaults():
     log_file = os.path.join(log_dir, "retraining.log")
     print(f"Running retraining with args: {args}")
     stdout, stderr = run_pipeline_pythonpath_with_args(
-        "hailo_apps/hailo_app_python/apps/detection/detection_pipeline.py", args, log_file
+        "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py", args, log_file
     )
 
     out_str = stdout.decode().lower() if stdout else ""

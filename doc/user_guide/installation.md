@@ -103,7 +103,7 @@ Note that also on the x86_64 Ubuntu, the gi library is installed on the system (
 ---
 ## Download Resources
 
-The Hailo Apps Infrastructure includes a resource downloader utility that automatically fetches AI models, configuration files, and test videos optimized for your Hailo hardware. You can access this tool through the Python script `hailo_apps/hailo_app_python/core/installation/download_resources.py` or via the command-line tool `hailo-download-resources`.
+The Hailo Apps Infrastructure includes a resource downloader utility that automatically fetches AI models, configuration files, and test videos optimized for your Hailo hardware. You can access this tool through the Python script `hailo_apps/python/core/installation/download_resources.py` or via the command-line tool `hailo-download-resources`.
 
 ### Usage
 

@@ -54,13 +54,13 @@ This layer is developed in this repository to simplify the process of building a
 *   **The Application Runner (`gstreamer_app.py`)**: This component features the `GStreamerApp` class, which serves as the core engine of the application. It is responsible for managing the pipeline's lifecycle, handling bus messages (such as errors or End-Of-Stream), and integrating your Python callback functions.
 *   **The Pipeline Factory (`gstreamer_helper_pipelines.py`)**: This module provides a set of Python functions that facilitate the creation of GStreamer pipeline strings in a modular and easily understandable manner.
 *   **Hailo Pipelines**: These are pre-configured, ready-to-use AI pipelines that leverage the helper functions from the factory to form complete, executable applications for common scenarios like object detection or pose estimation. You can connect to their outputs with a simple callback, allowing you to easily integrate custom logic or processing steps.
-For example, `hailo_apps/hailo_app_python/apps/detection/detection_pipeline.py`.
+For example, `hailo_apps/python/pipeline_apps/detection/detection_pipeline.py`.
 
 ## Development Path 1: Basic (Callback-based)
 
 This is the quickest way to build an application. The core concept is to begin with one of our pre-built pipeline examples and incorporate your custom logic by writing a simple Python callback function. Each pipeline is designed to be executed with a straightforward callback.
 
-We suggest using one of our example callback applications, such as `hailo_apps/hailo_app_python/apps/detection/detection.py`, as your starting point. Each pipeline in this repository includes an example callback file (e.g., `detection.py`, `pose_estimation.py`, etc.). These files demonstrate the relevant callback code for that specific pipeline and can serve as a reference or starting point for your own application.
+We suggest using one of our example callback applications, such as `hailo_apps/python/pipeline_apps/detection/detection.py`, as your starting point. Each pipeline in this repository includes an example callback file (e.g., `detection.py`, `pose_estimation.py`, etc.). These files demonstrate the relevant callback code for that specific pipeline and can serve as a reference or starting point for your own application.
 
 ### The Callback Mechanism Explained
 The GStreamer pipeline handles all complex tasks, including video decoding, inference, and rendering. Your Python **callback** function is invoked for each frame processed by the pipeline, receiving both the video frame and the AI metadata.
@@ -79,7 +79,7 @@ A user application script typically has three parts: an optional custom data cla
 This class lets you keep track of information between frames, such as the total number of people detected and the number of frames processed. By inheriting from `app_callback_class`, you can also use built-in features like frame counting. You can add any attributes you want to store custom statistics or state.
 
 ```python
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import app_callback_class
+from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 class user_app_callback_class(app_callback_class):
     def __init__(self):
@@ -131,7 +131,7 @@ def app_callback(pad, info, user_data):
 This part ties everything together. It creates an instance of your callback class, sets up the detection pipeline, and starts the application. This is the entry point of your script.
 
 ```python
-from hailo_apps.hailo_app_python.apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
+from hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
 
 if __name__ == "__main__":
     user_data = user_app_callback_class()
@@ -147,8 +147,8 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 import hailo
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import app_callback_class
-from hailo_apps.hailo_app_python.apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
+from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
+from hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
 
 class user_app_callback_class(app_callback_class):
     def __init__(self):

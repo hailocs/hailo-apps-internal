@@ -4,11 +4,11 @@ import pytest
 from unittest.mock import Mock, patch
 
 # Local application-specific imports
-from hailo_apps.hailo_app_python.apps.tiling.tile_calculator import (
+from hailo_apps.python.pipeline_apps.tiling.tile_calculator import (
     calculate_auto_tiles,
     calculate_manual_tiles_overlap
 )
-from hailo_apps.hailo_app_python.apps.tiling.configuration import (
+from hailo_apps.python.pipeline_apps.tiling.configuration import (
     detect_model_config_from_hef
 )
 # endregion imports
@@ -208,12 +208,12 @@ class TestTilingConfiguration:
         options_menu.border_threshold = 0.15
 
         # Mock resource path functions and file existence
-        with patch('hailo_apps.hailo_app_python.apps.tiling.configuration.get_resource_path') as mock_get_resource, \
+        with patch('hailo_apps.python.pipeline_apps.tiling.configuration.get_resource_path') as mock_get_resource, \
              patch('pathlib.Path.exists') as mock_exists:
             mock_get_resource.return_value = "/mock/path/to/model.hef"
             mock_exists.return_value = True
 
-            from hailo_apps.hailo_app_python.apps.tiling.configuration import TilingConfiguration
+            from hailo_apps.python.pipeline_apps.tiling.configuration import TilingConfiguration
             config = TilingConfiguration(options_menu, 1280, 720, "hailo8")
 
             # Basic assertions
@@ -237,12 +237,12 @@ class TestTilingConfiguration:
         options_menu.iou_threshold = 0.3
         options_menu.border_threshold = 0.15
 
-        with patch('hailo_apps.hailo_app_python.apps.tiling.configuration.get_resource_path') as mock_get_resource, \
+        with patch('hailo_apps.python.pipeline_apps.tiling.configuration.get_resource_path') as mock_get_resource, \
              patch('pathlib.Path.exists') as mock_exists:
             mock_get_resource.return_value = "/mock/path/to/model.hef"
             mock_exists.return_value = True
 
-            from hailo_apps.hailo_app_python.apps.tiling.configuration import TilingConfiguration
+            from hailo_apps.python.pipeline_apps.tiling.configuration import TilingConfiguration
             config = TilingConfiguration(options_menu, 1280, 720, "hailo8")
 
             assert config.tiling_mode == "manual"
@@ -263,12 +263,12 @@ class TestTilingConfiguration:
         options_menu.iou_threshold = 0.3
         options_menu.border_threshold = 0.15
 
-        with patch('hailo_apps.hailo_app_python.apps.tiling.configuration.get_resource_path') as mock_get_resource, \
+        with patch('hailo_apps.python.pipeline_apps.tiling.configuration.get_resource_path') as mock_get_resource, \
              patch('pathlib.Path.exists') as mock_exists:
             mock_get_resource.return_value = "/mock/path/to/model.hef"
             mock_exists.return_value = True
 
-            from hailo_apps.hailo_app_python.apps.tiling.configuration import TilingConfiguration
+            from hailo_apps.python.pipeline_apps.tiling.configuration import TilingConfiguration
             config = TilingConfiguration(options_menu, 1280, 720, "hailo8")
 
             assert config.use_multi_scale == True
@@ -290,12 +290,12 @@ class TestTilingConfiguration:
         options_menu.iou_threshold = 0.3
         options_menu.border_threshold = 0.15
 
-        with patch('hailo_apps.hailo_app_python.apps.tiling.configuration.get_resource_path') as mock_get_resource, \
+        with patch('hailo_apps.python.pipeline_apps.tiling.configuration.get_resource_path') as mock_get_resource, \
              patch('pathlib.Path.exists') as mock_exists:
             mock_get_resource.return_value = "/mock/path/to/yolo.hef"
             mock_exists.return_value = True
 
-            from hailo_apps.hailo_app_python.apps.tiling.configuration import TilingConfiguration
+            from hailo_apps.python.pipeline_apps.tiling.configuration import TilingConfiguration
             config = TilingConfiguration(options_menu, 1280, 720, "hailo8")
 
             assert config.use_multi_scale == True  # Auto-enabled for general detection

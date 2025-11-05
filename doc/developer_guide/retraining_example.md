@@ -76,7 +76,7 @@ The default package installation downloads the network trained in the retraining
 
 Here is an example of the command line required to run the application with the retrained custom model:
 ```bash
-python hailo_apps/hailo_app_python/apps/detection/detection.py --labels-json resources/json/barcode_labels.json --hef-path resources/models/hailo8l/yolov8s-hailo8l-barcode.hef --input resources/videos/barcode.mp4
+python hailo_apps/python/pipeline_apps/detection/detection.py --labels-json resources/json/barcode_labels.json --hef-path resources/models/hailo8l/yolov8s-hailo8l-barcode.hef --input resources/videos/barcode.mp4
 ```
 
 Example output:

@@ -260,8 +260,7 @@ as_original_user touch "${ENV_FILE}"
 as_original_user chmod 644 "${ENV_FILE}"
 echo "✅ Created .env file at ${ENV_FILE}"
 
-sudo apt-get install -y meson
-sudo apt install python3-gi python3-gi-cairo
+sudo apt-get install -y meson portaudio19-dev python3-gi python3-gi-cairo
 
 # Create virtual environment with or without system site-packages
 if [[ "$USE_SYSTEM_SITE_PACKAGES" = true ]]; then
@@ -300,13 +299,13 @@ fi
 
   echo '📦 Installing Python Hailo packages…'
   FLAGS=''
-  if [[ '${INSTALL_TAPPAS_CORE}' = true ]]; then
+  if [[ "${INSTALL_TAPPAS_CORE}" = true ]]; then
     echo 'Installing TAPPAS core Python binding'
-    FLAGS='--tappas-core-version=${TAPPAS_CORE_VERSION}'
+    FLAGS="--tappas-core-version=${TAPPAS_CORE_VERSION}"
   fi
-  if [[ '${INSTALL_HAILORT}' = true ]]; then
+  if [[ "${INSTALL_HAILORT}" = true ]]; then
     echo 'Installing HailoRT Python binding'
-    FLAGS=\"\${FLAGS} --hailort-version=${HAILORT_VERSION}\"
+    FLAGS="${FLAGS} --hailort-version=${HAILORT_VERSION}"
   fi
 
 if [[ -z "$FLAGS" ]]; then
@@ -319,7 +318,18 @@ fi
 as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -m pip install --upgrade pip setuptools wheel"
 
 echo "📦 Installing package (editable + post-install)…"
-as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install -e ."
+if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install -e ."; then
+    echo ""
+    echo "❌ Package installation failed!"
+    echo "This usually means:"
+    echo "  - Missing system dependencies (e.g., portaudio19-dev for PyAudio)"
+    echo "  - Build dependencies not available"
+    echo "  - Network issues"
+    echo ""
+    echo "Please check the error messages above and try again."
+    echo "If you see missing header files (e.g., portaudio.h), install the corresponding -dev package."
+    exit 1
+fi
 
 # Create Hailo resources directories with correct permissions
 echo "📁 Creating Hailo resources directories..."

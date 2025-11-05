@@ -24,30 +24,32 @@ dependencies = [
     "lancedb",
     "Pillow",
     "ruff>=0.5.7",
-    "pre-commit>=3.7.0"
+    "pre-commit>=3.7.0",
+    "PyAudio",
+    "piper-tts"
 ]
 
 [project.scripts]
 get-usb-camera =            "hailo_apps.python.core.common.camera_utils:main"
-hailo-post-install =        "hailo_apps.hailo_app_python.core.installation.post_install:main"
-hailo-compile-postprocess = "hailo_apps.hailo_app_python.core.installation.compile_cpp:main"
-hailo-set-env =             "hailo_apps.hailo_app_python.core.installation.set_env:main"
-hailo-download-resources =  "hailo_apps.hailo_app_python.core.installation.download_resources:main"
-hailo-detect =              "hailo_apps.hailo_app_python.apps.detection.detection:main"
-hailo-depth =               "hailo_apps.hailo_app_python.apps.depth.depth:main"
-hailo-pose =                "hailo_apps.hailo_app_python.apps.pose_estimation.pose_estimation:main"
-hailo-seg =                 "hailo_apps.hailo_app_python.apps.instance_segmentation.instance_segmentation:main"
-hailo-detect-simple =       "hailo_apps.hailo_app_python.apps.detection_simple.detection_simple:main"
-hailo-face-recon =          "hailo_apps.hailo_app_python.apps.face_recognition.face_recognition:main"
-hailo-tiling =              "hailo_apps.hailo_app_python.apps.tiling.tiling:main"
-hailo-multisource =         "hailo_apps.hailo_app_python.apps.multisource.multisource:main"
-hailo-reid =                "hailo_apps.hailo_app_python.apps.reid_multisource.reid_multisource:main"
+hailo-post-install =        "hailo_apps.python.core.installation.post_install:main"
+hailo-compile-postprocess = "hailo_apps.python.core.installation.compile_cpp:main"
+hailo-set-env =             "hailo_apps.python.core.installation.set_env:main"
+hailo-download-resources =  "hailo_apps.python.core.installation.download_resources:main"
+hailo-detect =              "hailo_apps.python.pipeline_apps.detection.detection:main"
+hailo-depth =               "hailo_apps.python.pipeline_apps.depth.depth:main"
+hailo-pose =                "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation:main"
+hailo-seg =                 "hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation:main"
+hailo-detect-simple =       "hailo_apps.python.pipeline_apps.detection_simple.detection_simple:main"
+hailo-face-recon =          "hailo_apps.python.pipeline_apps.face_recognition.face_recognition:main"
+hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
+hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
+hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*"]
 
 [tool.setuptools.package-data]
-"hailo_apps.hailo_app_python.core.cpp_postprocess" = [
+"hailo_apps.python.core.cpp_postprocess" = [
     "meson.build",
     "compile_postprocess.sh",
     "cpp/**/*",
