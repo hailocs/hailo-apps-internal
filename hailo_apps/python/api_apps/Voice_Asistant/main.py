@@ -90,22 +90,33 @@ class TerminalRecorderApp:
         self.ai_pipeline.interrupt()
         self.recorder.close()
 
-
 def get_char():
     """
-    Reads a single character from stdin without requiring the user to press Enter.
+    Read a single character from stdin.
 
-    This is used to capture key presses for controlling the application (e.g.,
-    spacebar to toggle recording, 'q' to quit). It temporarily changes the
-    terminal settings to raw mode to achieve this.
+    - Uses tty.setcbreak() on a real terminal so signals (Ctrl+C) are preserved.
+    - Falls back to a simple read when stdin is not a TTY (e.g. redirected).
+    - Returns '\x03' on KeyboardInterrupt to keep current main() handling.
     """
     fd = sys.stdin.fileno()
+
+    # Non-interactive fallback (e.g. run with input redirected)
+    if not sys.stdin.isatty():
+        ch = sys.stdin.read(1)
+        return ch or ""
+
     old_settings = termios.tcgetattr(fd)
     try:
-        tty.setraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1)
+        # cbreak is less invasive than raw: Ctrl+C still raises KeyboardInterrupt
+        tty.setcbreak(fd)
+        try:
+            ch = sys.stdin.read(1)
+        except KeyboardInterrupt:
+            # Keep the current main() logic that expects '\x03' for Ctrl+C
+            return "\x03"
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
     return ch
 
 
@@ -143,7 +154,6 @@ def main():
             app.ai_pipeline.llm.clear_context()
             print("Context cleared.")
         # Other characters are ignored
-
 
 if __name__ == "__main__":
     main()

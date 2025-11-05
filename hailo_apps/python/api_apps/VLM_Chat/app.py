@@ -26,7 +26,7 @@ class App:
         self.camera_type = camera_type
         self.running = True
         self.executor = concurrent.futures.ThreadPoolExecutor()
-        self.backend = Backend(hef_path=get_resource_path(resource_type=RESOURCES_MODELS_DIR_NAME, model=VLM_MODEL_NAME_H10))
+        self.backend = Backend(hef_path=str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=VLM_MODEL_NAME_H10)))
         signal.signal(signal.SIGINT, self.signal_handler)
         self.frozen_frame = None
         self.waiting_for_question = True
@@ -138,6 +138,6 @@ if __name__ == "__main__":
     if not video_source:
         print(f'Provided argument "--input" is set to {options_menu.input}, however no available cameras found. Please connect a camera or specifiy different input method.')
         exit(1)
-    app = App(camera=video_source, cmaera_type=options_menu.input)
+    app = App(camera=video_source, camera_type=options_menu.input)
     app.run()
     sys.exit(0)

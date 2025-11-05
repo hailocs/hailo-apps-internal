@@ -1,14 +1,15 @@
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import VLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
+from hailo_apps.python.core.common.defines import LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
 
 vdevice = None
 llm = None
 
 try:
     vdevice = VDevice()
-    llm = LLM(vdevice, get_resource_path(resource_type=RESOURCES_MODELS_DIR_NAME, model=VLM_MODEL_NAME_H10))
+    print(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10))
+    llm = LLM(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10)))
     
     prompt = [
         {"role": "system", "content": [{"type": "text", "text": 'You are a helpful assistant.'}]},
