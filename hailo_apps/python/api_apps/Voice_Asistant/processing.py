@@ -22,7 +22,8 @@ from hailo_apps.python.core.common.defines import (
     TTS_NOISE_SCALE,
     TTS_W_SCALE,
     TEMP_WAV_DIR,
-    LLM_PROMPT_PREFIX
+    LLM_PROMPT_PREFIX,
+    SHARED_VDEVICE_GROUP_ID
 )
 
 class AIPipeline:
@@ -84,7 +85,9 @@ class AIPipeline:
 
     def _setup_hailo_ai(self):
         """Initializes Hailo AI platform components (VDevice, S2T, LLM)."""
-        self._vdevice = VDevice()
+        params = VDevice.create_params()
+        params.group_id = SHARED_VDEVICE_GROUP_ID
+        self._vdevice = VDevice(params)
         self.speech2text = Speech2Text(self._vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=WHISPER_MODEL_NAME_H10)))
         self.llm = LLM(self._vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10)))
         self._recovery_seq = self.llm.get_generation_recovery_sequence()
@@ -93,7 +96,7 @@ class AIPipeline:
         """Initializes the Text-to-Speech engine (Piper)."""
         # Suppress Piper warning messages
         with redirect_stderr(StringIO()):
-            self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)
+            self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)  # In case different voice selected, please modify here
             self.syn_config = SynthesisConfig(
                 volume=TTS_VOLUME,
                 length_scale=TTS_LENGTH_SCALE,

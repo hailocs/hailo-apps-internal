@@ -1,7 +1,7 @@
 from hailo_platform import VDevice
 from hailo_platform.genai import VLM
 from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import VLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
+from hailo_apps.python.core.common.defines import VLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME, SHARED_VDEVICE_GROUP_ID
 import numpy as np
 import cv2
 
@@ -9,7 +9,9 @@ vdevice = None
 vlm = None
 
 try:
-    vdevice = VDevice()
+    params = VDevice.create_params()
+    params.group_id = SHARED_VDEVICE_GROUP_ID
+    vdevice = VDevice(params)
     vlm = VLM(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=VLM_MODEL_NAME_H10)))
     
     prompt = [

@@ -17,6 +17,7 @@ HAILORT_PACKAGE = "hailort"
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources"  # Do Not Change!
+SHARED_VDEVICE_GROUP_ID = "SHARED"  # Do Not Change!
 
 # Core defaults
 ARM_POSSIBLE_NAME = ["arm", "aarch64"]

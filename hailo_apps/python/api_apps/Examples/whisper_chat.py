@@ -1,7 +1,7 @@
 from hailo_platform import VDevice
 from hailo_platform.genai import Speech2Text, Speech2TextTask
 from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import RESOURCES_MODELS_DIR_NAME, WHISPER_MODEL_NAME_H10
+from hailo_apps.python.core.common.defines import RESOURCES_MODELS_DIR_NAME, WHISPER_MODEL_NAME_H10, SHARED_VDEVICE_GROUP_ID
 import wave
 import numpy as np
 
@@ -9,7 +9,9 @@ vdevice = None
 speech2text = None
 
 try:
-    vdevice = VDevice()
+    params = VDevice.create_params()
+    params.group_id = SHARED_VDEVICE_GROUP_ID
+    vdevice = VDevice(params)
     speech2text = Speech2Text(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=WHISPER_MODEL_NAME_H10)))
 
     # Load audio file using wave module instead of librosa

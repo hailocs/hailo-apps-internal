@@ -4,10 +4,13 @@ import numpy as np
 import cv2
 from hailo_platform import VDevice
 from hailo_platform.genai import VLM
+from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
 
 def vlm_worker_process(request_queue, response_queue, hef_path, max_tokens, temperature, seed):
     try:
-        vdevice = VDevice()
+        params = VDevice.create_params()
+        params.group_id = SHARED_VDEVICE_GROUP_ID
+        vdevice = VDevice(params)
         vlm = VLM(vdevice, hef_path)
         while True:
             item = request_queue.get()

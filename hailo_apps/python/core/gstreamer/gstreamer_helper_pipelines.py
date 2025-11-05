@@ -4,6 +4,7 @@ from hailo_apps.python.core.common.defines import (
     GST_VIDEO_SINK,
     TAPPAS_POSTPROC_PATH_DEFAULT,
     TAPPAS_POSTPROC_PATH_KEY,
+    SHARED_VDEVICE_GROUP_ID
 )
 
 
@@ -159,7 +160,7 @@ def INFERENCE_PIPELINE(
     # Extra hailonet parameters
     scheduler_timeout_ms=None,
     scheduler_priority=None,
-    vdevice_group_id=1,
+    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # Don't change it - this is aligned across multiple apps
     multi_process_service=None,
 ):
     """Creates a GStreamer pipeline string for inference and post-processing using a user-provided shared object file.

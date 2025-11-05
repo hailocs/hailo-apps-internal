@@ -1,13 +1,15 @@
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
+from hailo_apps.python.core.common.defines import LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME, SHARED_VDEVICE_GROUP_ID
 
 vdevice = None
 llm = None
 
 try:
-    vdevice = VDevice()
+    params = VDevice.create_params()
+    params.group_id = SHARED_VDEVICE_GROUP_ID
+    vdevice = VDevice(params)
     print(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10))
     llm = LLM(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10)))
     

@@ -12,6 +12,12 @@ For more details please see: https://github.com/OHF-Voice/piper1-gpl/blob/main/d
    python3 -m piper.download_voices en_US-amy-low
    ```
 
+In case differen voice selected, please modify:
+   ```bash
+   In file: ~/hailo-apps-infra/hailo_apps/python/api_apps/Voice_Asistant/processing.py
+   self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)
+   ```
+
 ## Features
 
 - **Real-time speech processing** with Hailo AI acceleration
