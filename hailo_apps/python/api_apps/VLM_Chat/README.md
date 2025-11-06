@@ -27,8 +27,10 @@ An interactive computer vision application using Hailo's Vision Language Model (
 
 1. Run the application:
    ```bash
-   python app.py
+   python app.py --input usb
    ```
+
+   **Note:** This application requires a live camera input (USB camera or Raspberry Pi camera).
 
 2. The application will show two windows:
    - **Video**: Continuous live camera feed
