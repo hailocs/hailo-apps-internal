@@ -461,6 +461,7 @@ def test_retraining_defaults():
         get_resource_path(
             pipeline_name=None,
             resource_type=RESOURCES_JSON_DIR_NAME,
+            arch=HAILO8L_ARCH,
             model=RETRAINING_BARCODE_LABELS_JSON_NAME,
         )
     )
