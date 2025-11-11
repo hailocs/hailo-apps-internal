@@ -32,7 +32,7 @@ DEFAULT_LOG_LEVEL = "DEBUG"
 ### With Custom Model
 
 ```bash
-HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.hailo_app_python.tools.chat_agent
+python -m hailo_apps.hailo_app_python.tools.chat_agent
 ```
 
 ## Interactive Commands
@@ -71,9 +71,48 @@ Run safe read-only Linux commands within the repository. Only whitelisted comman
 Control RGB LED: turn on/off, change color by name, adjust intensity (0-100%).
 
 **Hardware Support:**
-- **Real Hardware**: Uses `rpi-ws281x` library for Raspberry Pi GPIO control
+- **Real Hardware**: Uses `rpi5-ws2812` library for Raspberry Pi 5 SPI control
 - **Simulator**: Flask-based web interface showing LED state in real-time
 - **Configuration**: Set `HARDWARE_MODE` in `config.py` to "real" or "simulator"
+
+**Installation for Real Hardware:**
+To use the RGB LED tool with real hardware on a Raspberry Pi 5:
+
+1. **Enable SPI** (required): The LED control uses the Serial Peripheral Interface (SPI) port. Enable SPI via:
+   ```bash
+   sudo raspi-config
+   ```
+   Navigate to `Interfacing Options` > `SPI` and select `Yes` to enable. Then reboot:
+   ```bash
+   sudo reboot
+   ```
+
+2. **Wiring**: Connect the LED strip's data input (DIN) to the Raspberry Pi's MOSI pin:
+   - **GPIO 10** (pin 19 on the header) - This is the SPI MOSI pin
+   - Ensure a common ground between the Raspberry Pi and the LED strip
+   - Power the LED strip according to its specifications
+
+3. **Install the library**:
+   ```bash
+   pip install rpi5-ws2812
+   ```
+
+**Troubleshooting:**
+- **Hardware mode failures**: If `HARDWARE_MODE='real'` is set and hardware initialization fails, the application will exit with an error. Make sure:
+  - SPI is enabled via `sudo raspi-config` (Interfacing Options > SPI > Enable) and the system has been rebooted
+  - Required libraries are installed (`rpi5-ws2812` for LED, `gpiozero` for servo)
+  - The LED strip data line is connected to GPIO 10 (SPI MOSI pin)
+  - SPI device is accessible (check with `ls /dev/spidev*`)
+- **SPI not enabled**: If you see initialization errors, verify SPI is enabled:
+  ```bash
+  ls /dev/spidev*
+  ```
+  You should see `/dev/spidev0.0` (and possibly `/dev/spidev0.1`). If not, enable SPI via `sudo raspi-config` and reboot.
+- **Permission errors**: If you see permission errors accessing SPI, you may need to add your user to the `spi` group:
+  ```bash
+  sudo usermod -a -G spi $USER
+  ```
+  Then log out and log back in (or reboot).
 
 **Features:**
 - Color control by name (e.g., "red", "blue", "green")
@@ -99,11 +138,16 @@ Edit `config.py` to customize hardware settings:
 
 ```python
 HARDWARE_MODE = "simulator"  # "real" or "simulator"
-NEOPIXEL_PIN = 18  # GPIO pin for NeoPixel data line
+# SPI configuration for NeoPixel (Raspberry Pi 5)
+NEOPIXEL_SPI_BUS = 0  # SPI bus number (0 = /dev/spidev0.x)
+NEOPIXEL_SPI_DEVICE = 0  # SPI device number (0 = /dev/spidev0.0)
+NEOPIXEL_COUNT = 1  # Number of LEDs in strip
 SERVO_PIN = 17  # GPIO pin for servo control signal
 FLASK_PORT = 5000  # Port for LED simulator web server
 SERVO_SIMULATOR_PORT = 5001  # Port for servo simulator web server
 ```
+
+**Note**: SPI uses the MOSI pin (GPIO 10) automatically - no pin configuration needed. The SPI bus and device numbers correspond to `/dev/spidev0.0` by default.
 
 ## Example Session
 

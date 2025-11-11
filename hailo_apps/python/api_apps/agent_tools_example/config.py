@@ -26,8 +26,11 @@ CONTEXT_THRESHOLD = 0.80  # Clear context when usage reaches this percentage
 DEFAULT_LOG_LEVEL = "DEBUG"
 
 # Hardware Configuration
-HARDWARE_MODE = "simulator"  # "real" or "simulator"
-NEOPIXEL_PIN = 18  # GPIO pin for NeoPixel data line
+HARDWARE_MODE = "real"  # "real" or "simulator"
+# SPI configuration for NeoPixel (Raspberry Pi 5)
+# SPI uses MOSI pin (GPIO 10) automatically - no pin configuration needed
+NEOPIXEL_SPI_BUS = 0  # SPI bus number (0 = /dev/spidev0.x)
+NEOPIXEL_SPI_DEVICE = 0  # SPI device number (0 = /dev/spidev0.0)
 NEOPIXEL_COUNT = 1  # Number of LEDs in strip
 FLASK_PORT = 5000  # Port for simulator web server
 SERVO_PIN = 17  # GPIO pin for servo control signal

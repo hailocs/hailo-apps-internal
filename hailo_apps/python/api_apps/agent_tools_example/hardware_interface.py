@@ -1,12 +1,13 @@
 """
 Hardware interface for RGB LED and servo control.
 
-Supports real hardware (Adafruit NeoPixel, gpiozero Servo) and simulator (Flask browser visualization).
+Supports real hardware (SPI-based NeoPixel via rpi5-ws2812, gpiozero Servo) and simulator (Flask browser visualization).
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 from abc import ABC, abstractmethod
 from typing import Any
@@ -46,23 +47,29 @@ class RGBLEDInterface(ABC):
 
 
 class NeoPixelLED(RGBLEDInterface):
-    """Real hardware implementation using Adafruit NeoPixel (rpi-ws281x)."""
+    """Real hardware implementation using SPI interface (rpi5-ws2812) for Raspberry Pi 5."""
 
-    def __init__(self, pin: int = 18, num_pixels: int = 1) -> None:
+    def __init__(self, spi_bus: int = 0, spi_device: int = 0, num_pixels: int = 1) -> None:
         """
-        Initialize NeoPixel LED using rpi-ws281x.
+        Initialize NeoPixel LED using SPI interface via rpi5-ws2812.
 
         Args:
-            pin: GPIO pin number for data line (default: 18)
+            spi_bus: SPI bus number (default: 0, corresponds to /dev/spidev0.x)
+            spi_device: SPI device number (default: 0, corresponds to /dev/spidev0.0)
             num_pixels: Number of LEDs in strip (default: 1)
+
+        Note:
+            SPI uses the MOSI pin (GPIO 10 on Raspberry Pi 5) automatically.
+            Ensure SPI is enabled via: sudo raspi-config -> Interfacing Options -> SPI
         """
         try:
-            from rpi_ws281x import PixelStrip
+            from rpi5_ws2812.ws2812 import WS2812SpiDriver
         except ImportError:
-            logger.warning("rpi-ws281x library not available. Install with: pip install rpi-ws281x")
-            raise
+            logger.error("rpi5-ws2812 library not available. Install with: pip install rpi5-ws2812")
+            raise ImportError("rpi5-ws2812 library is required for SPI-based NeoPixel control")
 
-        self.pin = pin
+        self.spi_bus = spi_bus
+        self.spi_device = spi_device
         self.num_pixels = num_pixels
         # Default state: on with white color
         self._power = True
@@ -70,25 +77,30 @@ class NeoPixelLED(RGBLEDInterface):
         self._color_name = "white"
         self._intensity = 100.0
 
+        # Initialize SPI driver
         try:
-            # Create PixelStrip instance
-            # LED strip configuration: pin, count, brightness, DMA channel, invert, channel
-            self.strip = PixelStrip(
-                num=num_pixels,
-                pin=pin,
-                freq_hz=800000,
-                dma=10,
-                invert=False,
-                brightness=255,
-                channel=0,
+            driver = WS2812SpiDriver(
+                spi_bus=spi_bus,
+                spi_device=spi_device,
+                led_count=num_pixels
             )
-            self.strip.begin()
-            logger.info("NeoPixel initialized on pin %d with %d LEDs", pin, num_pixels)
+            self.strip = driver.get_strip()
+            logger.info(
+                "NeoPixel initialized on SPI bus %d, device %d (/dev/spidev%d.%d) with %d LEDs",
+                spi_bus, spi_device, spi_bus, spi_device, num_pixels
+            )
             # Set default state: on with white color
             self._update_pixels()
         except Exception as e:
-            logger.error("Failed to initialize NeoPixel: %s", e)
-            raise
+            error_str = str(e)
+            logger.error("Failed to initialize NeoPixel via SPI: %s", error_str)
+            logger.error(
+                "Ensure SPI is enabled: sudo raspi-config -> Interfacing Options -> SPI -> Enable"
+            )
+            raise RuntimeError(
+                f"NeoPixel SPI initialization failed: {error_str}. "
+                "Please ensure SPI is enabled and the rpi5-ws2812 library is installed correctly."
+            ) from e
 
     def set_color(self, r: int, g: int, b: int, color_name: str | None = None) -> None:
         """
@@ -145,28 +157,33 @@ class NeoPixelLED(RGBLEDInterface):
     def off(self) -> None:
         """Turn LED off."""
         self._power = False
-        # Turn off all pixels
-        for i in range(self.num_pixels):
-            self.strip.setPixelColor(i, 0)
-        self.strip.show()
+        # Turn off all pixels (set to black)
+        try:
+            from rpi5_ws2812.ws2812 import Color
+            self.strip.set_all_pixels(Color(0, 0, 0))
+            self.strip.show()
+        except ImportError:
+            logger.error("rpi5-ws2812 library not available")
 
     def _update_pixels(self) -> None:
         """Update pixel colors based on current state."""
+        try:
+            from rpi5_ws2812.ws2812 import Color
+        except ImportError:
+            logger.error("rpi5-ws2812 library not available")
+            return
+
         if not self._power:
-            # Turn off all pixels
-            for i in range(self.num_pixels):
-                self.strip.setPixelColor(i, 0)
+            # Turn off all pixels (set to black)
+            self.strip.set_all_pixels(Color(0, 0, 0))
         else:
             # Apply intensity to color
             brightness = self._intensity / 100.0
             r = int(self._color_rgb[0] * brightness)
             g = int(self._color_rgb[1] * brightness)
             b = int(self._color_rgb[2] * brightness)
-            # Convert RGB to GRB format (NeoPixel uses GRB)
-            color = (g << 16) | (r << 8) | b
             # Set all pixels to the same color
-            for i in range(self.num_pixels):
-                self.strip.setPixelColor(i, color)
+            self.strip.set_all_pixels(Color(r, g, b))
         self.strip.show()
 
     def get_state(self) -> dict[str, Any]:
@@ -177,6 +194,15 @@ class NeoPixelLED(RGBLEDInterface):
             "color_rgb": self._color_rgb,
             "intensity": self._intensity,
         }
+
+    def cleanup(self) -> None:
+        """Clean up NeoPixel resources."""
+        # Turn off LED before cleanup
+        try:
+            self.off()
+        except Exception as e:
+            logger.debug("Error during NeoPixel cleanup: %s", e)
+        # rpi5-ws2812 library handles cleanup automatically
 
 
 class SimulatedLED(RGBLEDInterface):
@@ -399,6 +425,15 @@ class SimulatedLED(RGBLEDInterface):
             "intensity": self._intensity,
         }
 
+    def cleanup(self) -> None:
+        """Clean up resources (shutdown Flask server)."""
+        # Flask server runs in daemon thread, so it will terminate automatically
+        # But we can mark it for cleanup if needed
+        if self._server_thread is not None and self._server_thread.is_alive():
+            # Flask in daemon mode will terminate with main process
+            # No explicit shutdown needed, but we can log it
+            logger.debug("Flask LED simulator server will terminate with main process")
+
 
 class ServoInterface(ABC):
     """Abstract base class for servo control."""
@@ -500,6 +535,12 @@ class GpiozeroServo(ServoInterface):
             "min_angle": self.min_angle,
             "max_angle": self.max_angle,
         }
+
+    def cleanup(self) -> None:
+        """Clean up gpiozero servo resources."""
+        # gpiozero handles cleanup automatically when object is destroyed
+        # No explicit cleanup needed, but we can log it
+        logger.debug("Gpiozero servo will be cleaned up automatically")
 
 
 class SimulatedServo(ServoInterface):
@@ -823,6 +864,15 @@ class SimulatedServo(ServoInterface):
             "max_angle": self.max_angle,
         }
 
+    def cleanup(self) -> None:
+        """Clean up resources (shutdown Flask server)."""
+        # Flask server runs in daemon thread, so it will terminate automatically
+        # But we can mark it for cleanup if needed
+        if self._server_thread is not None and self._server_thread.is_alive():
+            # Flask in daemon mode will terminate with main process
+            # No explicit shutdown needed, but we can log it
+            logger.debug("Flask servo simulator server will terminate with main process")
+
 
 def create_led_controller() -> RGBLEDInterface:
     """
@@ -833,27 +883,32 @@ def create_led_controller() -> RGBLEDInterface:
 
     Raises:
         ImportError: If required libraries are not available
-        ValueError: If configuration is invalid
+        RuntimeError: If hardware initialization fails
+        SystemExit: If hardware mode is requested but fails
     """
     hardware_mode = config.HARDWARE_MODE.lower()
 
     if hardware_mode == "real":
-        # Try to create real hardware controller
+        # Create real hardware controller - exit on failure
         try:
             return NeoPixelLED(
-                pin=config.NEOPIXEL_PIN,
+                spi_bus=config.NEOPIXEL_SPI_BUS,
+                spi_device=config.NEOPIXEL_SPI_DEVICE,
                 num_pixels=config.NEOPIXEL_COUNT,
             )
         except ImportError as e:
-            logger.warning("Hardware mode requested but library not available: %s", e)
-            logger.info("Falling back to simulator mode")
-            return SimulatedLED(port=config.FLASK_PORT)
+            logger.error("Hardware mode requested but library not available: %s", e)
+            logger.error("Install with: pip install rpi5-ws2812")
+            logger.error("Also ensure SPI is enabled: sudo raspi-config -> Interfacing Options -> SPI")
+            sys.exit(1)
         except Exception as e:
-            logger.warning("Hardware initialization failed: %s", e)
-            logger.info("Falling back to simulator mode")
-            return SimulatedLED(port=config.FLASK_PORT)
+            error_str = str(e)
+            logger.error("Hardware initialization failed: %s", error_str)
+            logger.error("Ensure SPI is enabled: sudo raspi-config -> Interfacing Options -> SPI -> Enable")
+            logger.error("Hardware mode is required. Exiting.")
+            sys.exit(1)
     else:
-        # Default to simulator
+        # Simulator mode
         return SimulatedLED(port=config.FLASK_PORT)
 
 
@@ -871,7 +926,8 @@ def create_servo_controller() -> ServoInterface:
 
     Raises:
         ImportError: If required libraries are not available
-        ValueError: If configuration is invalid
+        RuntimeError: If hardware initialization fails
+        SystemExit: If hardware mode is requested but fails
     """
     global _servo_controller_instance
 
@@ -882,7 +938,7 @@ def create_servo_controller() -> ServoInterface:
     hardware_mode = config.HARDWARE_MODE.lower()
 
     if hardware_mode == "real":
-        # Try to create real hardware controller
+        # Create real hardware controller - exit on failure
         try:
             _servo_controller_instance = GpiozeroServo(
                 pin=config.SERVO_PIN,
@@ -890,23 +946,15 @@ def create_servo_controller() -> ServoInterface:
                 max_angle=config.SERVO_MAX_ANGLE,
             )
         except ImportError as e:
-            logger.warning("Hardware mode requested but library not available: %s", e)
-            logger.info("Falling back to simulator mode")
-            _servo_controller_instance = SimulatedServo(
-                port=config.SERVO_SIMULATOR_PORT,
-                min_angle=config.SERVO_MIN_ANGLE,
-                max_angle=config.SERVO_MAX_ANGLE,
-            )
+            logger.error("Hardware mode requested but library not available: %s", e)
+            logger.error("Install with: pip install gpiozero")
+            sys.exit(1)
         except Exception as e:
-            logger.warning("Hardware initialization failed: %s", e)
-            logger.info("Falling back to simulator mode")
-            _servo_controller_instance = SimulatedServo(
-                port=config.SERVO_SIMULATOR_PORT,
-                min_angle=config.SERVO_MIN_ANGLE,
-                max_angle=config.SERVO_MAX_ANGLE,
-            )
+            logger.error("Hardware initialization failed: %s", e)
+            logger.error("Hardware mode is required. Exiting.")
+            sys.exit(1)
     else:
-        # Default to simulator
+        # Simulator mode
         _servo_controller_instance = SimulatedServo(
             port=config.SERVO_SIMULATOR_PORT,
             min_angle=config.SERVO_MIN_ANGLE,
