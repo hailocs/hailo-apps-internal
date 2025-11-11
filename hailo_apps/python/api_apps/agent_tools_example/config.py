@@ -7,6 +7,9 @@ Users can modify these values to customize LLM behavior, context management, and
 import logging
 import os
 
+from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.defines import LLM_CODER_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
+
 # LLM Generation Parameters
 TEMPERATURE = 0.1
 SEED = 42
@@ -15,8 +18,6 @@ MAX_GENERATED_TOKENS = 200
 # Context Management
 CONTEXT_THRESHOLD = 0.80  # Clear context when usage reaches this percentage
 
-# Default HEF Path
-DEFAULT_HEF_PATH = "/home/giladn/tappas_apps/repos/genai-demos/hefs/Qwen2.5-Coder-1.5B-Instruct.hef"
 
 # Logging Configuration
 # Default log level (DEBUG, INFO, WARNING, ERROR)
@@ -56,9 +57,17 @@ def get_hef_path() -> str:
     """
     Get HEF path from configuration.
 
+    Checks for HAILO_HEF_PATH environment variable first, then falls back to
+    resources directory using get_resource_path() (similar to detection app).
+
     Returns:
-        Absolute path to the HEF file
+        Absolute path to the HEF file as a string
     """
-    hef_path = os.path.abspath(DEFAULT_HEF_PATH) if not os.path.isabs(DEFAULT_HEF_PATH) else DEFAULT_HEF_PATH
-    return hef_path
+    hef_path = str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_CODER_MODEL_NAME_H10))
+    if hef_path is None:
+        raise ValueError(
+            f"Could not find HEF file for model '{LLM_CODER_MODEL_NAME_H10}'. "
+            "Set HAILO_HEF_PATH environment variable to a valid .hef path."
+        )
+    return str(hef_path)
 

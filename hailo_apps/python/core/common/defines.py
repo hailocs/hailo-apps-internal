@@ -336,6 +336,7 @@ GST_VIDEO_SINK = "autovideosink"
 # Gen AI defaults
 VLM_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct.hef"
 LLM_MODEL_NAME_H10 = "Qwen2.5-1.5B-Instruct.hef"
+LLM_CODER_MODEL_NAME_H10 = "Qwen2.5-Coder-1.5B-Instruct.hef"
 WHISPER_MODEL_NAME_H10 = "Whisper-Base"
 
 # Whisper defaults

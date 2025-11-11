@@ -50,7 +50,12 @@ def main() -> None:
     config.setup_logging()
 
     # Get HEF path from config
-    HEF_PATH = config.get_hef_path()
+    try:
+        HEF_PATH = config.get_hef_path()
+    except ValueError as e:
+        print(f"[Error] {e}")
+        return
+
     print(f"Using HEF: {HEF_PATH}")
     if not os.path.exists(HEF_PATH):
         print(

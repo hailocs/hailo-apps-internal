@@ -13,9 +13,10 @@ default:
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json
 
 hailo10:
-  - "https://dev-public.hailo.ai/v5.1.0/blob/Qwen2-VL-2B-Instruct.hef"
-  - "https://dev-public.hailo.ai/v5.1.0/blob/Qwen2-1.5B-Instruct.hef"
-  - "https://dev-public.hailo.ai/v5.1.0/blob/Whisper-Base.hef"
+  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef"
+  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-1.5B-Instruct.hef"
+  - "https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef"
+  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef"
   - yolov8m
   - yolov5m_seg
   - yolov8m_pose
