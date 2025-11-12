@@ -24,7 +24,7 @@ description: str = (
     "CRITICAL: Use this tool ONLY when the user explicitly asks about weather, temperature, or rain. "
     "If you don't know the location of the query, do not call this tool. Ask the user for the location."
     "Supported requests: current temperature, forecasts for future days, rain/precipitation queries. "
-    "For dates: use the 'future_days' parameter. Examples: 'tomorrow' -> future_days=1, 'in 3 days' -> future_days=3, 'today' -> future_days=0 or omit. "
+    "For dates: use the 'future_days' parameter (e.g., 'tomorrow' -> future_days=1, 'in 3 days' -> future_days=3, 'today' -> future_days=0). "
     "Set include_rain=true when the user asks about rain or precipitation."
 )
 
