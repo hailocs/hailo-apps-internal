@@ -7,8 +7,7 @@ from datetime import datetime
 import wave
 import numpy as np
 import pyaudio
-import config
-from hailo_apps.python.core.common.defines import TARGET_SR, CHUNK_SIZE
+from hailo_apps.python.core.common.defines import TARGET_SR, CHUNK_SIZE, TARGET_SR
 
 
 class Recorder:
@@ -104,7 +103,7 @@ class Recorder:
             with wave.open(filename, 'wb') as wav_file:
                 wav_file.setnchannels(1)
                 wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(config.TARGET_SR)
+                wav_file.setframerate(TARGET_SR)
                 wav_file.writeframes(audio_int16.tobytes())
 
             print(f"Debug: Audio saved to {filename}")

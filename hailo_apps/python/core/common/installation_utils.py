@@ -103,13 +103,13 @@ def detect_hailo_arch() -> str | None:
             return None
         for line in res.stdout.splitlines():
             if HAILO8L_ARCH_CAPS in line:
-                hailo_logger.info("Detected Hailo architecture: HAILO8L")
+                hailo_logger.debug("Detected Hailo architecture: HAILO8L")
                 return HAILO8L_ARCH
             if HAILO8_ARCH_CAPS in line:
-                hailo_logger.info("Detected Hailo architecture: HAILO8")
+                hailo_logger.debug("Detected Hailo architecture: HAILO8")
                 return HAILO8_ARCH
             if HAILO10H_ARCH_CAPS in line or HAILO15H_ARCH_CAPS in line:
-                hailo_logger.info("Detected Hailo architecture: HAILO10H")
+                hailo_logger.debug("Detected Hailo architecture: HAILO10H")
                 return HAILO10H_ARCH
     except Exception as e:
         hailo_logger.exception(f"Error detecting Hailo architecture: {e}")

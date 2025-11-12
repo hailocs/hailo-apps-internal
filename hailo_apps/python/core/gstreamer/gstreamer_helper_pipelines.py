@@ -207,7 +207,7 @@ def INFERENCE_PIPELINE(
         f"hef-path={hef_path} "
         f"batch-size={batch_size} "
         f"{vdevice_group_id_str}"
-        f"{multi_process_service_str}"
+        # f"{multi_process_service_str}"
         f"{scheduler_timeout_ms_str}"
         f"{scheduler_priority_str}"
         f"{additional_params} "

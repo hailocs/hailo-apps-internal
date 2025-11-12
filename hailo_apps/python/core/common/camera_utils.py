@@ -37,20 +37,6 @@ def is_rpi_camera_available():
         hailo_logger.error(f"Error checking Raspberry Pi camera: {e}")
         return False
 
-def get_rpi_camera():
-    try:
-        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-        if cap.isOpened():
-            width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            if width > 0:
-                cap.release()
-                return 0
-        cap.release()
-    except Exception as e:
-        print(f"Error checking RPi camera: {e}")
-    return None
-
-
 # Checks if a USB camera is connected and responsive.
 def get_usb_video_devices():
     """Get a list of video devices that are connected via USB and have video capture capability."""

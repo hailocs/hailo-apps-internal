@@ -211,7 +211,7 @@ class AIPipeline:
             language="en",
             timeout_ms=15000)
         print("Captured text:\n")
-        print(segments)
+        print(f"text='{segments[0].text}', time={segments[0].end_sec}")
         print("\nLLM response:\n")
 
         # 3. Get a response from the language model.

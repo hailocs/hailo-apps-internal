@@ -4,11 +4,12 @@ An interactive voice-controlled AI assistant using Hailo's Speech-to-Text and La
 
 ## Required Dependency!
 
-Piper TTS (Text To Speach) requires downloading the voice files: 2 Files will be downloaded - an .onnx file (~65MB) & a .json file.
+Application requires 2 additional python packages: Piper-TTS & PyAudio. Piper TTS (Text To Speach) requires downloading the voice files: 2 Files will be downloaded - an .onnx file (~65MB) & a .json file.
 For more details please see: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md
 
    ```bash
    cd ~/hailo_apps/python/api_apps/Voice_Asistant
+   pip install piper-tts PyAudio
    python3 -m piper.download_voices en_US-amy-low
    ```
 
@@ -17,6 +18,60 @@ In case differen voice selected, please modify:
    In file: ~/hailo-apps-infra/hailo_apps/python/api_apps/Voice_Asistant/processing.py
    self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)
    ```
+
+## Microphone quality
+
+**High-quality microphone input is crucial for optimal speech recognition performance.** Poor audio quality, background noise, or incorrect microphone configuration can significantly impact transcription accuracy. Before using the voice assistant, ensure your microphone is properly configured and functioning.
+
+### Testing Microphone on Linux/Raspberry Pi OS
+
+**1. List available audio devices:**
+```bash
+arecord -l
+```
+
+**2. Test microphone recording:**
+```bash
+# Record 5 seconds of audio
+arecord -d 5 -f cd -t wav test.wav
+
+# Play back the recording
+aplay test.wav
+```
+
+**3. Adjust microphone volume (if needed):**
+```bash
+# Open audio mixer
+alsamixer
+
+# Press F4 to select capture devices
+# Use arrow keys to adjust microphone gain
+# Press Esc to exit
+```
+
+**4. Set default microphone (if multiple devices exist):**
+```bash
+# Create or edit ~/.asoundrc
+nano ~/.asoundrc
+
+# Add the following (replace X with your card number from arecord -l):
+pcm.!default {
+    type asoundrc
+    card X
+}
+
+ctl.!default {
+    type asoundrc
+    card X
+}
+```
+
+**Tips for best results:**
+- Use a USB microphone for better quality than built-in mics
+- Position microphone 15-30cm from your mouth
+- Minimize background noise during recording
+- Speak clearly at a normal volume
+- Test in the same environment where you will use the assistant
 
 ## Features
 

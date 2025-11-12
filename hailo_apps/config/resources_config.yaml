@@ -14,7 +14,7 @@ default:
 
 hailo10:
   - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef"
-  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-1.5B-Instruct.hef"
+  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef"
   - "https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef"
   - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef"
   - yolov8m
