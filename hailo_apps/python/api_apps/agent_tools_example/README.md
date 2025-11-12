@@ -100,7 +100,7 @@ To use the RGB LED tool with real hardware on a Raspberry Pi 5:
 **Troubleshooting:**
 - **Hardware mode failures**: If `HARDWARE_MODE='real'` is set and hardware initialization fails, the application will exit with an error. Make sure:
   - SPI is enabled via `sudo raspi-config` (Interfacing Options > SPI > Enable) and the system has been rebooted
-  - Required libraries are installed (`rpi5-ws2812` for LED, `gpiozero` for servo)
+  - Required libraries are installed (`rpi5-ws2812` for LED, `rpi-hardware-pwm` for servo)
   - The LED strip data line is connected to GPIO 10 (SPI MOSI pin)
   - SPI device is accessible (check with `ls /dev/spidev*`)
 - **SPI not enabled**: If you see initialization errors, verify SPI is enabled:
@@ -123,9 +123,100 @@ To use the RGB LED tool with real hardware on a Raspberry Pi 5:
 Control servo: move to absolute angle or by relative angle (-90 to 90 degrees).
 
 **Hardware Support:**
-- **Real Hardware**: Uses `gpiozero` library for Raspberry Pi GPIO control
+- **Real Hardware**: Uses `rpi-hardware-pwm` library for hardware PWM control on Raspberry Pi
 - **Simulator**: Flask-based web interface with visual servo arm display
 - **Configuration**: Set `HARDWARE_MODE` in `config.py` to "real" or "simulator"
+
+**Installation for Real Hardware:**
+To use the servo tool with real hardware on a Raspberry Pi:
+
+1. **Enable Hardware PWM**:
+   Edit `/boot/firmware/config.txt` (or `/boot/config.txt` on older Raspberry Pi OS versions):
+   ```bash
+   sudo nano /boot/firmware/config.txt
+   ```
+
+   **Disable onboard audio** (if present): The Raspberry Pi's analog audio uses the same PWM channels as hardware PWM, so you need to disable it. Look for this line and comment it out:
+   ```
+   # dtparam=audio=on
+   ```
+
+   **Add the PWM overlay**: Add the following line at the **bottom** of the config file:
+   ```
+   dtoverlay=pwm-2chan
+   ```
+   This enables:
+   - **PWM Channel 0** → GPIO 18 (default)
+   - **PWM Channel 1** → GPIO 19 (default)
+
+   To use GPIO 12 and GPIO 13 instead, use:
+   ```
+   dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
+   ```
+
+   **Important**: Place the `dtoverlay` line at the bottom of the config file to ensure proper loading.
+
+   Save the file and reboot:
+   ```bash
+   sudo reboot
+   ```
+
+   After rebooting, verify PWM is enabled:
+   ```bash
+   ls /sys/class/pwm/
+   ```
+   You should see `pwmchip0` and `pwmchip1` listed. This confirms hardware PWM is enabled.
+
+   **Verify PWM pin configuration**: Test that GPIO 18 is configured for PWM:
+   ```bash
+   pinctrl get 18
+   ```
+   Expected successful output (indicating PWM function is active):
+   ```
+   18: a3 pd | lo // PIN12/GPIO18 = PWM0_CHAN2
+   ```
+   If the overlay loaded correctly, the output should show a function other than `input` or `output` (like `PWM0_CHAN2` in the example above).
+
+2. **Install the library**:
+   ```bash
+   pip install rpi-hardware-pwm
+   ```
+
+3. **Wiring**: Connect the servo motor to the Raspberry Pi:
+   - **Control Signal (Orange/Yellow wire)**: Connect to **GPIO 18** (pin 12 on the header) for PWM channel 0, or **GPIO 19** (pin 35) for PWM channel 1
+   - **Power (Red wire)**: Connect to **5V** (pin 2 or 4) - **IMPORTANT**: Use external power supply for servos
+   - **Ground (Brown/Black wire)**: Connect to **GND** (pin 6, 9, 14, 20, 25, 30, 34, or 39)
+
+   **⚠️ Power Warning**: Standard servos can draw significant current (often 1-2A or more). Do NOT power the servo directly from the Raspberry Pi's 5V pin without an external power supply, as this can damage the Pi or cause instability. Use one of these approaches:
+   - **Recommended**: Use a separate 5V power supply for the servo, with common ground shared between the Pi and servo power supply
+   - **Alternative**: Use a servo driver board (like PCA9685) that provides external power management
+   - **For small servos only**: If using a very small, low-current servo (< 500mA), you may power from Pi's 5V, but monitor for stability issues
+
+4. **Servo Specifications**:
+   - Works with standard PWM servos (e.g., SG90, MG90S, etc.)
+   - Default angle range: -90° to +90° (configurable in `config.py`)
+   - Control signal: 50Hz hardware PWM (standard servo frequency)
+   - Uses hardware PWM for precise, jitter-free control
+
+**Troubleshooting:**
+- **Hardware mode failures**: If `HARDWARE_MODE='real'` is set and hardware initialization fails, the application will exit with an error. Make sure:
+  - Hardware PWM is enabled in `/boot/firmware/config.txt` (see step 1)
+  - The system has been rebooted after enabling PWM
+  - Required library is installed (`rpi-hardware-pwm`)
+  - The servo control signal is connected to the correct GPIO pin (GPIO 18 for channel 0, GPIO 19 for channel 1)
+  - The servo is properly powered (external power supply recommended)
+- **Servo not moving**: Check:
+  - Wiring connections (signal, power, ground)
+  - Power supply voltage (should be 5V for most servos)
+  - Power supply current capacity (servos need adequate current)
+  - Verify PWM is enabled: `ls /sys/class/pwm/` should show `pwmchip0` and `pwmchip1`
+  - Verify servo works with a simple test script
+- **Jittery or unstable movement**: This often indicates:
+  - Insufficient power supply current
+  - Poor ground connection
+  - Electrical noise - try adding a capacitor (100-1000µF) across servo power and ground
+  - Servo may be damaged or incompatible
+  - Hardware PWM should eliminate jitter - if jitter persists, check power supply and wiring
 
 **Features:**
 - Absolute positioning (-90° to 90°)
@@ -142,12 +233,17 @@ HARDWARE_MODE = "simulator"  # "real" or "simulator"
 NEOPIXEL_SPI_BUS = 0  # SPI bus number (0 = /dev/spidev0.x)
 NEOPIXEL_SPI_DEVICE = 0  # SPI device number (0 = /dev/spidev0.0)
 NEOPIXEL_COUNT = 1  # Number of LEDs in strip
-SERVO_PIN = 17  # GPIO pin for servo control signal
+# Servo configuration
+SERVO_PWM_CHANNEL = 0  # Hardware PWM channel (0 or 1). Channel 0 = GPIO 18, Channel 1 = GPIO 19
+SERVO_MIN_ANGLE = -90.0  # Minimum servo angle in degrees
+SERVO_MAX_ANGLE = 90.0  # Maximum servo angle in degrees
 FLASK_PORT = 5000  # Port for LED simulator web server
 SERVO_SIMULATOR_PORT = 5001  # Port for servo simulator web server
 ```
 
-**Note**: SPI uses the MOSI pin (GPIO 10) automatically - no pin configuration needed. The SPI bus and device numbers correspond to `/dev/spidev0.0` by default.
+**Notes**:
+- **SPI**: Uses the MOSI pin (GPIO 10) automatically - no pin configuration needed. The SPI bus and device numbers correspond to `/dev/spidev0.0` by default.
+- **Servo**: Default GPIO pin is 17 (physical pin 11). Ensure the servo is properly powered with an external power supply for reliable operation.
 
 ## Example Session
 

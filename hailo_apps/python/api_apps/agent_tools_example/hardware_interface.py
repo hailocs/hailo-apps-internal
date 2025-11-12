@@ -1,7 +1,7 @@
 """
 Hardware interface for RGB LED and servo control.
 
-Supports real hardware (SPI-based NeoPixel via rpi5-ws2812, gpiozero Servo) and simulator (Flask browser visualization).
+Supports real hardware (SPI-based NeoPixel via rpi5-ws2812, hardware PWM servo via rpi-hardware-pwm) and simulator (Flask browser visualization).
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ import logging
 import sys
 import threading
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from hailo_apps.python.api_apps.agent_tools_example import config
@@ -454,59 +455,141 @@ class ServoInterface(ABC):
         pass
 
 
-class GpiozeroServo(ServoInterface):
-    """Real hardware implementation using gpiozero Servo."""
+class HardwarePWMServo(ServoInterface):
+    """Real hardware implementation using rpi-hardware-pwm for hardware PWM control."""
 
-    def __init__(self, pin: int = 17, min_angle: float = -90.0, max_angle: float = 90.0) -> None:
+    def __init__(self, pwm_channel: int = 0, min_angle: float = -90.0, max_angle: float = 90.0) -> None:
         """
-        Initialize servo using gpiozero.
+        Initialize servo using hardware PWM via rpi-hardware-pwm.
 
         Args:
-            pin: GPIO pin number for servo control signal (default: 17)
+            pwm_channel: PWM channel number (0 or 1). Default: 0 (GPIO 18).
+                         Channel 0 maps to GPIO 18 (or GPIO 12 if configured).
+                         Channel 1 maps to GPIO 19 (or GPIO 13 if configured).
             min_angle: Minimum angle in degrees (default: -90)
             max_angle: Maximum angle in degrees (default: 90)
         """
         try:
-            from gpiozero import Servo
+            from rpi_hardware_pwm import HardwarePWM
         except ImportError:
-            logger.warning("gpiozero library not available. Install with: pip install gpiozero")
+            logger.error("rpi-hardware-pwm library not available. Install with: pip install rpi-hardware-pwm")
             raise
 
-        self.pin = pin
+        if pwm_channel not in (0, 1):
+            raise ValueError(f"PWM channel must be 0 or 1, got {pwm_channel}")
+
+        self.pwm_channel = pwm_channel
         self.min_angle = min_angle
         self.max_angle = max_angle
         self._current_angle = 0.0  # Default to center position
+        self._pwm: HardwarePWM | None = None
+        self._pwm_sysfs_path: Path | None = None
 
         try:
-            # gpiozero.Servo expects values -1.0 to 1.0
-            # We map -90 to 90 degrees to -1.0 to 1.0
-            self.servo = Servo(pin)
-            logger.info("Servo initialized on pin %d with angle range %.1f to %.1f degrees", pin, min_angle, max_angle)
+            # Standard servo frequency is 50 Hz
+            SERVO_FREQUENCY = 50
+            # Map logical channel to actual hardware PWM channel
+            # Channel 0 (GPIO 18) -> PWM0_CHAN2 (channel 2)
+            # Channel 1 (GPIO 19) -> PWM0_CHAN1 (channel 1)
+            hardware_pwm_channel = self._get_hardware_pwm_channel()
+            self._pwm = HardwarePWM(pwm_channel=hardware_pwm_channel, chip=0, hz=SERVO_FREQUENCY)
+
+            # Start PWM with center position (7.5% duty cycle for 0 degrees)
+            center_duty = self._angle_to_duty_cycle(0.0)
+            self._pwm.start(center_duty)
+
+            # Verify PWM is actually enabled (workaround for library issues)
+            self._verify_and_enable_pwm()
+
+            # Map channel to GPIO pin for logging
+            gpio_pin = 18 if pwm_channel == 0 else 19
+            logger.info(
+                "Servo initialized on PWM channel %d (GPIO %d) with angle range %.1f to %.1f degrees",
+                pwm_channel, gpio_pin, min_angle, max_angle
+            )
             # Set default position to center (0 degrees)
             self._update_servo(0.0)
         except Exception as e:
             logger.error("Failed to initialize servo: %s", e)
+            if self._pwm is not None:
+                try:
+                    self._pwm.stop()
+                except Exception:
+                    pass
             raise
 
-    def _angle_to_gpiozero_value(self, angle: float) -> float:
+    def _get_hardware_pwm_channel(self) -> int:
         """
-        Convert angle in degrees to gpiozero value (-1.0 to 1.0).
+        Map logical PWM channel to actual hardware PWM channel.
+
+        Returns:
+            Hardware PWM channel number (1 or 2)
+        """
+        # Channel 0 (GPIO 18) -> PWM0_CHAN2 (channel 2)
+        # Channel 1 (GPIO 19) -> PWM0_CHAN1 (channel 1)
+        return 2 if self.pwm_channel == 0 else 1
+
+    def _verify_and_enable_pwm(self) -> None:
+        """
+        Verify PWM is enabled in sysfs and enable it if needed.
+
+        This is a workaround for cases where rpi-hardware-pwm doesn't
+        properly enable the PWM channel.
+        """
+        try:
+            hardware_pwm_channel = self._get_hardware_pwm_channel()
+            pwm_sysfs = Path(f"/sys/class/pwm/pwmchip0/pwm{hardware_pwm_channel}")
+            self._pwm_sysfs_path = pwm_sysfs
+
+            if not pwm_sysfs.exists():
+                logger.warning("PWM channel %d not exported in sysfs, library should handle this", hardware_pwm_channel)
+                return
+
+            enable_path = pwm_sysfs / "enable"
+            if enable_path.exists():
+                current_enable = enable_path.read_text().strip()
+                if current_enable == "0":
+                    logger.warning("PWM was not enabled, enabling manually...")
+                    try:
+                        enable_path.write_text("1")
+                        logger.info("PWM enabled successfully")
+                    except (PermissionError, OSError) as e:
+                        logger.warning("Could not enable PWM manually (may need root): %s", e)
+                else:
+                    logger.debug("PWM is already enabled")
+        except Exception as e:
+            logger.debug("Could not verify PWM enable state: %s", e)
+
+    def _angle_to_duty_cycle(self, angle: float) -> float:
+        """
+        Convert angle in degrees to PWM duty cycle percentage.
+
+        Standard servos expect:
+        - 2.5% duty cycle = 0 degrees (or minimum angle)
+        - 7.5% duty cycle = 90 degrees (center/neutral)
+        - 12.5% duty cycle = 180 degrees (or maximum angle)
+
+        For angle range -90 to 90, we map to 2.5% to 12.5% duty cycle.
 
         Args:
             angle: Angle in degrees
 
         Returns:
-            gpiozero value (-1.0 to 1.0)
+            Duty cycle percentage (2.5 to 12.5)
         """
         # Clamp angle to valid range
         clamped_angle = max(self.min_angle, min(self.max_angle, angle))
-        # Map angle range to -1.0 to 1.0
-        # Linear mapping: (angle - min) / (max - min) maps to -1.0 to 1.0
-        # So: value = 2 * (angle - min) / (max - min) - 1.0
+
+        # Map angle range to duty cycle range (2.5% to 12.5%)
+        # Standard mapping: -90° = 2.5%, 0° = 7.5%, +90° = 12.5%
         if self.max_angle == self.min_angle:
-            return 0.0
+            return 7.5  # Center position
+
+        # Linear interpolation: duty = 2.5 + (angle - min) / (max - min) * 10.0
         normalized = (clamped_angle - self.min_angle) / (self.max_angle - self.min_angle)
-        return 2.0 * normalized - 1.0
+        duty_cycle = 2.5 + normalized * 10.0
+
+        return duty_cycle
 
     def _update_servo(self, angle: float) -> None:
         """
@@ -515,8 +598,24 @@ class GpiozeroServo(ServoInterface):
         Args:
             angle: Target angle in degrees
         """
-        gpiozero_value = self._angle_to_gpiozero_value(angle)
-        self.servo.value = gpiozero_value
+        if self._pwm is None:
+            raise RuntimeError("PWM not initialized")
+
+        duty_cycle = self._angle_to_duty_cycle(angle)
+        self._pwm.change_duty_cycle(duty_cycle)
+
+        # Ensure PWM stays enabled after duty cycle change
+        if self._pwm_sysfs_path is not None:
+            enable_path = self._pwm_sysfs_path / "enable"
+            if enable_path.exists():
+                try:
+                    current = enable_path.read_text().strip()
+                    if current == "0":
+                        enable_path.write_text("1")
+                        logger.debug("Re-enabled PWM after duty cycle change")
+                except (PermissionError, OSError):
+                    pass  # Ignore if we can't write
+
         self._current_angle = max(self.min_angle, min(self.max_angle, angle))
 
     def set_angle(self, angle: float) -> None:
@@ -537,10 +636,13 @@ class GpiozeroServo(ServoInterface):
         }
 
     def cleanup(self) -> None:
-        """Clean up gpiozero servo resources."""
-        # gpiozero handles cleanup automatically when object is destroyed
-        # No explicit cleanup needed, but we can log it
-        logger.debug("Gpiozero servo will be cleaned up automatically")
+        """Clean up hardware PWM resources."""
+        if self._pwm is not None:
+            try:
+                self._pwm.stop()
+                logger.debug("Hardware PWM stopped")
+            except Exception as e:
+                logger.debug("Error stopping PWM: %s", e)
 
 
 class SimulatedServo(ServoInterface):
@@ -922,7 +1024,7 @@ def create_servo_controller() -> ServoInterface:
     Uses singleton pattern to ensure only one instance exists.
 
     Returns:
-        ServoInterface instance (GpiozeroServo or SimulatedServo)
+        ServoInterface instance (HardwarePWMServo or SimulatedServo)
 
     Raises:
         ImportError: If required libraries are not available
@@ -940,17 +1042,23 @@ def create_servo_controller() -> ServoInterface:
     if hardware_mode == "real":
         # Create real hardware controller - exit on failure
         try:
-            _servo_controller_instance = GpiozeroServo(
-                pin=config.SERVO_PIN,
+            _servo_controller_instance = HardwarePWMServo(
+                pwm_channel=config.SERVO_PWM_CHANNEL,
                 min_angle=config.SERVO_MIN_ANGLE,
                 max_angle=config.SERVO_MAX_ANGLE,
             )
         except ImportError as e:
             logger.error("Hardware mode requested but library not available: %s", e)
-            logger.error("Install with: pip install gpiozero")
+            logger.error("Install with: pip install rpi-hardware-pwm")
+            logger.error("Also ensure hardware PWM is enabled in /boot/firmware/config.txt:")
+            logger.error("  Add: dtoverlay=pwm-2chan")
+            logger.error("  Then reboot the Raspberry Pi")
             sys.exit(1)
         except Exception as e:
             logger.error("Hardware initialization failed: %s", e)
+            logger.error("Ensure hardware PWM is enabled in /boot/firmware/config.txt:")
+            logger.error("  Add: dtoverlay=pwm-2chan")
+            logger.error("  Then reboot the Raspberry Pi")
             logger.error("Hardware mode is required. Exiting.")
             sys.exit(1)
     else:
