@@ -51,7 +51,8 @@ try:
         DEFAULT_RESOURCES_SYMLINK_PATH,
         HAILO_ARCH_DEFAULT,
         HAILO_ARCH_KEY,
-        HAILORT_PACKAGE,
+        HAILORT_PACKAGE_NAME,
+        HAILORT_PACKAGE_NAME_RPI,
         HAILORT_VERSION_DEFAULT,
         HAILORT_VERSION_KEY,
         HOST_ARCH_DEFAULT,
@@ -76,6 +77,7 @@ try:
         detect_hailo_arch,
         detect_host_arch,
         detect_system_pkg_version,
+        get_hailort_package_name,
     )
 except ImportError:
     # Fallback: import from path
@@ -97,7 +99,8 @@ except ImportError:
         DEFAULT_RESOURCES_SYMLINK_PATH = defines_module.DEFAULT_RESOURCES_SYMLINK_PATH
         HAILO_ARCH_DEFAULT = defines_module.HAILO_ARCH_DEFAULT
         HAILO_ARCH_KEY = defines_module.HAILO_ARCH_KEY
-        HAILORT_PACKAGE = defines_module.HAILORT_PACKAGE
+        HAILORT_PACKAGE_NAME = defines_module.HAILORT_PACKAGE_NAME
+        HAILORT_PACKAGE_NAME_RPI = defines_module.HAILORT_PACKAGE_NAME_RPI
         HAILORT_VERSION_DEFAULT = defines_module.HAILORT_VERSION_DEFAULT
         HAILORT_VERSION_KEY = defines_module.HAILORT_VERSION_KEY
         HOST_ARCH_DEFAULT = defines_module.HOST_ARCH_DEFAULT
@@ -127,6 +130,7 @@ except ImportError:
         detect_hailo_arch = installation_utils_module.detect_hailo_arch
         detect_host_arch = installation_utils_module.detect_host_arch
         detect_system_pkg_version = installation_utils_module.detect_system_pkg_version
+        get_hailort_package_name = installation_utils_module.get_hailort_package_name
     else:
         raise ImportError(f"Could not find installation_utils.py at {installation_utils_path}")
 
@@ -220,9 +224,10 @@ class ConfigAutoDetector:
             Detected HailoRT version or exits if not found.
         """
         self.logger.info("Auto-detecting HailoRT version...")
-        version = detect_system_pkg_version(HAILORT_PACKAGE)
+        pkg_name = get_hailort_package_name()
+        version = detect_system_pkg_version(pkg_name)
         if not version:
-            self.logger.error("HailoRT version not detected. Please install HailoRT.")
+            self.logger.error(f"HailoRT version not detected for package '{pkg_name}'. Please install HailoRT.")
             sys.exit(1)
         return version
 

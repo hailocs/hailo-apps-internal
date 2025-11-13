@@ -28,7 +28,7 @@ Models are specifically optimized for Hailo hardware, providing efficient, high-
    # In another terminal window
    curl --silent http://localhost:8000/api/pull \
         -H 'Content-Type: application/json' \
-        -d '{ "model": "qwen2.5:1.5b", "stream" : true }'
+        -d '{ "model": "qwen2.5-instruct:1.5b", "stream" : true }'
    ```
 
    The models will be downloaded to: `~/usr/share/hailo-ollama/models/blob/`
@@ -38,5 +38,5 @@ Models are specifically optimized for Hailo hardware, providing efficient, high-
    # Test the model via API
    curl --silent http://localhost:8000/api/chat \
         -H 'Content-Type: application/json' \
-        -d '{"model": "qwen2.5:1.5b", "messages": [{"role": "user", "content": "Translate to French: The cat is on the table."}]}'
+        -d '{"model": "qwen2.5-instruct:1.5b", "messages": [{"role": "user", "content": "Translate to French: The cat is on the table."}]}'
    ```

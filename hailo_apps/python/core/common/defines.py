@@ -14,7 +14,8 @@ HAILO_TAPPAS_CORE_PYTHON_NAMES = [
     "tappas-core-python-binding",
     HAILO_TAPPAS_CORE,
 ]
-HAILORT_PACKAGE = "hailort"
+HAILORT_PACKAGE_NAME = "hailort"
+HAILORT_PACKAGE_NAME_RPI = "h10-hailort"
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources"  # Do Not Change!
@@ -87,9 +88,9 @@ DEFAULT_DOTENV_PATH = "/usr/local/hailo/resources/.env"  # your env file lives h
 DEFAULT_LOCAL_RESOURCES_PATH = str(REPO_ROOT / "local_resources")  # bundled GIFs, JSON, etc.
 
 # Supported config options
-VALID_HAILORT_VERSION = [AUTO_DETECT, "4.23.0" , "5.1.0"]
+VALID_HAILORT_VERSION = [AUTO_DETECT, "4.23.0" , "5.1.1"]
 VALID_TAPPAS_VERSION = [AUTO_DETECT, "5.1.0"]
-VALID_H10_MODEL_ZOO_VERSION = ["v5.0.0"]
+VALID_H10_MODEL_ZOO_VERSION = ["v5.1.1"]
 VALID_H8_MODEL_ZOO_VERSION = ["v2.17.0"]
 VALID_MODEL_ZOO_VERSION = VALID_H10_MODEL_ZOO_VERSION + VALID_H8_MODEL_ZOO_VERSION
 
