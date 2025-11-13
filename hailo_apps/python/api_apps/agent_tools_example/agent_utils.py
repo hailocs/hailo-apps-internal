@@ -214,11 +214,10 @@ Rules:
 - Use only these tool names: {tool_names_list}
 - After calling, wait for the system to send you <tool_response>
 
-# How to Handle Tool Results
-When the system sends you <tool_response>:
-- Extract meaningful data from the JSON (e.g., "result", "message", "angle", "state", "stdout", "stderr")
-- Present the result directly and concisely
-- Do not thank the user, thank the tool, or acknowledge the tool call
+# Tool Results
+- The system will present tool results directly to the user
+- Tool results are already formatted and ready for display
+- Your role is to use tools when appropriate, the system handles showing results
 
 # Decision Process - Think Before Responding
 BEFORE each response, think about whether to use a tool:

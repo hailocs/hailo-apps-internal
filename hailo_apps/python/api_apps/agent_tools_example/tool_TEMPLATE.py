@@ -49,14 +49,13 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         input_data: Tool input parameters dictionary.
 
     Returns:
-        Tool result payload dictionary with 'ok' boolean and either
-        'error' (if failed) or result data (if successful).
+        Dictionary with 'ok' and 'result' (if successful) or 'error' (if failed).
     """
     example_param = str(input_data.get("example_param", ""))
     if not example_param:
         return {"ok": False, "error": "Missing required 'example_param'."}
 
     # Replace with your tool's logic
-    return {"ok": True, "echo": example_param}
+    return {"ok": True, "result": example_param}
 
 

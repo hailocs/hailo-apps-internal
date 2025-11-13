@@ -10,8 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from hailo_apps.python.api_apps.agent_tools_example.hardware_interface import create_led_controller
-from hailo_apps.python.api_apps.agent_tools_example import config
+# Make imports more robust
+try:
+    # Try relative import first
+    from .hardware_interface import create_led_controller
+    from . import config
+except ImportError:
+    # Fallback to absolute import if relative fails
+    from hardware_interface import create_led_controller
+    import config
 
 name: str = "rgb_led"
 
@@ -101,6 +108,18 @@ def _get_led_controller() -> Any:
     if not _initialized:
         initialize_tool()
     return _led_controller
+
+
+def cleanup_tool() -> None:
+    """Clean up LED controller resources."""
+    global _led_controller
+    if _led_controller is not None and hasattr(_led_controller, "cleanup"):
+        try:
+            _led_controller.cleanup()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug("Error during LED controller cleanup: %s", e)
 
 
 # Minimal JSON-like schema to assist prompting/validation
@@ -254,8 +273,7 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
             - intensity: Optional intensity percentage (0-100)
 
     Returns:
-        Dictionary with 'ok' and 'state' (if successful) or 'error' (if failed).
-        State includes: power (bool), color (str), color_rgb (tuple), intensity (float).
+        Dictionary with 'ok' and 'result' (if successful) or 'error' (if failed).
     """
     validated = _validate_input(input_dict)
     if not validated.get("ok"):
@@ -275,16 +293,9 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     # Handle "off" action
     if action == "off":
         led.off()
-        state = led.get_state()
         return {
             "ok": True,
-            "state": {
-                "power": state["power"],
-                "color": state["color"],
-                "color_rgb": state["color_rgb"],
-                "intensity": state["intensity"],
-            },
-            "message": "LED turned off",
+            "result": "LED turned off",
         }
 
     # Handle "on" action
@@ -305,27 +316,20 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     # Get current state
     state = led.get_state()
     color_name = state["color"]
-    color_rgb = state["color_rgb"]
     intensity_val = state["intensity"]
 
     # Build user-friendly response message
     if color is not None and intensity is not None:
-        message = f"LED is now on, showing {color} at {intensity_val:.0f}% brightness"
+        result = f"LED is now on, showing {color} at {intensity_val:.0f}% brightness"
     elif color is not None:
-        message = f"LED is now on, showing {color}"
+        result = f"LED is now on, showing {color}"
     elif intensity is not None:
-        message = f"LED is now on at {intensity_val:.0f}% brightness"
+        result = f"LED is now on at {intensity_val:.0f}% brightness"
     else:
-        message = "LED turned on"
+        result = "LED turned on"
 
     return {
         "ok": True,
-        "state": {
-            "power": state["power"],
-            "color": color_name,
-            "color_rgb": color_rgb,
-            "intensity": intensity_val,
-        },
-        "message": message,
+        "result": result,
     }
 

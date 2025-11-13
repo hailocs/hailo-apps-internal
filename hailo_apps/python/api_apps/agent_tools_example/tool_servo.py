@@ -39,14 +39,8 @@ description: str = (
     "Examples: 'set servo to -45' → mode='absolute', angle=-45. "
     "Examples: 'move servo by -20 degrees' → mode='relative', angle=-20. "
     "Examples: 'turn servo left 15 degrees' → mode='relative', angle=-15. "
-    "Examples: 'position servo at center' → mode='absolute', angle=0."
-    "Examples: 'home servo' → mode='absolute', angle=0. "
-    "RESPONSE FORMAT: When the tool returns a result, state it directly and factually. "
-    "NEVER say 'thank you', 'thanks', 'thank you for providing', or any thanking phrases. "
-    "NEVER acknowledge the tool call or tool response. "
-    "Just state the result (e.g., 'Servo moved to 90.0°' or 'Servo moved by -12.0° to 78.0°'). "
-    "BAD: 'Thank you for providing the tool response. The servo was moved to 90.0°' "
-    "GOOD: 'Servo moved to 90.0°'"
+    "Examples: 'position servo at center' → mode='absolute', angle=0. "
+    "Examples: 'home servo' → mode='absolute', angle=0."
 )
 
 # Initialize servo controller (hardware or simulator) only when tool is selected
@@ -205,8 +199,7 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
             - angle: Angle value in degrees (required)
 
     Returns:
-        Dictionary with 'ok' and 'angle' (if successful) or 'error' (if failed).
-        On success, includes current angle and message.
+        Dictionary with 'ok' and 'result' (if successful) or 'error' (if failed).
     """
     validated = _validate_input(input_dict)
     if not validated.get("ok"):
@@ -237,14 +230,13 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
 
         # Build message
         if angle != clamped_angle:
-            message = f"Servo moved to {current_angle:.1f}° (requested {angle:.1f}° was clamped to valid range)"
+            result = f"Servo moved to {current_angle:.1f}° (requested {angle:.1f}° was clamped to valid range)"
         else:
-            message = f"Servo moved to {current_angle:.1f}°"
+            result = f"Servo moved to {current_angle:.1f}°"
 
         return {
             "ok": True,
-            "angle": current_angle,
-            "message": message,
+            "result": result,
         }
 
     # Handle relative mode
@@ -259,13 +251,12 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
 
         # Build message
         if target_angle != clamped_angle:
-            message = f"Servo moved by {angle:.1f}° to {final_angle:.1f}° (requested position {target_angle:.1f}° was clamped to valid range)"
+            result = f"Servo moved by {angle:.1f}° to {final_angle:.1f}° (requested position {target_angle:.1f}° was clamped to valid range)"
         else:
-            message = f"Servo moved by {angle:.1f}° to {final_angle:.1f}°"
+            result = f"Servo moved by {angle:.1f}° to {final_angle:.1f}°"
 
         return {
             "ok": True,
-            "angle": final_angle,
-            "message": message,
+            "result": result,
         }
 

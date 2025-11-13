@@ -202,33 +202,37 @@ def main() -> None:
             try:
                 result = runner(args)  # type: ignore[misc]
                 logger.debug("TOOL EXECUTION RESULT:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
-                # Log summary at INFO level
+
+                # Print tool result directly to user
                 if result.get("ok"):
                     logger.info("Tool execution: SUCCESS")
-                    if "message" in result:
-                        logger.info("Tool message: %s", result.get("message"))
+                    tool_result = result.get("result", "")
+                    if tool_result:
+                        print(f"\n[Tool] {tool_result}\n")
                 else:
                     logger.info("Tool execution: FAILED - %s", result.get("error", "Unknown error"))
+                    tool_error = result.get("error", "Unknown error")
+                    print(f"\n[Tool Error] {tool_error}\n")
             except Exception as exc:
                 result = {"ok": False, "error": f"Tool raised exception: {exc}"}
                 logger.error("Tool execution raised exception: %s", exc)
                 logger.debug("Tool exception result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
                 logger.info("Tool execution: FAILED - Exception raised")
+                print(f"\n[Tool Error] {result['error']}\n")
 
-            # Format tool result according to Qwen 2.5 Coder format: wrap in <tool_response> XML tags
-            # Convert result dict to JSON string for consistent formatting
+            # Tool result has been printed directly to user
+            # Add the tool result to LLM context for conversation continuity
             tool_result_text = json.dumps(result, ensure_ascii=False)
             tool_response_message = f"<tool_response>{tool_result_text}</tool_response>"
-            logger.debug("SENDING TOOL RESULT TO LLM:\n%s", tool_response_message)
+            logger.debug("Adding tool result to LLM context:\n%s", tool_response_message)
 
             # Check if we need to trim context before adding tool result
             context_cleared = agent_utils.check_and_trim_context(llm)
             if context_cleared:
                 need_system_prompt = True
 
-            # For Qwen 2.5 Coder, send tool result wrapped in <tool_response> XML tags
-            # LLM already has the assistant's tool call in context from previous generate() call
-            # We only need to send the tool result as a user message
+            # Add tool result to context without generating a response
+            # This maintains conversation history for future interactions
             if context_cleared:
                 # Context was cleared, need to rebuild: system, user query, tool result
                 prompt = [
@@ -237,20 +241,19 @@ def main() -> None:
                     agent_utils.messages_user(tool_response_message),
                 ]
                 need_system_prompt = False
-                logger.debug("Sending prompt to LLM (context was cleared, includes system + user + tool result):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
             else:
-                # LLM has context, just send the tool result
+                # LLM has context, just add the tool result
                 prompt = [agent_utils.messages_user(tool_response_message)]
-                logger.debug("Sending tool result to LLM (context maintained):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
 
-            # Use generate() for streaming output with on-the-fly filtering
-            is_debug = logger.level == logging.DEBUG
-            final_raw_response = agent_utils.generate_and_stream_response(
-                llm=llm,
-                prompt=prompt,
-                prefix="Assistant (final): ",
-                debug_mode=is_debug,
-            )
+            # Add to context by making a minimal generation (just to update context)
+            # We don't print this since we already showed the result to the user
+            logger.debug("Updating LLM context with tool result")
+            try:
+                # Generate a single token to update context, then discard the output
+                for _ in llm.generate(prompt=prompt, max_generated_tokens=1):
+                    break  # Just need to trigger context update
+            except Exception as e:
+                logger.debug("Context update failed (non-critical): %s", e)
 
     finally:
         # Cleanup: call tool cleanup if available

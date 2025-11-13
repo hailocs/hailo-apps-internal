@@ -160,10 +160,8 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dictionary with keys:
             - ok: Whether command succeeded (exit_code == 0)
-            - stdout: Standard output
-            - stderr: Standard error
-            - exit_code: Process exit code
-            - error: Error message if validation or execution failed
+            - result: Formatted command output (if ok=True)
+            - error: Error message (if ok=False)
     """
     v = _validate_payload(input_data)
     if not v.get("ok"):
@@ -185,27 +183,31 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             timeout=timeout_sec,
             env={"PATH": os.getenv("PATH", ""), "LC_ALL": "C"},
         )
-        return {
-            "ok": completed.returncode == 0,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "exit_code": completed.returncode,
-        }
+
+        # Format result as a readable string
+        result_parts = []
+        if completed.stdout:
+            result_parts.append(completed.stdout.rstrip())
+        if completed.stderr:
+            result_parts.append(f"[stderr]: {completed.stderr.rstrip()}")
+
+        result = "\n".join(result_parts) if result_parts else "(no output)"
+
+        if completed.returncode == 0:
+            return {"ok": True, "result": result}
+        else:
+            return {"ok": False, "error": f"Command failed (exit code {completed.returncode}): {result}"}
     except subprocess.TimeoutExpired as exc:
-        return {
-            "ok": False,
-            "error": f"Timeout after {timeout_sec}s",
-            "stdout": exc.stdout or "",
-            "stderr": exc.stderr or "",
-            "exit_code": -1,
-        }
+        error_msg = f"Timeout after {timeout_sec}s"
+        if exc.stdout or exc.stderr:
+            output_parts = []
+            if exc.stdout:
+                output_parts.append(exc.stdout.rstrip())
+            if exc.stderr:
+                output_parts.append(f"[stderr]: {exc.stderr.rstrip()}")
+            error_msg += f"\nPartial output: {chr(10).join(output_parts)}"
+        return {"ok": False, "error": error_msg}
     except Exception as exc:
-        return {
-            "ok": False,
-            "error": str(exc),
-            "stdout": "",
-            "stderr": "",
-            "exit_code": -1,
-        }
+        return {"ok": False, "error": str(exc)}
 
 
