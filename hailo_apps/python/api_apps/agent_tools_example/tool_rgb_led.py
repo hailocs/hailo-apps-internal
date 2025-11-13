@@ -31,17 +31,25 @@ display_description: str = (
 description: str = (
     "CRITICAL: You MUST use this tool when the user asks to control, change, or do anything with an LED or lights. "
     "ALWAYS call this tool if the user mentions: LED, light, lights, turn on, turn off, change color, set color, brightness, intensity, dim, brighten, make it red/blue/green/etc. "
-    "NEVER respond about LED control without calling this tool - ALWAYS use this tool for ANY LED or light-related request. Also if the context is implied from the previous message, call this tool."
+    "NEVER respond about LED control without calling this tool - ALWAYS use this tool for ANY LED or light-related request. Also if the context is implied from the previous message, call this tool. "
     "The function name is 'rgb_led' (use this exact name in tool calls). "
-    "The tool accepts color names (e.g., 'red', 'blue', 'green', 'yellow', 'purple', 'cyan', 'white', 'orange', 'pink') - "
-    "DO NOT use RGB values or hex codes. "
-    "Intensity must be a percentage (0-100). "
-    "Examples: 'turn on red LED at 50%' → action='on', color='red', intensity=50. "
-    "Examples: 'turn off LED' → action='off'. "
-    "Examples: 'set LED to blue' → action='on', color='blue'. "
-    "Examples: 'make LED brighter at 80%' → action='on', intensity=80. "
-    "Examples: 'change the lights to green' → action='on', color='green'. "
-    "Examples: 'dim the LED to 30%' → action='on', intensity=30."
+    "\n\n"
+    "PARAMETER RULES:\n"
+    "- action: REQUIRED - always 'on' or 'off'\n"
+    "- color: OPTIONAL - only include if user specifies a color name. DO NOT invent or assume colors.\n"
+    "- intensity: OPTIONAL - only include if user specifies brightness/intensity. MUST be a NUMBER (not string) between 0-100. "
+    "For 'max'/'maximum'/'full' use 100. For 'min'/'minimum' use 0. For 'half'/'medium' use 50.\n"
+    "\n"
+    "Color names: red, blue, green, yellow, purple, cyan, white, orange, pink, magenta, lime, teal, navy - DO NOT use RGB values or hex codes.\n"
+    "\n"
+    "Examples:\n"
+    "- 'turn on red LED at 50%' → {action: 'on', color: 'red', intensity: 50}\n"
+    "- 'turn off LED' → {action: 'off'}\n"
+    "- 'set LED to blue' → {action: 'on', color: 'blue'}\n"
+    "- 'set LED to 80%' → {action: 'on', intensity: 80}\n"
+    "- 'set to max intensity' → {action: 'on', intensity: 100}\n"
+    "- 'change lights to green' → {action: 'on', color: 'green'}\n"
+    "- 'dim to 30%' → {action: 'on', intensity: 30}"
 )
 
 # Color name to RGB mapping (common colors)
@@ -131,22 +139,22 @@ schema: dict[str, Any] = {
             "enum": ["on", "off"],
             "description": (
                 "Action to perform: 'on' to turn LED on, 'off' to turn LED off. "
-                "When 'on' is used, color and intensity parameters are applied if provided."
+                "REQUIRED parameter."
             ),
         },
         "color": {
             "type": "string",
             "description": (
-                "Color name (case-insensitive). Examples: 'red', 'blue', 'green', 'yellow', 'purple', "
-                "'cyan', 'white', 'orange', 'pink', 'magenta', 'lime', 'teal', 'navy'. "
-                "DO NOT use RGB values or hex codes - only color names."
+                "Color name (case-insensitive). OPTIONAL - only include if user explicitly mentions a color. "
+                "Valid colors: 'red', 'blue', 'green', 'yellow', 'purple', 'cyan', 'white', 'orange', 'pink', "
+                "'magenta', 'lime', 'teal', 'navy'. DO NOT use RGB values or hex codes."
             ),
         },
         "intensity": {
             "type": "number",
             "description": (
-                "Brightness intensity as percentage (0-100). "
-                "Examples: 0 (off), 50 (half brightness), 100 (full brightness)."
+                "Brightness intensity as NUMBER (not string) from 0 to 100. OPTIONAL - only include if user explicitly mentions "
+                "brightness/intensity/percentage. Convert words: 'max'/'full' → 100, 'half'/'medium' → 50, 'min' → 0."
             ),
         },
     },
