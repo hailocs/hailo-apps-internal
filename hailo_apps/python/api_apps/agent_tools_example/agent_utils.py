@@ -181,54 +181,51 @@ def create_system_prompt(tools: list[dict[str, Any]]) -> str:
     return f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant.
 
 # Available Tools
-You are provided with function signatures within <tools></tools> XML tags:
 <tools>
 {tools_json}
 </tools>
 
-CRITICAL RULES - READ CAREFULLY:
-1. ONLY these tools exist and can be called: {tool_names_list}
-2. NEVER invent, create, or call tools with different names - if a tool name is not in the list above, it does NOT exist
-3. For greetings ("hi", "hello", etc.), small talk, or casual conversation: respond directly WITHOUT calling any tool
-4. If the user's request doesn't match any available tool's purpose, respond naturally WITHOUT calling a tool
+Available tools: {tool_names_list}
 
-# When to Call a Tool
-Call a tool ONLY when:
-- The user's request clearly requires a specific action from one of these tools: {tool_names_list}
-- You have all required parameters for that specific tool
-- The request matches the exact purpose of one of the available tools
+# CRITICAL: Your Role vs Tool Role
+- YOU are the ASSISTANT - you CALL tools, you do NOT respond as tools
+- YOU output <tool_call> tags to REQUEST tool execution
+- The SYSTEM executes the tool and sends you <tool_response> tags
+- YOU then respond to the user based on the tool result
+- NEVER output <tool_response> tags yourself - that's what the system sends TO you
+- ONLY output <tool_call> tags when you want to use a tool
 
-# When NOT to Call a Tool (IMPORTANT)
-DO NOT call a tool for:
-- Greetings: "hi", "hello", "good morning", "hey", etc. → Just respond with text, NO tool call
-- Small talk: casual conversation, questions about you, etc. → Just respond with text, NO tool call
-- Questions unrelated to available tools → Just respond with text, NO tool call
-- Requests that don't match any tool's purpose → Just respond with text, NO tool call
+# Tool Usage Rules
+- DEFAULT: If a tool can handle the request, CALL IT using <tool_call>
+- ONLY these tools exist: {tool_names_list}. NEVER invent or call tools with different names
+- When unsure, CALL THE TOOL (better to use it than skip it)
+- Skip tools ONLY for: greetings, small talk, meta questions about capabilities, or clearly conversational requests with no tool match
 
-# Tool Call Format
-If you decide a tool call is needed:
-1. Use ONLY double quotes (") in JSON, NEVER single quotes (')
-2. Ensure arguments are a JSON object, NOT a JSON string
-3. Wrap the JSON in <tool_call></tool_call> XML tags
-4. Use EXACTLY one of these tool names: {tool_names_list}
-
-Example:
+# How to Call a Tool
+When you need to use a tool, output ONLY this format:
 <tool_call>
-{{"name": "{tool_names[0]}", "arguments": {{"param1": "value1"}}}}
+{{"name": "<function-name>", "arguments": <args-json-object>}}
 </tool_call>
 
-# Responding to Tool Results
-When you receive a <tool_response>, respond directly to the user with a concise, natural message based on the ACTUAL tool result data:
-- DO NOT thank the tool or acknowledge the tool call
-- DO NOT repeat technical details like "tool call was successful"
-- DO read the tool result JSON carefully and respond based on what it actually contains
-- DO use the specific data from the tool result (e.g., "result", "message", "state" fields)
-- DO NOT invent or assume what the tool result contains - use only what is actually in the JSON
+Rules:
+- Use double quotes (") in JSON, not single quotes
+- Arguments must be a JSON object, not a string
+- Wrap JSON in <tool_call></tool_call> tags
+- Use only these tool names: {tool_names_list}
+- After calling, wait for the system to send you <tool_response>
 
-Example: If the tool returns {{"ok": true, "result": 2}}, respond based on that result: "The result is 2."
-Example: If the tool returns {{"ok": true, "message": "Operation completed"}}, respond based on that message.
+# How to Handle Tool Results
+When the system sends you <tool_response>:
+- Extract meaningful data from the JSON (e.g., "result", "message", "angle", "state", "stdout", "stderr")
+- Present the result directly and concisely
+- Do not thank the user, thank the tool, or acknowledge the tool call
 
-Remember: If unsure whether to call a tool, respond normally without calling a tool.
+# Decision Process - Think Before Responding
+BEFORE each response, think about whether to use a tool:
+1. Analyze the user's request carefully
+2. Check if any available tool ({tool_names_list}) can handle it
+3. Determine if tool execution is needed or you can answer directly
+4. If no tool needed: respond directly with text
 
 """
 
@@ -323,6 +320,19 @@ class StreamingTextFilter:
         if self.inside_text_tag and not self.inside_tool_call_tag and self.buffer:
             output += self.buffer
             self.buffer = ""
+        elif not self.inside_text_tag and not self.inside_tool_call_tag:
+            # If not inside any tag, the text is still valid for streaming.
+            # To avoid printing partial tags, we find the last complete chunk of text.
+            # A simple heuristic: find the start of the next potential tag.
+            next_tag_start = self.buffer.find('<')
+            if next_tag_start != -1:
+                # Output text up to the potential start of a tag
+                output += self.buffer[:next_tag_start]
+                self.buffer = self.buffer[next_tag_start:]
+            else:
+                # No partial tag found, output the whole buffer
+                output += self.buffer
+                self.buffer = ""
 
         return output
 
@@ -377,10 +387,10 @@ def parse_function_call(response: str) -> dict[str, Any] | None:
     """
     Parse function call from LLM response.
 
-    Supports multiple formats:
-    1. XML-wrapped: <tool_call>{...}</tool_call>
-    2. JSON fenced block: ```json {...} ```
-    3. Raw inline JSON: {"name": "...", "arguments": {...}}
+    ONLY supports XML-wrapped format:
+    <tool_call>
+    {"name": "...", "arguments": {...}}
+    </tool_call>
 
     Args:
         response: Raw response string from LLM
@@ -388,53 +398,118 @@ def parse_function_call(response: str) -> dict[str, Any] | None:
     Returns:
         Parsed function call dict with 'name' and 'arguments' keys, or None if not found
     """
-    # 1) XML-wrapped function call
-    if "<tool_call>" in response and "</tool_call>" in response:
+    def validate_and_fix_call(call: dict[str, Any]) -> dict[str, Any] | None:
+        """Validate that call has required fields and fix nested JSON."""
+        if not isinstance(call, dict):
+            return None
+        # Must have 'name' field
+        if "name" not in call or not call.get("name"):
+            return None
+        # Must have 'arguments' field
+        if "arguments" not in call:
+            return None
+        # Fix nested JSON in arguments
+        if isinstance(call.get("arguments"), str):
+            try:
+                call["arguments"] = json.loads(call["arguments"])  # nested JSON fix
+            except Exception:
+                pass
+        # Ensure arguments is a dict
+        if not isinstance(call.get("arguments"), dict):
+            return None
+        return call
+
+    # ONLY support XML-wrapped function call
+    if "<tool_call>" in response:
         try:
             start = response.find("<tool_call>") + len("<tool_call>")
-            end = response.find("</tool_call>")
-            json_str = response[start:end].strip().replace("'", '"')
-            call = json.loads(json_str)
-            if isinstance(call.get("arguments"), str):
-                try:
-                    call["arguments"] = json.loads(call["arguments"])  # nested JSON fix
-                except Exception:
-                    pass
-            return call
-        except Exception:
-            return None
+            # Find closing tag, or use brace matching if missing
+            end = response.find("</tool_call>", start)
+            if end == -1:
+                # No closing tag, use brace matching
+                json_str = response[start:].strip()
+                # Find the complete JSON object by matching braces
+                brace_count = 0
+                json_end = -1
+                for i, char in enumerate(json_str):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            json_end = i + 1
+                            break
+                if json_end > 0:
+                    json_str = json_str[:json_end]
+                else:
+                    return None
+            else:
+                json_str = response[start:end].strip()
 
-    # 2) JSON fenced block ```json ... ```
-    m = re.search(r"```json\s*(\{.*?})\s*```", response, re.DOTALL)
-    if m:
-        try:
-            json_str = m.group(1).strip().replace("'", '"')
+            json_str = json_str.replace("'", '"')
             call = json.loads(json_str)
-            if isinstance(call.get("arguments"), str):
-                try:
-                    call["arguments"] = json.loads(call["arguments"])  # nested JSON fix
-                except Exception:
-                    pass
-            return call
-        except Exception:
-            return None
-
-    # 3) Raw inline JSON fallback
-    m = re.search(r'\{"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]+\})', response)
-    if m:
-        try:
-            json_str = response[m.start():m.end()].replace("'", '"')
-            call = json.loads(json_str)
-            if isinstance(call.get("arguments"), str):
-                try:
-                    call["arguments"] = json.loads(call["arguments"])  # nested JSON fix
-                except Exception:
-                    pass
-            return call
+            return validate_and_fix_call(call)
         except Exception:
             return None
 
     return None
+
+
+# ============================================================================
+# Streaming Generation
+# ============================================================================
+
+
+def generate_and_stream_response(
+    llm: LLM,
+    prompt: list[dict[str, Any]],
+    prefix: str = "Assistant: ",
+    debug_mode: bool = False,
+) -> str:
+    """
+    Generate response from LLM and stream it to stdout with filtering.
+
+    Handles streaming tokens, filtering XML tags, and cleaning up remaining content.
+
+    Args:
+        llm: The LLM instance to use for generation
+        prompt: List of message dictionaries to send to the LLM
+        prefix: Prefix to print before streaming (default: "Assistant: ")
+        debug_mode: If True, don't filter tokens (show raw output)
+
+    Returns:
+        Raw response string (before filtering, for tool call parsing)
+    """
+    print(prefix, end="", flush=True)
+    response_parts: list[str] = []
+    token_filter = StreamingTextFilter(debug_mode=debug_mode)
+
+    for token in llm.generate(
+        prompt=prompt,
+        temperature=config.TEMPERATURE,
+        seed=config.SEED,
+        max_generated_tokens=config.MAX_GENERATED_TOKENS,
+    ):
+        response_parts.append(token)
+        # Filter and print clean tokens on the fly
+        cleaned_chunk = token_filter.process_token(token)
+        if cleaned_chunk:
+            print(cleaned_chunk, end="", flush=True)
+
+    # Print any remaining content after streaming
+    remaining = token_filter.get_remaining()
+    if remaining:
+        # Final cleanup: remove any remaining XML tags and partial tags
+        if not debug_mode:
+            # Remove complete tags and partial tags (handles cases like </text>, </text, text>, etc.)
+            remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
+            remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
+            remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
+        print(remaining, end="", flush=True)
+    print()  # New line after streaming completes
+
+    raw_response = "".join(response_parts)
+    return raw_response
 
 
 # ============================================================================

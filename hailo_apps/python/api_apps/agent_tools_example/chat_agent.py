@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 import json
 import logging
-import re
 import sys
 from pathlib import Path
 
@@ -110,6 +109,7 @@ def main() -> None:
         # Single conversation loop; type '/exit' to quit.
         # Only load the selected tool to save context
         system_text = agent_utils.create_system_prompt([selected_tool])
+        logger.debug("SYSTEM PROMPT:\n%s", system_text)
         # Track if we need to send system prompt (first time or after context clear)
         need_system_prompt = True
 
@@ -142,6 +142,10 @@ def main() -> None:
             context_cleared = agent_utils.check_and_trim_context(llm)
             if context_cleared:
                 need_system_prompt = True
+                logger.info("Context cleared due to token usage threshold")
+
+            # Log user input
+            logger.debug("USER INPUT: %s", user_text)
 
             # Build prompt: include system message if needed
             # LLM maintains context internally, so we only send new messages
@@ -151,50 +155,27 @@ def main() -> None:
                     agent_utils.messages_user(user_text),
                 ]
                 need_system_prompt = False
-                logger.debug("Sending prompt (with system):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+                logger.debug("Sending prompt to LLM (with system prompt):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
             else:
                 # Pass only the new user message (LLM maintains context internally)
                 prompt = [agent_utils.messages_user(user_text)]
-                logger.debug("Sending user message:\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+                logger.debug("Sending user message to LLM:\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
 
             # Use generate() for streaming output with on-the-fly filtering
-            print("Assistant: ", end="", flush=True)
-            response_parts: list[str] = []
-            # Only filter in non-debug mode
             is_debug = logger.level == logging.DEBUG
-            token_filter = agent_utils.StreamingTextFilter(debug_mode=is_debug)
-
-            for token in llm.generate(
+            raw_response = agent_utils.generate_and_stream_response(
+                llm=llm,
                 prompt=prompt,
-                temperature=config.TEMPERATURE,
-                seed=config.SEED,
-                max_generated_tokens=config.MAX_GENERATED_TOKENS,
-            ):
-                response_parts.append(token)
-                # Filter and print clean tokens on the fly
-                cleaned_chunk = token_filter.process_token(token)
-                if cleaned_chunk:
-                    print(cleaned_chunk, end="", flush=True)
-
-            # Print any remaining content after streaming
-            remaining = token_filter.get_remaining()
-            if remaining:
-                # Final cleanup: remove any remaining XML tags and partial tags
-                if not is_debug:
-                    # Remove complete tags and partial tags (handles cases like </text>, </text, text>, etc.)
-                    remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
-                    remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
-                    remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
-                print(remaining, end="", flush=True)
-            print()  # New line after streaming completes
-
-            raw_response = "".join(response_parts)
-            agent_utils.print_context_usage(llm)
+                prefix="Assistant: ",
+                debug_mode=is_debug,
+            )
+            logger.debug("LLM RAW RESPONSE (before filtering):\n%s", raw_response)
 
             # Parse tool call from raw response (before cleaning, as tool_call parsing needs the XML tags)
             tool_call = agent_utils.parse_function_call(raw_response)
             if tool_call is None:
                 # No tool call; assistant answered directly
+                logger.debug("No tool call detected - LLM responded directly")
                 # Response already printed above (streaming with filtering)
                 # Continue to next user input (LLM already has the response in context)
                 continue
@@ -205,8 +186,8 @@ def main() -> None:
             # Execute tool call
             tool_name = str(tool_call.get("name", "")).strip()
             args = tool_call.get("arguments", {})
-            logger.info(f"Calling tool: {tool_name}")
-            logger.debug(f"Tool call details - name: {tool_name}")
+            logger.info("TOOL CALL: %s", tool_name)
+            logger.debug("Tool call details - name: %s", tool_name)
             logger.debug("Tool call arguments:\n%s", json.dumps(args, indent=2, ensure_ascii=False))
 
             selected = tools_lookup.get(tool_name)
@@ -220,17 +201,25 @@ def main() -> None:
                 continue
             try:
                 result = runner(args)  # type: ignore[misc]
-                logger.debug("Tool result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+                logger.debug("TOOL EXECUTION RESULT:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+                # Log summary at INFO level
+                if result.get("ok"):
+                    logger.info("Tool execution: SUCCESS")
+                    if "message" in result:
+                        logger.info("Tool message: %s", result.get("message"))
+                else:
+                    logger.info("Tool execution: FAILED - %s", result.get("error", "Unknown error"))
             except Exception as exc:
                 result = {"ok": False, "error": f"Tool raised exception: {exc}"}
-                logger.error(f"Tool execution failed: {exc}")
-                logger.debug("Tool error result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+                logger.error("Tool execution raised exception: %s", exc)
+                logger.debug("Tool exception result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+                logger.info("Tool execution: FAILED - Exception raised")
 
             # Format tool result according to Qwen 2.5 Coder format: wrap in <tool_response> XML tags
             # Convert result dict to JSON string for consistent formatting
             tool_result_text = json.dumps(result, ensure_ascii=False)
             tool_response_message = f"<tool_response>{tool_result_text}</tool_response>"
-            logger.debug(f"Sending tool result: {tool_response_message}")
+            logger.debug("SENDING TOOL RESULT TO LLM:\n%s", tool_response_message)
 
             # Check if we need to trim context before adding tool result
             context_cleared = agent_utils.check_and_trim_context(llm)
@@ -248,52 +237,44 @@ def main() -> None:
                     agent_utils.messages_user(tool_response_message),
                 ]
                 need_system_prompt = False
-                logger.debug("Sending tool result (context cleared):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+                logger.debug("Sending prompt to LLM (context was cleared, includes system + user + tool result):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
             else:
                 # LLM has context, just send the tool result
                 prompt = [agent_utils.messages_user(tool_response_message)]
-                logger.debug("Sending tool result:\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+                logger.debug("Sending tool result to LLM (context maintained):\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
 
             # Use generate() for streaming output with on-the-fly filtering
-            print("Assistant (final): ", end="", flush=True)
-            final_response_parts: list[str] = []
-            # Only filter in non-debug mode
             is_debug = logger.level == logging.DEBUG
-            final_filter = agent_utils.StreamingTextFilter(debug_mode=is_debug)
-
-            for token in llm.generate(
+            final_raw_response = agent_utils.generate_and_stream_response(
+                llm=llm,
                 prompt=prompt,
-                temperature=config.TEMPERATURE,
-                seed=config.SEED,
-                max_generated_tokens=config.MAX_GENERATED_TOKENS,
-            ):
-                final_response_parts.append(token)
-                # Filter and print clean tokens on the fly
-                cleaned_chunk = final_filter.process_token(token)
-                if cleaned_chunk:
-                    print(cleaned_chunk, end="", flush=True)
-
-            # Print any remaining content after streaming
-            remaining = final_filter.get_remaining()
-            if remaining:
-                # Final cleanup: remove any remaining XML tags and partial tags
-                if not is_debug:
-                    # Remove complete tags and partial tags (handles cases like </text>, </text, text>, etc.)
-                    remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
-                    remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
-                    remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
-                print(remaining, end="", flush=True)
-            print()  # New line after streaming completes
-
-            agent_utils.print_context_usage(llm)
+                prefix="Assistant (final): ",
+                debug_mode=is_debug,
+            )
 
     finally:
-        # Cleanup
+        # Cleanup: call tool cleanup if available
+        if tool_module and hasattr(tool_module, "cleanup_tool"):
+            try:
+                tool_module.cleanup_tool()
+            except Exception as e:
+                logger.debug("Tool cleanup failed: %s", e)
+
+        # Cleanup Hailo resources with error handling
         try:
             llm.clear_context()
+        except Exception as e:
+            logger.debug("Error clearing LLM context: %s", e)
+
+        try:
             llm.release()
-        finally:
+        except Exception as e:
+            logger.debug("Error releasing LLM: %s", e)
+
+        try:
             vdevice.release()
+        except Exception as e:
+            logger.debug("Error releasing VDevice: %s", e)
 
 
 if __name__ == "__main__":

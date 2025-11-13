@@ -9,8 +9,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from hailo_apps.python.api_apps.agent_tools_example.hardware_interface import create_servo_controller
-from hailo_apps.python.api_apps.agent_tools_example import config
+# Make imports more robust
+try:
+    # Try relative import first
+    from .hardware_interface import create_servo_controller
+    from . import config
+except ImportError:
+    # Fallback to absolute import if relative fails
+    from hardware_interface import create_servo_controller
+    import config
 
 name: str = "servo"
 
@@ -28,11 +35,18 @@ description: str = (
     "The tool supports two modes: 'absolute' (set to specific angle) and 'relative' (move by delta angle). "
     "Angle values are in degrees. Valid angle range is -90 to 90 degrees. "
     "Examples: 'move servo to 45 degrees' → mode='absolute', angle=45. "
-    "Examples: 'rotate servo 30 degrees' → mode='relative', angle=30. "
+    "Examples: 'rotate servo by 30 degrees' → mode='relative', angle=30. "
     "Examples: 'set servo to -45' → mode='absolute', angle=-45. "
     "Examples: 'move servo by -20 degrees' → mode='relative', angle=-20. "
     "Examples: 'turn servo left 15 degrees' → mode='relative', angle=-15. "
     "Examples: 'position servo at center' → mode='absolute', angle=0."
+    "Examples: 'home servo' → mode='absolute', angle=0. "
+    "RESPONSE FORMAT: When the tool returns a result, state it directly and factually. "
+    "NEVER say 'thank you', 'thanks', 'thank you for providing', or any thanking phrases. "
+    "NEVER acknowledge the tool call or tool response. "
+    "Just state the result (e.g., 'Servo moved to 90.0°' or 'Servo moved by -12.0° to 78.0°'). "
+    "BAD: 'Thank you for providing the tool response. The servo was moved to 90.0°' "
+    "GOOD: 'Servo moved to 90.0°'"
 )
 
 # Initialize servo controller (hardware or simulator) only when tool is selected
@@ -76,6 +90,18 @@ def _get_servo_controller() -> Any:
     if not _initialized:
         initialize_tool()
     return _servo_controller
+
+
+def cleanup_tool() -> None:
+    """Clean up servo controller resources."""
+    global _servo_controller
+    if _servo_controller is not None and hasattr(_servo_controller, "cleanup"):
+        try:
+            _servo_controller.cleanup()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug("Error during servo controller cleanup: %s", e)
 
 
 # Minimal JSON-like schema to assist prompting/validation
