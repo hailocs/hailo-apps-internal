@@ -343,9 +343,9 @@ The RGB LED tool supports both real hardware (Adafruit NeoPixel) and browser-bas
 
 ### Servo Tool
 
-The servo tool supports both real hardware (gpiozero Servo) and browser-based simulation:
+The servo tool supports both real hardware (hardware PWM) and browser-based simulation:
 
-- **Real Hardware**: Uses `gpiozero` library for Raspberry Pi GPIO control
+- **Real Hardware**: Uses `rpi-hardware-pwm` library for hardware PWM control on Raspberry Pi
 - **Simulator**: Flask-based web interface with visual servo arm display
 - **Configuration**: Set `HARDWARE_MODE` in `config.py` to "real" or "simulator"
 - **Features**: Absolute positioning (-90° to 90°), relative movement, angle clamping
