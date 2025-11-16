@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger("test_runner")
 
 # Configuration file path
-CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "test_config.yaml"
+CONFIG_PATH = Path(__file__).parent / "test_config.yaml"
 
 
 def detect_and_set_environment():
