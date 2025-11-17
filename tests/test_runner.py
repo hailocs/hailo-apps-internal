@@ -222,6 +222,12 @@ def load_config() -> Dict:
     merged_config["human_verification"] = all_configs.get("human_verification", {})
     merged_config["resources"] = all_configs.get("resources", {})
     
+    # Copy pipeline special tests from bottom section
+    merged_config["pipeline_special_tests"] = all_configs.get("pipeline_special_tests", {})
+    
+    # Copy test profiles config from bottom section
+    merged_config["test_profiles_config"] = all_configs.get("test_profiles_config", {})
+    
     # Add enabled flags for special tests from control section
     special_tests = control_config.get("special_tests", {})
     if "hailo8l_on_hailo8_tests" in merged_config:
@@ -247,6 +253,7 @@ def resolve_test_selection(config: Dict, detected_hailo_arch: Optional[str]) -> 
     """Resolve what tests to run based on profiles and test_selection."""
     test_selection = config.get("test_selection", {})
     test_profiles = config.get("test_profiles", {})
+    test_profiles_config = config.get("test_profiles_config", {})
     
     # Find enabled profiles
     enabled_profiles = [
@@ -259,16 +266,21 @@ def resolve_test_selection(config: Dict, detected_hailo_arch: Optional[str]) -> 
     selected_architectures = test_selection.get("architectures", "all")
     selected_run_methods = test_selection.get("run_methods", "all")
     selected_test_suites = test_selection.get("test_suites", ["default"])
+    run_method_test_suites = test_selection.get("run_method_test_suites", {})
     
     # Override based on enabled profiles
     for profile_name in enabled_profiles:
-        profile = test_profiles[profile_name]
-        logger.info(f"Active profile: {profile_name} - {profile.get('description', '')}")
+        profile_config = test_profiles_config.get(profile_name, {})
+        logger.info(f"Active profile: {profile_name} - {profile_config.get('description', '')}")
         
-        if "pipelines" in profile:
-            selected_pipelines = profile["pipelines"]
-        if "architectures" in profile:
-            selected_architectures = profile["architectures"]
+        if "pipelines" in profile_config:
+            selected_pipelines = profile_config["pipelines"]
+        if "architectures" in profile_config:
+            selected_architectures = profile_config["architectures"]
+        if "run_methods" in profile_config:
+            selected_run_methods = profile_config["run_methods"]
+        if "run_method_test_suites" in profile_config:
+            run_method_test_suites = profile_config["run_method_test_suites"]
     
     # Resolve "all" to actual lists
     if selected_pipelines == "all":
@@ -306,15 +318,29 @@ def resolve_test_selection(config: Dict, detected_hailo_arch: Optional[str]) -> 
         "architectures": selected_architectures,
         "run_methods": selected_run_methods,
         "test_suites": selected_test_suites,
+        "run_method_test_suites": run_method_test_suites,
     }
 
 
-def generate_test_cases(config: Dict, selection: Dict) -> List[Dict]:
-    """Generate test cases based on configuration and selection."""
+def generate_test_cases(config: Dict, selection: Dict, host_arch: str) -> List[Dict]:
+    """Generate test cases based on configuration and selection.
+    
+    Args:
+        config: Full test configuration
+        selection: Resolved test selection
+        host_arch: Detected host architecture (for conditional RPI camera)
+    
+    Returns:
+        List of test case dictionaries
+    """
     test_cases = []
     pipelines = config.get("pipelines", {})
     exec_config = config.get("execution", {})
     default_run_time = exec_config.get("default_run_time", 10)
+    
+    # Get per-run-method test suites (if specified)
+    run_method_test_suites = selection.get("run_method_test_suites", {})
+    default_test_suites = selection.get("test_suites", ["default"])
     
     for pipeline_name in selection["pipelines"]:
         if pipeline_name not in pipelines:
@@ -332,9 +358,32 @@ def generate_test_cases(config: Dict, selection: Dict) -> List[Dict]:
                 logger.info(f"No models for {pipeline_name} on {architecture}")
                 continue
             
-            for model in models:
-                for run_method in selection["run_methods"]:
-                    for test_suite in selection["test_suites"]:
+            # Get default model (first model) for cli/module
+            default_model = models[0] if models else None
+            
+            for run_method in selection["run_methods"]:
+                # Get test suites for this run method (use per-method if specified, else default)
+                test_suites = run_method_test_suites.get(run_method, default_test_suites)
+                
+                # Filter out rpi_camera if host is not rpi
+                if "rpi_camera" in test_suites and host_arch != "rpi":
+                    test_suites = [ts for ts in test_suites if ts != "rpi_camera"]
+                    logger.info(f"RPI camera test skipped for {run_method} (host is {host_arch}, not rpi)")
+                
+                # Determine which models to use based on run method
+                if run_method == "pythonpath":
+                    # Pythonpath: all models with all test suites
+                    models_to_test = models
+                elif run_method in ["cli", "module"]:
+                    # CLI/Module: only default model with test suites
+                    models_to_test = [default_model] if default_model else []
+                else:
+                    # Unknown run method, use all models
+                    models_to_test = models
+                
+                # Generate test cases
+                for model in models_to_test:
+                    for test_suite in test_suites:
                         test_cases.append({
                             "pipeline": pipeline_name,
                             "pipeline_config": pipeline,
@@ -345,6 +394,46 @@ def generate_test_cases(config: Dict, selection: Dict) -> List[Dict]:
                             "run_time": default_run_time,
                         })
     
+    # Add pipeline-specific special tests
+    if config.get("special_tests", {}).get("pipeline_specific", False):
+        pipeline_special_tests = config.get("pipeline_special_tests", {})
+        for pipeline_name in selection["pipelines"]:
+            if pipeline_name not in pipelines:
+                continue
+            
+            pipeline_specials = pipeline_special_tests.get(pipeline_name, {})
+            if not pipeline_specials.get("enabled", False):
+                continue
+            
+            pipeline = pipelines[pipeline_name]
+            special_tests = pipeline_specials.get("tests", [])
+            
+            for architecture in selection["architectures"]:
+                models = get_models_for_architecture(pipeline, architecture)
+                if not models:
+                    continue
+                
+                for special_test in special_tests:
+                    test_suite = special_test.get("test_suite")
+                    allowed_methods = special_test.get("run_methods", ["pythonpath"])
+                    
+                    for run_method in allowed_methods:
+                        if run_method not in selection["run_methods"]:
+                            continue
+                        
+                        # For special tests, use all models (or could be configured differently)
+                        for model in models:
+                            test_cases.append({
+                                "pipeline": pipeline_name,
+                                "pipeline_config": pipeline,
+                                "architecture": architecture,
+                                "model": model,
+                                "run_method": run_method,
+                                "test_suite": test_suite,
+                                "run_time": default_run_time,
+                                "special_test": True,
+                            })
+    
     logger.info(f"Generated {len(test_cases)} test cases")
     return test_cases
 
@@ -354,7 +443,7 @@ logger.info("Initializing test runner...")
 _host_arch, _hailo_arch = detect_and_set_environment()
 _config = load_config()
 _selection = resolve_test_selection(_config, _hailo_arch)
-_test_cases = generate_test_cases(_config, _selection)
+_test_cases = generate_test_cases(_config, _selection, _host_arch)
 
 
 @pytest.mark.parametrize("test_case", _test_cases, ids=lambda tc: f"{tc['pipeline']}_{tc['architecture']}_{tc['model']}_{tc['run_method']}_{tc['test_suite']}")

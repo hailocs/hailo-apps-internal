@@ -24,6 +24,8 @@ logging:
 # What to run - choose one of these options:
 # Option 1: Use test profiles (quick selection)
 test_profiles:
+  default_test_case:
+    enabled: true  # Default test case: all pipelines, pythonpath with default/usb/rpi, cli/module with default only
   all:
     enabled: false
   quick:
@@ -50,7 +52,12 @@ test_selection:
   pipelines: "all"  # "all" or list of pipeline names from bottom section
   architectures: "all"  # "all" or ["hailo8", "hailo8l", "hailo10h"]
   run_methods: "all"  # "all" or ["module", "pythonpath", "cli"]
-  test_suites: ["default", "video_file"]  # List of test suite names from bottom section
+  test_suites: ["default", "usb_camera", "rpi_camera"]  # List of test suite names from bottom section
+  # Per-run-method test suites (overrides test_suites if specified)
+  run_method_test_suites:
+    pythonpath: ["default", "usb_camera", "rpi_camera"]  # All video sources for pythonpath
+    cli: ["default"]  # Default, USB and RPi cameras for cli
+    module: ["default"]  # Default, USB and RPi cameras for module
 
 # Enable/disable specific pipelines (from bottom section)
 enabled_pipelines:
@@ -76,6 +83,7 @@ special_tests:
   retraining: true
   human_verification: true
   sanity_checks: true
+  pipeline_specific: true  # Enable pipeline-specific special tests
 
 # ============================================================================
 # END OF CONTROL SECTION
@@ -97,21 +105,7 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py"
     cli: "hailo-detect"
     models:
-      hailo8:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo8l:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo10h:
+      default:
         - yolov5m_wo_spp
         - yolov6n
         - yolov8s
@@ -126,12 +120,7 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py"
     cli: "hailo-pose"
     models:
-      hailo8:
-        - yolov8s_pose
-        - yolov8m_pose
-      hailo8l:
-        - yolov8s_pose
-      hailo10h:
+      default:
         - yolov8s_pose
         - yolov8m_pose
 
@@ -142,11 +131,7 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/depth/depth_pipeline.py"
     cli: "hailo-depth"
     models:
-      hailo8:
-        - scdepthv3
-      hailo8l:
-        - scdepthv3
-      hailo10h:
+      default:
         - scdepthv3
 
   instance_segmentation:
@@ -156,13 +141,9 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py"
     cli: "hailo-seg"
     models:
-      hailo8:
+      default:
         - yolov5n_seg
-      hailo8l:
         - yolov5m_seg
-        - yolov5n_seg
-      hailo10h:
-        - yolov5n_seg
 
   simple_detection:
     name: "simple_detection"
@@ -171,11 +152,7 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/detection_simple/detection_pipeline_simple.py"
     cli: "hailo-detect-simple"
     models:
-      hailo8:
-        - yolov6n
-      hailo8l:
-        - yolov6n
-      hailo10h:
+      default:
         - yolov6n
 
   face_recognition:
@@ -190,7 +167,7 @@ pipelines:
         - arcface_mobilefacenet
       hailo8l:
         - scrfd_2.5g
-        - arcface_mobilefacenet_h8l
+        - arcface_mobilefacenet
       hailo10h:
         - scrfd_10g
         - arcface_mobilefacenet
@@ -201,28 +178,11 @@ pipelines:
     module: "hailo_apps.python.pipeline_apps.multisource.multisource_pipeline"
     script: "hailo_apps/python/pipeline_apps/multisource/multisource_pipeline.py"
     cli: "hailo-multisource"
+    # Multisource uses simple_detection pipeline internally, which uses yolov6n
+    # It doesn't accept --hef-path - it uses get_resource_path for SIMPLE_DETECTION_PIPELINE
     models:
-      hailo8:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo8l:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo10h:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
+      default:
+        - yolov6n  # Only yolov6n - multisource uses simple_detection which only supports yolov6n
 
   reid_multisource:
     name: "reid_multisource"
@@ -230,28 +190,15 @@ pipelines:
     module: "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource_pipeline"
     script: "hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource_pipeline.py"
     cli: "hailo-reid"
+    # REID multisource uses face detection and face recognition models internally
+    # It doesn't accept --hef-path - it uses get_resource_path for:
+    # - scrfd (face detection) - from FACE_DETECTION_PIPELINE
+    # - arcface_mobilefacenet (face recognition) - from FACE_RECOGNITION_PIPELINE
+    # The --hef-path argument is ignored by this pipeline
+    # We use "default" as a placeholder model name for test framework compatibility
     models:
-      hailo8:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo8l:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
-      hailo10h:
-        - yolov5m_wo_spp
-        - yolov6n
-        - yolov8s
-        - yolov8m
-        - yolov11n
-        - yolov11s
+      default:
+        - default  # Placeholder - pipeline uses internal face detection/recognition models
 
   tiling:
     name: "tiling"
@@ -260,14 +207,11 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/tiling/tiling_pipeline.py"
     cli: "hailo-tiling"
     models:
-      hailo8:
+      default:
         - yolov6n
+      hailo8:
         - ssd_mobilenet_v1_visdrone
       hailo8l:
-        - yolov6n
-        - ssd_mobilenet_v1_visdrone
-      hailo10h:
-        - yolov6n
         - ssd_mobilenet_v1_visdrone
 
 # Run methods - all available run methods
@@ -326,6 +270,15 @@ test_suites:
 
 # Test profiles - all available profiles with their configurations
 test_profiles_config:
+  default_test_case:
+    description: "Default test case: all pipelines, all run methods with default/usb/rpi cameras"
+    pipelines: "all"
+    architectures: "all"
+    run_methods: ["pythonpath", "cli", "module"]
+    run_method_test_suites:
+      pythonpath: ["default", "usb_camera", "rpi_camera"]
+      cli: ["default", "usb_camera", "rpi_camera"]
+      module: ["default", "usb_camera", "rpi_camera"]
   all:
     description: "Run all available tests"
     includes:
@@ -369,41 +322,12 @@ test_profiles_config:
       - retraining
 
 # Hailo8L on Hailo8 compatibility tests configuration
+# This section references models from pipeline configurations (hailo8l architecture)
+# No duplication - models are taken from the pipelines section above
 hailo8l_on_hailo8_tests:
   log_dir: "logs/h8l_on_h8_comprehensive"
-  models:
-    detection:
-      - yolov5m_wo_spp
-      - yolov6n
-      - yolov8s
-      - yolov8m
-      - yolov11n
-      - yolov11s
-    pose_estimation:
-      - yolov8s_pose
-    segmentation:
-      - yolov5m_seg
-      - yolov5n_seg
-    face_recognition:
-      - scrfd_2.5g
-      - arcface_mobilefacenet_h8l
-    multisource:
-      - yolov5m_wo_spp
-      - yolov6n
-      - yolov8s
-      - yolov8m
-      - yolov11n
-      - yolov11s
-    reid:
-      - yolov5m_wo_spp
-      - yolov6n
-      - yolov8s
-      - yolov8m
-      - yolov11n
-      - yolov11s
-    tiling:
-      - yolov6n
-      - ssd_mobilenet_v1_visdrone
+  # Models are automatically taken from pipelines[<pipeline_name>].models.hailo8l
+  # This tests hailo8l models running on hailo8 devices for compatibility
 
 # Retraining test configuration
 retraining:
@@ -438,6 +362,7 @@ sanity_checks:
     - example.mp4
     - example_640.mp4
     - face_recognition.mp4
+    - tiling_visdrone_720p.mp4
     - libdepth_postprocess.so
     - libyolo_hailortpp_postprocess.so
     - libyolov5seg_postprocess.so
@@ -468,6 +393,94 @@ human_verification:
     - name: "tiling"
       description: "Tiling App"
 
+# Pipeline-specific special tests
+# These tests are run in addition to the standard tests for each pipeline
+pipeline_special_tests:
+  detection:
+    description: "Special tests for detection pipeline"
+    enabled: true
+    tests:
+      - name: "labels_test"
+        description: "Test with labels JSON file"
+        test_suite: "labels"
+        run_methods: ["pythonpath"]
+      - name: "disable_sync_test"
+        description: "Test with sync disabled"
+        test_suite: "disable_sync"
+        run_methods: ["pythonpath"]
+  
+  pose_estimation:
+    description: "Special tests for pose estimation pipeline"
+    enabled: true
+    tests:
+      - name: "show_fps_test"
+        description: "Test with FPS display"
+        test_suite: "show_fps"
+        run_methods: ["pythonpath"]
+  
+  depth:
+    description: "Special tests for depth pipeline"
+    enabled: true
+    tests:
+      - name: "disable_callback_test"
+        description: "Test with callback disabled"
+        test_suite: "disable_callback"
+        run_methods: ["pythonpath"]
+  
+  instance_segmentation:
+    description: "Special tests for instance segmentation pipeline"
+    enabled: true
+    tests:
+      - name: "labels_test"
+        description: "Test with labels JSON file"
+        test_suite: "labels"
+        run_methods: ["pythonpath"]
+  
+  simple_detection:
+    description: "Special tests for simple detection pipeline"
+    enabled: true
+    tests: []
+  
+  face_recognition:
+    description: "Special tests for face recognition pipeline"
+    enabled: true
+    tests:
+      - name: "mode_train_test"
+        description: "Test training mode"
+        test_suite: "mode-train"
+        run_methods: ["pythonpath"]
+      - name: "mode_delete_test"
+        description: "Test delete mode"
+        test_suite: "mode-delete"
+        run_methods: ["pythonpath"]
+  
+  multisource:
+    description: "Special tests for multisource pipeline"
+    enabled: true
+    tests:
+      - name: "sources_test"
+        description: "Test with multiple sources"
+        test_suite: "sources"
+        run_methods: ["pythonpath"]
+  
+  reid_multisource:
+    description: "Special tests for REID multisource pipeline"
+    enabled: true
+    tests:
+      - name: "sources_test"
+        description: "Test with multiple sources"
+        test_suite: "sources"
+        run_methods: ["pythonpath"]
+  
+  tiling:
+    description: "Special tests for tiling pipeline"
+    enabled: true
+    tests:
+      - name: "general_detection_test"
+        description: "Test general detection mode"
+        test_suite: "general_detection"
+        run_methods: ["pythonpath"]
+
 # Resource paths
 resources:
   root_path: "/usr/local/hailo/resources"
@@ -477,6 +490,19 @@ resources:
     face_recognition: "face_recognition.mp4"
     barcode: "barcode.mp4"
     tiling_visdrone: "tiling_visdrone_720p.mp4"
+  # Pipeline-specific video configuration
+  # If a pipeline needs a different video, specify it here
+  # Otherwise, the default video will be used
+  pipeline_videos:
+    detection: "example.mp4"
+    pose_estimation: "example.mp4"
+    depth: "example.mp4"
+    instance_segmentation: "example.mp4"
+    simple_detection: "example.mp4"
+    face_recognition: "face_recognition.mp4"
+    multisource: "example.mp4"
+    reid_multisource: "example.mp4"
+    tiling: "tiling_visdrone_720p.mp4"
   json:
     labels: "labels.json"
     barcode_labels: "barcode_labels.json"

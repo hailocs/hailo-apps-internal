@@ -284,15 +284,31 @@ def get_enabled_run_methods(config: Dict) -> List[str]:
 def get_models_for_architecture(pipeline_config: Dict, architecture: str) -> List[str]:
     """Get models for a specific architecture from pipeline configuration.
     
+    Models can be specified in two ways:
+    1. "default" key - models available for all architectures
+    2. Architecture-specific key (e.g., "hailo8", "hailo8l", "hailo10h") - models specific to that architecture
+    
+    The function combines default models with architecture-specific models.
+    
     Args:
         pipeline_config: Pipeline configuration
         architecture: Architecture name
     
     Returns:
-        List of model names for the architecture
+        List of model names for the architecture (default + architecture-specific)
     """
     models_config = pipeline_config.get("models", {})
-    return models_config.get(architecture, [])
+    models = []
+    
+    # Add default models (available for all architectures)
+    if "default" in models_config:
+        models.extend(models_config["default"])
+    
+    # Add architecture-specific models
+    if architecture in models_config:
+        models.extend(models_config[architecture])
+    
+    return models
 
 
 def expand_test_suite_args(config: Dict, suite_name: str, **replacements) -> List[str]:
