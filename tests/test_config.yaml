@@ -120,9 +120,14 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py"
     cli: "hailo-pose"
     models:
-      default:
+      hailo8:
         - yolov8s_pose
         - yolov8m_pose
+      hailo10h:
+        - yolov8s_pose
+        - yolov8m_pose
+      hailo8l:
+        - yolov8s_pose
 
   depth:
     name: "depth"
@@ -141,8 +146,11 @@ pipelines:
     script: "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py"
     cli: "hailo-seg"
     models:
-      default:
+      hailo8:
+        - yolov5m_seg
+      hailo8l:
         - yolov5n_seg
+      hailo10h:
         - yolov5m_seg
 
   simple_detection:
