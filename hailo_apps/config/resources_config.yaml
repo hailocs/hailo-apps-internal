@@ -12,6 +12,16 @@ default:
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/barcode_labels.json
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5m_seg.json
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/dog_bicycle.jpg
+  - https://ultralytics.com/images/zidane.jpg
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/bus.jpg
+  - https://hailo-tappas.s3.eu-west-2.amazonaws.com/v3.22/general/media/full_mov_slow.mp4
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img1.png
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img2.png
+  - https://www.pexels.com/download/video/4608277/?fps=24.0&h=720&w=1280
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/input_image.png
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/visdrone.json
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/hailo_4_classes.json
 
 hailo10:
   - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef"
@@ -37,6 +47,12 @@ hailo8:
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ssd_mobilenet_v1_visdrone.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/hailo_yolov8n_4_classes_vga.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/real_esrgan_x2.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr_det.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ufld_v2_tu.hef
+
+
 
 hailo8l:
   - yolov8s
@@ -46,6 +62,22 @@ hailo8l:
   - arcface_mobilefacenet
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/ssd_mobilenet_v1_visdrone.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l/hailo_yolov8n_4_classes_vga.hef
+
+
+hailo10h:
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr_det.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ufld_v2_tu.hef
+  - real_esrgan_x2
+  - yolov8m
+  - yolov5m_seg
+  - yolov8m_pose
+  - scrfd_10g
+  - arcface_mobilefacenet
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr_det.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/hailo10h/hailo_yolov8n_4_classes_vga.hef
+
 
 all:
   - yolov8s_pose
@@ -59,10 +91,20 @@ all:
   - yolov11s
   - yolov11n
   - scdepthv3
+  - yolov8n
 
 retrain:
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/barcode.mp4
+
+VLM_Chat:
+  - https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef
+
+llm_chat:
+  - https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef
+
+whisper_chat:
+  - https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
 
 
 

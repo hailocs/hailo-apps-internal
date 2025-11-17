@@ -16,6 +16,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    # Core dependencies
     "numpy",
     "setproctitle",
     "opencv-python",
@@ -26,7 +27,27 @@ dependencies = [
     "ruff>=0.5.7",
     "pre-commit>=3.7.0",
     "PyAudio",
-    "piper-tts"
+    "piper-tts",
+    # Dependencies from hace-internal
+    "loguru",
+    "scipy>=1.9.3",
+    "lap",
+    "cython_bbox",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "paddlepaddle",
+    "shapely",
+    "pyclipper",
+    "symspellpy",
+]
+speech-rec = [
+    "transformers==4.50.1",
+    "sounddevice==0.5.1",
+    "torch==2.6.0",
+    "streamlit",
 ]
 
 [project.scripts]
