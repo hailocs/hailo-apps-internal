@@ -75,6 +75,11 @@ def main() -> None:
     for idx, tool_info in enumerate(all_tools, start=1):
         print(f"  {idx}. {tool_info['name']}: {tool_info['display_description']}")
 
+    # Initialize Hailo
+    vdevice = VDevice()
+    print("Loading model...")
+    llm = LLM(vdevice, HEF_PATH)
+
     while True:
         choice = input("\nSelect a tool by number (or 'q' to quit): ").strip()
         if choice.lower() in {"q", "quit", "exit"}:
@@ -100,10 +105,6 @@ def main() -> None:
         except Exception as e:
             logger.warning("Tool initialization failed: %s", e)
 
-    # Initialize Hailo
-    vdevice = VDevice()
-    print("Loading model...")
-    llm = LLM(vdevice, HEF_PATH)
 
     try:
         # Single conversation loop; type '/exit' to quit.

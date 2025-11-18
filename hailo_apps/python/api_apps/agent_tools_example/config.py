@@ -23,10 +23,10 @@ CONTEXT_THRESHOLD = 0.80  # Clear context when usage reaches this percentage
 # Default log level (DEBUG, INFO, WARNING, ERROR)
 # - DEBUG: Shows all data passed between agent and tools (prompts, responses, tool calls/results)
 # - INFO (default): Shows only tool call indications
-DEFAULT_LOG_LEVEL = "DEBUG"
+DEFAULT_LOG_LEVEL = "INFO"
 
 # Hardware Configuration
-HARDWARE_MODE = "real"  # "real" or "simulator"
+HARDWARE_MODE = "simulator"  # "real" or "simulator"
 # SPI configuration for NeoPixel (Raspberry Pi 5)
 # SPI uses MOSI pin (GPIO 10) automatically - no pin configuration needed
 NEOPIXEL_SPI_BUS = 0  # SPI bus number (0 = /dev/spidev0.x)
@@ -37,6 +37,7 @@ SERVO_PWM_CHANNEL = 0  # Hardware PWM channel (0 or 1). Channel 0 = GPIO 18, Cha
 SERVO_SIMULATOR_PORT = 5001  # Port for servo simulator web server
 SERVO_MIN_ANGLE = -90.0  # Minimum servo angle in degrees
 SERVO_MAX_ANGLE = 90.0  # Maximum servo angle in degrees
+ELEVATOR_SIMULATOR_PORT = 5002  # Port for elevator simulator web server
 
 # Logger Setup
 LOGGER = logging.getLogger(__name__)
