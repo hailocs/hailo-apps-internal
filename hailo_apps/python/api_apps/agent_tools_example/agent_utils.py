@@ -895,6 +895,126 @@ def add_tool_result_to_context(
 
 
 # ============================================================================
+# Context Caching
+# ============================================================================
+
+
+def get_context_cache_path(tool_name: str) -> Path:
+    """
+    Get the path to the context cache file for a given tool.
+
+    Args:
+        tool_name: Name of the tool.
+
+    Returns:
+        Path to the context cache file.
+    """
+    current_dir = Path(__file__).parent
+    cache_filename = f"context_{tool_name}.cache"
+    return current_dir / cache_filename
+
+
+def save_context_to_cache(llm: LLM, tool_name: str) -> bool:
+    """
+    Save LLM context to a cache file for faster future loading.
+
+    Args:
+        llm: The LLM instance with context to save.
+        tool_name: Name of the tool (used for cache file naming).
+
+    Returns:
+        True if context was saved successfully, False otherwise.
+    """
+    try:
+        cache_path = get_context_cache_path(tool_name)
+        logger.debug("Saving context to cache file: %s", cache_path)
+
+        # Get context data from LLM
+        context_data = llm.save_context()
+
+        # Save context data to file (binary format)
+        with open(cache_path, 'wb') as f:
+            f.write(context_data)
+
+        logger.info("Context cache saved successfully for tool '%s'", tool_name)
+        return True
+    except Exception as e:
+        logger.warning("Failed to save context cache for tool '%s': %s", tool_name, e)
+        return False
+
+
+def load_context_from_cache(llm: LLM, tool_name: str) -> bool:
+    """
+    Load LLM context from a cache file if it exists.
+
+    Args:
+        llm: The LLM instance to load context into.
+        tool_name: Name of the tool (used for cache file naming).
+
+    Returns:
+        True if context was loaded successfully, False if file doesn't exist or load failed.
+    """
+    try:
+        cache_path = get_context_cache_path(tool_name)
+
+        if not cache_path.exists():
+            logger.info("No context cache found for tool '%s' at %s", tool_name, cache_path)
+            return False
+
+        logger.debug("Loading context from cache file: %s", cache_path)
+
+        # Read context data from file (binary format)
+        with open(cache_path, 'rb') as f:
+            context_data = f.read()
+
+        # Load context data into LLM
+        llm.load_context(context_data)
+
+        logger.info("Context cache loaded successfully for tool '%s'", tool_name)
+        return True
+    except Exception as e:
+        logger.warning("Failed to load context cache for tool '%s': %s", tool_name, e)
+        return False
+
+
+def initialize_system_prompt_context(llm: LLM, system_text: str) -> None:
+    """
+    Initialize LLM context with system prompt by generating a minimal response.
+
+    This adds the system prompt to the LLM's context by sending it and generating
+    a single token. We instruct the model to respond with only the end token to
+    avoid adding unnecessary content to the context.
+
+    Args:
+        llm: The LLM instance to initialize.
+        system_text: The system prompt text to add to context.
+    """
+    try:
+        logger.info("Initializing system prompt in context...")
+
+        # Build prompt with system message and a request for minimal response
+        prompt = [
+            messages_system(system_text + " Respond with only a single space character."),
+        ]
+
+        # Generate a single token to add the system prompt to context
+        # We discard the output since we only need it in context
+        generated_tokens = []
+        for token in llm.generate(prompt=prompt, max_generated_tokens=1):
+            generated_tokens.append(token)
+
+        # Log what was generated for debugging
+        generated_text = "".join(generated_tokens)
+        logger.debug("System prompt initialization generated token: %s", repr(generated_text))
+        logger.info("System prompt successfully added to context")
+
+    except Exception as e:
+        logger.warning("Failed to initialize system prompt context: %s", e)
+        # Don't raise - allow the application to continue
+        # The system prompt will be added normally on first user message
+
+
+# ============================================================================
 # Resource Cleanup
 # ============================================================================
 

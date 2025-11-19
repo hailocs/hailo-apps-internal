@@ -92,8 +92,22 @@ def main() -> None:
         # Only load the selected tool to save context
         system_text = agent_utils.create_system_prompt([selected_tool])
         logger.debug("SYSTEM PROMPT:\n%s", system_text)
-        # Track if we need to send system prompt (first time or after context clear)
-        need_system_prompt = True
+
+        # Try to load cached context for this tool
+        # If cache exists, we don't need to send system prompt on first message
+        context_loaded = agent_utils.load_context_from_cache(llm, selected_tool_name)
+
+        if context_loaded:
+            # Context was loaded from cache, system prompt already in context
+            need_system_prompt = False
+            logger.info("Using cached context for tool '%s'", selected_tool_name)
+        else:
+            # No cache found, initialize system prompt and save context
+            logger.info("No cache found, initializing system prompt for tool '%s'", selected_tool_name)
+            agent_utils.initialize_system_prompt_context(llm, system_text)
+            agent_utils.save_context_to_cache(llm, selected_tool_name)
+            # System prompt is now in context
+            need_system_prompt = False
 
         # Create a lookup dict for execution (only selected tool)
         tools_lookup = {selected_tool_name: selected_tool}
@@ -111,10 +125,19 @@ def main() -> None:
             if user_text.lower() in {"/clear"}:
                 try:
                     llm.clear_context()
-                    need_system_prompt = True
                     print("[Info] Context cleared.")
+
+                    # Try to reload cached context after clearing
+                    context_reloaded = agent_utils.load_context_from_cache(llm, selected_tool_name)
+                    if context_reloaded:
+                        need_system_prompt = False
+                        logger.info("Context reloaded from cache after clear")
+                    else:
+                        need_system_prompt = True
+                        logger.info("No cache available after clear, will reinitialize on next message")
                 except Exception as e:
                     print(f"[Error] Failed to clear context: {e}")
+                    need_system_prompt = True
                 continue
             if user_text.lower() in {"/context"}:
                 agent_utils.print_context_usage(llm, show_always=True)
