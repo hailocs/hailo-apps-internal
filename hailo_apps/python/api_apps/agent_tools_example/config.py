@@ -5,7 +5,6 @@ Users can modify these values to customize LLM behavior, context management, and
 """
 
 import logging
-import os
 
 from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.common.defines import LLM_CODER_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
@@ -63,13 +62,16 @@ def setup_logging() -> None:
 
     # Add a custom handler with simple format for our logger
     # This gives us clean output without interfering with framework logging
+    # agent_utils also uses this same logger, so it will get the same format
+    import sys
+
+    # Simple format: just level and message
+    simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
+
     if not any(isinstance(h, logging.StreamHandler) and getattr(h, '_chat_agent_handler', False)
                for h in LOGGER.handlers):
-        import sys
         simple_handler = logging.StreamHandler(sys.stdout)
         simple_handler._chat_agent_handler = True  # Mark as our custom handler
-        # Simple format: just level and message
-        simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
         simple_handler.setFormatter(simple_formatter)
         simple_handler.setLevel(log_level)
         LOGGER.addHandler(simple_handler)

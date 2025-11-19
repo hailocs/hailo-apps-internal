@@ -13,20 +13,22 @@ import logging
 import pkgutil
 import re
 import sys
+import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, cast
 
 from hailo_platform.genai import LLM
 
-logger = logging.getLogger(__name__)
-
-# Import config for context threshold
+# Import config for context threshold and logger setup
 try:
     from . import config
 except ImportError:
     # When run directly, use absolute import
     import config
+
+# Use the same logger setup as config to ensure consistent formatting
+logger = config.LOGGER if hasattr(config, "LOGGER") else logging.getLogger(__name__)
 
 CONTEXT_THRESHOLD = getattr(config, "CONTEXT_THRESHOLD", 0.80)
 
@@ -622,4 +624,314 @@ def messages_assistant(text: str) -> dict[str, Any]:
         Formatted message dictionary
     """
     return {"role": "assistant", "content": [{"type": "text", "text": text}]}
+
+
+# ============================================================================
+# Tool Selection
+# ============================================================================
+
+
+def select_tool_interactive(tools: list[dict[str, Any]], result: dict[str, Any]) -> None:
+    """
+    Handle user tool selection in a background thread.
+
+    Args:
+        tools: List of available tools.
+        result: Shared dictionary to store selection result with keys:
+            - selected_tool: The selected tool dict or None
+            - should_exit: Boolean flag to indicate user wants to quit
+            - lock: Threading lock for thread-safe access
+    """
+    print("\nAvailable tools:")
+    for idx, tool_info in enumerate(tools, start=1):
+        print(f"  {idx}. {tool_info['name']}: {tool_info['display_description']}")
+
+    while True:
+        choice = input("\nSelect a tool by number (or 'q' to quit): ").strip()
+        if choice.lower() in {"q", "quit", "exit"}:
+            print("Bye.")
+            with result["lock"]:
+                result["should_exit"] = True
+            return
+        try:
+            tool_idx = int(choice) - 1
+            if 0 <= tool_idx < len(tools):
+                with result["lock"]:
+                    result["selected_tool"] = tools[tool_idx]
+                return
+            print(f"Invalid selection. Please choose 1-{len(tools)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number or 'q' to quit.")
+
+
+def start_tool_selection_thread(
+    all_tools: list[dict[str, Any]],
+) -> tuple[threading.Thread, dict[str, Any]]:
+    """
+    Start tool selection in a background thread.
+
+    Args:
+        all_tools: List of available tools to choose from.
+
+    Returns:
+        Tuple of (thread, result_dict) where result_dict contains:
+            - selected_tool: The selected tool dict or None
+            - should_exit: Boolean flag to indicate user wants to quit
+            - lock: Threading lock for thread-safe access
+    """
+    # Shared result structure for tool selection
+    tool_result: dict[str, Any] = {
+        "selected_tool": None,
+        "should_exit": False,
+        "lock": threading.Lock(),
+    }
+
+    # Start tool selection in background thread
+    tool_thread = threading.Thread(
+        target=select_tool_interactive, args=(all_tools, tool_result), daemon=False
+    )
+    tool_thread.start()
+
+    return tool_thread, tool_result
+
+
+def get_tool_selection_result(
+    tool_thread: threading.Thread, tool_result: dict[str, Any]
+) -> dict[str, Any] | None:
+    """
+    Wait for tool selection thread to complete and return the selected tool.
+
+    Args:
+        tool_thread: The tool selection thread.
+        tool_result: Shared result dictionary from start_tool_selection_thread.
+
+    Returns:
+        Selected tool dictionary, or None if user chose to exit or no tool was selected.
+    """
+    # Wait for tool selection to complete
+    tool_thread.join()
+
+    # Check tool selection result
+    with tool_result["lock"]:
+        if tool_result["should_exit"]:
+            return None
+        selected_tool = tool_result["selected_tool"]
+
+    if selected_tool is None:
+        print("[Error] No tool selected.")
+        return None
+
+    # Type cast: selected_tool is guaranteed to be non-None after the check above
+    selected_tool = cast(dict[str, Any], selected_tool)
+    selected_tool_name = selected_tool.get("name", "")
+    if not selected_tool_name:
+        print("[Error] Selected tool missing 'name' field.")
+        return None
+
+    print(f"\nSelected tool: {selected_tool_name}")
+    return selected_tool
+
+
+def wait_for_tool_selection(
+    all_tools: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Start tool selection in a background thread and wait for user selection.
+
+    Convenience function that combines start_tool_selection_thread and get_tool_selection_result.
+
+    Args:
+        all_tools: List of available tools to choose from.
+
+    Returns:
+        Selected tool dictionary, or None if user chose to exit or no tool was selected.
+    """
+    tool_thread, tool_result = start_tool_selection_thread(all_tools)
+    return get_tool_selection_result(tool_thread, tool_result)
+
+
+def initialize_tool_if_needed(tool: dict[str, Any]) -> None:
+    """
+    Initialize tool if it has an initialize_tool function.
+
+    Args:
+        tool: Tool dictionary containing a 'module' key.
+    """
+    tool_module = tool.get("module")
+    if tool_module and hasattr(tool_module, "initialize_tool"):
+        try:
+            tool_module.initialize_tool()
+        except Exception as e:
+            logger.warning("Tool initialization failed: %s", e)
+
+
+# ============================================================================
+# Tool Execution
+# ============================================================================
+
+
+def execute_tool_call(
+    tool_call: dict[str, Any], tools_lookup: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """
+    Execute a tool call and return the result.
+
+    Args:
+        tool_call: Parsed tool call dictionary with 'name' and 'arguments' keys.
+        tools_lookup: Dictionary mapping tool names to tool metadata.
+
+    Returns:
+        Tool execution result dictionary with 'ok' key and either 'result' or 'error'.
+    """
+    tool_name = str(tool_call.get("name", "")).strip()
+    args = tool_call.get("arguments", {})
+    logger.info("TOOL CALL: %s", tool_name)
+    logger.debug("Tool call details - name: %s", tool_name)
+    logger.debug("Tool call arguments:\n%s", json.dumps(args, indent=2, ensure_ascii=False))
+
+    selected = tools_lookup.get(tool_name)
+    if not selected:
+        available = ", ".join(sorted(tools_lookup.keys()))
+        logger.error(f"Unknown tool '{tool_name}'. Available: {available}")
+        return {"ok": False, "error": f"Unknown tool '{tool_name}'. Available: {available}"}
+
+    runner = selected.get("runner")
+    if not callable(runner):
+        logger.error(f"Tool '{tool_name}' is missing an executable runner.")
+        return {"ok": False, "error": f"Tool '{tool_name}' is missing an executable runner."}
+
+    try:
+        result = runner(args)  # type: ignore[misc]
+        logger.debug("TOOL EXECUTION RESULT:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+        return result
+    except Exception as exc:
+        result = {"ok": False, "error": f"Tool raised exception: {exc}"}
+        logger.error("Tool execution raised exception: %s", exc)
+        logger.debug("Tool exception result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+        return result
+
+
+def print_tool_result(result: dict[str, Any]) -> None:
+    """
+    Print tool execution result to the user.
+
+    Args:
+        result: Tool execution result dictionary with 'ok' key.
+    """
+    if result.get("ok"):
+        logger.info("Tool execution: SUCCESS")
+        tool_result_text = result.get("result", "")
+        if tool_result_text:
+            print(f"\n[Tool] {tool_result_text}\n")
+    else:
+        logger.info("Tool execution: FAILED - %s", result.get("error", "Unknown error"))
+        tool_error = result.get("error", "Unknown error")
+        print(f"\n[Tool Error] {tool_error}\n")
+
+
+# ============================================================================
+# Context Management for Tool Results
+# ============================================================================
+
+
+def add_tool_result_to_context(
+    llm: LLM,
+    system_text: str,
+    user_text: str,
+    tool_result: dict[str, Any],
+    need_system_prompt: bool,
+) -> bool:
+    """
+    Add tool result to LLM context without generating a response.
+
+    This maintains conversation history for future interactions.
+
+    Args:
+        llm: The LLM instance.
+        system_text: System prompt text.
+        user_text: Original user query.
+        tool_result: Tool execution result dictionary.
+        need_system_prompt: Whether system prompt is needed.
+
+    Returns:
+        True if system prompt is needed after this operation, False otherwise.
+    """
+    # Tool result has been printed directly to user
+    # Add the tool result to LLM context for conversation continuity
+    tool_result_text = json.dumps(tool_result, ensure_ascii=False)
+    tool_response_message = f"<tool_response>{tool_result_text}</tool_response>"
+    logger.debug("Adding tool result to LLM context:\n%s", tool_response_message)
+
+    # Check if we need to trim context before adding tool result
+    context_cleared = check_and_trim_context(llm)
+    if context_cleared:
+        need_system_prompt = True
+
+    # Add tool result to context without generating a response
+    # This maintains conversation history for future interactions
+    if context_cleared:
+        # Context was cleared, need to rebuild: system, user query, tool result
+        prompt = [
+            messages_system(system_text),
+            messages_user(user_text),
+            messages_user(tool_response_message),
+        ]
+        need_system_prompt = False
+    else:
+        # LLM has context, just add the tool result
+        prompt = [messages_user(tool_response_message)]
+
+    # Add to context by making a minimal generation (just to update context)
+    # We don't print this since we already showed the result to the user
+    logger.debug("Updating LLM context with tool result")
+    try:
+        # Generate a single token to update context, then discard the output
+        for _ in llm.generate(prompt=prompt, max_generated_tokens=1):
+            break  # Just need to trigger context update
+    except Exception as e:
+        logger.debug("Context update failed (non-critical): %s", e)
+
+    return need_system_prompt
+
+
+# ============================================================================
+# Resource Cleanup
+# ============================================================================
+
+
+def cleanup_resources(
+    llm: LLM | None, vdevice: Any | None, tool_module: Any | None
+) -> None:
+    """
+    Clean up Hailo resources and tool resources.
+
+    Args:
+        llm: LLM instance to clean up (can be None).
+        vdevice: VDevice instance to clean up (can be None).
+        tool_module: Tool module with optional cleanup_tool function (can be None).
+    """
+    # Cleanup: call tool cleanup if available
+    if tool_module and hasattr(tool_module, "cleanup_tool"):
+        try:
+            tool_module.cleanup_tool()
+        except Exception as e:
+            logger.debug("Tool cleanup failed: %s", e)
+
+    # Cleanup Hailo resources with error handling
+    if llm:
+        try:
+            llm.clear_context()
+        except Exception as e:
+            logger.debug("Error clearing LLM context: %s", e)
+
+        try:
+            llm.release()
+        except Exception as e:
+            logger.debug("Error releasing LLM: %s", e)
+
+    if vdevice:
+        try:
+            vdevice.release()
+        except Exception as e:
+            logger.debug("Error releasing VDevice: %s", e)
 

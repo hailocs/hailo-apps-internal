@@ -19,7 +19,6 @@ import os
 import json
 import logging
 import sys
-from pathlib import Path
 
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
@@ -70,40 +69,22 @@ def main() -> None:
         print("No tools found. Add 'tool_*.py' modules that define TOOLS_SCHEMA and a run() function.")
         return
 
-    # Let user select a tool at startup
-    print("\nAvailable tools:")
-    for idx, tool_info in enumerate(all_tools, start=1):
-        print(f"  {idx}. {tool_info['name']}: {tool_info['display_description']}")
+    # Start tool selection in background thread (runs in parallel with LLM initialization)
+    tool_thread, tool_result = agent_utils.start_tool_selection_thread(all_tools)
 
-    # Initialize Hailo
+    # Initialize Hailo in main thread (runs in parallel with tool selection)
     vdevice = VDevice()
-    print("Loading model...")
     llm = LLM(vdevice, HEF_PATH)
 
-    while True:
-        choice = input("\nSelect a tool by number (or 'q' to quit): ").strip()
-        if choice.lower() in {"q", "quit", "exit"}:
-            print("Bye.")
-            return
-        try:
-            tool_idx = int(choice) - 1
-            if 0 <= tool_idx < len(all_tools):
-                selected_tool = all_tools[tool_idx]
-                break
-            print(f"Invalid selection. Please choose 1-{len(all_tools)}.")
-        except ValueError:
-            print("Invalid input. Please enter a number or 'q' to quit.")
-
-    selected_tool_name = selected_tool["name"]
-    print(f"\nSelected tool: {selected_tool_name}")
+    # Wait for tool selection to complete
+    selected_tool = agent_utils.get_tool_selection_result(tool_thread, tool_result)
+    if selected_tool is None:
+        return
 
     # Initialize tool if it has an initialize_tool function
+    agent_utils.initialize_tool_if_needed(selected_tool)
+    selected_tool_name = selected_tool.get("name", "")
     tool_module = selected_tool.get("module")
-    if tool_module and hasattr(tool_module, "initialize_tool"):
-        try:
-            tool_module.initialize_tool()
-        except Exception as e:
-            logger.warning("Tool initialization failed: %s", e)
 
 
     try:
@@ -185,100 +166,27 @@ def main() -> None:
             # (The tool_call XML was suppressed during streaming)
 
             # Execute tool call
-            tool_name = str(tool_call.get("name", "")).strip()
-            args = tool_call.get("arguments", {})
-            logger.info("TOOL CALL: %s", tool_name)
-            logger.debug("Tool call details - name: %s", tool_name)
-            logger.debug("Tool call arguments:\n%s", json.dumps(args, indent=2, ensure_ascii=False))
-
-            selected = tools_lookup.get(tool_name)
-            if not selected:
-                available = ", ".join(sorted(tools_lookup.keys()))
-                logger.error(f"Unknown tool '{tool_name}'. Available: {available}")
+            result = agent_utils.execute_tool_call(tool_call, tools_lookup)
+            if not result.get("ok"):
+                # If tool execution failed, continue to next input
+                agent_utils.print_tool_result(result)
                 continue
-            runner = selected.get("runner")
-            if not callable(runner):
-                logger.error(f"Tool '{tool_name}' is missing an executable runner.")
-                continue
-            try:
-                result = runner(args)  # type: ignore[misc]
-                logger.debug("TOOL EXECUTION RESULT:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
 
-                # Print tool result directly to user
-                if result.get("ok"):
-                    logger.info("Tool execution: SUCCESS")
-                    tool_result = result.get("result", "")
-                    if tool_result:
-                        print(f"\n[Tool] {tool_result}\n")
-                else:
-                    logger.info("Tool execution: FAILED - %s", result.get("error", "Unknown error"))
-                    tool_error = result.get("error", "Unknown error")
-                    print(f"\n[Tool Error] {tool_error}\n")
-            except Exception as exc:
-                result = {"ok": False, "error": f"Tool raised exception: {exc}"}
-                logger.error("Tool execution raised exception: %s", exc)
-                logger.debug("Tool exception result:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
-                logger.info("Tool execution: FAILED - Exception raised")
-                print(f"\n[Tool Error] {result['error']}\n")
+            # Print tool result directly to user
+            agent_utils.print_tool_result(result)
 
-            # Tool result has been printed directly to user
-            # Add the tool result to LLM context for conversation continuity
-            tool_result_text = json.dumps(result, ensure_ascii=False)
-            tool_response_message = f"<tool_response>{tool_result_text}</tool_response>"
-            logger.debug("Adding tool result to LLM context:\n%s", tool_response_message)
-
-            # Check if we need to trim context before adding tool result
-            context_cleared = agent_utils.check_and_trim_context(llm)
-            if context_cleared:
-                need_system_prompt = True
-
-            # Add tool result to context without generating a response
-            # This maintains conversation history for future interactions
-            if context_cleared:
-                # Context was cleared, need to rebuild: system, user query, tool result
-                prompt = [
-                    agent_utils.messages_system(system_text),
-                    agent_utils.messages_user(user_text),
-                    agent_utils.messages_user(tool_response_message),
-                ]
-                need_system_prompt = False
-            else:
-                # LLM has context, just add the tool result
-                prompt = [agent_utils.messages_user(tool_response_message)]
-
-            # Add to context by making a minimal generation (just to update context)
-            # We don't print this since we already showed the result to the user
-            logger.debug("Updating LLM context with tool result")
-            try:
-                # Generate a single token to update context, then discard the output
-                for _ in llm.generate(prompt=prompt, max_generated_tokens=1):
-                    break  # Just need to trigger context update
-            except Exception as e:
-                logger.debug("Context update failed (non-critical): %s", e)
+            # Add tool result to LLM context for conversation continuity
+            need_system_prompt = agent_utils.add_tool_result_to_context(
+                llm=llm,
+                system_text=system_text,
+                user_text=user_text,
+                tool_result=result,
+                need_system_prompt=need_system_prompt,
+            )
 
     finally:
-        # Cleanup: call tool cleanup if available
-        if tool_module and hasattr(tool_module, "cleanup_tool"):
-            try:
-                tool_module.cleanup_tool()
-            except Exception as e:
-                logger.debug("Tool cleanup failed: %s", e)
-
-        # Cleanup Hailo resources with error handling
-        try:
-            llm.clear_context()
-        except Exception as e:
-            logger.debug("Error clearing LLM context: %s", e)
-
-        try:
-            llm.release()
-        except Exception as e:
-            logger.debug("Error releasing LLM: %s", e)
-
-        try:
-            vdevice.release()
-        except Exception as e:
-            logger.debug("Error releasing VDevice: %s", e)
+        # Cleanup resources
+        agent_utils.cleanup_resources(llm, vdevice, tool_module)
 
 
 if __name__ == "__main__":
