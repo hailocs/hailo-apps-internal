@@ -56,9 +56,6 @@ Get current weather and rain forecasts for any location worldwide using the Open
 
 **Usage:** The tool uses a `future_days` parameter (0=today, 1=tomorrow, etc.) instead of absolute dates, making it easier for the LLM to use.
 
-### Shell Tool (Read-Only)
-Run safe read-only Linux commands within the repository. Only whitelisted commands are allowed (e.g., `ls`, `cat`, `grep`, `head`, `tail`).
-
 ### RGB LED Tool
 Control RGB LED: turn on/off, change color by name, adjust intensity (0-100%).
 
@@ -102,8 +99,7 @@ Edit `config.py` to customize hardware settings
 ```
 Available tools:
   1. math: Perform basic arithmetic operations: addition, subtraction, multiplication, and division.
-  2. shell_readonly: Run whitelisted read-only shell commands (ls, cat, grep, etc.) inside the repository.
-  3. weather: Get current weather and rain forecasts (supports future days) using the Open-Meteo API.
+  2. weather: Get current weather and rain forecasts (supports future days) using the Open-Meteo API.
 
 Select a tool by number (or 'q' to quit): 1
 

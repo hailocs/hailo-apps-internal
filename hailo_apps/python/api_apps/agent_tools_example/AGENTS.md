@@ -369,7 +369,6 @@ SERVO_SIMULATOR_PORT = 5001  # Port for servo simulator web server
 All tools are tested and verified:
 - ✅ Math tool: All operations (add, sub, mul, div)
 - ✅ Weather tool: Current weather and forecasts
-- ✅ Shell tool: Read-only commands within repository
 - ✅ RGB LED tool: Color control, intensity, on/off (simulator and hardware)
 - ✅ Servo tool: Absolute and relative positioning (simulator and hardware)
 
