@@ -13,7 +13,6 @@ import hailo
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.python.pipeline_apps.face_recognition.face_recognition_pipeline import GStreamerFaceRecognitionApp
 from hailo_apps.python.core.common.telegram_handler import TelegramHandler
-from hailo_apps.python.core.common.defines import HAILO_LOGO_PHOTO_NAME
 # endregion
 
 # region Constants

@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 import setproctitle
+from pathlib import Path
 
 # Third-party imports
 import gi
@@ -29,8 +30,7 @@ from hailo_apps.python.core.common.defines import (
     FACE_RECOGNITION_PIPELINE,
     FACE_RECOGNITION_POSTPROCESS_SO_FILENAME,
     FACE_RECOGNITION_VIDEO_NAME,
-    MULTI_SOURCE_DATABASE_DIR_NAME,
-    MULTI_SOURCE_DIR_NAME,
+    REID_MULTI_SOURCE_DATABASE_DIR_NAME,
     REID_CLASSIFICATION_TYPE,
     REID_CROPPER_POSTPROCESS_FUNCTION,
     REID_MULTISOURCE_APP_TITLE,
@@ -42,10 +42,14 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_VIDEOS_DIR_NAME,
     SCRFD_8L_POSTPROCESS_FUNCTION,
     SCRFD_8_POSTPROCESS_FUNCTION,
+    SCRFD_10_POSTPROCESS_FUNCTION,
     TAPPAS_POSTPROC_PATH_KEY,
     TAPPAS_STREAM_ID_TOOL_SO_FILENAME,
     VMS_CROPPER_POSTPROCESS_FUNCTION,
-    RPI_NAME_I
+    RPI_NAME_I,
+    HAILO8_ARCH,
+    HAILO10H_ARCH,
+    HAILO8L_ARCH
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
@@ -87,10 +91,15 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         self.post_process_so_face_align = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_ALIGN_POSTPROCESS_SO_FILENAME)
         self.post_process_so_vms_cropper = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_CROP_POSTPROCESS_SO_FILENAME)
         # functions
-        if self.arch == "hailo8":
+        if self.arch == HAILO8_ARCH:
             self.post_function_scrfd_detection = SCRFD_8_POSTPROCESS_FUNCTION
-        else:  # hailo8l
+        elif self.arch == HAILO10H_ARCH:
+            self.post_function_scrfd_detection = SCRFD_10_POSTPROCESS_FUNCTION
+        elif self.arch == HAILO8L_ARCH:
             self.post_function_scrfd_detection = SCRFD_8L_POSTPROCESS_FUNCTION
+        else:
+            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+
         self.post_function_arcface_mobilefacenet_recognition = ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION
         self.post_function_vms_cropper = VMS_CROPPER_POSTPROCESS_FUNCTION
         self.post_function_repvgg_reid = REID_POSTPROCESS_FUNCTION
@@ -117,12 +126,17 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         self.create_pipeline()
         self.connect_src_callbacks()
 
+        # Initialize directories
+        current_dir = Path(__file__).parent
+        self.database_dir = current_dir / REID_MULTI_SOURCE_DATABASE_DIR_NAME
+        os.makedirs(self.database_dir, exist_ok=True)
+
         # Initialize the database and table
         self.db_handler = DatabaseHandler(db_name='cross_tracked.db', 
                                           table_name='cross_tracked', 
                                           schema=Record, 
                                           threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
-                                          database_dir=get_resource_path(pipeline_name=None, resource_type=MULTI_SOURCE_DIR_NAME, arch=self.arch, model=MULTI_SOURCE_DATABASE_DIR_NAME),
+                                          database_dir=self.database_dir,
                                           samples_dir=None)
 
     def get_pipeline_string(self):

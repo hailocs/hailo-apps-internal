@@ -29,6 +29,3 @@ resource_dirs:
   - "photos"
   - "json"
   - "packages"
-  - "face_recon/train"
-  - "face_recon/samples"
-

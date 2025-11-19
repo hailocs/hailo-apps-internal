@@ -13,7 +13,7 @@ For more details please see: https://github.com/OHF-Voice/piper1-gpl/blob/main/d
 
 In case differen voice selected, please modify:
    ```bash
-   In file: ~/hailo-apps-infra/hailo_apps/python/api_apps/Voice_Asistant/processing.py
+   In file: ~/hailo-apps-infra/hailo_apps/python/api_apps/voice_asistant/processing.py
    self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)
    ```
 
@@ -21,7 +21,24 @@ In case differen voice selected, please modify:
 
 **High-quality microphone input is crucial for optimal speech recognition performance.** Poor audio quality, background noise, or incorrect microphone configuration can significantly impact transcription accuracy. Before using the voice assistant, ensure your microphone is properly configured and functioning.
 
-### Testing Microphone on Linux/Raspberry Pi OS
+### Troubleshooting Microphone on Raspberry Pi
+
+Testing your microphone is essential, particularly on Raspberry Pi systems. If your microphone is not recording, follow these steps to configure the audio profile:
+
+**Common Fix for USB Headsets:**
+
+1. Connect your USB microphone to the Raspberry Pi
+2. Locate the **Volume Control** icon on the upper Task Bar (system tray)
+3. Right-click the Volume Control icon
+4. Select **"Device Profiles"** from the menu
+5. Choose the **"Pro Audio"** profile for your USB device
+
+**Why "Pro Audio"?**  
+The Pro Audio profile provides direct, low-level access to your audio device's capabilities, bypassing potential compatibility issues with the audio server (PipeWire or PulseAudio). This often resolves recording problems with USB headsets on Raspberry Pi OS.
+
+After applying this profile, verify your microphone is working using the testing commands below.
+
+### Testing Microphone
 
 **1. List available audio devices:**
 ```bash

@@ -8,6 +8,7 @@ import threading
 import queue
 import uuid
 import setproctitle
+from pathlib import Path
 
 # Third-party imports
 import gi
@@ -34,7 +35,6 @@ from hailo_apps.python.core.common.defines import (
     FACE_CROP_POSTPROCESS_SO_FILENAME,
     RESOURCES_VIDEOS_DIR_NAME,
     FACE_RECOGNITION_VIDEO_NAME,
-    FACE_RECON_DIR_NAME,
     FACE_RECON_TRAIN_DIR_NAME,
     FACE_RECON_SAMPLES_DIR_NAME,
     RESOURCES_JSON_DIR_NAME,
@@ -42,7 +42,13 @@ from hailo_apps.python.core.common.defines import (
     DEFAULT_LOCAL_RESOURCES_PATH,
     FACE_RECON_DATABASE_DIR_NAME,
     FACE_RECON_LOCAL_SAMPLES_DIR_NAME,
-    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME
+    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
+    SCRFD_8_POSTPROCESS_FUNCTION,
+    SCRFD_8L_POSTPROCESS_FUNCTION,
+    SCRFD_10_POSTPROCESS_FUNCTION,
+    HAILO8_ARCH,
+    HAILO10H_ARCH,
+    HAILO8L_ARCH
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, INFERENCE_PIPELINE_WRAPPER, TRACKER_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, CROPPER_PIPELINE
 # endregion
@@ -66,18 +72,34 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         # Both for face detection & recognition networks (not tunable from the UI)
         self.batch_size = self.algo_params['batch_size']
 
+        # Initialize directories
+        current_dir = Path(__file__).parent
+        self.train_images_dir = current_dir / FACE_RECON_TRAIN_DIR_NAME
+        self.samples_dir = current_dir / FACE_RECON_SAMPLES_DIR_NAME
+        self.database_dir = current_dir / FACE_RECON_DATABASE_DIR_NAME
+        os.makedirs(self.train_images_dir, exist_ok=True)
+        os.makedirs(self.samples_dir, exist_ok=True)
+
+        # Determine the architecture if not specified
+        if self.options_menu.arch is None:
+            detected_arch = detect_hailo_arch()
+            if detected_arch is None:
+                raise ValueError("Could not auto-detect Hailo architecture. Please specify --arch manually.")
+            self.arch = detected_arch
+        else:
+            self.arch = self.options_menu.arch
+
         # Initialize the database and table
         self.db_handler = DatabaseHandler(db_name='persons.db', 
                                           table_name='persons', 
                                           schema=Record, 
                                           threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
-                                          database_dir=get_resource_path(pipeline_name=None, resource_type=FACE_RECON_DIR_NAME, arch=self.arch, model=FACE_RECON_DATABASE_DIR_NAME),
-                                          samples_dir = get_resource_path(pipeline_name=None, resource_type=FACE_RECON_DIR_NAME, arch=self.arch, model=FACE_RECON_SAMPLES_DIR_NAME))
+                                          database_dir=self.database_dir,
+                                          samples_dir=self.samples_dir)
         
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, arch=self.arch, model=FACE_RECOGNITION_VIDEO_NAME)
         
-        self.train_images_dir = get_resource_path(pipeline_name=None, resource_type=FACE_RECON_DIR_NAME, arch=self.arch, model=FACE_RECON_TRAIN_DIR_NAME) 
         self.current_file = None  # for train mode
         self.processed_names = set()  # ((key-name, val-global_id)) for train mode - pipeline will be playing for 2 seconds, so we need to ensure each person will be processed only once
         self.processed_files = set()  # for train mode - pipeline will be playing for 2 seconds, so we need to ensure each file will be processed only once
@@ -85,10 +107,16 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         # Set the HEF file path based on the arch
         self.hef_path_detection = get_resource_path(pipeline_name=FACE_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
         self.hef_path_recognition = get_resource_path(pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
-        if self.arch == "hailo8":
-            self.detection_func = "scrfd_10g_letterbox"
-        else:  # hailo8l
-            self.detection_func = "scrfd_2_5g_letterbox"
+    
+        if self.arch == HAILO8_ARCH:
+            self.detection_func = SCRFD_8_POSTPROCESS_FUNCTION
+        elif self.arch == HAILO10H_ARCH:
+            self.detection_func = SCRFD_10_POSTPROCESS_FUNCTION
+        elif self.arch == HAILO8L_ARCH:
+            self.detection_func = SCRFD_8L_POSTPROCESS_FUNCTION
+        else:
+            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+        
         self.recognition_func = "filter"
         self.cropper_func = "face_recognition"
 
@@ -363,7 +391,7 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
             detection.remove_object(embedding[0])  # in case the detection pointer tracker pipeline element (from earlier side of the pipeline) holds is the same as the one we have, remove the embedding, so embedding similarity won't be part of the decision criteria
             cropped_frame = self.crop_frame(frame, detection.get_bbox(), width, height)
             embedding_vector = np.array(embedding[0].get_data())
-            image_path = os.path.join(get_resource_path(pipeline_name=None, resource_type=FACE_RECON_DIR_NAME, arch=self.arch, model=FACE_RECON_SAMPLES_DIR_NAME), f"{uuid.uuid4()}.jpeg")
+            image_path = os.path.join(self.samples_dir, f"{uuid.uuid4()}.jpeg")
             self.add_task('save_image', frame=cropped_frame, image_path=image_path)  # Add the frame to the queue for processing
             name = os.path.basename(os.path.dirname(self.current_file))
             if self.is_name_processed(name):

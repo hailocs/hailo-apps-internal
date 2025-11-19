@@ -22,9 +22,7 @@ from .defines import (
     FACE_RECOGNITION_MODEL_NAME_H8,
     FACE_RECOGNITION_MODEL_NAME_H8L,
     FACE_RECOGNITION_PIPELINE,
-    FACE_RECON_DIR_NAME,
     HAILO8_ARCH,
-    MULTI_SOURCE_DIR_NAME,
     HAILO10H_ARCH,
     HAILO_ARCH_KEY,
     HAILO_FILE_EXTENSION,
@@ -43,6 +41,12 @@ from .defines import (
     RESOURCES_VIDEOS_DIR_NAME,
     SIMPLE_DETECTION_MODEL_NAME,
     SIMPLE_DETECTION_PIPELINE,
+    CLIP_PIPELINE,
+    CLIP_MODEL_NAME_H8,
+    CLIP_MODEL_NAME_H8L,
+    CLIP_DETECTION_PIPELINE,
+    CLIP_DETECTION_MODEL_NAME_H8,
+    CLIP_DETECTION_MODEL_NAME_H8L,
 )
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
@@ -150,6 +154,12 @@ def get_model_name(pipeline_name: str, arch: str) -> str:
         FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8
         if is_h8
         else FACE_RECOGNITION_MODEL_NAME_H8L,
+        CLIP_DETECTION_PIPELINE: CLIP_DETECTION_MODEL_NAME_H8
+        if is_h8
+        else CLIP_DETECTION_MODEL_NAME_H8L,
+        CLIP_PIPELINE: CLIP_MODEL_NAME_H8
+        if is_h8
+        else CLIP_MODEL_NAME_H8L
     }
     name = pipeline_map[pipeline_name]
     hailo_logger.debug(f"Resolved model name: {name}")
@@ -176,10 +186,6 @@ def get_resource_path(
         return root / RESOURCES_PHOTOS_DIR_NAME / model
     if resource_type == RESOURCES_JSON_DIR_NAME and model:
         return root / RESOURCES_JSON_DIR_NAME / model
-    if resource_type == FACE_RECON_DIR_NAME and model:
-        return root / FACE_RECON_DIR_NAME / model
-    if resource_type == MULTI_SOURCE_DIR_NAME and model:
-        return (root / MULTI_SOURCE_DIR_NAME / model)
     if resource_type == DEFAULT_LOCAL_RESOURCES_PATH and model:
         return root / DEFAULT_LOCAL_RESOURCES_PATH / model
 

@@ -5,7 +5,7 @@ This directory contains three basic example applications demonstrating the use o
 - Vision Language Models (VLM)
 - Speech-to-Text (Whisper)
 
-For full GenAI applications, please see: [VLM full application](../VLM_Chat) and [Whisper full application](../Voice_Asistant/).
+For full GenAI applications, please see: [VLM full application](../vlm_chat) and [Whisper full application](../voice_asistant/).
 
 ## Files Overview
 
