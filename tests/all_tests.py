@@ -301,6 +301,36 @@ def run_tiling_test(
     return success, log_file
 
 
+
+def run_paddle_ocr_test(
+    config: Dict,
+    model: str,
+    architecture: str,
+    run_method: str,
+    test_suite: str = "default",
+    extra_args: Optional[List[str]] = None,
+    run_time: Optional[int] = None,
+    term_timeout: Optional[int] = None,
+) -> Tuple[bool, str]:
+    """Run paddle OCR pipeline test."""
+    pipeline_config = config["pipelines"]["paddle_ocr"]
+    args = build_test_args(
+        config, pipeline_config, model, architecture, test_suite, extra_args
+    )
+    log_file = get_log_file_path(
+        config, "pipeline", "paddle_ocr", architecture, model, run_method, test_suite
+    )
+    stdout, stderr, success = run_pipeline_test(
+        pipeline_config, model, architecture, run_method, args, log_file,
+        run_time=run_time, term_timeout=term_timeout
+    )
+    if success:
+        logger.info(f"✓ Paddle OCR test passed: {model} on {architecture}")
+    else:
+        logger.error(f"✗ Paddle OCR test failed: {model} on {architecture}")
+    return success, log_file
+
+
 # Map pipeline names to test functions
 PIPELINE_TEST_FUNCTIONS = {
     "detection": run_detection_test,
@@ -312,6 +342,7 @@ PIPELINE_TEST_FUNCTIONS = {
     "multisource": run_multisource_test,
     "reid_multisource": run_reid_multisource_test,
     "tiling": run_tiling_test,
+    "paddle_ocr": run_paddle_ocr_test,
 }
 
 

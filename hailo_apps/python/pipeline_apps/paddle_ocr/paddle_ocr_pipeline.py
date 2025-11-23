@@ -111,10 +111,6 @@ class GStreamerOCRApp(GStreamerApp):
                 model=OCR_VIDEO_NAME
             )
             self.video_source = str(video_path) if video_path else None
-        
-        # OCR detection model expects 960x544 input - resize video to match model input size
-        self.video_width = 960
-        self.video_height = 544
 
         hailo_logger.info(
             "Resources | ocr_det_hef=%s | ocr_rec_hef=%s | post_so=%s | det_fn=%s | rec_fn=%s | cropper_fn=%s",

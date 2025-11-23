@@ -4,6 +4,7 @@ default:
   - ssd_mobilenet_v1
   - repvgg_a0_person_reid_512
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example.mp4
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/ocr.mp4
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example_640.mp4
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/face_recognition.mp4
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/tiling_visdrone_720p.mp4

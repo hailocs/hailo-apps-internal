@@ -15,7 +15,7 @@ HAILO_TAPPAS_CORE_PYTHON_NAMES = [
     HAILO_TAPPAS_CORE,
 ]
 HAILORT_PACKAGE_NAME = "hailort"
-HAILORT_PACKAGE_NAME_RPI = "h10-hailort"
+HAILORT_PACKAGE_NAME_RPI = "h10-hailort"  # This should be changed
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources"  # Do Not Change!
@@ -359,4 +359,4 @@ OCR_POSTPROCESS_SO_FILENAME = "libocr_postprocess.so"
 OCR_DETECTION_POSTPROCESS_FUNCTION = "paddleocr_det"
 OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
 OCR_CROPPER_FUNCTION = "crop_text_regions"
-OCR_VIDEO_NAME = "example.mp4"
+OCR_VIDEO_NAME = "ocr.mp4"
