@@ -349,3 +349,14 @@ TTS_NOISE_SCALE = 0.6  # Voice variability (lower is more consistent)
 TTS_W_SCALE = 0.6  # Pronunciation variability (lower is more consistent)
 LLM_PROMPT_PREFIX = "Respond in up to three sentences. "
 TEMP_WAV_DIR = "/tmp"
+
+# OCR pipeline defaults
+OCR_APP_TITLE = "Hailo OCR App"
+OCR_PIPELINE = "ocr"
+OCR_DETECTION_MODEL_NAME = "ocr_det"
+OCR_RECOGNITION_MODEL_NAME = "ocr"
+OCR_POSTPROCESS_SO_FILENAME = "libocr_postprocess.so"
+OCR_DETECTION_POSTPROCESS_FUNCTION = "paddleocr_det"
+OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
+OCR_CROPPER_FUNCTION = "crop_text_regions"
+OCR_VIDEO_NAME = "example.mp4"
