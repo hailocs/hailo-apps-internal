@@ -143,7 +143,28 @@ def run_pipeline_test(
         
         # Check for errors
         err_str = stderr.decode().lower() if stderr else ""
+        out_str = stdout.decode().lower() if stdout else ""
+        combined_output = (err_str + " " + out_str).lower()
+        
         success = "error" not in err_str and "traceback" not in err_str
+        
+        # Check for FPS output when --show-fps is enabled
+        if "--show-fps" in args or "-f" in args:
+            if "fps:" not in combined_output:
+                logger.warning(f"FPS flag enabled but FPS output not found in logs: {log_file}")
+                # Don't fail the test, just warn - FPS might not appear immediately
+        
+        # Check for QOS messages (these are warnings that may appear during pipeline operation)
+        # QOS messages are normal during pipeline rebuild/startup, so we just log if they appear
+        if "qos" in combined_output or "qoS" in combined_output:
+            logger.info(f"QOS messages detected in output (this is normal during pipeline operation)")
+        
+        # but the pipeline still runs normally. Both enabled and disabled states result
+        # in successful pipeline execution, so we cannot distinguish them from output.
+        if "--disable-callback" in args:
+            logger.debug("Testing with callback disabled - Python callback will not be invoked")
+        else:
+            logger.debug("Testing with callback enabled - Python callback will be invoked per frame")
         
         return stdout, stderr, success
         

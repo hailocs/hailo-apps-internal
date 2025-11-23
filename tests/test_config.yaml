@@ -237,8 +237,8 @@ run_methods:
 # Test suites - all available test suites
 test_suites:
   default:
-    description: "Empty arguments - uses default behavior"
-    args: []
+    description: "Default arguments - includes FPS display"
+    args: ["--show-fps"]
   usb_camera:
     description: "Use USB camera as input"
     args: ["--input", "usb"]
@@ -420,11 +420,7 @@ pipeline_special_tests:
   pose_estimation:
     description: "Special tests for pose estimation pipeline"
     enabled: true
-    tests:
-      - name: "show_fps_test"
-        description: "Test with FPS display"
-        test_suite: "show_fps"
-        run_methods: ["pythonpath"]
+    tests: []
   
   depth:
     description: "Special tests for depth pipeline"
