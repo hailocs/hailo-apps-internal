@@ -67,10 +67,6 @@ def app_callback(pad, info, user_data):
     frame_idx = user_data.get_count()
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
-    # Get the caps from the pad
-    format, width, height = get_caps_from_pad(pad)
-    hailo_logger.debug("Frame=%s | caps fmt=%s %sx%s", frame_idx, format, width, height)
-
     # If the user_data.use_frame is set to True, we can get the video frame from the buffer
     frame = None
     if user_data.use_frame and format is not None and width is not None and height is not None:

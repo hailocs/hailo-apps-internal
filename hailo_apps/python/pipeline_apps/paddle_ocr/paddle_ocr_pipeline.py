@@ -49,31 +49,14 @@ hailo_logger = get_logger(__name__)
 
 
 class GStreamerOCRApp(GStreamerApp):
-    def __init__(self, app_callback, user_data, parser=None, detection_only=False):
+    def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_default_parser()
         
-        # Add argument for detection-only mode
-        parser.add_argument(
-            "--detection-only",
-            action="store_true",
-            help="Run only OCR detection (no recognition), show bounding boxes only",
-        )
-        
         hailo_logger.info("Initializing GStreamer OCR App...")
-        
-        # Store detection-only flag
-        self.detection_only = detection_only
 
         # Call the parent class constructor
         super().__init__(parser, user_data)
-        
-        # Check if detection-only mode was requested via command line
-        # argparse converts --detection-only to detection_only attribute
-        # Use getattr with default False to safely check the attribute
-        cmd_line_detection_only = getattr(self.options_menu, 'detection_only', False)
-        if cmd_line_detection_only:
-            self.detection_only = True
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
@@ -171,10 +154,7 @@ class GStreamerOCRApp(GStreamerApp):
 
 
     def get_pipeline_string(self):
-        """Returns the appropriate pipeline based on detection_only flag."""
-        if self.detection_only:
-            return self.get_pipeline_string_detection_only()
-        
+        """Returns the OCR pipeline with detection and recognition."""
         # Full pipeline with detection and recognition
         # 1. Source pipeline
         source_pipeline = SOURCE_PIPELINE(
@@ -233,50 +213,6 @@ class GStreamerOCRApp(GStreamerApp):
             f"{ocr_det_wrapper} ! "
             f"{tracker_pipeline} ! "
             f"{ocr_cropper} ! "
-            f"{user_callback_pipeline} ! "
-            f"{display_pipeline}"
-        )
-        
-        return pipeline_string
-
-    def get_pipeline_string_detection_only(self):
-        """
-        Simplified pipeline that only runs OCR detection and displays bounding boxes.
-        No recognition or cropping stages.
-        """
-        # 1. Source pipeline
-        source_pipeline = SOURCE_PIPELINE(
-            video_source=self.video_source,
-            video_width=self.video_width,
-            video_height=self.video_height,
-            frame_rate=self.frame_rate,
-            sync=self.sync,
-        )
-
-        # 2. OCR Detection pipeline - detects text regions (bounding boxes)
-        ocr_det_pipeline = INFERENCE_PIPELINE(
-            hef_path=str(self.ocr_det_hef_path) if self.ocr_det_hef_path else None,
-            post_process_so=str(self.post_process_so) if self.post_process_so else None,
-            post_function_name=self.ocr_det_post_function,
-            batch_size=self.batch_size,
-            name="ocr_detection",
-        )
-        
-        # Wrap detection to preserve original frame size
-        ocr_det_wrapper = INFERENCE_PIPELINE_WRAPPER(ocr_det_pipeline)
-
-        # 3. User callback pipeline
-        user_callback_pipeline = USER_CALLBACK_PIPELINE()
-
-        # 4. Display pipeline (with overlay to show bounding boxes)
-        display_pipeline = DISPLAY_PIPELINE(
-            video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps
-        )
-
-        # Simple pipeline: Source -> OCR Detection -> Callback -> Display
-        pipeline_string = (
-            f"{source_pipeline} ! "
-            f"{ocr_det_wrapper} ! "
             f"{user_callback_pipeline} ! "
             f"{display_pipeline}"
         )
