@@ -22,6 +22,7 @@ hailo10:
   - yolov8m_pose
   - scrfd_10g
   - arcface_mobilefacenet
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/hailo10h/hailo_yolov8n_4_classes_vga.hef
 
 hailo8:
   - yolov8m
@@ -30,6 +31,7 @@ hailo8:
   - scrfd_10g
   - arcface_mobilefacenet
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ssd_mobilenet_v1_visdrone.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/hailo_yolov8n_4_classes_vga.hef
 
 hailo8l:
   - yolov8s
@@ -38,6 +40,7 @@ hailo8l:
   - scrfd_2.5g
   - arcface_mobilefacenet
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/ssd_mobilenet_v1_visdrone.hef
+  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l/hailo_yolov8n_4_classes_vga.hef
 
 all:
   - yolov8s_pose
