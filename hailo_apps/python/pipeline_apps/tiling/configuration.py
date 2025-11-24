@@ -1,23 +1,14 @@
 # region imports
 # Standard library imports
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Tuple
 
 # Local application-specific imports
 from hailo_apps.python.core.common.defines import (
     TILING_VIDEO_EXAMPLE_NAME,
-    TILING_YOLO_POSTPROCESS_SO_FILENAME,
-    TILING_MOBILENET_POSTPROCESS_SO_FILENAME,
-    TILING_YOLO_MODEL_NAME_H8,
-    TILING_YOLO_MODEL_NAME_H8L,
-    TILING_MOBILENET_MODEL_NAME_H8,
-    TILING_MOBILENET_MODEL_NAME_H8L,
-    TILING_DEFAULT_MODEL_TYPE,
-    TILING_DEFAULT_MODEL_INPUT_SIZE,
-    TILING_YOLO_POSTPROCESS_FUNCTION,
-    TILING_YOLO_DEFAULT_MODEL_INPUT_SIZE,
-    TILING_MOBILENET_DEFAULT_MODEL_INPUT_SIZE,
-    TILING_MOBILENET_POSTPROCESS_FUNCTION,
+    TILING_POSTPROCESS_SO_FILENAME,
+    TILING_MODEL_NAME,
+    TILING_POSTPROCESS_FUNCTION,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
@@ -28,33 +19,33 @@ from hailo_apps.python.core.common.defines import (
 from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices
+from hailo_apps.python.core.common.hef_utils import get_hef_input_size
 from .tile_calculator import calculate_auto_tiles, calculate_manual_tiles_overlap
 
 hailo_logger = get_logger(__name__)
 # endregion imports
 
 
-def detect_model_config_from_hef(hef_path: str) -> Tuple[str, int, str]:
+def detect_model_config_from_hef(hef_path: str) -> Tuple[str, int, int, str]:
     """
-    Automatically detect model configuration from HEF filename.
+    Get model configuration from HEF file.
 
     Args:
         hef_path: Path to the HEF file
 
     Returns:
-        tuple: (model_type, input_size, postprocess_function)
+        tuple: (model_type, input_width, input_height, postprocess_function)
     """
-    if hef_path is None:
-        return TILING_DEFAULT_MODEL_TYPE, TILING_DEFAULT_MODEL_INPUT_SIZE, TILING_YOLO_POSTPROCESS_FUNCTION
+    model_type = "yolo"
+    postprocess_function = TILING_POSTPROCESS_FUNCTION
 
-    hef_name = Path(hef_path).name.lower()
-
-    # If filename contains 'mobilenet', use MobileNetSSD defaults
-    if 'mobilenet' in hef_name:
-        return "mobilenet", TILING_MOBILENET_DEFAULT_MODEL_INPUT_SIZE, TILING_MOBILENET_POSTPROCESS_FUNCTION
-
-    # Otherwise, use YOLO defaults
-    return "yolo", TILING_YOLO_DEFAULT_MODEL_INPUT_SIZE, TILING_YOLO_POSTPROCESS_FUNCTION
+    try:
+        width, height = get_hef_input_size(hef_path)
+        hailo_logger.info(f"Parsed HEF file: input resolution {width}x{height}")
+        return model_type, width, height, postprocess_function
+    except (ImportError, FileNotFoundError, ValueError) as e:
+        hailo_logger.error(f"Could not parse HEF file to get input size: {e}.")
+        raise ValueError(f"Could not get input size from HEF: {hef_path}")
 
 
 class TilingConfiguration:
@@ -93,22 +84,13 @@ class TilingConfiguration:
     def _configure_video_source(self) -> None:
         """Configure video source based on options."""
         if self.options_menu.input is None:
-            if self.options_menu.general_detection:
-                # Use standard detection video for general detection mode
-                self.video_source = str(
-                    Path(RESOURCES_ROOT_PATH_DEFAULT)
-                    / RESOURCES_VIDEOS_DIR_NAME
-                    / BASIC_PIPELINES_VIDEO_EXAMPLE_NAME
-                )
-                hailo_logger.info(f"Using default detection video for general detection: {self.video_source}")
-            else:
-                # Use VisDrone video for aerial detection mode
-                self.video_source = str(
-                    Path(RESOURCES_ROOT_PATH_DEFAULT)
-                    / RESOURCES_VIDEOS_DIR_NAME
-                    / TILING_VIDEO_EXAMPLE_NAME
-                )
-                hailo_logger.info(f"Using default tiling video: {self.video_source}")
+            # Use VisDrone video for aerial detection mode
+            self.video_source = str(
+                Path(RESOURCES_ROOT_PATH_DEFAULT)
+                / RESOURCES_VIDEOS_DIR_NAME
+                / TILING_VIDEO_EXAMPLE_NAME
+            )
+            hailo_logger.info(f"Using default tiling video: {self.video_source}")
         else:
             # Handle USB camera input like the parent GStreamerApp class
             if self.options_menu.input == USB_CAMERA:
@@ -131,26 +113,13 @@ class TilingConfiguration:
         if self.options_menu.hef_path is not None:
             self.hef_path = self.options_menu.hef_path
             hailo_logger.info(f"Using user-specified HEF: {self.hef_path}")
-        elif self.options_menu.general_detection:
-            # Use YOLO model for general detection
-            default_model_name = TILING_YOLO_MODEL_NAME_H8 if self.arch == "hailo8" else TILING_YOLO_MODEL_NAME_H8L
-            self.hef_path = get_resource_path(
-                pipeline_name=None,
-                resource_type=RESOURCES_MODELS_DIR_NAME,
-                arch=self.arch,
-                model=default_model_name
-            )
-            hailo_logger.info(f"Using YOLO model for general detection: {self.hef_path}")
         else:
-            # Use default VisDrone MobileNetSSD model
-            default_model_name = TILING_MOBILENET_MODEL_NAME_H8 if self.arch == "hailo8" else TILING_MOBILENET_MODEL_NAME_H8L
             self.hef_path = get_resource_path(
                 pipeline_name=None,
                 resource_type=RESOURCES_MODELS_DIR_NAME,
-                arch=self.arch,
-                model=default_model_name
+                model=TILING_MODEL_NAME
             )
-            hailo_logger.info(f"Using default VisDrone MobileNetSSD HEF: {self.hef_path}")
+            hailo_logger.info(f"Using default HEF: {self.hef_path}")
 
         # Validate HEF path exists
         if self.hef_path is None or not Path(self.hef_path).exists():
@@ -158,17 +127,14 @@ class TilingConfiguration:
             raise ValueError(f"HEF file not found: {self.hef_path}")
 
         # Auto-detect model configuration from HEF filename
-        self.model_type, self.model_input_size, self.post_function = detect_model_config_from_hef(self.hef_path)
-        hailo_logger.info(f"Auto-detected: {self.model_type} ({self.model_input_size}x{self.model_input_size}) - {self.post_function}")
+        self.model_type, self.model_input_width, self.model_input_height, self.post_function = detect_model_config_from_hef(self.hef_path)
+        hailo_logger.info(f"Auto-detected: {self.model_type} ({self.model_input_width}x{self.model_input_height}) - {self.post_function}")
 
         # Set post-processing resources
-        postprocess_so_filename = (TILING_MOBILENET_POSTPROCESS_SO_FILENAME if self.model_type == "mobilenet"
-                                 else TILING_YOLO_POSTPROCESS_SO_FILENAME)
         self.post_process_so = get_resource_path(
             pipeline_name=None,
             resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch,
-            model=postprocess_so_filename
+            model=TILING_POSTPROCESS_SO_FILENAME
         )
 
     def _configure_tiling(self) -> None:
@@ -182,9 +148,11 @@ class TilingConfiguration:
             )
             self.min_overlap = max(0.0, min(0.5, self.min_overlap))
 
+        # Calculate min overlap in pixels (use average for display)
+        avg_model_size = (self.model_input_width + self.model_input_height) / 2
         hailo_logger.info(
             f"Minimum overlap set to {self.min_overlap:.2%} "
-            f"({int(self.min_overlap * self.model_input_size)}px)"
+            f"(~{int(self.min_overlap * avg_model_size)}px)"
         )
 
         # Configure single-scale tiling
@@ -204,14 +172,14 @@ class TilingConfiguration:
             if user_tiles_x is None:
                 # Auto-calculate tiles_x based on tiles_y
                 auto_tiles_x, _, _, _ = calculate_auto_tiles(
-                    self.video_width, self.video_height, self.model_input_size, self.min_overlap
+                    self.video_width, self.video_height, self.model_input_width, self.model_input_height, self.min_overlap
                 )
                 self.tiles_x = auto_tiles_x
                 self.tiles_y = user_tiles_y
             elif user_tiles_y is None:
                 # Auto-calculate tiles_y based on tiles_x
                 _, auto_tiles_y, _, _ = calculate_auto_tiles(
-                    self.video_width, self.video_height, self.model_input_size, self.min_overlap
+                    self.video_width, self.video_height, self.model_input_width, self.model_input_height, self.min_overlap
                 )
                 self.tiles_x = user_tiles_x
                 self.tiles_y = auto_tiles_y
@@ -224,14 +192,14 @@ class TilingConfiguration:
             self.overlap_x, self.overlap_y, tile_size_x, tile_size_y = calculate_manual_tiles_overlap(
                 self.video_width, self.video_height,
                 self.tiles_x, self.tiles_y,
-                self.model_input_size,
+                self.model_input_width, self.model_input_height,
                 self.min_overlap
             )
 
             # Check if we needed larger tiles to meet minimum overlap
             self.tile_size_x = tile_size_x
             self.tile_size_y = tile_size_y
-            self.used_larger_tiles = (tile_size_x > self.model_input_size or tile_size_y > self.model_input_size)
+            self.used_larger_tiles = (tile_size_x > self.model_input_width or tile_size_y > self.model_input_height)
 
             if self.used_larger_tiles:
                 hailo_logger.info(
@@ -244,11 +212,11 @@ class TilingConfiguration:
             # Auto mode
             self.tiling_mode = "auto"
             self.tiles_x, self.tiles_y, self.overlap_x, self.overlap_y = calculate_auto_tiles(
-                self.video_width, self.video_height, self.model_input_size, self.min_overlap
+                self.video_width, self.video_height, self.model_input_width, self.model_input_height, self.min_overlap
             )
             # In auto mode, tiles are always model input size
-            self.tile_size_x = self.model_input_size
-            self.tile_size_y = self.model_input_size
+            self.tile_size_x = self.model_input_width
+            self.tile_size_y = self.model_input_height
             self.used_larger_tiles = False
             hailo_logger.info(f"Auto tiling: {self.tiles_x}x{self.tiles_y} tiles (min overlap {self.min_overlap:.1%})")
 
@@ -262,12 +230,7 @@ class TilingConfiguration:
 
     def _configure_multi_scale(self) -> None:
         """Configure multi-scale settings."""
-        # Auto-enable multi-scale for general detection mode
-        if self.options_menu.general_detection and not self.options_menu.multi_scale:
-            self.use_multi_scale = True
-            hailo_logger.info("Auto-enabled multi-scale for general detection mode")
-        else:
-            self.use_multi_scale = self.options_menu.multi_scale
+        self.use_multi_scale = self.options_menu.multi_scale
 
         if self.use_multi_scale:
             # Multi-scale: custom tiles PLUS predefined grids

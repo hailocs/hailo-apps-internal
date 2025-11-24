@@ -71,7 +71,7 @@ class GStreamerTilingApp(GStreamerApp):
                           help="Number of tiles vertically (triggers manual mode)")
         parser.add_argument("--min-overlap", type=float, default=0.1,
                           help="Minimum overlap ratio (0.0-0.5). Default: 0.1 (10%% of tile size). "
-                               "Should be ≥ (smallest_object_size / model_input_size)")
+                               "Should be ≥ (smallest_object_size / model_input_dimension)")
 
         # Multi-scale options
         parser.add_argument("--multi-scale", action="store_true",
@@ -80,8 +80,6 @@ class GStreamerTilingApp(GStreamerApp):
                           help="Scale levels for multi-scale mode: 1={1x1}, 2={1x1+2x2}, 3={1x1+2x2+3x3}. Default: 1")
 
         # Detection options
-        parser.add_argument("--general-detection", action="store_true",
-                          help="Use YOLO model with multi-scale for general object detection (COCO dataset)")
         parser.add_argument("--iou-threshold", type=float, default=0.3,
                           help="NMS IOU threshold (default: 0.3)")
         parser.add_argument("--border-threshold", type=float, default=0.15,
@@ -95,7 +93,8 @@ class GStreamerTilingApp(GStreamerApp):
         # Model configuration
         self.hef_path = self.config.hef_path
         self.model_type = self.config.model_type
-        self.model_input_size = self.config.model_input_size
+        self.model_input_width = self.config.model_input_width
+        self.model_input_height = self.config.model_input_height
         self.post_function = self.config.post_function
         self.post_process_so = self.config.post_process_so
 
@@ -134,7 +133,7 @@ class GStreamerTilingApp(GStreamerApp):
 
         # Input information
         print(f"Input Resolution:     {self.video_width}x{self.video_height}")
-        print(f"Model:                {Path(self.hef_path).name} ({self.model_type.upper()}, {self.model_input_size}x{self.model_input_size})")
+        print(f"Model:                {Path(self.hef_path).name} ({self.model_type.upper()}, {self.model_input_width}x{self.model_input_height})")
 
         # Tiling mode and configuration (always show custom tiles)
         print(f"\nTiling Mode:          {self.tiling_mode.upper()}")
@@ -143,7 +142,7 @@ class GStreamerTilingApp(GStreamerApp):
         if hasattr(self, 'used_larger_tiles') and self.used_larger_tiles:
             print(f"Tile Size:            {int(self.tile_size_x)}x{int(self.tile_size_y)} pixels (enlarged to meet min overlap)")
         else:
-            print(f"Tile Size:            {self.model_input_size}x{self.model_input_size} pixels")
+            print(f"Tile Size:            {self.model_input_width}x{self.model_input_height} pixels")
         # Calculate overlap in pixels using actual tile sizes
         overlap_pixels_x = int(self.overlap_x * self.tile_size_x)
         overlap_pixels_y = int(self.overlap_y * self.tile_size_y)
@@ -174,17 +173,10 @@ class GStreamerTilingApp(GStreamerApp):
         if self.use_multi_scale:
             print(f"  Border Threshold:   {self.border_threshold}")
 
-        # Model information
-        if self.options_menu.general_detection:
-            model_desc = "YOLO (general detection mode)"
-        elif self.model_type == "mobilenet":
-            model_desc = "MobileNetSSD (aerial detection)"
-        else:
-            model_desc = "YOLO (general detection)"
-        print(f"\nModel:               {model_desc} ({self.model_input_size}x{self.model_input_size})")
-
         # Overlap information
-        min_overlap_pixels = int(self.min_overlap * self.model_input_size)
+        # Use average for min overlap pixels display
+        avg_model_size = (self.model_input_width + self.model_input_height) / 2
+        min_overlap_pixels = int(self.min_overlap * avg_model_size)
 
         if hasattr(self, 'used_larger_tiles') and self.used_larger_tiles:
             print(f"\nNote:                 Tile sizes enlarged to {int(self.tile_size_x)}x{int(self.tile_size_y)} to meet minimum overlap requirement")

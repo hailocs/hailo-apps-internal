@@ -7,11 +7,11 @@
 The tiling pipeline demonstrates splitting each frame into several tiles which are processed independently by the `hailonet` element. This method is especially effective for **detecting small objects in high-resolution frames**.
 
 **To demonstrate tiling capabilities, we've selected a drone/aerial use case as the default:**
-- **Default Model:** VisDrone MobileNetSSD (300×300) - optimized for aerial object detection
+- **Default Model:** `hailo_yolov8n_4_classes_vga` - optimized for aerial object detection
 - **Default Video:** `tiling_visdrone_720p.mp4` - aerial footage with small objects
 - **Use Case:** Perfect for demonstrating small object detection in high-resolution frames
 
-For general object detection scenarios, use the `--general-detection` flag to switch to YOLO with COCO dataset.
+For scenes with varied object sizes, you can use the `--multi-scale` flag to enable multi-scale tiling.
 
 
 ## Usage Examples
@@ -20,28 +20,27 @@ If you application seems to be slow, try to use less tiles. If you do need to us
 
 ### Basic Examples
 
-**Default (VisDrone aerial detection):**
+**Default (aerial detection):**
 ```bash
 hailo-tiling
 ```
 To close the application, press `Ctrl+C`.
 
-- Uses VisDrone MobileNetSSD (300×300) + VisDrone video
+- Uses `hailo_yolov8n_4_classes_vga` + VisDrone video
 - Perfect for demonstrating small object detection
 
-**General detection mode (common use cases):**
+**With multi-scale for varied object sizes:**
 ```bash
-hailo-tiling --general-detection
+hailo-tiling --multi-scale
 ```
-- Uses YOLO (640×640) + COCO dataset + multi-scale
-- Uses standard detection video (`example.mp4`)
-- Optimized for general object detection
+- Uses `hailo_yolov8n_4_classes_vga` + multi-scale
+- Optimized for scenes with a mix of small and large objects
 
 **With live camera:**
 ```bash
-hailo-tiling --input rpi --general-detection
+hailo-tiling --input rpi --multi-scale
 ```
-- Uses YOLO (640×640) + COCO dataset + multi-scale
+- Uses `hailo_yolov8n_4_classes_vga` with a live camera feed and multi-scale.
 
 **Manual tile grid:**
 ```bash
@@ -147,25 +146,13 @@ This approach maintains the full fidelity of your input data, ensuring optimal d
 
 ### Model Options
 
-*   `--hef-path` - Path to custom YOLO HEF model file (auto-selected based on architecture if not specified)
+*   `--hef-path` - Path to a custom HEF model file. If not specified, the default `hailo_yolov8n_4_classes_vga` is used.
 
-**Automatic Detection:**
-The pipeline automatically detects everything from the HEF filename:
-- **MobileNetSSD models** (containing 'mobilenet') → 300×300 input, MobileNetSSD post-processing
-- **All other models** → 640×640 input, YOLO post-processing
-
-**Default Model:**
-- Uses VisDrone MobileNetSSD (300×300) as the default when no HEF is specified
+**Automatic Configuration:**
+The pipeline automatically reads the model's input resolution directly from the HEF file.
 
 **Default Video:**
 - Uses `tiling_visdrone_720p.mp4` as the default when no input is specified
-
-**General Detection Mode:**
-- Use `--general-detection` flag for common use cases
-- Switches to YOLO model (640×640) with COCO dataset
-- Uses standard detection video (`example.mp4`) as default
-- Automatically enables multi-scale for better object detection
-- Optimized for general object detection scenarios
 
 ### Tiling Options
 
@@ -204,7 +191,6 @@ The application operates in two modes:
 
 ### Detection Options
 
-*   `--general-detection` - Use YOLO model with multi-scale for general object detection (COCO dataset)
 *   `--iou-threshold` - NMS IOU threshold for filtering overlapping detections (default: 0.3)
 *   `--border-threshold` - Border threshold to remove tile edge detections in multi-scale mode (default: 0.15)
 
@@ -217,25 +203,22 @@ When you run the application, it displays a detailed configuration summary:
 TILING CONFIGURATION
 ======================================================================
 Input Resolution:     1280x720
-Model:                yolov6n.hef (YOLO, 640x640)
+Model:                hailo_yolov8n_4_classes_vga.hef (YOLO, 640x640)
 
 Tiling Mode:          AUTO
 Custom Tile Grid:     2x2 = 4 tiles
 Tile Size:            640x640 pixels
+Overlap:              X: 0.0% (~0px), Y: 15.6% (~100px)
 
-Multi-Scale:          ENABLED (auto-enabled for general detection)
-  Custom Tiles:       2x2 = 4 tiles
+Multi-Scale:          ENABLED (scale-level=1)
   Additional Grids:   1x1 = 1 tile
-  Total Tiles:        5
+  Total Tiles:        4 (custom) + 1 (predefined) = 5
 
 Detection Parameters:
   Batch Size:         5
   IOU Threshold:      0.3
   Border Threshold:   0.15
 
-Model:               YOLO (general detection mode) (640x640)
-
-Overlap:              X: 0.0% (~0px), Y: 15.6% (~100px)
   ⚠️  Warning:         Very small overlap may miss objects on boundaries
 ======================================================================
 ```
