@@ -44,11 +44,11 @@ hailo-tiling --input rpi --multi-scale
 
 **Manual tile grid:**
 ```bash
-hailo-tiling --input usb --tiles-x 3 --tiles-y 2 --hef /path/to/hef_file.hef
+hailo-tiling --input rpi --tiles-x 3 --tiles-y 2 --hef /path/to/hef_file.hef
 ```
-- Uses USB camera
+- Uses Raspberry Pi Camera
 - Creates exactly 3×2 = 6 tiles
-- Uses custom HEF file (a stronger yolo for example)
+- Uses custom HEF file (a stronger model for example)
 
 ## How Tiling Works
 
@@ -203,23 +203,19 @@ When you run the application, it displays a detailed configuration summary:
 TILING CONFIGURATION
 ======================================================================
 Input Resolution:     1280x720
-Model:                hailo_yolov8n_4_classes_vga.hef (YOLO, 640x640)
+Model:                hailo_yolov8n_4_classes_vga.hef (YOLO, 640x480)
 
 Tiling Mode:          AUTO
-Custom Tile Grid:     2x2 = 4 tiles
-Tile Size:            640x640 pixels
-Overlap:              X: 0.0% (~0px), Y: 15.6% (~100px)
+Custom Tile Grid:     3x2 = 6 tiles
+Tile Size:            640x480 pixels
+Overlap:              X: 50.0% (~320px), Y: 50.0% (~240px)
 
-Multi-Scale:          ENABLED (scale-level=1)
-  Additional Grids:   1x1 = 1 tile
-  Total Tiles:        4 (custom) + 1 (predefined) = 5
+Multi-Scale:          DISABLED
+  Total Tiles:        6
 
 Detection Parameters:
-  Batch Size:         5
+  Batch Size:         6
   IOU Threshold:      0.3
-  Border Threshold:   0.15
-
-  ⚠️  Warning:         Very small overlap may miss objects on boundaries
 ======================================================================
 ```
 
@@ -232,37 +228,14 @@ This helps you understand:
 
 **Batch Size:**
 - The batch size is automatically set to match the total number of tiles
-- Single-scale with 2×2 grid → batch size = 4
 - Single-scale with 4×3 grid → batch size = 12
-- Multi-scale (2×2 custom) + scale-levels 1 → batch size = 4 + 1 = 5
-- Multi-scale (2×2 custom) + scale-levels 2 → batch size = 4 + 5 = 9
 - Multi-scale (2×2 custom) + scale-levels 3 → batch size = 4 + 14 = 18
 - This ensures optimal processing throughput
-
-**Single-Scale Mode:**
-- Lower to moderate computational cost (depends on tile grid)
-- Customizable tile grid (1-20 tiles per axis)
-- Best for scenes with uniform object sizes or when you need specific tile coverage
-- Examples:
-  - 2×2 grid = 4 tiles per frame
-  - 4×3 grid = 12 tiles per frame
-  - 6×4 grid = 24 tiles per frame
-
-**Multi-Scale Mode:**
-- Adds predefined grids (1×1, 2×2, 3×3) to custom tiles
-- Higher computational cost (processes custom + predefined grids)
-- Best for scenes with varied object sizes
-- Custom tile settings are still used and important
-- Examples (with 2×2 custom grid):
-  - scale-levels 1: 4 + 1 = 5 tiles per frame
-  - scale-levels 2: 4 + 5 = 9 tiles per frame
-  - scale-levels 3: 4 + 14 = 18 tiles per frame
 
 **Tile Count Impact:**
 - More tiles = better small object detection
 - More tiles = higher processing time (scales with batch size)
 - Balance based on your hardware and requirements
-- Batch processing helps optimize throughput
 
 **Hailo8L Performance:**
 - For Hailo8L with the default `ssd_mobilenet_visdrone` model, the frame rate is automatically set to 19 fps to support Hailo8L's lower performance
