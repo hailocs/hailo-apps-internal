@@ -17,6 +17,7 @@ static const std::string DEFAULT_YOLOV5M_OUTPUT_LAYER = "yolov5m_wo_spp_60p/yolo
 static const std::string DEFAULT_YOLOV5M_VEHICLES_OUTPUT_LAYER = "yolov5m_vehicles/yolov5_nms_postprocess";
 static const std::string DEFAULT_YOLOV8S_OUTPUT_LAYER = "yolov8s/yolov8_nms_postprocess";
 static const std::string DEFAULT_YOLOV8M_OUTPUT_LAYER = "yolov8m/yolov8_nms_postprocess";
+static const std::string DEFAULT_YOLOV8N_OUTPUT_LAYER = "hailo_yolo8n_4cls_480x640/yolov8_nms_postprocess";
 
 #if __GNUC__ > 8
 #include <filesystem>
@@ -96,6 +97,7 @@ YoloParamsNMS *init(const std::string config_path, const std::string function_na
     }
     return params;
 }
+
 void free_resources(void *params_void_ptr)
 {
     YoloParamsNMS *params = reinterpret_cast<YoloParamsNMS *>(params_void_ptr);
@@ -104,30 +106,30 @@ void free_resources(void *params_void_ptr)
 
 static std::map<uint8_t, std::string> yolo_vehicles_labels = {
     {0, "unlabeled"},
-    {1, "car"}};
-static std::map<uint8_t, std::string> yolo_personface = {
+    {1, "car"}
+};
+
+static std::map<uint8_t, std::string> yolo_personface_labels = {
         {0, "unlabeled"},
         {1, "person"},
-        {2, "face"}};
+        {2, "face"}
+};
 
-void yolov5(HailoROIPtr roi)
+static std::map<uint8_t, std::string> yolo8n_personface_labels = {
+        {0, "unlabeled"},
+        {1, "person"},
+        {2, "vehicle"},
+        {3, "face"},
+        {4, "license-plates"}
+};
+
+void yolov8n_personface(HailoROIPtr roi)
 {
     if (!roi->has_tensors())
     {
         return;
     }
-    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5M_OUTPUT_LAYER), common::coco_eighty);
-    auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
-    hailo_common::add_detections(roi, detections);
-}
-
-void yolov5s_nv12(HailoROIPtr roi)
-{
-    if (!roi->has_tensors())
-    {
-        return;
-    }
-    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5S_OUTPUT_LAYER), common::coco_eighty);
+    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV8N_OUTPUT_LAYER), yolo8n_personface_labels);
     auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
     hailo_common::add_detections(roi, detections);
 }
@@ -161,6 +163,17 @@ void yolox(HailoROIPtr roi)
     hailo_common::add_detections(roi, detections);
 }
 
+void yolov5(HailoROIPtr roi)
+{
+    if (!roi->has_tensors())
+    {
+        return;
+    }
+    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5M_OUTPUT_LAYER), common::coco_eighty);
+    auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
+    hailo_common::add_detections(roi, detections);
+}
+
 void yolov5m_vehicles(HailoROIPtr roi)
 {
     auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5M_VEHICLES_OUTPUT_LAYER), yolo_vehicles_labels);
@@ -179,13 +192,24 @@ void yolov5m_vehicles_nv12(HailoROIPtr roi)
     hailo_common::add_detections(roi, detections);
 }
 
-void yolov5s_personface(HailoROIPtr roi)
+void yolov5s_nv12(HailoROIPtr roi)
 {
     if (!roi->has_tensors())
     {
         return;
     }
-    auto post = HailoNMSDecode(roi->get_tensor("yolov5s_personface_nv12/yolov5_nms_postprocess"), yolo_personface);
+    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5S_OUTPUT_LAYER), common::coco_eighty);
+    auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
+    hailo_common::add_detections(roi, detections);
+}
+
+void yolov5s_personface(HailoROIPtr roi)
+{
+    if (!roi->has_tensors())
+    {   
+        return;
+    }
+    auto post = HailoNMSDecode(roi->get_tensor("yolov5s_personface_nv12/yolov5_nms_postprocess"), yolo_personface_labels);
     auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
     hailo_common::add_detections(roi, detections);
 }
@@ -196,7 +220,7 @@ void yolov5s_personface_rgb(HailoROIPtr roi)
     {
         return;
     }
-    auto post = HailoNMSDecode(roi->get_tensor("yolov5s_personface/yolov5_nms_postprocess"), yolo_personface);
+    auto post = HailoNMSDecode(roi->get_tensor("yolov5s_personface/yolov5_nms_postprocess"), yolo_personface_labels);
     auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
     for (auto it = detections.begin(); it != detections.end();)
     {
@@ -230,25 +254,7 @@ void yolov5_no_persons(HailoROIPtr roi)
     }
     hailo_common::add_detections(roi, detections);
 }
-void filter(HailoROIPtr roi, void *params_void_ptr)
-{
-    if (!roi->has_tensors())
-    {
-        return;
-    }
-    YoloParamsNMS *params = reinterpret_cast<YoloParamsNMS *>(params_void_ptr);
-    std::vector<HailoTensorPtr> tensors = roi->get_tensors();
-    // find the nms tensor
-    for (auto tensor : tensors)
-    {
-        if (std::regex_search(tensor->name(), std::regex("nms_postprocess"))) 
-        {
-            auto post = HailoNMSDecode(tensor, params->labels, params->detection_threshold, params->max_boxes, params->filter_by_score);
-            auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
-            hailo_common::add_detections(roi, detections);
-        }
-    }
-}
+
 void filter_letterbox(HailoROIPtr roi, void *params_void_ptr)
 {
     filter(roi, params_void_ptr);
@@ -270,4 +276,24 @@ void filter_letterbox(HailoROIPtr roi, void *params_void_ptr)
     // Clear the scaling bbox of main roi because all detections are fixed.
     roi->clear_scaling_bbox();
 
+}
+
+void filter(HailoROIPtr roi, void *params_void_ptr)
+{
+    if (!roi->has_tensors())
+    {
+        return;
+    }
+    YoloParamsNMS *params = reinterpret_cast<YoloParamsNMS *>(params_void_ptr);
+    std::vector<HailoTensorPtr> tensors = roi->get_tensors();
+    // find the nms tensor
+    for (auto tensor : tensors)
+    {
+        if (std::regex_search(tensor->name(), std::regex("nms_postprocess"))) 
+        {
+            auto post = HailoNMSDecode(tensor, params->labels, params->detection_threshold, params->max_boxes, params->filter_by_score);
+            auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
+            hailo_common::add_detections(roi, detections);
+        }
+    }
 }

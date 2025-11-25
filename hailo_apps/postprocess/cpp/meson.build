@@ -181,6 +181,36 @@ shared_library('mobilenet_ssd_postprocess',
 )
 
 ################################################
+# CLIP SOURCES
+################################################
+clip_sources = [
+    'clip.cpp',
+]
+shared_library('clip_postprocess',
+    clip_sources,
+    include_directories : rapidjson_inc,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)    
+
+################################################
+# CLIP CROPPERS SOURCES
+################################################
+clip_croppers_sources = [
+    'clip_croppers.cpp',
+]
+shared_library('clip_croppers_postprocess',
+    clip_croppers_sources,
+    include_directories : rapidjson_inc,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
 # OCR POST SOURCES
 ################################################
 

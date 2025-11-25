@@ -5,13 +5,13 @@ import signal
 import sys
 import threading
 from pathlib import Path
-
 import cv2
-import gi
 import setproctitle
 
+import gi
+gi.require_version('Gtk', '3.0')
 gi.require_version("Gst", "1.0")
-from gi.repository import GLib, GObject, Gst
+from gi.repository import GLib, GObject, Gst, Gtk
 
 # Suppress GStreamer buffer warnings by installing a custom log handler
 # These warnings are cosmetic in GStreamer 1.26+ with complex pipelines
@@ -462,6 +462,7 @@ class GStreamerApp:
             GLib.timeout_add_seconds(3, self.dump_dot_file)
 
         self.loop.run()
+        # Gtk.main()
 
         try:
             hailo_logger.debug("Cleaning up after loop exit")

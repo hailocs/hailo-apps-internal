@@ -15,7 +15,7 @@ HAILO_TAPPAS_CORE_PYTHON_NAMES = [
     HAILO_TAPPAS_CORE,
 ]
 HAILORT_PACKAGE_NAME = "hailort"
-HAILORT_PACKAGE_NAME_RPI = "h10-hailort"  # This should be changed
+HAILORT_PACKAGE_NAME_RPI = "h10-hailort"
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 RESOURCES_ROOT_PATH_DEFAULT = "/usr/local/hailo/resources"  # Do Not Change!
@@ -253,23 +253,26 @@ SCRFD_8L_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"
 
 # Clip pipeline defaults
 CLIP_PIPELINE = "clip"
-CLIP_MODEL_NAME_H8 = "clip_resnet_50x4"
-CLIP_MODEL_NAME_H8L = "clip_resnet_50x4_h8l"
-CLIP_MODEL_NAME_10H = "TBD"
+CLIP_MODEL_NAME_H8 = "clip_resnet_50x4_image_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO8/HAILO8_zero_shot_classification.rst
+CLIP_MODEL_NAME_H8L = "clip_resnet_50x4_image_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO8L/HAILO8L_zero_shot_classification.rst
+CLIP_MODEL_NAME_10H = "clip_resnet_50x4_image_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO10H/HAILO10H_zero_shot_classification.rst
 
 CLIP_DETECTION_PIPELINE = "clip_detection"
-CLIP_DETECTION_MODEL_NAME_H8 = "yolov5s_personface"
-CLIP_DETECTION_MODEL_NAME_H8L = "yolov5s_personface_h8l_pi"
-CLIP_DETECTION_MODEL_NAME_10H = "TBD"
+CLIP_DETECTION_MODEL_NAME_H8 = "hailo_yolov8n_480_640_h8_rgb"
+CLIP_DETECTION_MODEL_NAME_H8L = "hailo_yolov8n_480_640_h8l_rgb"
+CLIP_DETECTION_MODEL_NAME_10H = "" # TODO
+
+CLIP_TEXT_ENCODER_MODEL_NAME_H8 = "tinyclip_vit_39m_16_text_19m_yfcc15m_text_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO8/HAILO8_text_image_retrieval.rst
+CLIP_TEXT_ENCODER_MODEL_NAME_H8L = "clip_resnet_50x4_text_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO8L/HAILO8L_text_image_retrieval.rst
+CLIP_TEXT_ENCODER_MODEL_NAME_10H = "tinyclip_vit_39m_16_text_19m_yfcc15m_text_encoder"  # https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO10H/HAILO10H_text_image_retrieval.rst
 
 CLIP_APP_TITLE = "Hailo CLIP App"
 CLIP_VIDEO_NAME = "clip_video.mp4"
 
 CLIP_DETECTION_JSON_NAME = "yolov5s_personface.json"
 
-CLIP_DETECTION_POSTPROCESS_SO_FILENAME = 'libyolo_post.so'
-CLIP_POSTPROCESS_SO_FILENAME = 'libclip_post.so'
-CLIP_CROPPER_POSTPROCESS_SO_FILENAME = 'libclip_croppers.so'
+CLIP_POSTPROCESS_SO_FILENAME = 'libclip_postprocess.so'
+CLIP_CROPPER_POSTPROCESS_SO_FILENAME = 'libclip_croppers_postprocess.so'
 
 # Multisource pipeline defaults
 MULTI_SOURCE_APP_TITLE = "Hailo Multisource App"

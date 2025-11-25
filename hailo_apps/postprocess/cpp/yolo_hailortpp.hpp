@@ -34,6 +34,7 @@ void yolov8m(HailoROIPtr roi);
 void yolox(HailoROIPtr roi);
 void yolov5s_personface(HailoROIPtr roi);
 void yolov5s_personface_rgb(HailoROIPtr roi);
+void yolov8n_personface(HailoROIPtr roi);
 void yolov5_no_persons(HailoROIPtr roi);
 void yolov5m_vehicles(HailoROIPtr roi);
 void yolov5m_vehicles_nv12(HailoROIPtr roi);

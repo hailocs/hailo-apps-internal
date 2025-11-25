@@ -44,6 +44,7 @@ hailo-face-recon =          "hailo_apps.python.pipeline_apps.face_recognition.fa
 hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
 hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
+hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip_app:main"
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*"]
