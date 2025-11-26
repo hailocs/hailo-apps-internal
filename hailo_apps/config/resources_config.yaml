@@ -48,8 +48,6 @@ hailo8:
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ssd_mobilenet_v1_visdrone.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/hailo_yolov8n_4_classes_vga.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/real_esrgan_x2.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr_det.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ufld_v2_tu.hef
 
 
@@ -65,8 +63,6 @@ hailo8l:
 
 
 hailo10h:
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr_det.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr.hef
   - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ufld_v2_tu.hef
   - real_esrgan_x2
   - yolov8m
