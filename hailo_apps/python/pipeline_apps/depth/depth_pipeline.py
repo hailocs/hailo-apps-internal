@@ -9,7 +9,7 @@ import setproctitle
 gi.require_version("Gst", "1.0")
 
 # Local application-specific imports
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import (
     DEPTH_APP_TITLE,
     DEPTH_PIPELINE,
@@ -25,7 +25,6 @@ from hailo_apps.python.core.common.hailo_logger import (
     add_logging_cli_args,
     get_logger,
 )
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -48,7 +47,7 @@ hailo_logger = get_logger(__name__)  # same run_id everywhere
 class GStreamerDepthApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
             add_logging_cli_args(parser)
 
         hailo_logger.info("Initializing GStreamer Depth App...")
@@ -57,12 +56,15 @@ class GStreamerDepthApp(GStreamerApp):
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized, options parsed: arch=%s, input=%s, fps=%s, sync=%s, show_fps=%s",
-            getattr(self.options_menu, "arch", None),
-            getattr(self, "video_source", None),
-            getattr(self, "frame_rate", None),
-            getattr(self, "sync", None),
-            getattr(self, "show_fps", None),
+            self.arch,
+            self.video_source,
+            self.frame_rate,
+            self.sync,
+            self.show_fps,
         )
+
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
 
         self.app_callback = app_callback
         setproctitle.setproctitle(DEPTH_APP_TITLE)  # Set the process title

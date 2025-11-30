@@ -11,8 +11,7 @@ from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type, USER_CALLBACK_PIPELINE, TRACKER_PIPELINE, QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
@@ -23,20 +22,27 @@ class GStreamerMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
 
         if parser == None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
-        parser.add_argument("--width", default=640, help="Video width (resolution) for ALL the sources. Default is 640.")
-        parser.add_argument("--height", default=640, help="Video height (resolution) for ALL the sources. Default is 640.")
+        # Note: --width and --height are already in the base parser, but we override defaults here
+        parser.add_argument("--width", type=int, default=640, help="Video width (resolution) for ALL the sources. Default is 640.")
+        parser.add_argument("--height", type=int, default=640, help="Video height (resolution) for ALL the sources. Default is 640.")
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
         setproctitle.setproctitle(MULTI_SOURCE_APP_TITLE)  # Set the process title
 
-        self.hef_path = get_resource_path(SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, self.arch)
+        # Set HEF path if not provided via parser
+        if self.hef_path is None:
+            self.hef_path = get_resource_path(SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, self.arch)
         self.post_process_so = get_resource_path(SIMPLE_DETECTION_PIPELINE, RESOURCES_SO_DIR_NAME, self.arch, DETECTION_POSTPROCESS_SO_FILENAME)
         self.post_function_name = DETECTION_POSTPROCESS_FUNCTION
         self.video_sources_types = [(video_source, get_source_type(video_source)) for video_source in (self.options_menu.sources.split(',') if self.options_menu.sources else [self.video_source, self.video_source])]  # Default to 2 sources if none specified
         self.num_sources = len(self.video_sources_types)
+        # Override width/height from parser (multisource has specific defaults)
         self.video_height = self.options_menu.height
         self.video_width = self.options_menu.width
 

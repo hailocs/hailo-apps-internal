@@ -5,8 +5,8 @@ import os
 
 import setproctitle
 
-from hailo_apps.hailo_app_python.core.common.core import get_default_parser, get_resource_path
-from hailo_apps.hailo_app_python.core.common.defines import (
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.defines import (
     OCR_APP_TITLE,
     OCR_PIPELINE,
     OCR_DETECTION_MODEL_NAME,
@@ -23,13 +23,13 @@ from hailo_apps.hailo_app_python.core.common.defines import (
 )
 
 # Logger
-from hailo_apps.hailo_app_python.core.common.hailo_logger import get_logger
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import (
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
     dummy_callback,
 )
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
@@ -51,7 +51,7 @@ hailo_logger = get_logger(__name__)
 class GStreamerOCRApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         
         hailo_logger.info("Initializing GStreamer OCR App...")
 
@@ -60,17 +60,19 @@ class GStreamerOCRApp(GStreamerApp):
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
-            getattr(self.options_menu, "arch", None),
-            getattr(self, "video_source", None),
-            getattr(self, "frame_rate", None),
-            getattr(self, "sync", None),
-            getattr(self, "show_fps", None),
+            self.arch,
+            self.video_source,
+            self.frame_rate,
+            self.sync,
+            self.show_fps,
         )
 
-        # Set Hailo parameters
-        self.batch_size = 1
+        # Set Hailo parameters - batch_size is already set from parser (default: 1)
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
 
         # OCR Detection model (detects text regions - bounding boxes)
+        # Note: OCR uses a different HEF path structure, so we don't use self.hef_path
         if self.options_menu.hef_path is not None:
             self.ocr_det_hef_path = self.options_menu.hef_path
         else:

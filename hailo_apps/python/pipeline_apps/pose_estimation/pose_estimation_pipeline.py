@@ -2,9 +2,8 @@
 # Standard library imports
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import (
-    HAILO_ARCH_KEY,
     POSE_ESTIMATION_APP_TITLE,
     POSE_ESTIMATION_PIPELINE,
     POSE_ESTIMATION_POSTPROCESS_FUNCTION,
@@ -15,9 +14,6 @@ from hailo_apps.python.core.common.defines import (
 
 # Logger
 from hailo_apps.python.core.common.hailo_logger import get_logger
-
-# Local application-specific imports
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -44,15 +40,15 @@ class GStreamerPoseEstimationApp(GStreamerApp):
         hailo_logger.info("Initializing GStreamer Pose Estimation App...")
 
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
 
         super().__init__(parser, user_data)
         hailo_logger.debug("Parser initialized, user_data ready.")
 
-        # Model parameters
-        self.batch_size = 2
-        self.video_width = 1280
-        self.video_height = 720
+        # Model parameters - override defaults if not set via parser
+        if self.batch_size == 1:
+            self.batch_size = 2
+        # video_width and video_height are already set from parser or defaults
         hailo_logger.debug(
             "Video params set: %dx%d, batch_size=%d",
             self.video_width,
@@ -60,17 +56,19 @@ class GStreamerPoseEstimationApp(GStreamerApp):
             self.batch_size,
         )
 
-        # Set HEF path
-        if self.options_menu.hef_path:
-            self.hef_path = self.options_menu.hef_path
-            hailo_logger.debug("Using custom HEF path: %s", self.hef_path)
-        else:
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
+        # Set HEF path if not provided via parser
+        if self.hef_path is None:
             self.hef_path = get_resource_path(
                 pipeline_name=POSE_ESTIMATION_PIPELINE,
                 resource_type=RESOURCES_MODELS_DIR_NAME,
                 arch=self.arch,
             )
             hailo_logger.debug("Using default HEF path: %s", self.hef_path)
+        else:
+            hailo_logger.debug("Using custom HEF path: %s", self.hef_path)
 
         self.app_callback = app_callback
         self.post_process_so = get_resource_path(

@@ -15,9 +15,9 @@ import numpy as np
 # Local application-specific imports
 import hailo
 from hailo import HailoTracker
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch, detect_host_arch
+from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
     ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
     ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION,
@@ -70,12 +70,16 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         
         if parser == None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
-        parser.add_argument("--width", default='640', help="Video width (resolution) for ALL the sources. Default is 640.")
-        parser.add_argument("--height", default='640', help="Video height (resolution) for ALL the sources. Default is 640.")
+        # Note: --width and --height are already in the base parser, but we override defaults here
+        parser.add_argument("--width", type=int, default=640, help="Video width (resolution) for ALL the sources. Default is 640.")
+        parser.add_argument("--height", type=int, default=640, help="Video height (resolution) for ALL the sources. Default is 640.")
 
         super().__init__(parser, user_data)  # Call the parent class constructor
+
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
 
         setproctitle.setproctitle(REID_MULTISOURCE_APP_TITLE)  # Set the process title
 

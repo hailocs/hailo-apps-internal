@@ -95,44 +95,273 @@ def load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None) -> bool:
     return True
 
 
-def get_default_parser():
-    hailo_logger.debug("Creating default argparse parser.")
-    parser = argparse.ArgumentParser(description="Hailo App Help")
-    parser.add_argument(
-        "--input", "-i", type=str, default=None,
-        help="Input source. Can be a file, USB (webcam), RPi camera (CSI camera module) or ximage. \
-        For RPi camera use '-i rpi' \
-        For automatically detect a connected usb camera, use '-i usb' \
-        For manually specifying a connected usb camera, use '-i /dev/video<X>' \
-        Defaults to application specific video."
+def get_base_parser():
+    """
+    Creates the base argument parser with core flags shared by all Hailo applications.
+    
+    This parser defines the standard interface for common functionality across
+    all applications, ensuring consistent flag naming and behavior.
+    
+    Returns:
+        argparse.ArgumentParser: Base parser with core flags
+    """
+    hailo_logger.debug("Creating base argparse parser.")
+    parser = argparse.ArgumentParser(
+        description="Hailo Application Base Parser",
+        add_help=False  # Allow parent parsers to control help display
     )
-    parser.add_argument("--use-frame", "-u", action="store_true", help="Use frame from the callback function")
-    parser.add_argument("--show-fps", "-f", action="store_true", help="Print FPS on sink")
+    
+    # Core input/output flags
     parser.add_argument(
-            "--arch",
-            default=None,
-            choices=['hailo8', 'hailo8l', 'hailo10h'],
-            help="Specify the Hailo architecture (hailo8 or hailo8l or hailo10h). Default is None , app will run check.",
+        "--input", "-i",
+        type=str,
+        default=None,
+        help=(
+            "Input source for processing. Can be a file path (image or video), "
+            "camera index (integer), folder path containing images, or RTSP URL. "
+            "For USB cameras, use 'usb' to auto-detect or '/dev/video<X>' for a specific device. "
+            "For Raspberry Pi camera, use 'rpi'. If not specified, defaults to application-specific source."
+        )
     )
+    
     parser.add_argument(
-            "--hef-path",
-            default=None,
-            help="Path to HEF file",
+        "--hef-path", "-n",
+        type=str,
+        default=None,
+        help=(
+            "Path to Hailo Executable Format (HEF) model file. "
+            "The HEF file contains the compiled neural network model optimized for Hailo processors. "
+            "If not specified, the application will attempt to use a default model based on the pipeline type."
+        )
     )
+    
     parser.add_argument(
-        "--disable-sync", action="store_true",
-        help="Disables display sink sync, will run as fast as possible. Relevant when using file source."
+        "--batch-size", "-b",
+        type=int,
+        default=1,
+        help=(
+            "Number of frames or images to process in parallel during inference. "
+            "Higher batch sizes can improve throughput but require more memory. "
+            "Default is 1 (sequential processing)."
+        )
     )
+    
     parser.add_argument(
-        "--disable-callback", action="store_true",
-        help="Disables the user's custom callback function in the pipeline. Use this option to run the pipeline without invoking the callback logic."
+        "--labels", "-l",
+        type=str,
+        default=None,
+        help=(
+            "Path to a text file containing class labels, one per line. "
+            "Used for mapping model output indices to human-readable class names. "
+            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
+        )
     )
-    parser.add_argument("--dump-dot", action="store_true", help="Dump the pipeline graph to a dot file pipeline.dot")
+    
     parser.add_argument(
-        "--frame-rate", "-r", type=int, default=30,
-        help="Frame rate of the video source. Default is 30."
+        "--width", "-W",
+        type=int,
+        default=None,
+        help=(
+            "Custom output width in pixels for video or image output. "
+            "If specified, the output will be resized to this width while maintaining aspect ratio. "
+            "If not specified, uses the input resolution or model default."
+        )
     )
+    
+    parser.add_argument(
+        "--height", "-H",
+        type=int,
+        default=None,
+        help=(
+            "Custom output height in pixels for video or image output. "
+            "If specified, the output will be resized to this height while maintaining aspect ratio. "
+            "If not specified, uses the input resolution or model default."
+        )
+    )
+    
+    parser.add_argument(
+        "--arch", "-a",
+        type=str,
+        default=None,
+        choices=["hailo8", "hailo8l", "hailo10h"],
+        help=(
+            "Target Hailo architecture for model execution. "
+            "Options: 'hailo8' (Hailo-8 processor), 'hailo8l' (Hailo-8L processor), "
+            "'hailo10h' (Hailo-10H processor). "
+            "If not specified, the architecture will be auto-detected from the connected device."
+        )
+    )
+    
+    parser.add_argument(
+        "--show-fps",
+        action="store_true",
+        help=(
+            "Enable FPS (frames per second) counter display. "
+            "When enabled, the application will display real-time performance metrics "
+            "showing the current processing rate. Useful for performance monitoring and optimization."
+        )
+    )
+    
+    parser.add_argument(
+        "--save-output", "-s",
+        action="store_true",
+        help=(
+            "Enable output file saving. When enabled, processed images or videos will be saved to disk. "
+            "The output location is determined by the --output-dir flag (for standalone apps) "
+            "or application-specific defaults. Without this flag, output is only displayed (if applicable)."
+        )
+    )
+    
+    parser.add_argument(
+        "--frame-rate", "-f",
+        type=int,
+        default=30,
+        help=(
+            "Target frame rate for video processing in frames per second. "
+            "Controls the playback speed and processing rate for video sources. "
+            "Default is 30 FPS. Lower values reduce processing load, higher values increase throughput."
+        )
+    )
+    
     return parser
+
+
+def get_pipeline_parser():
+    """
+    Creates an argument parser for GStreamer pipeline applications.
+    
+    This parser extends the base parser with pipeline-specific flags for
+    GStreamer-based applications that process video streams in real-time.
+    
+    Returns:
+        argparse.ArgumentParser: Parser with base and pipeline-specific flags
+    """
+    hailo_logger.debug("Creating pipeline argparse parser.")
+    base_parser = get_base_parser()
+    parser = argparse.ArgumentParser(
+        description="Hailo GStreamer Pipeline Application",
+        parents=[base_parser],
+        add_help=True  # Enable --help flag to show all available options
+    )
+    
+    parser.add_argument(
+        "--use-frame",
+        action="store_true",
+        help=(
+            "Enable frame access in callback functions. "
+            "When enabled, the callback function receives access to the raw frame data, "
+            "allowing for custom processing, analysis, or visualization within the pipeline. "
+            "Useful for applications that need to perform additional operations on individual frames."
+        )
+    )
+    
+    parser.add_argument(
+        "--disable-sync",
+        action="store_true",
+        help=(
+            "Disable display sink synchronization. "
+            "When enabled, the pipeline will process frames as fast as possible without waiting "
+            "for display synchronization. This is particularly useful when processing from file sources "
+            "where you want maximum throughput rather than real-time playback speed."
+        )
+    )
+    
+    parser.add_argument(
+        "--disable-callback",
+        action="store_true",
+        help=(
+            "Skip user callback execution. "
+            "When enabled, the pipeline will run without invoking custom callback functions, "
+            "processing frames through the standard pipeline only. Useful for performance testing "
+            "or when you want to run the pipeline without custom post-processing logic."
+        )
+    )
+    
+    parser.add_argument(
+        "--dump-dot",
+        action="store_true",
+        help=(
+            "Export pipeline graph to DOT file. "
+            "When enabled, the GStreamer pipeline structure will be saved as a Graphviz DOT file "
+            "(typically named 'pipeline.dot'). This file can be visualized using tools like 'dot' "
+            "to understand the pipeline topology and debug pipeline configuration issues."
+        )
+    )
+    
+    return parser
+
+
+def get_standalone_parser():
+    """
+    Creates an argument parser for standalone processing applications.
+    
+    This parser extends the base parser with standalone-specific flags for
+    applications that process files or batches without GStreamer pipelines.
+    
+    Returns:
+        argparse.ArgumentParser: Parser with base and standalone-specific flags
+    """
+    hailo_logger.debug("Creating standalone argparse parser.")
+    base_parser = get_base_parser()
+    parser = argparse.ArgumentParser(
+        description="Hailo Standalone Processing Application",
+        parents=[base_parser],
+        add_help=True  # Enable --help flag to show all available options
+    )
+    
+    parser.add_argument(
+        "--track",
+        action="store_true",
+        help=(
+            "Enable object tracking for detections. "
+            "When enabled, detected objects will be tracked across frames using a tracking algorithm "
+            "(e.g., ByteTrack). This assigns consistent IDs to objects over time, enabling temporal analysis, "
+            "trajectory visualization, and multi-frame association. Useful for video processing applications."
+        )
+    )
+    
+    parser.add_argument(
+        "--resolution", "-r",
+        type=str,
+        choices=["sd", "hd", "fhd"],
+        default="sd",
+        help=(
+            "Predefined resolution for camera input sources. "
+            "Options: 'sd' (640x480, Standard Definition), 'hd' (1280x720, High Definition), "
+            "'fhd' (1920x1080, Full High Definition). "
+            "Default is 'sd'. This flag is only applicable when using camera input sources."
+        )
+    )
+    
+    parser.add_argument(
+        "--output-dir", "-o",
+        type=str,
+        default=None,
+        help=(
+            "Directory where output files will be saved. "
+            "When --save-output is enabled, processed images, videos, or result files will be "
+            "written to this directory. If not specified, outputs are saved to a default location "
+            "or the current working directory. The directory will be created if it does not exist."
+        )
+    )
+    
+    return parser
+
+
+def get_default_parser():
+    """
+    Legacy function for backward compatibility.
+    
+    Returns the pipeline parser as the default to maintain compatibility
+    with existing code that uses get_default_parser().
+    
+    Returns:
+        argparse.ArgumentParser: Pipeline parser (for backward compatibility)
+    """
+    hailo_logger.warning(
+        "get_default_parser() is deprecated. Use get_pipeline_parser() or get_standalone_parser() instead."
+    )
+    return get_pipeline_parser()
 
 
 def get_model_name(pipeline_name: str, arch: str) -> str:

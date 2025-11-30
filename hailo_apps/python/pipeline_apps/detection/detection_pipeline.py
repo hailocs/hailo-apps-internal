@@ -4,7 +4,7 @@ from pathlib import Path
 
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import (
     DETECTION_APP_TITLE,
     DETECTION_PIPELINE,
@@ -16,9 +16,6 @@ from hailo_apps.python.core.common.defines import (
 
 # Logger
 from hailo_apps.python.core.common.hailo_logger import get_logger
-
-# Local application-specific imports
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -46,7 +43,7 @@ hailo_logger = get_logger(__name__)
 class GStreamerDetectionApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument(
             "--labels-json",
             default=None,
@@ -59,21 +56,25 @@ class GStreamerDetectionApp(GStreamerApp):
 
         hailo_logger.debug(
             "Parent GStreamerApp initialized | arch=%s | input=%s | fps=%s | sync=%s | show_fps=%s",
-            getattr(self.options_menu, "arch", None),
-            getattr(self, "video_source", None),
-            getattr(self, "frame_rate", None),
-            getattr(self, "sync", None),
-            getattr(self, "show_fps", None),
+            self.arch,
+            self.video_source,
+            self.frame_rate,
+            self.sync,
+            self.show_fps,
         )
         # Additional initialization code can be added here
         # Set Hailo parameters these parameters should be set based on the model used
-        self.batch_size = 2
+        # Override batch_size if not set via parser (default is 2 for detection)
+        if self.batch_size == 1:
+            self.batch_size = 2
         nms_score_threshold = 0.3
         nms_iou_threshold = 0.45
 
-        if self.options_menu.hef_path is not None:
-            self.hef_path = self.options_menu.hef_path
-        else:
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
+        # Set HEF path if not provided via parser
+        if self.hef_path is None:
             self.hef_path = get_resource_path(DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, self.arch)
 
             # Set the post-processing shared object file

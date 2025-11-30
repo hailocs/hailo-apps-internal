@@ -2,9 +2,8 @@
 # Standard library imports
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import (
-    HAILO_ARCH_KEY,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
@@ -17,9 +16,6 @@ from hailo_apps.python.core.common.defines import (
 
 # Logger
 from hailo_apps.python.core.common.hailo_logger import get_logger
-
-# Local application-specific imports
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -45,7 +41,7 @@ hailo_logger = get_logger(__name__)
 class GStreamerDetectionApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument(
             "--labels-json",
             default=None,
@@ -56,11 +52,16 @@ class GStreamerDetectionApp(GStreamerApp):
         super().__init__(parser, user_data)
 
         # Additional initialization code can be added here
-        self.video_width = 640
-        self.video_height = 640
+        # Override width/height if not set via parser
+        if self.video_width == 1280:
+            self.video_width = 640
+        if self.video_height == 720:
+            self.video_height = 640
 
         # Set Hailo parameters - these parameters should be set based on the model used
-        self.batch_size = 2
+        # Override batch_size if not set via parser
+        if self.batch_size == 1:
+            self.batch_size = 2
         nms_score_threshold = 0.3
         nms_iou_threshold = 0.45
         if (
@@ -72,9 +73,11 @@ class GStreamerDetectionApp(GStreamerApp):
                 arch=self.arch,
                 model=SIMPLE_DETECTION_VIDEO_NAME,
             )
-        if self.options_menu.hef_path is not None:
-            self.hef_path = self.options_menu.hef_path
-        else:
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
+        # Set HEF path if not provided via parser
+        if self.hef_path is None:
             self.hef_path = get_resource_path(
                 pipeline_name=SIMPLE_DETECTION_PIPELINE,
                 resource_type=RESOURCES_MODELS_DIR_NAME,

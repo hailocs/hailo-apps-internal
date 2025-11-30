@@ -21,7 +21,7 @@ from PIL import Image
 import hailo
 from hailo import HailoTracker
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
-from hailo_apps.python.core.common.core import get_default_parser, detect_hailo_arch, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.buffer_utils import get_numpy_from_buffer_efficient, get_caps_from_pad
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 from hailo_apps.python.core.common.defines import (
@@ -57,7 +57,7 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         setproctitle.setproctitle("Hailo Face Recognition App")
         if parser == None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument("--mode", default='run', help="The mode of the application: run, train, delete")
         super().__init__(parser, user_data)
 
@@ -80,15 +80,6 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         os.makedirs(self.train_images_dir, exist_ok=True)
         os.makedirs(self.samples_dir, exist_ok=True)
 
-        # Determine the architecture if not specified
-        if self.options_menu.arch is None:
-            detected_arch = detect_hailo_arch()
-            if detected_arch is None:
-                raise ValueError("Could not auto-detect Hailo architecture. Please specify --arch manually.")
-            self.arch = detected_arch
-        else:
-            self.arch = self.options_menu.arch
-
         # Initialize the database and table
         self.db_handler = DatabaseHandler(db_name='persons.db', 
                                           table_name='persons', 
@@ -96,6 +87,9 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
                                           threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
                                           database_dir=self.database_dir,
                                           samples_dir=self.samples_dir)
+
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
         
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, arch=self.arch, model=FACE_RECOGNITION_VIDEO_NAME)

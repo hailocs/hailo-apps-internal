@@ -4,9 +4,8 @@ from pathlib import Path
 
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.common.defines import (
-    HAILO_ARCH_KEY,
     INSTANCE_SEGMENTATION_APP_TITLE,
     INSTANCE_SEGMENTATION_MODEL_NAME_H8,
     INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
@@ -21,9 +20,6 @@ from hailo_apps.python.core.common.defines import (
 
 # Logger
 from hailo_apps.python.core.common.hailo_logger import get_logger
-
-# Local application-specific imports
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -50,23 +46,27 @@ hailo_logger = get_logger(__name__)
 class GStreamerInstanceSegmentationApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
 
         hailo_logger.info("Initializing GStreamer Instance Segmentation App...")
         super().__init__(parser, user_data)
         hailo_logger.debug(
             "Base app init complete | arch=%s | video_source=%s | fps=%s | sync=%s | show_fps=%s",
-            getattr(self.options_menu, "arch", None),
-            getattr(self, "video_source", None),
-            getattr(self, "frame_rate", None),
-            getattr(self, "sync", None),
-            getattr(self, "show_fps", None),
+            self.arch,
+            self.video_source,
+            self.frame_rate,
+            self.sync,
+            self.show_fps,
         )
 
-        # Hailo parameters
-        self.batch_size = 2
-        self.video_width = 640
-        self.video_height = 640
+        # Hailo parameters - override defaults for instance segmentation
+        if self.batch_size == 1:
+            self.batch_size = 2
+        # Override width/height if not set via parser
+        if self.video_width == 1280:
+            self.video_width = 640
+        if self.video_height == 720:
+            self.video_height = 640
         hailo_logger.debug(
             "Set batch_size=%d video_width=%d video_height=%d",
             self.batch_size,
@@ -74,10 +74,11 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
             self.video_height,
         )
 
-        # Set HEF path
-        if self.options_menu.hef_path:
-            self.hef_path = str(self.options_menu.hef_path)
-        else:
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
+        # Set HEF path if not provided via parser
+        if self.hef_path is None:
             self.hef_path = str(
                 get_resource_path(
                     pipeline_name=INSTANCE_SEGMENTATION_PIPELINE,
@@ -85,6 +86,8 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
                     arch=self.arch,
                 )
             )
+        else:
+            self.hef_path = str(self.hef_path)
         hailo_logger.info("HEF path: %s", self.hef_path)
 
         # Determine which JSON config to use

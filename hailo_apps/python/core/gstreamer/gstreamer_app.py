@@ -190,11 +190,18 @@ class GStreamerApp:
         self.error_occurred = False
         self.pipeline_latency = 300
 
-        self.batch_size = 1
-        self.video_width = 1280
-        self.video_height = 720
+        # Handle batch-size from parser (default: 1)
+        self.batch_size = getattr(self.options_menu, 'batch_size', 1)
+        
+        # Handle width/height from parser (defaults: 1280x720)
+        self.video_width = getattr(self.options_menu, 'width', 1280)
+        self.video_height = getattr(self.options_menu, 'height', 720)
+        
         self.video_format = HAILO_RGB_VIDEO_FORMAT
-        self.hef_path = None
+        
+        # Handle hef-path from parser (default: None, apps can override)
+        self.hef_path = getattr(self.options_menu, 'hef_path', None)
+        
         self.app_callback = None
 
         user_data.use_frame = self.options_menu.use_frame

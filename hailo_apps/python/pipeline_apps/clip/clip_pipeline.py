@@ -27,7 +27,7 @@ from hailo_apps.python.core.common.defines import (
     CLIP_POSTPROCESS_SO_FILENAME,
     CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
 )
-from hailo_apps.python.core.common.core import get_default_parser, detect_hailo_arch, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     QUEUE, 
@@ -48,7 +48,7 @@ class GStreamerClipApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         setproctitle.setproctitle(CLIP_APP_TITLE)
         if parser == None:
-            parser = get_default_parser()
+            parser = get_pipeline_parser()
         parser.add_argument("--detector", "-d", type=str, choices=["person", "face", "none"], default="none", help="Which detection pipeline to use.")
         parser.add_argument("--json-path", type=str, default=None, help="Path to JSON file to load and save embeddings. If not set, embeddings.json will be used.")
         parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
@@ -66,13 +66,8 @@ class GStreamerClipApp(GStreamerApp):
         self.detection_batch_size = 2
         self.clip_batch_size = 2
 
-        if self.options_menu.arch is None:
-            detected_arch = detect_hailo_arch()
-            if detected_arch is None:
-                raise ValueError('Could not auto-detect Hailo architecture. Please specify --arch manually.')
-            self.arch = detected_arch
-        else:
-            self.arch = self.options_menu.arch
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
 
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=BASIC_PIPELINES_VIDEO_EXAMPLE_NAME)
