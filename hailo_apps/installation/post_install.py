@@ -12,7 +12,7 @@ from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_DOTENV_PATH,
-    RESOURCES_GROUP_DEFAULT,
+    DEFAULT_RESOURCES_CONFIG_PATH,
     RESOURCES_PATH_DEFAULT,
     RESOURCES_PATH_KEY,
     RESOURCES_ROOT_PATH_DEFAULT,
@@ -34,7 +34,7 @@ def post_install():
         "--config", type=str, default=DEFAULT_CONFIG_PATH, help="Path to config file"
     )
     parser.add_argument(
-        "--group", type=str, default=RESOURCES_GROUP_DEFAULT, help="Resource group to download"
+        "--resource-config", type=str, default=DEFAULT_RESOURCES_CONFIG_PATH, help="Path to resources config file"
     )
     parser.add_argument("--dotenv", type=str, default=DEFAULT_DOTENV_PATH, help="Path to .env file")
     args = parser.parse_args()
@@ -78,7 +78,8 @@ def post_install():
 
     print("⬇️ Downloading resources...")
     hailo_logger.info("Starting resource download...")
-    download_resources(group=args.group)
+    # Download default models (excluding gen-ai-mz) and all images/videos
+    download_resources(resource_config_path=args.resource_config)
     hailo_logger.info(f"Resources downloaded to {resources_path}")
     print(f"Resources downloaded to {resources_path}")
 

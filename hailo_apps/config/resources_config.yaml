@@ -1,106 +1,365 @@
-default:
-  - yolov6n
-  - scdepthv3
-  - ssd_mobilenet_v1
-  - repvgg_a0_person_reid_512
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/ocr.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example_640.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/face_recognition.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/tiling_visdrone_720p.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/scrfd.json
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/barcode_labels.json
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5m_seg.json
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/dog_bicycle.jpg
-  - https://ultralytics.com/images/zidane.jpg
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/bus.jpg
-  - https://hailo-tappas.s3.eu-west-2.amazonaws.com/v3.22/general/media/full_mov_slow.mp4
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img1.png
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img2.png
-  - https://www.pexels.com/download/video/4608277/?fps=24.0&h=720&w=1280
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/input_image.png
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/visdrone.json
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/hailo_4_classes.json
+# Resources configuration organized by app
+# Each app contains models (default/extra per architecture) and JSON files
+# Videos and images are shared across all apps (see top-level videos/images sections)
+# Models can be from Model Zoo (mz), S3 (s3), or Gen-AI Model Zoo (gen-ai-mz)
+#
+# Structure:
+#   app_name:
+#     models:
+#       hailo8/hailo8l/hailo10h:
+#         default: single model entry or None
+#         extra: [list of additional models for this arch]
+#       Each model entry:
+#         - {name: "model_name", source: "mz"}  # Model Zoo model
+#         - {name: "model_name", source: "s3"}  # S3 model (URL built dynamically)
+#         - {name: "model_name", url: "https://...", source: "s3"}  # S3 model with explicit URL (backward compatibility)
+#         - {name: "model_name", url: "https://...", source: "gen-ai-mz"}  # Gen-AI model from server (requires explicit URL)
+#     json: [list of JSON config file URLs with name field]
+#
+#   videos: [list of video entries with name and url]
+#   images: [list of image entries with name and url]
 
-hailo10:
-  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef"
-  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef"
-  - "https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef"
-  - "https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef"
-  - yolov8m
-  - yolov5m_seg
-  - yolov8m_pose
-  - scrfd_10g
-  - arcface_mobilefacenet
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/hailo10h/hailo_yolov8n_4_classes_vga.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr_det.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr.hef
+# Shared videos for all apps
+videos:
+  - name: example.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example.mp4
+  - name: example_640.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example_640.mp4
+  - name: face_recognition.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/face_recognition.mp4
+  - name: ocr.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/ocr.mp4
+  - name: tiling_visdrone_720p.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/tiling_visdrone_720p.mp4
+  - name: barcode.mp4
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/barcode.mp4
+  - name: full_mov_slow.mp4
+    url: https://hailo-tappas.s3.eu-west-2.amazonaws.com/v3.22/general/media/full_mov_slow.mp4
+  - name: pexels_video.mp4
+    url: https://www.pexels.com/download/video/4608277/?fps=24.0&h=720&w=1280
 
-hailo8:
-  - yolov8m
-  - yolov5m_seg
-  - yolov8m_pose
-  - scrfd_10g
-  - arcface_mobilefacenet
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr_det.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ocr.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ssd_mobilenet_v1_visdrone.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/hailo_yolov8n_4_classes_vga.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/real_esrgan_x2.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/ufld_v2_tu.hef
+# Shared images for all apps
+images:
+  - name: dog_bicycle.jpg
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/dog_bicycle.jpg
+  - name: zidane.jpg
+    url: https://ultralytics.com/images/zidane.jpg
+  - name: bus.jpg
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/bus.jpg
+  - name: input_image.png
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/input_image.png
+  - name: ocr_img1.png
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img1.png
+  - name: ocr_img2.png
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img2.png
 
+detection:
+  models:
+    hailo8:
+      default:
+        name: yolov8m
+        source: mz
+      extra:
+        - name: yolov5m_wo_spp
+          source: mz
+        - name: yolov8s
+          source: mz
+        - name: yolov11n
+          source: mz
+        - name: yolov11s
+          source: mz
+        - name: yolov8n
+          source: mz
+    hailo8l:
+      default:
+        name: yolov8s
+        source: mz
+      extra:
+        - name: yolov6n
+          source: mz
+        - name: yolov5m_wo_spp
+          source: mz
+        - name: yolov11n
+          source: mz
+        - name: yolov11s
+          source: mz
+        - name: yolov8n
+          source: mz
+    hailo10h:
+      default:
+        name: yolov8m
+        source: mz
+      extra:
+        - name: yolov5m_wo_spp
+          source: mz
+        - name: yolov8s
+          source: mz
+        - name: yolov11n
+          source: mz
+        - name: yolov11s
+          source: mz
+        - name: yolov8n
+          source: mz
+  json:
+    - name: hailo_4_classes.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/hailo_4_classes.json
 
+simple_detection:
+  models:
+    hailo8:
+      default:
+        name: yolov6n
+        source: mz
+    hailo8l:
+      default:
+        name: yolov6n
+        source: mz
+    hailo10h:
+      default:
+        name: yolov6n
+        source: mz
 
-hailo8l:
-  - yolov8s
-  - yolov5n_seg
-  - yolov8s_pose
-  - scrfd_2.5g
-  - arcface_mobilefacenet
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/ssd_mobilenet_v1_visdrone.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l/hailo_yolov8n_4_classes_vga.hef
+face_recognition:
+  models:
+    hailo8:
+      default:
+        name: scrfd_10g
+        source: mz
+      extra:
+        - name: arcface_mobilefacenet
+          source: mz
+    hailo8l:
+      default:
+        name: scrfd_2.5g
+        source: mz
+      extra:
+        - name: arcface_mobilefacenet
+          source: mz
+    hailo10h:
+      default:
+        name: scrfd_10g
+        source: mz
+      extra:
+        - name: arcface_mobilefacenet
+          source: mz
+  json:
+    - name: scrfd.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/scrfd.json
 
+instance_segmentation:
+  models:
+    hailo8:
+      default:
+        name: yolov5m_seg
+        source: mz
+    hailo8l:
+      default:
+        name: yolov5n_seg
+        source: mz
+    hailo10h:
+      default:
+        name: yolov5m_seg
+        source: mz
+  json:
+    - name: yolov5m_seg.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5m_seg.json
+    - name: yolov5n_seg.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json
 
-hailo10h:
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ufld_v2_tu.hef
-  - real_esrgan_x2
-  - yolov8m
-  - yolov5m_seg
-  - yolov8m_pose
-  - scrfd_10g
-  - arcface_mobilefacenet
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr_det.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h15/ocr.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/hailo10h/hailo_yolov8n_4_classes_vga.hef
+pose_estimation:
+  models:
+    hailo8:
+      default:
+        name: yolov8m_pose
+        source: mz
+      extra:
+        - name: yolov8s_pose
+          source: mz
+    hailo8l:
+      default:
+        name: yolov8s_pose
+        source: mz
+    hailo10h:
+      default:
+        name: yolov8m_pose
+        source: mz
+      extra:
+        - name: yolov8s_pose
+          source: mz
 
+depth:
+  models:
+    hailo8:
+      default:
+        name: scdepthv3
+        source: mz
+    hailo8l:
+      default:
+        name: scdepthv3
+        source: mz
+    hailo10h:
+      default:
+        name: scdepthv3
+        source: mz
 
-all:
-  - yolov8s_pose
-  - yolov8s
-  - yolov8m_pose
-  - yolov8m
-  - yolov6n
-  - yolov5n_seg
-  - yolov5m_wo_spp
-  - yolov5m_seg
-  - yolov11s
-  - yolov11n
-  - scdepthv3
-  - yolov8n
+tiling:
+  models:
+    hailo8:
+      default:
+        name: hailo_yolov8n_4_classes_vga
+        source: s3
+      extra:
+        - name: ssd_mobilenet_v1
+          source: mz
+        - name: ssd_mobilenet_v1_visdrone
+          source: s3
+    hailo8l:
+      default:
+        name: hailo_yolov8n_4_classes_vga
+        source: s3
+      extra:
+        - name: ssd_mobilenet_v1
+          source: mz
+        - name: ssd_mobilenet_v1_visdrone
+          source: s3
+    hailo10h:
+      default:
+        name: hailo_yolov8n_4_classes_vga
+        source: s3
+      extra:
+        - name: ssd_mobilenet_v1
+          source: mz
+  json:
+    - name: visdrone.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/visdrone.json
+
+paddle_ocr:
+  models:
+    hailo8:
+      default:
+        name: ocr_det
+        source: s3
+      extra:
+        - name: ocr
+          source: s3
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: ocr_det
+        source: s3
+      extra:
+        - name: ocr
+          source: s3
+
+clip:
+  models:
+    hailo8:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
+      extra:
+        - name: hailo_yolov8n_480_640_h8_rgb
+          source: mz
+    hailo8l:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
+      extra:
+        - name: hailo_yolov8n_480_640_h8l_rgb
+          source: mz
+    hailo10h:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
 
 retrain:
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
-  - https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/barcode.mp4
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default:
+        name: yolov8s-hailo8l-barcode
+        source: s3
+    hailo10h:
+      default: None
+  json:
+    - name: barcode_labels.json
+      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/barcode_labels.json
+
+lane_detection:
+  models:
+    hailo8:
+      default:
+        name: ufld_v2_tu
+        source: s3
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: ufld_v2_tu
+        source: s3
+
+super_resolution:
+  models:
+    hailo8:
+      default:
+        name: real_esrgan_x2
+        source: s3
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: real_esrgan_x2
+        source: mz
+
+reid_multisource:
+  models:
+    hailo8:
+      default:
+        name: repvgg_a0_person_reid_512
+        source: mz
+    hailo8l:
+      default:
+        name: repvgg_a0_person_reid_512
+        source: mz
+    hailo10h:
+      default:
+        name: repvgg_a0_person_reid_512
+        source: mz
 
 VLM_Chat:
-  - https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: Qwen2-VL-2B-Instruct
+        url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef
+        source: gen-ai-mz
 
 llm_chat:
-  - https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: Qwen2.5-1.5B-Instruct
+        url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef
+        source: gen-ai-mz
 
 whisper_chat:
-  - https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
-
-
-
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: Whisper-Base
+        url: https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
+        source: gen-ai-mz
