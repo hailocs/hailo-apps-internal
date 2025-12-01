@@ -161,12 +161,12 @@ def download_model_from_config(model_entry: dict, hailo_arch: str, resource_root
         hailo_logger.warning(f"Invalid model entry: {model_entry}")
 
 
-def download_app_resources(
-    app_name: str, resource_config_path: str | None = None, arch: str | None = None
+def download_group_resources(
+    group_name: str, resource_config_path: str | None = None, arch: str | None = None
 ):
-    """Download resources for a specific standalone app."""
+    """Download resources for a specific group (app) based on the new resource config structure."""
     hailo_logger.debug(
-        f"Starting download_app_resources for app={app_name}, config={resource_config_path}, arch={arch}"
+        f"Starting download_group_resources for group={group_name}, config={resource_config_path}, arch={arch}"
     )
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
@@ -183,22 +183,22 @@ def download_app_resources(
         hailo_arch = HAILO8_ARCH
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
 
-    # Check if app exists in config
-    if app_name not in config:
-        hailo_logger.error(f"App '{app_name}' not found in resources config")
-        hailo_logger.info(f"Available apps: {', '.join([k for k in config.keys() if isinstance(config.get(k), dict)])}")
+    # Check if group (app) exists in config
+    if group_name not in config:
+        hailo_logger.error(f"Group '{group_name}' not found in resources config")
+        hailo_logger.info(f"Available groups/apps: {', '.join([k for k in config.keys() if isinstance(config.get(k), dict)])}")
         return
 
-    app_config = config[app_name]
-    if not isinstance(app_config, dict):
-        hailo_logger.error(f"App '{app_name}' config is not a dictionary")
+    group_config = config[group_name]
+    if not isinstance(group_config, dict):
+        hailo_logger.error(f"Group '{group_name}' config is not a dictionary")
         return
 
     # Check if this is the new structure (has 'models', 'videos', 'images', 'json' keys)
-    is_new_structure = any(key in app_config for key in ['models', 'videos', 'images', 'json'])
+    is_new_structure = any(key in group_config for key in ['models', 'videos', 'images', 'json'])
     
     if is_new_structure:
-        # New structure: organized by app with models/videos/images/json
+        # New structure: organized by group/app with models/videos/images/json
         resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
         
         # Setup Model Zoo version
@@ -213,8 +213,8 @@ def download_app_resources(
         hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
         
         # Download models
-        if "models" in app_config:
-            models_config = app_config["models"]
+        if "models" in group_config:
+            models_config = group_config["models"]
             if hailo_arch in models_config:
                 arch_models = models_config[hailo_arch]
                 
@@ -222,7 +222,7 @@ def download_app_resources(
                 if "default" in arch_models:
                     default_model = arch_models["default"]
                     if default_model is None:
-                        hailo_logger.debug(f"No default model for {app_name}/{hailo_arch}")
+                        hailo_logger.debug(f"No default model for {group_name}/{hailo_arch}")
                     elif isinstance(default_model, dict):
                         # Skip gen-ai-mz models
                         source = default_model.get("source", "mz")
@@ -311,8 +311,8 @@ def download_app_resources(
                     download_file(image_entry, dest)
         
         # Download JSON files
-        if "json" in app_config:
-            for json_entry in app_config["json"]:
+        if "json" in group_config:
+            for json_entry in group_config["json"]:
                 if isinstance(json_entry, dict):
                     json_name = json_entry.get("name")
                     json_url = json_entry.get("url")
@@ -333,17 +333,17 @@ def download_app_resources(
         hailo_logger.info(f"Using config key: {config_key} (old structure)")
 
         # Get resources for the specified architecture
-        if config_key not in app_config:
-            hailo_logger.warning(f"App '{app_name}' does not have resources for {config_key}")
-            hailo_logger.info(f"Available architectures for '{app_name}': {', '.join(app_config.keys())}")
+        if config_key not in group_config:
+            hailo_logger.warning(f"Group '{group_name}' does not have resources for {config_key}")
+            hailo_logger.info(f"Available architectures for '{group_name}': {', '.join(group_config.keys())}")
             return
 
-        resources = app_config[config_key]
+        resources = group_config[config_key]
         if not isinstance(resources, list):
-            hailo_logger.error(f"Resources for '{app_name}/{config_key}' is not a list")
+            hailo_logger.error(f"Resources for '{group_name}/{config_key}' is not a list")
             return
 
-        hailo_logger.info(f"Found {len(resources)} resources for {app_name}/{config_key}")
+        hailo_logger.info(f"Found {len(resources)} resources for {group_name}/{config_key}")
 
         resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
 
@@ -709,7 +709,7 @@ def list_models_for_arch(
 def download_resources(
     resource_config_path: str | None = None, 
     arch: str | None = None, 
-    app: str | None = None,
+    group: str | None = None,
     all_models: bool = False,
     model: str | None = None
 ):
@@ -718,13 +718,13 @@ def download_resources(
     Args:
         resource_config_path: Path to resources config file
         arch: Hailo architecture override (hailo8, hailo8l, hailo10h)
-        app: Specific app name to download resources for
+        group: Specific group/app name to download resources for
         all_models: If True, download all models (default + extra), otherwise only default
         model: Specific model name to download
     """
-    # If app is specified, use app-specific download
-    if app:
-        download_app_resources(app, resource_config_path, arch)
+    # If group is specified, use group-specific download
+    if group:
+        download_group_resources(group, resource_config_path, arch)
         return
 
     hailo_logger.debug(
@@ -780,7 +780,7 @@ def main():
         "--config", type=str, default=DEFAULT_RESOURCES_CONFIG_PATH, help="Path to config file"
     )
     parser.add_argument("--arch", type=str, default=None, help="Hailo architecture override (hailo8, hailo8l, hailo10h)")
-    parser.add_argument("--app", type=str, default=None, help="Standalone app name to download resources for (e.g., instance_segmentation, object_detection)")
+    parser.add_argument("--group", type=str, default=None, help="Group/app name to download resources for (e.g., detection, instance_segmentation, face_recognition)")
     parser.add_argument("--model", type=str, default=None, help="Specific model name to download for the detected/selected architecture")
     parser.add_argument("--list-models", action="store_true", help="List all available models for the detected/selected architecture")
     args = parser.parse_args()
@@ -795,7 +795,7 @@ def main():
     download_resources(
         resource_config_path=args.config, 
         arch=args.arch, 
-        app=args.app,
+        group=args.group,
         all_models=args.all,
         model=args.model
     )
