@@ -22,36 +22,36 @@
 # Shared videos for all apps
 videos:
   - name: example.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example.mp4
+    source: s3
   - name: example_640.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/example_640.mp4
+    source: s3
   - name: face_recognition.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/face_recognition.mp4
+    source: s3
   - name: ocr.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/ocr.mp4
+    source: s3
   - name: tiling_visdrone_720p.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/tiling_visdrone_720p.mp4
+    source: s3
   - name: barcode.mp4
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/barcode.mp4
+    source: s3
   - name: full_mov_slow.mp4
-    url: https://hailo-tappas.s3.eu-west-2.amazonaws.com/v3.22/general/media/full_mov_slow.mp4
+    source: s3
   - name: pexels_video.mp4
     url: https://www.pexels.com/download/video/4608277/?fps=24.0&h=720&w=1280
 
 # Shared images for all apps
 images:
   - name: dog_bicycle.jpg
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/dog_bicycle.jpg
+    source: s3
   - name: zidane.jpg
     url: https://ultralytics.com/images/zidane.jpg
   - name: bus.jpg
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/bus.jpg
+    source: s3
   - name: input_image.png
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/input_image.png
+    source: s3
   - name: ocr_img1.png
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img1.png
+    source: s3
   - name: ocr_img2.png
-    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/ocr_img2.png
+    source: s3
 
 detection:
   models:
