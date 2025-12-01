@@ -1,18 +1,18 @@
 """
-Test Runner - Parses configuration and orchestrates test execution
+Test Runner - Based on test_control.yaml and test_definition_config.yaml
 
 This module:
-1. Detects host and Hailo architecture at startup
-2. Sets environment variables if not in .env
-3. Parses test configuration
-4. Orchestrates test execution based on configuration
+1. Loads test_control.yaml (from tests/) and test_definition_config.yaml (from config/)
+2. Integrates with resources_config.yaml for models and resources
+3. Uses existing test framework functions
+4. Supports run_mode (default/extra/all) and test_run_combinations
 """
 
 import logging
 import os
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pytest
 
@@ -28,10 +28,9 @@ from hailo_apps.python.core.common.installation_utils import (
 
 from .all_tests import get_pipeline_test_function
 from .test_utils import (
-    get_enabled_pipelines,
-    get_enabled_run_methods,
-    get_models_for_architecture,
-    validate_test_config,
+    build_hef_path,
+    get_log_file_path,
+    run_pipeline_test,
 )
 
 # Configure logging
@@ -41,92 +40,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("test_runner")
 
-# Configuration file path
-CONFIG_PATH = Path(__file__).parent / "test_config.yaml"
+# Configuration file paths
+CONTROL_CONFIG_PATH = Path(__file__).parent / "test_control.yaml"
+DEFINITION_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "test_definition_config.yaml"
+RESOURCES_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "resources_config.yaml"
 
 
 def detect_and_set_environment():
-    """Detect host and Hailo architecture and set environment variables.
-    
-    Checks .env file and sets variables if not present.
-    """
+    """Detect host and Hailo architecture and set environment variables."""
     logger.info("=" * 80)
     logger.info("DETECTING SYSTEM ARCHITECTURE")
     logger.info("=" * 80)
     
-    # Detect architectures
     host_arch = detect_host_arch()
     hailo_arch = detect_hailo_arch()
     
     logger.info(f"Detected host architecture: {host_arch}")
     logger.info(f"Detected Hailo architecture: {hailo_arch or 'None (no device detected)'}")
-    
-    # Check .env file
-    env_file = Path(DEFAULT_DOTENV_PATH)
-    env_vars = {}
-    
-    if env_file.exists():
-        logger.info(f"Reading .env file: {env_file}")
-        with open(env_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, value = line.split('=', 1)
-                    env_vars[key.strip()] = value.strip()
-    else:
-        logger.info(f".env file not found at {env_file}, will create if needed")
-    
-    # Set environment variables if not present
-    updates = {}
-    
-    if "HOST_ARCH" not in env_vars or not env_vars.get("HOST_ARCH"):
-        updates["HOST_ARCH"] = host_arch
-        logger.info(f"Setting HOST_ARCH={host_arch}")
-    
-    if "HAILO_ARCH" not in env_vars or not env_vars.get("HAILO_ARCH"):
-        if hailo_arch:
-            updates["HAILO_ARCH"] = hailo_arch
-            logger.info(f"Setting HAILO_ARCH={hailo_arch}")
-        else:
-            logger.warning("HAILO_ARCH not detected and not in .env file")
-    
-    # Write updates to .env if needed
-    if updates:
-        logger.info(f"Writing environment variables to {env_file}")
-        env_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Read existing content
-        existing_lines = []
-        if env_file.exists():
-            with open(env_file, 'r') as f:
-                existing_lines = f.readlines()
-        
-        # Update or add variables
-        updated_lines = []
-        updated_keys = set()
-        
-        for line in existing_lines:
-            line_stripped = line.strip()
-            if line_stripped and not line_stripped.startswith('#') and '=' in line_stripped:
-                key = line_stripped.split('=', 1)[0].strip()
-                if key in updates:
-                    updated_lines.append(f"{key}={updates[key]}\n")
-                    updated_keys.add(key)
-                else:
-                    updated_lines.append(line)
-            else:
-                updated_lines.append(line)
-        
-        # Add new variables
-        for key, value in updates.items():
-            if key not in updated_keys:
-                updated_lines.append(f"{key}={value}\n")
-        
-        # Write back
-        with open(env_file, 'w') as f:
-            f.writelines(updated_lines)
-        
-        logger.info(f"✅ Environment variables written to {env_file}")
     
     # Set in current process environment
     os.environ["HOST_ARCH"] = host_arch
@@ -137,347 +67,506 @@ def detect_and_set_environment():
     return host_arch, hailo_arch
 
 
-def load_config() -> Dict:
-    """Load test configuration from YAML file.
+def load_control_config() -> Dict:
+    """Load test control configuration from test_control.yaml."""
+    if not CONTROL_CONFIG_PATH.exists():
+        pytest.fail(f"Test control configuration file not found: {CONTROL_CONFIG_PATH}")
     
-    Reads both sections:
-    1. Top section (control/decisions) - what to run
-    2. Bottom section (all configurations) - available options
-    Then merges them based on enabled flags.
-    """
-    if not CONFIG_PATH.exists():
-        pytest.fail(f"Test configuration file not found: {CONFIG_PATH}")
+    logger.info(f"Loading control configuration from: {CONTROL_CONFIG_PATH}")
+    with open(CONTROL_CONFIG_PATH, 'r') as f:
+        config = yaml.safe_load(f)
     
-    logger.info(f"Loading configuration from: {CONFIG_PATH}")
+    if not config:
+        pytest.fail("Failed to parse control configuration")
     
-    # Read entire file
-    with open(CONFIG_PATH, 'r') as f:
-        full_content = f.read()
-    
-    # Split into control section and configurations section
-    control_lines = []
-    config_lines = []
-    in_control_section = True
-    
-    for line in full_content.split('\n'):
-        if "END OF CONTROL SECTION" in line:
-            in_control_section = False
-            continue
-        if in_control_section:
-            control_lines.append(line)
-        else:
-            config_lines.append(line)
-    
-    # Parse both sections
-    control_text = '\n'.join(control_lines)
-    config_text = '\n'.join(config_lines)
-    
-    control_config = yaml.safe_load(control_text)
-    all_configs = yaml.safe_load(config_text)
-    
-    if not control_config:
-        pytest.fail("Failed to parse control section")
-    if not all_configs:
-        pytest.fail("Failed to parse configurations section")
-    
-    # Merge: Use control section decisions to enable configurations from bottom section
-    merged_config = {}
-    
-    # Copy execution and logging from control
-    merged_config["execution"] = control_config.get("execution", {})
-    merged_config["logging"] = control_config.get("logging", {})
-    
-    # Get enabled pipelines from control section
-    enabled_pipelines_dict = control_config.get("enabled_pipelines", {})
-    
-    # Filter pipelines from bottom section based on enabled flags
-    all_pipelines = all_configs.get("pipelines", {})
-    merged_config["pipelines"] = {
-        name: pipeline
-        for name, pipeline in all_pipelines.items()
-        if enabled_pipelines_dict.get(name, True)
-    }
-    
-    # Get enabled run methods from control section
-    enabled_run_methods_dict = control_config.get("enabled_run_methods", {})
-    
-    # Filter run methods from bottom section
-    all_run_methods = all_configs.get("run_methods", {})
-    merged_config["run_methods"] = [
-        {"name": name, "enabled": enabled_run_methods_dict.get(name, True), **method_config}
-        for name, method_config in all_run_methods.items()
-    ]
-    
-    # Copy test suites from bottom section (all available)
-    merged_config["test_suites"] = all_configs.get("test_suites", {})
-    
-    # Copy test selection and profiles from control section
-    merged_config["test_selection"] = control_config.get("test_selection", {})
-    merged_config["test_profiles"] = control_config.get("test_profiles", {})
-    
-    # Copy special test configurations from bottom section
-    merged_config["hailo8l_on_hailo8_tests"] = all_configs.get("hailo8l_on_hailo8_tests", {})
-    merged_config["retraining"] = all_configs.get("retraining", {})
-    merged_config["sanity_checks"] = all_configs.get("sanity_checks", {})
-    merged_config["human_verification"] = all_configs.get("human_verification", {})
-    merged_config["resources"] = all_configs.get("resources", {})
-    
-    # Copy pipeline special tests from bottom section
-    merged_config["pipeline_special_tests"] = all_configs.get("pipeline_special_tests", {})
-    
-    # Copy test profiles config from bottom section
-    merged_config["test_profiles_config"] = all_configs.get("test_profiles_config", {})
-    
-    # Add enabled flags for special tests from control section
-    special_tests = control_config.get("special_tests", {})
-    if "hailo8l_on_hailo8_tests" in merged_config:
-        merged_config["hailo8l_on_hailo8_tests"]["enabled"] = special_tests.get("hailo8l_on_hailo8", True)
-    if "retraining" in merged_config:
-        merged_config["retraining"]["enabled"] = special_tests.get("retraining", True)
-    if "sanity_checks" in merged_config:
-        merged_config["sanity_checks"]["enabled"] = special_tests.get("sanity_checks", True)
-    if "human_verification" in merged_config:
-        merged_config["human_verification"]["enabled"] = special_tests.get("human_verification", True)
-    
-    # Validate merged configuration
-    is_valid, errors = validate_test_config(merged_config)
-    if not is_valid:
-        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
-        pytest.fail(error_msg)
-    
-    logger.info("✅ Configuration loaded and merged (control + available configs)")
-    return merged_config
+    logger.info("✅ Control configuration loaded")
+    return config
 
 
-def resolve_test_selection(config: Dict, detected_hailo_arch: Optional[str]) -> Dict:
-    """Resolve what tests to run based on profiles and test_selection."""
-    test_selection = config.get("test_selection", {})
-    test_profiles = config.get("test_profiles", {})
-    test_profiles_config = config.get("test_profiles_config", {})
+def load_definition_config() -> Dict:
+    """Load test definition configuration from test_definition_config.yaml."""
+    if not DEFINITION_CONFIG_PATH.exists():
+        pytest.fail(f"Test definition configuration file not found: {DEFINITION_CONFIG_PATH}")
     
-    # Find enabled profiles
-    enabled_profiles = [
-        name for name, profile in test_profiles.items()
-        if profile.get("enabled", False)
-    ]
+    logger.info(f"Loading definition configuration from: {DEFINITION_CONFIG_PATH}")
+    with open(DEFINITION_CONFIG_PATH, 'r') as f:
+        config = yaml.safe_load(f)
     
-    # Start with test_selection defaults
-    selected_pipelines = test_selection.get("pipelines", "all")
-    selected_architectures = test_selection.get("architectures", "all")
-    selected_run_methods = test_selection.get("run_methods", "all")
-    selected_test_suites = test_selection.get("test_suites", ["default"])
-    run_method_test_suites = test_selection.get("run_method_test_suites", {})
+    if not config:
+        pytest.fail("Failed to parse definition configuration")
     
-    # Override based on enabled profiles
-    for profile_name in enabled_profiles:
-        profile_config = test_profiles_config.get(profile_name, {})
-        logger.info(f"Active profile: {profile_name} - {profile_config.get('description', '')}")
-        
-        if "pipelines" in profile_config:
-            selected_pipelines = profile_config["pipelines"]
-        if "architectures" in profile_config:
-            selected_architectures = profile_config["architectures"]
-        if "run_methods" in profile_config:
-            selected_run_methods = profile_config["run_methods"]
-        if "run_method_test_suites" in profile_config:
-            run_method_test_suites = profile_config["run_method_test_suites"]
-    
-    # Resolve "all" to actual lists
-    if selected_pipelines == "all":
-        enabled_pipelines = get_enabled_pipelines(config)
-        selected_pipelines = list(enabled_pipelines.keys())
-    
-    if selected_architectures == "all":
-        selected_architectures = ["hailo8", "hailo8l", "hailo10h"]
-    
-    if selected_run_methods == "all":
-        selected_run_methods = get_enabled_run_methods(config)
-    
-    # Filter architectures based on detected device
-    if detected_hailo_arch:
-        if detected_hailo_arch == HAILO8_ARCH:
-            # Hailo8 device: can run hailo8, hailo8l (compatibility), and hailo10h (same models)
-            # Keep hailo8 and hailo10h, but filter hailo8l unless explicitly testing compatibility
-            if "hailo8l" in selected_architectures:
-                # Hailo8L models can run on Hailo8 for compatibility testing
-                # Only include if hailo8l_on_hailo8 special test is enabled
-                if not config.get("hailo8l_on_hailo8_tests", {}).get("enabled", False):
-                    logger.info("Hailo8L architecture in selection, but hailo8l_on_hailo8 test not enabled. "
-                              "Hailo8L models can run on Hailo8 - enable special_tests.hailo8l_on_hailo8 to test.")
-                    selected_architectures = [a for a in selected_architectures if a != "hailo8l"]
-            # hailo10h can run on hailo8 (same models)
-            logger.info(f"Hailo8 device detected - will test: {selected_architectures}")
-        else:
-            # For other architectures, only test the detected architecture
-            if detected_hailo_arch not in selected_architectures:
-                logger.warning(f"Detected architecture {detected_hailo_arch} not in selected architectures")
-            selected_architectures = [detected_hailo_arch]
-    
-    return {
-        "pipelines": selected_pipelines,
-        "architectures": selected_architectures,
-        "run_methods": selected_run_methods,
-        "test_suites": selected_test_suites,
-        "run_method_test_suites": run_method_test_suites,
-    }
+    logger.info("✅ Definition configuration loaded")
+    return config
 
 
-def generate_test_cases(config: Dict, selection: Dict, host_arch: str) -> List[Dict]:
-    """Generate test cases based on configuration and selection.
+def load_resources_config() -> Dict:
+    """Load resources configuration from resources_config.yaml."""
+    if not RESOURCES_CONFIG_PATH.exists():
+        pytest.fail(f"Resources configuration file not found: {RESOURCES_CONFIG_PATH}")
+    
+    logger.info(f"Loading resources configuration from: {RESOURCES_CONFIG_PATH}")
+    with open(RESOURCES_CONFIG_PATH, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    if not config:
+        pytest.fail("Failed to parse resources configuration")
+    
+    logger.info("✅ Resources configuration loaded")
+    return config
+
+
+def get_models_for_app_and_arch(resources_config: Dict, app_name: str, architecture: str, model_selection: str = "default") -> List[str]:
+    """Get models for an app and architecture based on model_selection.
     
     Args:
-        config: Full test configuration
-        selection: Resolved test selection
-        host_arch: Detected host architecture (for conditional RPI camera)
+        resources_config: Resources configuration
+        app_name: Application name
+        architecture: Architecture (hailo8, hailo8l, hailo10h)
+        model_selection: Model selection (default, extra, all)
+    
+    Returns:
+        List of model names
+    """
+    if app_name not in resources_config:
+        logger.warning(f"App {app_name} not found in resources config")
+        return []
+    
+    app_config = resources_config[app_name]
+    models_config = app_config.get("models", {})
+    
+    if architecture not in models_config:
+        logger.warning(f"Architecture {architecture} not found for app {app_name}")
+        return []
+    
+    arch_models = models_config[architecture]
+    models = []
+    
+    # Get default model if model_selection is "default" or "all"
+    if model_selection in ["default", "all"]:
+        if "default" in arch_models and arch_models["default"]:
+            default_model = arch_models["default"]
+            if isinstance(default_model, dict):
+                models.append(default_model["name"])
+            else:
+                models.append(default_model)
+    
+    # Get extra models if model_selection is "extra" or "all"
+    if model_selection in ["extra", "all"]:
+        if "extra" in arch_models:
+            for extra_model in arch_models["extra"]:
+                if isinstance(extra_model, dict):
+                    models.append(extra_model["name"])
+                else:
+                    models.append(extra_model)
+    
+    return models
+
+
+def resolve_test_suite_flags(definition_config: Dict, suite_name: str, resources_config: Dict, app_name: str, architecture: str, model: str) -> List[str]:
+    """Resolve test suite flags with placeholders replaced.
+    
+    Args:
+        definition_config: Test definition configuration
+        suite_name: Test suite name
+        resources_config: Resources configuration
+        app_name: Application name
+        architecture: Architecture
+        model: Model name
+    
+    Returns:
+        List of resolved flags
+    """
+    test_suites = definition_config.get("test_suites", {})
+    suite_config = test_suites.get(suite_name, {})
+    flags = suite_config.get("flags", [])
+    
+    # Resolve placeholders
+    resources_root = RESOURCES_ROOT_PATH_DEFAULT
+    hef_path = build_hef_path(model, architecture, resources_root)
+    
+    # Get video path for app
+    video_name = "example.mp4"  # default
+    if app_name in resources_config:
+        app_config = resources_config[app_name]
+        # Try to get app-specific video from definition config resources
+        # For now, use default
+    
+    video_path = os.path.join(resources_root, "videos", video_name)
+    
+    # Get labels JSON path if needed
+    labels_json_path = None
+    if app_name in resources_config:
+        app_config = resources_config[app_name]
+        json_files = app_config.get("json", [])
+        if json_files:
+            # Use first JSON file
+            json_file = json_files[0]
+            if isinstance(json_file, dict):
+                json_name = json_file.get("name", "")
+            else:
+                json_name = json_file
+            if json_name:
+                labels_json_path = os.path.join(resources_root, "json", json_name)
+    
+    # Replace placeholders
+    resolved_flags = []
+    for flag in flags:
+        resolved = flag.replace("${HEF_PATH}", hef_path)
+        resolved = resolved.replace("${VIDEO_PATH}", video_path)
+        if labels_json_path:
+            resolved = resolved.replace("${LABELS_JSON_PATH}", labels_json_path)
+        resolved = resolved.replace("${RESOURCES_ROOT}", resources_root)
+        resolved_flags.append(resolved)
+    
+    return resolved_flags
+
+
+def get_test_suites_for_mode(definition_config: Dict, app_name: str, test_suite_mode: str) -> List[str]:
+    """Get test suites for an app based on test_suite_mode.
+    
+    Args:
+        definition_config: Test definition configuration
+        app_name: Application name
+        test_suite_mode: Test suite mode (None, default, extra, all)
+    
+    Returns:
+        List of test suite names (empty list if None)
+    """
+    if test_suite_mode == "None" or test_suite_mode is None:
+        return []
+    
+    if app_name not in definition_config.get("apps", {}):
+        return []
+    
+    app_config = definition_config["apps"][app_name]
+    suites = []
+    
+    if test_suite_mode in ["default", "all"]:
+        suites.extend(app_config.get("default_test_suites", []))
+    
+    if test_suite_mode in ["extra", "all"]:
+        suites.extend(app_config.get("extra_test_suites", []))
+    
+    return suites
+
+
+def generate_test_cases(
+    control_config: Dict,
+    definition_config: Dict,
+    resources_config: Dict,
+    detected_hailo_arch: Optional[str],
+    host_arch: str,
+    test_run_combination: Optional[str] = None,
+) -> List[Dict]:
+    """Generate test cases based on configuration.
+    
+    Args:
+        control_config: Test control configuration
+        definition_config: Test definition configuration
+        resources_config: Resources configuration
+        detected_hailo_arch: Detected Hailo architecture
+        host_arch: Host architecture
+        test_run_combination: Optional test run combination name
     
     Returns:
         List of test case dictionaries
     """
     test_cases = []
-    pipelines = config.get("pipelines", {})
-    exec_config = config.get("execution", {})
-    default_run_time = exec_config.get("default_run_time", 10)
     
-    # Get per-run-method test suites (if specified)
-    run_method_test_suites = selection.get("run_method_test_suites", {})
-    default_test_suites = selection.get("test_suites", ["default"])
+    # Get control parameters
+    control_params = control_config.get("control_parameters", {})
+    default_run_time = control_params.get("default_run_time", 24)
+    term_timeout = control_params.get("term_timeout", 10)
     
-    for pipeline_name in selection["pipelines"]:
-        if pipeline_name not in pipelines:
-            logger.warning(f"Pipeline {pipeline_name} not found in configuration")
-            continue
+    # Get enabled run methods
+    run_methods_config = control_config.get("run_methods", {})
+    enabled_run_methods = [
+        name for name, config in run_methods_config.items()
+        if config.get("enabled", False)
+    ]
+    
+    # Determine which apps and modes to test
+    # First check test_combinations in control_config
+    test_combinations = control_config.get("test_combinations", {})
+    enabled_combinations = [
+        name for name, config in test_combinations.items()
+        if config.get("enabled", False)
+    ]
+    
+    if enabled_combinations:
+        # Use first enabled test combination
+        combination_name = enabled_combinations[0]
+        logger.info(f"Using enabled test combination: {combination_name}")
+        combinations = definition_config.get("test_run_combinations", {})
+        if combination_name not in combinations:
+            logger.warning(f"Test run combination {combination_name} not found in definition config")
+            return []
         
-        pipeline = pipelines[pipeline_name]
-        if not pipeline.get("enabled", True):
-            logger.info(f"Skipping disabled pipeline: {pipeline_name}")
-            continue
+        combo = combinations[combination_name]
+        apps_to_test = combo.get("apps", [])
+        test_suite_mode = combo.get("test_suite_mode", combo.get("mode", "default"))  # Support both old and new format
+        model_selection = combo.get("model_selection", "default")
+    elif test_run_combination:
+        # Use explicitly provided test run combination
+        combinations = definition_config.get("test_run_combinations", {})
+        if test_run_combination not in combinations:
+            logger.warning(f"Test run combination {test_run_combination} not found")
+            return []
         
-        for architecture in selection["architectures"]:
-            models = get_models_for_architecture(pipeline, architecture)
-            if not models:
-                logger.info(f"No models for {pipeline_name} on {architecture}")
-                continue
-            
-            # Get default model (first model) for cli/module
-            default_model = models[0] if models else None
-            
-            for run_method in selection["run_methods"]:
-                # Get test suites for this run method (use per-method if specified, else default)
-                test_suites = run_method_test_suites.get(run_method, default_test_suites)
-                
-                # Filter out rpi_camera if host is not rpi
-                if "rpi_camera" in test_suites and host_arch != "rpi":
-                    test_suites = [ts for ts in test_suites if ts != "rpi_camera"]
-                    logger.info(f"RPI camera test skipped for {run_method} (host is {host_arch}, not rpi)")
-                
-                # Determine which models to use based on run method
-                if run_method == "pythonpath":
-                    # Pythonpath: all models with all test suites
-                    models_to_test = models
-                elif run_method in ["cli", "module"]:
-                    # CLI/Module: only default model with test suites
-                    models_to_test = [default_model] if default_model else []
+        combo = combinations[test_run_combination]
+        apps_to_test = combo.get("apps", [])
+        test_suite_mode = combo.get("test_suite_mode", combo.get("mode", "default"))  # Support both old and new format
+        model_selection = combo.get("model_selection", "default")
+    elif control_config.get("custom_tests", {}).get("enabled", False):
+        # Use custom_tests per-app configuration
+        custom_tests = control_config.get("custom_tests", {})
+        apps_config = custom_tests.get("apps", {})
+        apps_to_test = []
+        for app_name, app_config in apps_config.items():
+            test_suite_mode = app_config.get("test_suite_mode", "default")
+            model_selection = app_config.get("model_selection", "default")
+            if test_suite_mode and test_suite_mode != "None":
+                apps_to_test.append((app_name, test_suite_mode, model_selection))
+    else:
+        # Default: no apps to test
+        logger.warning("No test combination enabled and custom_tests disabled. No tests will run.")
+        apps_to_test = []
+    
+    # Determine architectures to test
+    architectures = ["hailo8", "hailo8l", "hailo10h"]
+    if detected_hailo_arch:
+        if detected_hailo_arch == HAILO8_ARCH:
+            # Hailo8 can run hailo8 and hailo10h models
+            architectures = ["hailo8", "hailo10h"]
                 else:
-                    # Unknown run method, use all models
-                    models_to_test = models
+            architectures = [detected_hailo_arch]
                 
                 # Generate test cases
-                for model in models_to_test:
-                    for test_suite in test_suites:
-                        test_cases.append({
-                            "pipeline": pipeline_name,
-                            "pipeline_config": pipeline,
-                            "architecture": architecture,
-                            "model": model,
-                            "run_method": run_method,
-                            "test_suite": test_suite,
-                            "run_time": default_run_time,
-                        })
-    
-    # Add pipeline-specific special tests
-    if config.get("special_tests", {}).get("pipeline_specific", False):
-        pipeline_special_tests = config.get("pipeline_special_tests", {})
-        for pipeline_name in selection["pipelines"]:
-            if pipeline_name not in pipelines:
-                continue
-            
-            pipeline_specials = pipeline_special_tests.get(pipeline_name, {})
-            if not pipeline_specials.get("enabled", False):
-                continue
-            
-            pipeline = pipelines[pipeline_name]
-            special_tests = pipeline_specials.get("tests", [])
-            
-            for architecture in selection["architectures"]:
-                models = get_models_for_architecture(pipeline, architecture)
-                if not models:
-                    continue
-                
-                for special_test in special_tests:
-                    test_suite = special_test.get("test_suite")
-                    allowed_methods = special_test.get("run_methods", ["pythonpath"])
-                    
-                    for run_method in allowed_methods:
-                        if run_method not in selection["run_methods"]:
-                            continue
-                        
-                        # For special tests, use all models (or could be configured differently)
-                        for model in models:
-                            test_cases.append({
-                                "pipeline": pipeline_name,
-                                "pipeline_config": pipeline,
-                                "architecture": architecture,
-                                "model": model,
-                                "run_method": run_method,
-                                "test_suite": test_suite,
-                                "run_time": default_run_time,
-                                "special_test": True,
-                            })
+    if isinstance(apps_to_test, list) and len(apps_to_test) > 0 and isinstance(apps_to_test[0], tuple):
+        # Use individual app configurations (from custom_tests)
+        for app_config_tuple in apps_to_test:
+            if len(app_config_tuple) == 3:
+                app_name, test_suite_mode, model_selection = app_config_tuple
+            else:
+                # Backward compatibility
+                app_name, test_suite_mode = app_config_tuple
+                model_selection = "default"
+            generate_cases_for_app(
+                test_cases, control_config, definition_config, resources_config,
+                app_name, test_suite_mode, model_selection, architectures, enabled_run_methods,
+                default_run_time, term_timeout, host_arch
+            )
+    elif isinstance(apps_to_test, list):
+        # Use combination mode for all apps (from test_run_combinations)
+        for app_name in apps_to_test:
+            generate_cases_for_app(
+                test_cases, control_config, definition_config, resources_config,
+                app_name, test_suite_mode, model_selection, architectures, enabled_run_methods,
+                default_run_time, term_timeout, host_arch
+            )
     
     logger.info(f"Generated {len(test_cases)} test cases")
     return test_cases
 
 
+def generate_cases_for_app(
+    test_cases: List[Dict],
+    control_config: Dict,
+    definition_config: Dict,
+    resources_config: Dict,
+    app_name: str,
+    test_suite_mode: str,
+    model_selection: str,
+    architectures: List[str],
+    run_methods: List[str],
+    default_run_time: int,
+    term_timeout: int,
+    host_arch: str,
+):
+    """Generate test cases for a specific app.
+    
+    Args:
+        test_cases: List to append test cases to
+        control_config: Test control configuration
+        definition_config: Test definition configuration
+        resources_config: Resources configuration
+        app_name: Application name
+        test_suite_mode: Test suite mode (None, default, extra, all)
+        model_selection: Model selection (default, extra, all)
+        architectures: List of architectures to test
+        run_methods: List of run methods to test
+        default_run_time: Default run time for tests
+        term_timeout: Termination timeout
+        host_arch: Host architecture
+    """
+    if app_name not in definition_config.get("apps", {}):
+        logger.warning(f"App {app_name} not found in definition config")
+        return
+    
+    app_def = definition_config["apps"][app_name]
+    
+    # Get test suites for this test_suite_mode
+    test_suites = get_test_suites_for_mode(definition_config, app_name, test_suite_mode)
+    
+    # Filter out RPI camera tests if host is not rpi
+    rpi_suites = ["basic_input_rpi", "input_rpi_with_hef", "input_rpi_with_labels"]
+    if host_arch != "rpi":
+        test_suites = [ts for ts in test_suites if ts not in rpi_suites]
+    
+    for architecture in architectures:
+        # Get models for this app and architecture based on model_selection
+        models = get_models_for_app_and_arch(resources_config, app_name, architecture, model_selection)
+        if not models:
+            logger.info(f"No models for {app_name} on {architecture} with model_selection {model_selection}")
+            continue
+                
+        for model in models:
+            for run_method in run_methods:
+                for test_suite in test_suites:
+                    # Resolve test suite flags
+                    flags = resolve_test_suite_flags(
+                        definition_config, test_suite, resources_config,
+                        app_name, architecture, model
+                    )
+                    
+                    test_cases.append({
+                        "app": app_name,
+                        "app_config": app_def,
+                        "architecture": architecture,
+                        "model": model,
+                        "run_method": run_method,
+                        "test_suite": test_suite,
+                        "flags": flags,
+                        "run_time": default_run_time,
+                        "term_timeout": term_timeout,
+                        "test_suite_mode": test_suite_mode,
+                        "model_selection": model_selection,
+                    })
+
+
+def get_log_file_path_new(
+    control_config: Dict,
+    app_name: str,
+    test_suite_mode: str,
+    architecture: Optional[str] = None,
+    model: Optional[str] = None,
+    run_method: Optional[str] = None,
+    test_suite: Optional[str] = None,
+) -> str:
+    """Get log file path using new control config structure."""
+    log_config = control_config.get("logging", {})
+    subdirs = log_config.get("subdirs", {})
+    per_app = subdirs.get("per_app", {})
+    
+    # Get app-specific log directory
+    if app_name in per_app:
+        app_log_dirs = per_app[app_name]
+        # Map test_suite_mode to log directory (None -> default)
+        log_mode = "default" if test_suite_mode == "None" else test_suite_mode
+        log_dir = app_log_dirs.get(log_mode, app_log_dirs.get("default", "./logs"))
+    else:
+        log_dir = log_config.get("base_dir", "./logs")
+    
+    # Ensure directory exists
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Build filename
+    parts = [app_name]
+    if architecture:
+        parts.append(architecture)
+    if model:
+        parts.append(model)
+    if run_method:
+        parts.append(run_method)
+    if test_suite and test_suite != "basic_show_fps":
+        # Remove common prefixes for cleaner filenames
+        suite_name = test_suite.replace("basic_", "").replace("input_", "").replace("pipeline_", "").replace("with_", "").replace("face_", "").replace("tiling_", "").replace("clip_", "").replace("multisource_", "")
+        parts.append(suite_name)
+    
+    filename = "_".join(parts) + ".log"
+    return os.path.join(log_dir, filename)
+
+
 # Initialize at module level
 logger.info("Initializing test runner...")
 _host_arch, _hailo_arch = detect_and_set_environment()
-_config = load_config()
-_selection = resolve_test_selection(_config, _hailo_arch)
-_test_cases = generate_test_cases(_config, _selection, _host_arch)
+_control_config = load_control_config()
+_definition_config = load_definition_config()
+_resources_config = load_resources_config()
+
+# Generate test cases (can be overridden by test_run_combination parameter)
+_test_cases = generate_test_cases(
+    _control_config, _definition_config, _resources_config,
+    _hailo_arch, _host_arch
+)
 
 
-@pytest.mark.parametrize("test_case", _test_cases, ids=lambda tc: f"{tc['pipeline']}_{tc['architecture']}_{tc['model']}_{tc['run_method']}_{tc['test_suite']}")
+@pytest.mark.parametrize(
+    "test_case",
+    _test_cases,
+    ids=lambda tc: f"{tc['app']}_{tc['architecture']}_{tc['model']}_{tc['run_method']}_{tc['test_suite']}"
+)
 def test_pipeline(test_case: Dict):
-    """Test a pipeline with specific configuration.
-    
-    This is the main test function that gets parametrized with all test cases.
-    """
-    pipeline_name = test_case["pipeline"]
-    pipeline_config = test_case["pipeline_config"]
+    """Test a pipeline with specific configuration."""
+    app_name = test_case["app"]
+    app_config = test_case["app_config"]
     architecture = test_case["architecture"]
     model = test_case["model"]
     run_method = test_case["run_method"]
     test_suite = test_case["test_suite"]
+    flags = test_case["flags"]
     run_time = test_case["run_time"]
+    term_timeout = test_case["term_timeout"]
+    test_suite_mode = test_case.get("test_suite_mode", "default")
+    model_selection = test_case.get("model_selection", "default")
     
     # Get test function
-    test_func = get_pipeline_test_function(pipeline_name)
+    test_func = get_pipeline_test_function(app_name)
     if not test_func:
-        pytest.skip(f"No test function for pipeline: {pipeline_name}")
+        pytest.skip(f"No test function for app: {app_name}")
     
-    # Run test
-    success, log_file = test_func(
-        _config,
-        model,
-        architecture,
-        run_method,
-        test_suite=test_suite,
-        run_time=run_time,
+    # Build pipeline config for compatibility with existing test functions
+    pipeline_config = {
+        "name": app_config.get("name", app_name),
+        "module": app_config.get("module", ""),
+        "script": app_config.get("script", ""),
+        "cli": app_config.get("cli", ""),
+    }
+    
+    # Create a compatible config structure
+    compatible_config = {
+        "pipelines": {
+            app_name: pipeline_config
+        },
+        "test_suites": {
+            test_suite: {
+                "args": flags
+            }
+        },
+        "resources": {
+            "root_path": RESOURCES_ROOT_PATH_DEFAULT
+        },
+        "execution": {
+            "default_run_time": run_time,
+            "term_timeout": term_timeout,
+        },
+        "logging": _control_config.get("logging", {}),
+    }
+    
+    # Get log file path
+    log_file = get_log_file_path_new(
+        _control_config, app_name, test_suite_mode, architecture, model, run_method, test_suite
+    )
+    
+    # Run test using existing framework
+    stdout, stderr, success = run_pipeline_test(
+        pipeline_config, model, architecture, run_method, flags, log_file,
+        run_time=run_time, term_timeout=term_timeout
     )
     
     # Assert success
     assert success, (
-        f"Pipeline {pipeline_name} with model {model} on {architecture} "
+        f"App {app_name} with model {model} on {architecture} "
         f"using {run_method} with suite {test_suite} failed. "
         f"Check log: {log_file}"
     )
@@ -490,11 +579,8 @@ if __name__ == "__main__":
     logger.info("=" * 80)
     logger.info(f"Host architecture: {_host_arch}")
     logger.info(f"Hailo architecture: {_hailo_arch or 'None'}")
-    logger.info(f"Selected pipelines: {_selection['pipelines']}")
-    logger.info(f"Selected architectures: {_selection['architectures']}")
-    logger.info(f"Selected run methods: {_selection['run_methods']}")
-    logger.info(f"Selected test suites: {_selection['test_suites']}")
     logger.info(f"Total test cases: {len(_test_cases)}")
     logger.info("=" * 80)
     
     pytest.main(["-v", __file__])
+

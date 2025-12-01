@@ -620,8 +620,9 @@ test_run_combinations:
       - lane_detection
       - super_resolution
       - reid_multisource
-    mode: "all"  # default | extra | all
-    description: "CI run with all apps using default test suites"
+    test_suite_mode: "all"  # None | default | extra | all
+    model_selection: "all"  # default | extra | all
+    description: "CI run with all apps using all test suites and all models"
   
   all_default:
     name: "All Apps Default Mode"
@@ -639,8 +640,9 @@ test_run_combinations:
       - lane_detection
       - super_resolution
       - reid_multisource
-    mode: "default"  # default | extra | all
-    description: "Run all apps with default test suites only"
+    test_suite_mode: "default"  # None | default | extra | all
+    model_selection: "default"  # default | extra | all
+    description: "Run all apps with default test suites and default models only"
   
   all_extra:
     name: "All Apps Extra Mode"
@@ -658,6 +660,7 @@ test_run_combinations:
       - lane_detection
       - super_resolution
       - reid_multisource
-    mode: "extra"  # default | extra | all
-    description: "Run all apps with default and extra test suites"
+    test_suite_mode: "extra"  # None | default | extra | all
+    model_selection: "extra"  # default | extra | all
+    description: "Run all apps with default and extra test suites and extra models"
 

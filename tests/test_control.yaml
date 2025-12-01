@@ -88,55 +88,68 @@ custom_tests:
   enabled: false
   apps:
     detection:
-      run_mode: "all"  # None | default | extra | all
+      test_suite_mode: "all"  # None | default | extra | all
+      model_selection: "all"  # default | extra | all
       description: "Object Detection Pipeline"
     
     simple_detection:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Simple Detection Pipeline"
     
     face_recognition:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Face Recognition Pipeline"
     
     instance_segmentation:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Instance Segmentation Pipeline"
     
     pose_estimation:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Pose Estimation Pipeline"
     
     depth:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Depth Estimation Pipeline"
     
     tiling:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Tiling Pipeline"
     
     paddle_ocr:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Paddle OCR Pipeline"
     
     clip:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "CLIP Pipeline"
     
     retrain:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Retraining Pipeline"
     
     lane_detection:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Lane Detection Pipeline"
     
     super_resolution:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Super Resolution Pipeline"
     
     reid_multisource:
-      run_mode: "default"  # None | default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "REID Multisource Pipeline"
 
 # Special tests configuration
