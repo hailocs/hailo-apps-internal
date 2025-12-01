@@ -345,7 +345,15 @@ WHISPER_MODEL_NAME_H10 = "Whisper-Base"
 # Whisper defaults
 TARGET_SR = 16000  # Target sample rate for audio recording (in Hz)
 CHUNK_SIZE = 1024  # Number of frames per buffer
-TTS_ONNX_PATH = "en_US-amy-low.onnx"
+
+# Piper TTS defaults
+TTS_MODEL_NAME = "en_US-amy-low"
+TTS_ONNX_FILENAME = f"{TTS_MODEL_NAME}.onnx"
+TTS_JSON_FILENAME = f"{TTS_MODEL_NAME}.onnx.json"
+TTS_MODELS_DIR = str(REPO_ROOT / "local_resources" / "piper_models")
+TTS_ONNX_PATH = str(Path(TTS_MODELS_DIR) / TTS_ONNX_FILENAME)
+TTS_JSON_PATH = str(Path(TTS_MODELS_DIR) / TTS_JSON_FILENAME)
+
 TTS_VOLUME = 0.8  # Volume (0.0 to 1.0)
 TTS_LENGTH_SCALE = 0.6  # Speech rate (lower is faster)
 TTS_NOISE_SCALE = 0.6  # Voice variability (lower is more consistent)

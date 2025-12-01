@@ -41,12 +41,12 @@ FLOORS = {
     2: {
         "name": "The Inventing Room",
         "description": "A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry.",
-        "keywords": ["inventing", "everlasting gobstopper", "gobstopper", "three-course gum", "violet beauregarde", "new candy", "experimental", "innovation", "inventing room", "laboratory", "lab"]
+        "keywords": ["inventing", "everlasting gobstopper", "gobstopper", "three-course gum", "violet beauregarde", "violet", "blueberry", "blue berry", "swelling", "chewing gum", "new candy", "experimental", "innovation", "inventing room", "laboratory", "lab", "second floor"]
     },
     3: {
         "name": "The Fizzy Lifting Drinks Room",
         "description": "The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating.",
-        "keywords": ["floating", "lifting drinks", "fizzy lifting drinks", "burping", "ceiling fan", "gravity", "soda", "beverages", "charlie", "grandpa joe", "float"]
+        "keywords": ["floating", "lifting drinks", "fizzy lifting drinks", "burping", "ceiling fan", "gravity", "soda", "beverages", "charlie", "grandpa joe", "float", "fly"]
     },
     4: {
         "name": "The Nut Room",
@@ -78,8 +78,17 @@ description: str = (
     f"{_build_floor_directory()}"
     "\n\n"
     "YOUR TASK: Interpret the user's request and call this tool with the integer floor number (0-5). "
-    "Match room names, character names, or location descriptions to the correct floor. "
-    "Examples: 'Chocolate Room' → floor=1, 'squirrels' → floor=4, 'top floor' → floor=5, 'basement' → floor=0."
+    "Match room names, character names, keywords, or location descriptions to the correct floor. "
+    "IMPORTANT MAPPINGS:\n"
+    "- 'blueberry', 'blue berry', 'Violet' → Floor 2 (Inventing Room - where Violet turned into a blueberry)\n"
+    "- 'inventing', 'laboratory', 'lab' → Floor 2 (Inventing Room)\n"
+    "- 'chocolate river', 'Augustus' → Floor 1 (Chocolate Room)\n"
+    "- 'squirrels', 'Veruca' → Floor 4 (Nut Room)\n"
+    "- 'TV', 'television', 'Mike Teavee' → Floor 5 (Television-Chocolate Room)\n"
+    "- 'fizzy lifting', 'floating' → Floor 3 (Fizzy Lifting Drinks Room)\n"
+    "- 'first floor', 'ground floor' → Floor 1 (Chocolate Room - the starting point)\n"
+    "- 'basement', 'lowest floor' → Floor 0 (Staff & Utilities)\n"
+    "Examples: 'Chocolate Room' → floor=1, 'squirrels' → floor=4, 'top floor' → floor=5, 'blueberry' → floor=2."
 )
 
 
@@ -208,14 +217,14 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     if current_floor == target_floor:
         return {
             "ok": True,
-            "result": f"You are already on Floor {target_floor}: {floor_info['name']}. {floor_info['description']}"
+            "result": f"You are already on Floor {target_floor}: {floor_info['name']}."
         }
 
     # Move to target floor
     elevator.move_to_floor(target_floor)
 
     # Build result message
-    result = f"Moved to Floor {target_floor}: {floor_info['name']}. {floor_info['description']}"
+    result = f"Moved to Floor {target_floor}: {floor_info['name']}."
 
     return {
         "ok": True,

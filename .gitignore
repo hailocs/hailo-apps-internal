@@ -9,9 +9,15 @@ resources/*.so
 resources/*.hef
 resources/*.mp4
 
+# Piper TTS models (large files, must be downloaded locally)
+local_resources/piper_models/*.onnx
+local_resources/piper_models/*.onnx.json
+!local_resources/piper_models/.gitkeep
+
 # Logs and temp files
 *.log
 *.tmp
+*.dot
 
 # Packages and dependencies
 *.egg-info/

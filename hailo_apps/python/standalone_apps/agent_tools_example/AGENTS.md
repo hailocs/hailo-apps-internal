@@ -10,9 +10,9 @@ The tools application provides an interactive CLI chat agent (`chat_agent.py`) t
 
 ### Key Components
 
-- **`chat_agent.py`** - Main interactive CLI agent (entry point)
+- **`chat_agent.py`** - Main interactive CLI agent (text-based entry point)
+- **`voice_chat_agent.py`** - Voice-enabled interactive agent (combines voice I/O with tool calling)
 - **`tool_*.py`** - Individual tool modules (discovered automatically)
-- **`reference_example.py`** - Reference implementation demonstrating tool calling patterns
 
 ---
 
@@ -49,7 +49,6 @@ The system prompt is intentionally **simple and general**:
 
 - **General instructions only**: How to format tool calls (XML tags, JSON format)
 - **No tool-specific guidance**: Tool-specific instructions live in each tool's `description` field
-- **Matches reference pattern**: Based on working `reference_example.py` implementation
 
 This separation ensures:
 - Tool-specific usage instructions are maintained with the tool code
@@ -195,20 +194,52 @@ The tool will be automatically discovered when you run `chat_agent.py`. No code 
 
 ## Usage
 
-### Running the Chat Agent
+### Running the Chat Agent (Text-Based)
 
 ```bash
 # Basic usage
-python -m hailo_apps.hailo_app_python.tools.chat_agent
+python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
 # With debug logging (edit config.py: DEFAULT_LOG_LEVEL = "DEBUG")
-python -m hailo_apps.hailo_app_python.tools.chat_agent
+python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
 # With custom model
-HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.hailo_app_python.tools.chat_agent
+HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 ```
 
-### Interactive Commands
+### Running the Voice Chat Agent
+
+**Prerequisites**: The voice chat agent requires Piper TTS model installation. See [Voice Processing Module Documentation](../../core/gen_ai_utils/voice_processing/README.md) for installation instructions.
+
+```bash
+# Basic usage
+python -m hailo_apps.python.standalone_apps.agent_tools_example.voice_chat_agent
+
+# With debug logging
+python -m hailo_apps.python.standalone_apps.agent_tools_example.voice_chat_agent --debug
+
+# Without TTS (voice input only)
+python -m hailo_apps.python.standalone_apps.agent_tools_example.voice_chat_agent --no-tts
+
+# With custom model
+HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.standalone_apps.agent_tools_example.voice_chat_agent
+```
+
+**Voice Controls:**
+
+| Key     | Action                     |
+| ------- | -------------------------- |
+| `SPACE` | Start/stop recording       |
+| `Q`     | Quit the application       |
+| `C`     | Clear conversation context |
+
+The voice chat agent:
+- Uses Hailo's Whisper model for speech-to-text
+- Processes queries through the LLM with tool calling
+- Synthesizes responses using Piper TTS
+- Supports all the same tools as the text-based agent
+
+### Interactive Commands (Text Agent)
 
 | Command    | Description                |
 | ---------- | -------------------------- |
@@ -223,7 +254,7 @@ HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.hailo_app_python.tools.ch
 ### Tools Not Being Called
 
 1. **Check tool description**: Ensure it clearly instructs when to use the tool
-2. **Check system prompt**: Should be simple and general (see `reference_example.py`)
+2. **Check system prompt**: Should be simple and general
 3. **Enable debug logging**: Set `DEFAULT_LOG_LEVEL = "DEBUG"` in `config.py` to see full LLM responses
 4. **Verify tool schema**: Ensure parameters are clearly described
 5. **Check function name**: Ensure description explicitly states the function name
@@ -234,6 +265,63 @@ HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.hailo_app_python.tools.ch
 - **Parsing errors**: Ensure JSON format is correct (double quotes, no single quotes)
 - **Tool execution fails**: Check tool's `run()` function error handling
 - **Wrong function name**: Model may use operation names instead of tool name - add explicit function name in description
+
+---
+
+## Debugging & Best Practices
+
+### Debugging Tool Calls
+
+When a tool isn't working as expected, follow this process:
+
+1.  **Enable Debug Logging**:
+    Set `DEFAULT_LOG_LEVEL = "DEBUG"` in `config.py` or use `--debug` flag.
+    This reveals:
+    - The raw system prompt being sent
+    - The raw LLM response (including XML tags)
+    - Exact tool arguments parsed
+    - Execution tracebacks
+
+2.  **Inspect the Raw Response**:
+    Look for `<tool_call>` tags in the logs.
+    - **Missing tags?** The model didn't decide to call the tool. Fix: Strengthen the tool `description`.
+    - **Malformed tags?** The model tried but failed syntax. Fix: Check system prompt format instructions.
+    - **Wrong arguments?** The model called it but with bad data. Fix: Improve parameter descriptions in `schema`.
+
+3.  **Test in Isolation**:
+    Create a small script to import your tool module and call `run()` directly with test inputs to verify logic independent of the LLM.
+
+### Common Patterns
+
+#### 1. The "Router" Pattern
+For tools with multiple sub-functions (like `math`), use a single tool with an `operation` parameter rather than many small tools.
+- **Why**: Reduces context usage and simplifies tool selection for the LLM.
+- **Example**: `math` tool with `op="add"` vs `add_tool`, `sub_tool`.
+
+#### 2. The "Hardware State" Pattern
+Hardware tools (LED, Servo) should be stateless in the `run()` function but maintain state in a controller singleton.
+- **Why**: LLM calls are stateless; the hardware controller persists the physical state.
+- **Example**: `_led_controller` global in `tool_rgb_led.py`.
+
+#### 3. The "Fuzzy Match" Pattern
+Don't force the LLM to be perfect with string enums if possible. Handle case-insensitivity and common variations in your tool code.
+- **Why**: LLMs are probabilistic. `color="Red"` and `color="red"` should both work.
+- **Example**: `tool_rgb_led.py` normalizes color names to lowercase.
+
+### Troubleshooting Checklist
+
+- [ ] **Name Check**: Does `tool_*.py` filename match the pattern?
+- [ ] **Schema Check**: Is `TOOLS_SCHEMA` defined and valid JSON schema?
+- [ ] **Description Check**: Does `description` start with "CRITICAL:" or strong imperative?
+- [ ] **Type Hints**: Are input parameters typed correctly in `schema` (e.g., `number` vs `string`)?
+- [ ] **Return Value**: Does `run()` return a dictionary with `ok` and `result`/`error`?
+- [ ] **Imports**: Does the tool import its dependencies safely (inside functions or try/except)?
+
+### Performance Tips
+
+1.  **Context Caching**: The agent caches the system prompt context. If you change a tool description, delete the `.cache` files to force a refresh.
+2.  **Lazy Imports**: Import heavy libraries (like pandas or numpy) inside the `run()` function or in a `try/except` block to keep startup fast.
+3.  **Short Outputs**: Keep tool return values concise. Long outputs fill up the context window quickly. If a tool returns huge data, summarize it before returning.
 
 ---
 
@@ -286,7 +374,6 @@ The LLM maintains context internally, so only the tool response needs to be sent
 
 ## Reference
 
-- **`reference_example.py`** - Working example showing correct prompt structure
 - **`tool_TEMPLATE.py`** - Template for creating new tools
 - **Colab Notebook: Qwen2.5 Coder Tool Calling** – Hands-on walkthrough of tool invocation patterns ([link](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen2.5_Coder_(1.5B)-Tool_Calling.ipynb))
 - **OpenAI Function Calling Guide** – Official reference on defining functions for tool calls ([link](https://platform.openai.com/docs/guides/function-calling?api-mode=chat#defining-functions))
@@ -299,9 +386,8 @@ The LLM maintains context internally, so only the tool response needs to be sent
 2. **Automatic Discovery**: Tools are auto-discovered, no manual registration needed
 3. **Simple Prompts**: Keep system prompts simple and focused
 4. **Consistent Interface**: All tools follow the same interface pattern
-5. **Reference-Driven**: Agent implementation follows proven patterns from `reference_example.py`
-6. **Token-Based Context**: Use actual token counts instead of message counting
-7. **Qwen 2.5 Coder Compatibility**: Follow Qwen's tool calling format exactly
+5. **Token-Based Context**: Use actual token counts instead of message counting
+6. **Qwen 2.5 Coder Compatibility**: Follow Qwen's tool calling format exactly
 
 ---
 
@@ -371,5 +457,3 @@ All tools are tested and verified:
 - ✅ Weather tool: Current weather and forecasts
 - ✅ RGB LED tool: Color control, intensity, on/off (simulator and hardware)
 - ✅ Servo tool: Absolute and relative positioning (simulator and hardware)
-
-See `reference_example.py` for testing patterns and examples.

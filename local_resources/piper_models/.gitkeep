@@ -1,0 +1,14 @@
+# Piper TTS Models Directory
+
+This directory contains Piper TTS voice models for voice-enabled applications.
+
+## Installation
+
+For installation instructions, see:
+- [Voice Processing Module Documentation](../../hailo_apps/python/core/gen_ai_utils/voice_processing/README.md)
+
+## Note
+
+The `.onnx` and `.onnx.json` files are not tracked by git due to their size.
+They must be downloaded locally on each system that uses voice features.
+

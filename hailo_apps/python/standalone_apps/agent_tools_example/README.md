@@ -19,7 +19,7 @@ The system follows a simple tool discovery and execution pattern:
 ### Basic Usage
 
 ```bash
-python -m hailo_apps.hailo_app_python.tools.chat_agent
+python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 ```
 
 ### With Debug Logging
@@ -191,21 +191,37 @@ The `run()` function must return a dictionary with:
 
 The tool will be automatically discovered when you run the agent. No code changes needed in the agent!
 
-## Troubleshooting
+## Troubleshooting & Common Issues
 
-### Tools Not Being Called
+### Quick Troubleshooting Guide
 
-1. **Check tool description**: Ensure it clearly instructs when to use the tool with explicit language like "CRITICAL:", "MUST", or "ALWAYS"
-2. **Enable debug logging**: Set `DEFAULT_LOG_LEVEL = "DEBUG"` in `config.py` to see full LLM responses
-3. **Verify tool schema**: Ensure parameters are clearly described
-4. **Check function name**: Ensure description explicitly states the function name
+| Symptom                               | Possible Cause                       | Solution                                                           |
+| ------------------------------------- | ------------------------------------ | ------------------------------------------------------------------ |
+| **Tool not found**                    | File name doesn't start with `tool_` | Rename file to `tool_myname.py`                                    |
+| **Model chats but doesn't call tool** | Description too vague                | Add "CRITICAL: You MUST use this tool..." to description           |
+| **"Invalid JSON" error**              | Model output malformed               | Check if tool args use single quotes (fixed automatically usually) |
+| **Context full warnings**             | Long conversation                    | Use `/clear` command to reset context                              |
+| **Hardware tool fails**               | Permissions or wiring                | Check `sudo` permissions and wiring (GPIO 10/18)                   |
 
 ### Common Issues
 
-- **Model doesn't call tools**: Tool descriptions may be unclear or too vague. Use explicit imperative language.
-- **Parsing errors**: Ensure JSON format is correct (double quotes, no single quotes)
-- **Tool execution fails**: Check tool's `run()` function error handling
-- **Wrong function name**: Model may use operation names instead of tool name - add explicit function name in description
+#### 1. Model Doesn't Call Tools
+* **Cause**: Tool descriptions may be unclear or too vague.
+* **Fix**: Use explicit imperative language in the `description` field.
+  * ❌ "This tool calculates numbers."
+  * ✅ "CRITICAL: You MUST use this tool for ANY calculation. NEVER calculate mentally."
+
+#### 2. Parsing Errors
+* **Cause**: Model outputting invalid JSON (e.g., single quotes, trailing commas).
+* **Fix**: The agent has built-in robust parsing, but you can improve reliability by adding format examples to the system prompt or tool description.
+
+#### 3. Tool Execution Fails
+* **Cause**: Exceptions in the `run()` function.
+* **Fix**: Ensure your `run()` function handles exceptions and returns `{"ok": False, "error": "..."}` instead of crashing.
+
+#### 4. Wrong Function Name
+* **Cause**: Model hallucinates a function name.
+* **Fix**: Add explicit instruction: "The function name is 'my_tool_name' (use this exact name)."
 
 ### Context Management
 
@@ -242,15 +258,6 @@ If you modify the system prompt or tool definitions and want to force re-initial
 
 The cache will be automatically regenerated on the next run.
 
-**Benefits:**
-- Faster startup time (no need to process system prompt on every run)
-- Instant context restoration after `/clear` command
-- Tool-specific caching (each tool maintains its own cache)
-
-**Logging:**
-- Cache operations are logged at INFO level
-- Enable DEBUG logging to see detailed cache file paths and operations
-
 ## Customizing LLM Behavior
 
 Users can influence the LLM's behavior by modifying two key areas: the general **System Prompt** and the specific **Tool Descriptions**.
@@ -259,7 +266,7 @@ Users can influence the LLM's behavior by modifying two key areas: the general *
 
 The system prompt provides the LLM with high-level instructions on how to behave, how to format tool calls, and when (or when not) to use tools in general.
 
--   **Location**: The system prompt is constructed in the `create_system_prompt` function within `agent_utils.py`.
+-   **Location**: The system prompt is constructed in the `create_system_prompt` function within `system_prompt.py`.
 
 #### Good Practices for Editing the System Prompt:
 -   **Keep it General**: The system prompt should contain rules that apply to *all* tools. Avoid mentioning specific tool names or functionalities here.

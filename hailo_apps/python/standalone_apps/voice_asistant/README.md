@@ -2,20 +2,18 @@
 
 An interactive voice-controlled AI assistant using Hailo's Speech-to-Text and Large Language Model for real-time audio processing and conversational AI.
 
-## Required Dependency!
+## Prerequisites
 
-Piper TTS (Text To Speach) requires downloading the voice files: 2 Files will be downloaded - an .onnx file (~65MB) & a .json file.
-For more details please see: https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md
+### Required: Piper TTS Model Installation
 
-   ```bash
-   python3 -m piper.download_voices en_US-amy-low
-   ```
+Before running the voice assistant, you must install the Piper TTS voice model.
 
-In case differen voice selected, please modify:
-   ```bash
-   In file: ~/hailo-apps-infra/hailo_apps/python/api_apps/voice_asistant/processing.py
-   self.piper_voice = PiperVoice.load(TTS_ONNX_PATH)
-   ```
+**For installation instructions, see:**
+- [Voice Processing Module Documentation](../../core/gen_ai_utils/voice_processing/README.md)
+
+The application will check for the model on startup and display an error with instructions if it's missing.
+
+The voice assistant uses the shared voice processing module from `hailo_apps.python.core.gen_ai_utils.voice_processing`.
 
 ## Microphone quality
 
@@ -33,7 +31,7 @@ Testing your microphone is essential, particularly on Raspberry Pi systems. If y
 4. Select **"Device Profiles"** from the menu
 5. Choose the **"Pro Audio"** profile for your USB device
 
-**Why "Pro Audio"?**  
+**Why "Pro Audio"?**
 The Pro Audio profile provides direct, low-level access to your audio device's capabilities, bypassing potential compatibility issues with the audio server (PipeWire or PulseAudio). This often resolves recording problems with USB headsets on Raspberry Pi OS.
 
 After applying this profile, verify your microphone is working using the testing commands below.
@@ -108,33 +106,32 @@ ctl.!default {
 
 ## Files
 
-- `main.py` - Main application with terminal-based voice interface
-- `processing.py` - AI pipeline with S2T, LLM, and TTS integration
-- `recorder.py` - Audio recording and processing module
+- `voice_asistant.py` - Main application with terminal-based voice interface
 
 ## Usage
 
 1. Run the application:
    ```bash
-   python main.py
+   python voice_asistant.py
    ```
 
 2. Optional flags:
    ```bash
-   python main.py --debug      # Enable audio file saving
-   python main.py --no-tts     # Disable text-to-speech
+   python voice_asistant.py --debug      # Enable audio file saving
+   python voice_asistant.py --no-tts     # Disable text-to-speech
    ```
 
 3. **Interactive controls**:
    - Press `Space` to start/stop recording
    - Press `Q` to quit the application
    - Press `C` to clear conversation context
+   - Press `X` to abort generation and speech
    - Speak naturally during recording
 
 ## How it works
 
 The application uses a threaded architecture to handle:
-- Real-time audio capture and processing
+- Real-time audio capture and processing via `VoiceInteractionManager`
 - Hailo Speech-to-Text transcription
 - Large Language Model inference for responses
 - Streaming text-to-speech synthesis with interruption support

@@ -114,9 +114,9 @@ def detect_hailo_arch() -> str | None:
                 return HAILO10H_ARCH
     except Exception as e:
         hailo_logger.exception(f"Error detecting Hailo architecture: {e}")
-        return None
+        assert False, "Error detecting Hailo architecture. Is Hailo Installed?"
     hailo_logger.warning("Could not determine Hailo architecture.")
-    return None
+    assert False, "Could not determine Hailo architecture. Is Hailo connected?"
 
 
 def detect_pkg_installed(pkg_name: str) -> bool:
