@@ -37,6 +37,8 @@ def post_install():
         "--resource-config", type=str, default=DEFAULT_RESOURCES_CONFIG_PATH, help="Path to resources config file"
     )
     parser.add_argument("--dotenv", type=str, default=DEFAULT_DOTENV_PATH, help="Path to .env file")
+    parser.add_argument("--group", type=str, default=None, help="Group/app name to download resources for (e.g., detection, instance_segmentation, face_recognition)")
+    parser.add_argument("--all", action="store_true", help="Download all models (default + extra) for detected architecture")
     args = parser.parse_args()
 
     hailo_logger.debug(f"Arguments parsed: {args}")
@@ -79,7 +81,7 @@ def post_install():
     print("⬇️ Downloading resources...")
     hailo_logger.info("Starting resource download...")
     # Download default models (excluding gen-ai-mz) and all images/videos
-    download_resources(resource_config_path=args.resource_config)
+    download_resources(resource_config_path=args.resource_config, group=args.group, all_models=args.all)
     hailo_logger.info(f"Resources downloaded to {resources_path}")
     print(f"Resources downloaded to {resources_path}")
 
