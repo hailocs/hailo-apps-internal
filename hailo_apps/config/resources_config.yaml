@@ -35,8 +35,6 @@ videos:
     source: s3
   - name: full_mov_slow.mp4
     source: s3
-  - name: pexels_video.mp4
-    url: https://www.pexels.com/download/video/4608277/?fps=24.0&h=720&w=1280
 
 # Shared images for all apps
 images:
@@ -102,7 +100,7 @@ detection:
           source: mz
   json:
     - name: hailo_4_classes.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/hailo_4_classes.json
+      source: s3
 
 simple_detection:
   models:
@@ -144,7 +142,7 @@ face_recognition:
           source: mz
   json:
     - name: scrfd.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/scrfd.json
+      source: s3
 
 instance_segmentation:
   models:
@@ -162,9 +160,9 @@ instance_segmentation:
         source: mz
   json:
     - name: yolov5m_seg.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5m_seg.json
+      source: s3
     - name: yolov5n_seg.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/yolov5n_seg.json
+      source: s3
 
 pose_estimation:
   models:
@@ -231,7 +229,7 @@ tiling:
           source: mz
   json:
     - name: visdrone.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/visdrone.json
+      source: s3
 
 paddle_ocr:
   models:
@@ -276,7 +274,9 @@ clip:
 retrain:
   models:
     hailo8:
-      default: None
+      default:
+        name: yolov8s-hailo8-barcode
+        source: s3
     hailo8l:
       default:
         name: yolov8s-hailo8l-barcode
@@ -285,7 +285,7 @@ retrain:
       default: None
   json:
     - name: barcode_labels.json
-      url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/configs/barcode_labels.json
+      source: s3
 
 lane_detection:
   models:
@@ -328,7 +328,7 @@ reid_multisource:
         name: repvgg_a0_person_reid_512
         source: mz
 
-VLM_Chat:
+vlm_chat:
   models:
     hailo8:
       default: None
@@ -362,4 +362,16 @@ whisper_chat:
       default:
         name: Whisper-Base
         url: https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
+        source: gen-ai-mz
+
+agent:
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        name: Qwen2.5-Coder-1.5B-Instruct
+        url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef
         source: gen-ai-mz

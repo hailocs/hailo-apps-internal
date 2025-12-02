@@ -315,11 +315,32 @@ def download_group_resources(
             for json_entry in group_config["json"]:
                 if isinstance(json_entry, dict):
                     json_name = json_entry.get("name")
+                    source = json_entry.get("source", None)
                     json_url = json_entry.get("url")
-                    if json_url:
-                        dest = resource_root / RESOURCES_JSON_DIR_NAME / json_name
+                    
+                    if not json_name:
+                        hailo_logger.warning(f"JSON entry missing name: {json_entry}")
+                        continue
+                    
+                    dest = resource_root / RESOURCES_JSON_DIR_NAME / json_name
+                    
+                    # Build URL based on source
+                    if source == "s3":
+                        # S3 JSON - build URL dynamically if not provided
+                        if json_url:
+                            # Explicit URL provided (backward compatibility)
+                            hailo_logger.info(f"Downloading JSON from S3 (explicit URL): {json_url} → {dest}")
+                        else:
+                            # Build URL dynamically
+                            json_url = f"{S3_RESOURCES_BASE_URL}/configs/{json_name}"
+                            hailo_logger.info(f"Downloading JSON from S3 (built URL): {json_url} → {dest}")
+                        download_file(json_url, dest)
+                    elif json_url:
+                        # Non-S3 JSON with explicit URL
                         hailo_logger.info(f"Downloading JSON: {json_url} → {dest}")
                         download_file(json_url, dest)
+                    else:
+                        hailo_logger.warning(f"JSON entry '{json_name}' missing URL and source is not 's3': {json_entry}")
                 elif isinstance(json_entry, str) and json_entry.startswith(("http://", "https://")):
                     # Backward compatibility: direct URL
                     filename = Path(json_entry).name
@@ -462,11 +483,32 @@ def download_all_json_files(config: dict, resource_root: Path):
         for json_entry in app_config["json"]:
             if isinstance(json_entry, dict):
                 json_name = json_entry.get("name")
+                source = json_entry.get("source", None)
                 json_url = json_entry.get("url")
-                if json_url:
-                    dest = resource_root / RESOURCES_JSON_DIR_NAME / json_name
+                
+                if not json_name:
+                    hailo_logger.warning(f"JSON entry missing name: {json_entry}")
+                    continue
+                
+                dest = resource_root / RESOURCES_JSON_DIR_NAME / json_name
+                
+                # Build URL based on source
+                if source == "s3":
+                    # S3 JSON - build URL dynamically if not provided
+                    if json_url:
+                        # Explicit URL provided (backward compatibility)
+                        hailo_logger.info(f"Downloading JSON from S3 (explicit URL): {json_url} → {dest}")
+                    else:
+                        # Build URL dynamically
+                        json_url = f"{S3_RESOURCES_BASE_URL}/configs/{json_name}"
+                        hailo_logger.info(f"Downloading JSON from S3 (built URL): {json_url} → {dest}")
+                    download_file(json_url, dest)
+                elif json_url:
+                    # Non-S3 JSON with explicit URL
                     hailo_logger.info(f"Downloading JSON: {json_url} → {dest}")
                     download_file(json_url, dest)
+                else:
+                    hailo_logger.warning(f"JSON entry '{json_name}' missing URL and source is not 's3': {json_entry}")
             elif isinstance(json_entry, str) and json_entry.startswith(("http://", "https://")):
                 # Backward compatibility: direct URL
                 filename = Path(json_entry).name
