@@ -3,11 +3,12 @@ import logging
 import os
 import subprocess
 import sys
+import yaml
 from pathlib import Path
 
 import pytest
 
-from hailo_apps.hailo_app_python.core.common.installation_utils import (
+from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
     detect_pkg_installed,
@@ -18,6 +19,24 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("sanity-tests")
+
+# Load test configuration
+CONFIG_PATH = Path(__file__).parent / "test_config.yaml"
+
+
+def load_sanity_config():
+    """Load sanity check configuration from test_config.yaml."""
+    if not CONFIG_PATH.exists():
+        logger.warning(f"Test configuration file not found: {CONFIG_PATH}, using defaults")
+        return {}
+    
+    with open(CONFIG_PATH, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # Get sanity_checks section from the bottom section (after END OF CONTROL SECTION)
+    # We need to find it in the full config
+    sanity_config = config.get("sanity_checks", {})
+    return sanity_config
 
 
 def test_check_hailo_runtime_installed():
@@ -132,21 +151,38 @@ def test_check_hailo_runtime_installed():
 
 def test_check_resource_directory():
     """Test if the resources directory exists and has expected subdirectories."""
-    resource_dir = Path("resources") or Path("/usr/local/hailo/resources")
+    # Load configuration
+    sanity_config = load_sanity_config()
+    
+    # Get resources root from config or use default
+    resources_config = {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, 'r') as f:
+            full_config = yaml.safe_load(f)
+            resources_config = full_config.get("resources", {})
+    
+    resource_root = resources_config.get("root_path", "/usr/local/hailo/resources")
+    resource_dir = Path(resource_root)
+    
+    # Also check local resources directory
+    local_resource_dir = Path("resources")
+    if not resource_dir.exists() and local_resource_dir.exists():
+        resource_dir = local_resource_dir
+        logger.info(f"Using local resources directory: {resource_dir}")
 
     # Check if the resources directory exists
     if not resource_dir.exists():
-        pytest.fail("Resources directory does not exist.")
+        pytest.fail(f"Resources directory does not exist: {resource_dir}")
 
-    # Check for required resource files
-    required_resources = [
+    # Get required resources from config or use defaults
+    required_resources = sanity_config.get("required_resources", [
         "example.mp4",
         "example_640.mp4",
         "libdepth_postprocess.so",
         "libyolo_hailortpp_postprocess.so",
         "libyolov5seg_postprocess.so",
         "libyolov8pose_postprocess.so",
-    ]
+    ])
 
     missing_resources = []
     for resource in required_resources:
@@ -179,19 +215,22 @@ def test_python_environment():
     # Check Python version
     assert sys.version_info >= (3, 6), "Python 3.6 or higher is required."
 
-    # Critical packages that must be present for the framework to function
-    critical_packages = [
+    # Load configuration
+    sanity_config = load_sanity_config()
+    
+    # Get packages from config or use defaults
+    critical_packages = sanity_config.get("required_packages", [
         "gi",  # GStreamer bindings
         "numpy",  # Data manipulation
         "opencv-python",  # Computer vision
         "hailo",  # Hailo API
-    ]
+    ])
 
     # Additional packages that are useful but not critical
-    additional_packages = [
+    additional_packages = sanity_config.get("optional_packages", [
         "setproctitle",
         "python-dotenv",
-    ]
+    ])
 
     # Test critical packages first
     missing_critical = []
@@ -234,13 +273,17 @@ def test_gstreamer_installation():
         )
         print(f"GStreamer is installed: {result.stdout.decode('utf-8').strip()}")
 
-        # Test critical GStreamer elements
-        critical_elements = [
+        # Load configuration
+        sanity_config = load_sanity_config()
+        
+        # Get critical elements from config or use defaults
+        gstreamer_config = sanity_config.get("gstreamer_elements", {})
+        critical_elements = gstreamer_config.get("critical", [
             "videotestsrc",  # Basic video source
             "appsink",  # Used for custom callbacks
             "videoconvert",  # Used for format conversion
             "autovideosink",  # Display sink
-        ]
+        ])
 
         missing_elements = []
         for element in critical_elements:
@@ -269,11 +312,15 @@ def test_hailo_gstreamer_elements():
         pytest.skip("No Hailo device detected - skipping Hailo GStreamer element check.")
 
     try:
-        # Check for Hailo elements
-        hailo_elements = [
+        # Load configuration
+        sanity_config = load_sanity_config()
+        
+        # Get Hailo elements from config or use defaults
+        gstreamer_config = sanity_config.get("gstreamer_elements", {})
+        hailo_elements = gstreamer_config.get("hailo", [
             "hailonet",  # Inference element
             "hailofilter",  # Used for post-processing
-        ]
+        ])
 
         missing_elements = []
         for element in hailo_elements:
@@ -388,7 +435,7 @@ def test_environment_variables():
         logger.warning("hailo-tappas-core is installed but TAPPAS_POST_PROC_DIR is not set")
 
     # Check if .env file exists
-    env_file = Path(__file__).resolve().parents[1] / ".env"
+    env_file = Path(__file__).resolve().parents[1] / "resources" / ".env"
     if env_file.exists():
         logger.info(f".env file exists at {env_file}")
         # Optionally read and check the content

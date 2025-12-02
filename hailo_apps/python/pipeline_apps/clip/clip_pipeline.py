@@ -1,0 +1,241 @@
+# region imports
+# Standard library imports
+import os
+import signal
+import setproctitle
+
+# Third-party imports
+import numpy as np
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+# Local application-specific imports
+import hailo
+from hailo_apps.python.core.common.defines import (
+    RESOURCES_SO_DIR_NAME, 
+    RESOURCES_MODELS_DIR_NAME, 
+    RESOURCES_VIDEOS_DIR_NAME,
+    RESOURCES_JSON_DIR_NAME,
+    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
+    CLIP_APP_TITLE,
+    CLIP_VIDEO_NAME,
+    CLIP_PIPELINE,
+    CLIP_DETECTION_PIPELINE,
+    CLIP_DETECTION_JSON_NAME,
+    DETECTION_POSTPROCESS_SO_FILENAME,
+    CLIP_POSTPROCESS_SO_FILENAME,
+    CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
+)
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
+    QUEUE, 
+    SOURCE_PIPELINE, 
+    INFERENCE_PIPELINE, 
+    INFERENCE_PIPELINE_WRAPPER, 
+    TRACKER_PIPELINE, 
+    USER_CALLBACK_PIPELINE, 
+    DISPLAY_PIPELINE, 
+    CROPPER_PIPELINE,
+    OVERLAY_PIPELINE
+)
+from hailo_apps.python.pipeline_apps.clip.text_image_matcher import text_image_matcher
+from hailo_apps.python.pipeline_apps.clip import gui
+# endregion
+
+class GStreamerClipApp(GStreamerApp):
+    def __init__(self, app_callback, user_data, parser=None):
+        setproctitle.setproctitle(CLIP_APP_TITLE)
+        if parser == None:
+            parser = get_pipeline_parser()
+        parser.add_argument("--detector", "-d", type=str, choices=["person", "face", "none"], default="none", help="Which detection pipeline to use.")
+        parser.add_argument("--json-path", type=str, default=None, help="Path to JSON file to load and save embeddings. If not set, embeddings.json will be used.")
+        parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
+        parser.add_argument("--disable-runtime-prompts", action="store_true", help="When set, app will not support runtime prompts. Default is False.")
+        super().__init__(parser, user_data)
+        if self.options_menu.input is None:
+            self.json_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'example_embeddings.json') if self.options_menu.json_path is None else self.options_menu.json_path
+        else:
+            self.json_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'embeddings.json') if self.options_menu.json_path is None else self.options_menu.json_path
+        self.app_callback = app_callback
+        self.detector = self.options_menu.detector
+        self.text_image_matcher = text_image_matcher
+        self.text_image_matcher.set_threshold(self.options_menu.detection_threshold)
+        self.win = gui.AppWindow(self.options_menu.detection_threshold, self.options_menu.disable_runtime_prompts, self.text_image_matcher, self.json_file)
+        self.detection_batch_size = 2
+        self.clip_batch_size = 2
+
+        # Architecture is already handled by GStreamerApp parent class
+        # Use self.arch which is set by parent
+
+        if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
+            self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=BASIC_PIPELINES_VIDEO_EXAMPLE_NAME)
+
+        self.hef_path_detection = get_resource_path(pipeline_name=CLIP_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
+        self.hef_path_clip = get_resource_path(pipeline_name=CLIP_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
+
+        self.detection_config_json_path = get_resource_path(pipeline_name=None, resource_type=RESOURCES_JSON_DIR_NAME, model=CLIP_DETECTION_JSON_NAME)
+
+        self.post_process_so_detection = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=DETECTION_POSTPROCESS_SO_FILENAME)
+        self.post_process_so_clip = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=CLIP_POSTPROCESS_SO_FILENAME)
+        self.post_process_so_cropper = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=CLIP_CROPPER_POSTPROCESS_SO_FILENAME)
+
+        self.detection_post_process_function_name = 'yolov8n_personface'
+        self.clip_post_process_function_name = 'filter'
+        if self.options_menu.detector == 'person':
+            self.class_id = 1
+            self.cropper_post_process_function_name = 'person_cropper'
+        elif self.options_menu.detector == 'face':
+            self.class_id = 2
+            self.cropper_post_process_function_name = 'face_cropper'
+        else: # fast_sam
+            self.class_id = 0
+            self.cropper_post_process_function_name = 'object_cropper'
+
+        self.classified_tracks = set()  # Track which track_ids have already been classified
+
+        self.matching_callback_name = 'matching_identity_callback'
+    
+        self.create_pipeline()
+
+        identity = self.pipeline.get_by_name(self.matching_callback_name)
+        identity_pad = identity.get_static_pad("src")  # src is the output of an element
+        identity_pad.add_probe(Gst.PadProbeType.BUFFER, self.matching_identity_callback, self.user_data)  # trigger - when the pad gets buffer
+
+    def run(self):
+        self.win.connect('delete-event', self.on_window_close)
+        self.win.show_all()
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        super().run()
+        
+    def on_window_close(self, window, event):
+        self.loop.quit()
+        return False
+
+    def get_pipeline_string(self):
+        source_pipeline = SOURCE_PIPELINE(self.video_source, self.video_width, self.video_height, frame_rate=self.frame_rate, sync=self.sync)
+
+        detection_pipeline = INFERENCE_PIPELINE(
+                hef_path=self.hef_path_detection,
+                post_process_so=self.post_process_so_detection,
+                post_function_name=self.detection_post_process_function_name,
+                batch_size=self.detection_batch_size,
+                config_json=self.detection_config_json_path,
+                scheduler_priority=31,
+                scheduler_timeout_ms=100,
+                name='detection_inference'
+        )
+
+        detection_pipeline_wrapper = ''
+        if self.options_menu.detector != 'none':
+            detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
+
+        clip_pipeline = INFERENCE_PIPELINE(
+                hef_path=self.hef_path_clip,
+                post_process_so=self.post_process_so_clip,
+                post_function_name=self.clip_post_process_function_name,
+                batch_size=self.clip_batch_size,
+                scheduler_priority=16,
+                scheduler_timeout_ms=1000,
+                name='clip_inference'
+        )
+    
+        tracker_pipeline = TRACKER_PIPELINE(class_id=self.class_id, keep_past_metadata=True)
+
+        clip_cropper_pipeline = CROPPER_PIPELINE(
+            inner_pipeline=clip_pipeline,
+            so_path=self.post_process_so_cropper,
+            function_name=self.cropper_post_process_function_name,
+            name='clip_cropper'
+        )
+
+        # Clip pipeline with muxer integration - add explicit resize caps
+        clip_pipeline_wrapper = f'tee name=clip_t hailomuxer name=clip_hmux \
+            clip_t. ! {QUEUE(name="clip_bypass_q", max_size_buffers=20)} ! clip_hmux.sink_0 \
+            clip_t. ! {QUEUE(name="clip_muxer_queue")} ! videoscale qos=false ! {clip_pipeline} ! clip_hmux.sink_1 \
+            clip_hmux. ! {QUEUE(name="clip_hmux_queue")} '
+
+        display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps='True')
+        
+        overlay_pipeline = OVERLAY_PIPELINE()
+
+        matching_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.matching_callback_name)
+        
+        user_callback_pipeline = USER_CALLBACK_PIPELINE()
+
+        if self.detector == 'none':
+            return (
+                f'{source_pipeline} ! '
+                f'{clip_pipeline_wrapper} ! '
+                f'{matching_callback_pipeline} ! '
+                f'{user_callback_pipeline} ! '
+                f'{overlay_pipeline} ! '
+                f'{display_pipeline}'
+            )
+        else:
+            return (
+                f'{source_pipeline} ! '
+                f'{detection_pipeline_wrapper} ! '
+                f'{tracker_pipeline} ! '
+                f'{clip_cropper_pipeline} ! '
+                f'{matching_callback_pipeline} ! '
+                f'{user_callback_pipeline} ! '
+                f'{display_pipeline}'
+            )
+
+    def matching_identity_callback(self, pad, info, user_data):
+        buffer = info.get_buffer()
+        if buffer is None:
+            return Gst.PadProbeReturn.OK
+        roi = hailo.get_roi_from_buffer(buffer)
+        if roi is None:
+            return Gst.PadProbeReturn.OK
+        top_level_matrix = roi.get_objects_typed(hailo.HAILO_MATRIX)
+        if len(top_level_matrix) == 0:
+            detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+        else:
+            detections = [roi]  # Use the ROI as the detection
+        embeddings_np = None
+        used_detection = []
+        track_id_focus = text_image_matcher.track_id_focus  # Used to focus on a specific track_id
+        update_tracked_probability = None
+        for detection in detections:
+            results = detection.get_objects_typed(hailo.HAILO_MATRIX)
+            if len(results) == 0:
+                continue
+            detection_embeddings = np.array(results[0].get_data())  # Convert the matrix to a NumPy array
+            used_detection.append(detection)  # used_detection corresponds to embeddings_np
+            if embeddings_np is None:
+                embeddings_np = detection_embeddings[np.newaxis, :]
+            else:
+                embeddings_np = np.vstack((embeddings_np, detection_embeddings))  # Stack vertically ("append")
+            if track_id_focus is not None:
+                track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+                if len(track) == 1:
+                    track_id = track[0].get_id()
+                    # If we have a track_id_focus, update only the tracked_probability of the focused track
+                    if track_id == track_id_focus:
+                        update_tracked_probability = len(used_detection) - 1  # The focused detection was just appended, so its index is the last one
+        if embeddings_np is not None:
+            matches = text_image_matcher.match(embeddings_np, report_all=True, update_tracked_probability=update_tracked_probability)
+            for match in matches:  # (row_idx - in embeddings_np or used_detection, text, similarity (confidence), entry_index - TextImageMatcher.entries - which text prompt matched best) = match
+                detection = used_detection[match.row_idx]
+                
+                # Get old classifications BEFORE adding new ones
+                old_classification = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)
+                
+                if (match.passed_threshold and not match.negative):
+                    # Add label as classification metadata
+                    classification = hailo.HailoClassification('clip', match.text, match.similarity)
+                    detection.add_object(classification)
+                    
+                    # Remove old classifications only when new one is added
+                    for old in old_classification:
+                        detection.remove_object(old)
+        return Gst.PadProbeReturn.OK
+
+if __name__ == "__main__":
+    user_data = app_callback_class()
+    app = GStreamerClipApp(user_data, dummy_callback)
+    app.run()

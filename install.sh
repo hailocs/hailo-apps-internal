@@ -1,57 +1,24 @@
 #!/usr/bin/env bash
+# Main installation orchestrator for Hailo Apps Infrastructure
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-DOWNLOAD_GROUP="default"
-VENV_NAME="venv_hailo_apps"
+# Source helper functions and load config
+source "${SCRIPT_DIR}/scripts/installation/install_helpers.sh"
+load_config "" "${SCRIPT_DIR}"
+
+# Default values
+DOWNLOAD_GROUP="${DEFAULT_DOWNLOAD_GROUP}"
+VENV_NAME="${DEFAULT_VENV_NAME}"
 PYHAILORT_PATH=""
 PYTAPPAS_PATH=""
 NO_INSTALL=false
 NO_SYSTEM_PYTHON=false
-ENV_FILE="${SCRIPT_DIR}/.env"
-
-# Detect if running with sudo and get original user and group
-if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-  if [[ -z "${SUDO_USER:-}" ]]; then
-    echo "❌ This script must not be run as root directly. Please run with sudo as a regular user:"
-    echo "   sudo $0"
-    exit 1
-  fi
-  ORIGINAL_USER="${SUDO_USER}"
-  # Get the primary group of the original user
-  ORIGINAL_GROUP=$(id -gn "${SUDO_USER}")
-else
-  echo "❌ This script requires sudo privileges. Please run with sudo:"
-  echo "   sudo $0 $*"
-  exit 1
-fi
-
-echo "🔍 Detected user: ${ORIGINAL_USER}"
-echo "🔍 Detected primary group: ${ORIGINAL_GROUP}"
-
-# Check if group name is different from username
-if [[ "${ORIGINAL_USER}" == "${ORIGINAL_GROUP}" ]]; then
-  echo "✅ User's primary group matches username"
-else
-  echo "✅ User's primary group is different from username: ${ORIGINAL_GROUP}"
-fi
-
-as_original_user() {
-  if [[ ${EUID:-$(id -u)} -eq 0 && -n "${SUDO_USER:-}" ]]; then
-    sudo -n -u "$SUDO_USER" -H -- "$@"
-  else
-    "$@"
-  fi
-}
-
-# Function to fix ownership of files/directories to original user and group
-fix_ownership() {
-  local target="$1"
-  if [[ -e "$target" ]]; then
-    sudo chown -R "${ORIGINAL_USER}:${ORIGINAL_GROUP}" "$target" 2>/dev/null || true
-  fi
-}
+DRY_RUN=false
+VERBOSE=false
+STEP=""
 
 show_help() {
     cat << EOF
@@ -62,12 +29,15 @@ Install Hailo Apps Infrastructure with virtual environment setup.
 ⚠️  This script MUST be run with sudo.
 
 OPTIONS:
-    -n, --venv-name NAME        Set virtual environment name (default: venv_hailo_apps)
+    -n, --venv-name NAME        Set virtual environment name (default: ${DEFAULT_VENV_NAME})
     -ph, --pyhailort PATH       Path to custom PyHailoRT wheel file
     -pt, --pytappas PATH        Path to custom PyTappas wheel file
     --all                       Download all available models/resources
     -x, --no-install           Skip installation of Python packages
     --no-system-python         Don't use system site-packages (default: use system site-packages unless on x86)
+    --step STEP                 Run only specific step (check_prerequisites, setup_venv, install_python_packages, setup_resources, setup_environment, run_post_install, verify_installation)
+    --dry-run                   Preview changes without executing
+    -v, --verbose              Show detailed output
     -h, --help                  Show this help message and exit
 
 EXAMPLES:
@@ -76,24 +46,22 @@ EXAMPLES:
     sudo $0 --all                    # Install with all models/resources
     sudo $0 -x                       # Skip Python package installation
     sudo $0 --no-system-python       # Don't use system site-packages
+    sudo $0 --step setup_venv        # Run only venv setup step
+    sudo $0 --dry-run                # Preview changes
     sudo $0 -ph /path/to/pyhailort.whl -pt /path/to/pytappas.whl  # Use custom wheel files
 
 DESCRIPTION:
-    This script sets up a Python virtual environment for Hailo Apps Infrastructure.
-    It checks for required Hailo components (driver, HailoRT, TAPPAS) and installs
-    missing Python bindings in the virtual environment.
+    This script orchestrates the installation of Hailo Apps Infrastructure.
+    It runs the following steps in order:
+    1. Check prerequisites (driver, HailoRT, TAPPAS)
+    2. Setup virtual environment
+    3. Install Python packages
+    4. Setup resource directories
+    5. Setup environment variables
+    6. Run post-installation tasks
+    7. Verify installation
 
-    The script will:
-    1. Detect the original user and their primary group
-    2. Check installed Hailo components
-    3. Create/recreate virtual environment
-    4. Install required Python packages
-    5. Download models and resources
-    6. Run post-installation setup
-    7. Set correct ownership for all created files
-
-    Operations requiring root privileges (like creating directories in /usr/local)
-    are executed with sudo, while all other operations are executed as the original user.
+    Each step can also be run independently using the corresponding script in scripts/.
 
 REQUIREMENTS:
     - Must be run with sudo
@@ -106,6 +74,7 @@ REQUIREMENTS:
 EOF
 }
 
+# Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n|--venv-name)
@@ -124,360 +93,265 @@ while [[ $# -gt 0 ]]; do
       DOWNLOAD_GROUP="all"
       shift
       ;;
-    -x | --no-install)
+        -x|--no-install)
       NO_INSTALL=true
-      echo "Skipping installation of Python packages."
+            log_info "Skipping installation of Python packages."
       shift
       ;;
     --no-system-python)
       NO_SYSTEM_PYTHON=true
       shift
       ;;
+        --step)
+            STEP="$2"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            log_info "Dry-run mode: Previewing changes without executing"
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
     -h|--help)
       show_help
       exit 0
       ;;
     *)
-      echo "Unknown option: $1"
+            log_error "Unknown option: $1"
       echo "Use -h or --help for usage information."
       exit 1
       ;;
   esac
 done
 
-SUMMARY_LINE=$(
-  as_original_user ./scripts/check_installed_packages.sh 2>&1 \
-    | sed -n 's/^SUMMARY: //p'
-)
+# Export verbose flag for use in other scripts
+export VERBOSE
 
-if [[ -z "$SUMMARY_LINE" ]]; then
-  echo "❌ Could not find SUMMARY line" >&2
-  exit 1
-fi
+# Detect user and group
+detect_user_and_group
 
-IFS=' ' read -r -a pairs <<< "$SUMMARY_LINE"
-
-DRIVER_VERSION="${pairs[0]#*=}"
-HAILORT_VERSION="${pairs[1]#*=}"
-PYHAILORT_VERSION="${pairs[2]#*=}"
-TAPPAS_CORE_VERSION="${pairs[3]#*=}"
-PYTAPPAS_VERSION="${pairs[4]#*=}"
-
-INSTALL_HAILORT=false
-INSTALL_TAPPAS_CORE=false
-
-if [[ "$DRIVER_VERSION" == "-1" ]]; then
-  echo "❌ Hailo PCI driver is not installed. Please install it first."
-  echo "To install the driver, run:"
-  echo "    sudo ./scripts/hailo_installer.sh"
-  exit 1
-fi
-if [[ "$HAILORT_VERSION" == "-1" ]]; then
-  echo "❌ HailoRT is not installed. Please install it first."
-  echo "To install the driver, run:"
-  echo "    sudo ./scripts/hailo_installer.sh"
-  exit 1
-fi
-if [[ "$TAPPAS_CORE_VERSION" == "-1" ]]; then
-  echo "❌ TAPPAS is not installed. Please install it first."
-  echo "To install the driver, run:"
-  echo "    sudo ./scripts/hailo_installer.sh"
-  exit 1
-fi
-
-if [[ "$PYHAILORT_VERSION" == "-1" ]]; then
-  echo "❌ Python HailoRT binding is not installed."
-  echo "Will be installed in the virtualenv."
-  INSTALL_HAILORT=true
-fi
-if [[ "$PYTAPPAS_VERSION" == "-1" ]]; then
-  echo "❌ Python TAPPAS binding is not installed."
-  echo "Will be installed in the virtualenv."
-  INSTALL_TAPPAS_CORE=true
-fi
-
-if [[ "$NO_INSTALL" = true ]]; then
-  echo "Skipping installation of Python packages."
-  INSTALL_HAILORT=false
-  INSTALL_TAPPAS_CORE=false
-fi
-
-VENV_PATH="${SCRIPT_DIR}/${VENV_NAME}"
-
-# Detect architecture
-ARCH=$(uname -m)
-IS_X86=false
-if [[ "$ARCH" == "x86_64" || "$ARCH" == "i386" || "$ARCH" == "i686" ]]; then
-  IS_X86=true
-fi
-
-# Determine whether to use system site-packages
-USE_SYSTEM_SITE_PACKAGES=true
-if [[ "$NO_SYSTEM_PYTHON" = true ]]; then
-  USE_SYSTEM_SITE_PACKAGES=false
-  echo "🔧 Using --no-system-python flag: virtualenv will not use system site-packages"
-else
-  echo "🔧 Using system site-packages for virtualenv"
-fi
-
-if [[ -d "${VENV_PATH}" ]]; then
-  echo "🗑️  Removing existing virtualenv at ${VENV_PATH}"
-  # Try removing as regular user first, fallback to sudo if needed
-  if ! as_original_user rm -rf "${VENV_PATH}" 2>/dev/null; then
-    echo "  ⚠️  Regular user removal failed, fixing ownership..."
-    fix_ownership "${VENV_PATH}"
-    as_original_user rm -rf "${VENV_PATH}"
-  fi
-fi
-
-echo "🧹 Cleaning up build artifacts..."
-# Try cleaning as regular user first, fallback to sudo if needed
-if ! as_original_user find . -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null; then
-  echo "  ⚠️  Regular user cleanup failed, fixing ownership..."
-  fix_ownership .
-  as_original_user find . -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null || true
-fi
-
-if ! as_original_user rm -rf build/ dist/ 2>/dev/null; then
-  echo "  ⚠️  Regular user cleanup failed, fixing ownership..."
-  fix_ownership .
-  as_original_user rm -rf build/ dist/ 2>/dev/null || true
-fi
-echo "✅ Build artifacts cleaned"
-
-# Remove existing .env file if it exists
-if [[ -f "${ENV_FILE}" ]]; then
-  echo "🗑️  Removing existing .env file at ${ENV_FILE}"
-  if ! as_original_user rm -f "${ENV_FILE}" 2>/dev/null; then
-    echo "  ⚠️  Regular user removal failed, fixing ownership..."
-    fix_ownership "${ENV_FILE}"
-    as_original_user rm -f "${ENV_FILE}"
-  fi
-fi
-
-# Create .env file with proper ownership and permissions
-as_original_user touch "${ENV_FILE}"
-as_original_user chmod 644 "${ENV_FILE}"
-echo "✅ Created .env file at ${ENV_FILE}"
-
-sudo apt-get install -y meson
-sudo apt install python3-gi python3-gi-cairo
-
-# Create virtual environment with or without system site-packages
-if [[ "$USE_SYSTEM_SITE_PACKAGES" = true ]]; then
-  echo "🌱 Creating virtualenv '${VENV_NAME}' (with system site-packages)…"
-  as_original_user python3 -m venv --system-site-packages "${VENV_PATH}"
-else
-  echo "🌱 Creating virtualenv '${VENV_NAME}' (without system site-packages)…"
-  as_original_user python3 -m venv "${VENV_PATH}"
-fi
-
-if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
-  echo "❌ Could not find activate at ${VENV_PATH}/bin/activate"
-  exit 1
-fi
-
-echo "🔌 Activating venv: ${VENV_NAME}"
-
-if [[ -n "$PYHAILORT_PATH" ]]; then
-  echo "Using custom HailoRT Python binding path: $PYHAILORT_PATH"
-  if [[ ! -f "$PYHAILORT_PATH" ]]; then
-    echo "❌ HailoRT Python binding not found at $PYHAILORT_PATH"
-    exit 1
-  fi
-  as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install '$PYHAILORT_PATH'"
-  INSTALL_HAILORT=false
-fi
-if [[ -n "$PYTAPPAS_PATH" ]]; then
-  echo "Using custom TAPPAS Python binding path: $PYTAPPAS_PATH"
-  if [[ ! -f "$PYTAPPAS_PATH" ]]; then
-    echo "❌ TAPPAS Python binding not found at $PYTAPPAS_PATH"
-    exit 1
-  fi
-  as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install '$PYTAPPAS_PATH'"
-  INSTALL_TAPPAS_CORE=false
-fi
-
-  echo '📦 Installing Python Hailo packages…'
-  FLAGS=''
-  if [[ '${INSTALL_TAPPAS_CORE}' = true ]]; then
-    echo 'Installing TAPPAS core Python binding'
-    FLAGS='--tappas-core-version=${TAPPAS_CORE_VERSION}'
-  fi
-  if [[ '${INSTALL_HAILORT}' = true ]]; then
-    echo 'Installing HailoRT Python binding'
-    FLAGS=\"\${FLAGS} --hailort-version=${HAILORT_VERSION}\"
-  fi
-
-if [[ -z "$FLAGS" ]]; then
-  echo "No Hailo Python packages to install."
-else
-  echo "Installing Hailo Python packages with flags: ${FLAGS}"
-  as_original_user ./scripts/hailo_python_installation.sh ${FLAGS}
-fi
-
-as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -m pip install --upgrade pip setuptools wheel"
-
-echo "📦 Installing package (editable + post-install)…"
-as_original_user bash -c "source '${VENV_PATH}/bin/activate' && pip install -e ."
-
-# Create Hailo resources directories with correct permissions
-echo "📁 Creating Hailo resources directories..."
-
-RESOURCES_ROOT="/usr/local/hailo/resources"
-
-# Create the directory structure (requires sudo)
-sudo mkdir -p ${RESOURCES_ROOT}/models/{hailo8,hailo8l,hailo10h}
-sudo mkdir -p ${RESOURCES_ROOT}/{videos,so,photos,json,packages}
-sudo mkdir -p ${RESOURCES_ROOT}/face_recon/{train,samples}
-
-# Set ownership to current user and their primary group
-sudo chown -R ${ORIGINAL_USER}:${ORIGINAL_GROUP} ${RESOURCES_ROOT}
-
-# Set permissions: rwxr-xr-x for directories (775 for group access)
-sudo chmod -R 775 ${RESOURCES_ROOT}
-
-# Ensure the user can write to these directories
-sudo chmod -R u+w ${RESOURCES_ROOT}
-
-echo "✅ Hailo resources directories created successfully"
-echo "   Owner: ${ORIGINAL_USER}:${ORIGINAL_GROUP}"
-echo "   Location: ${RESOURCES_ROOT}"
-
-echo "🔧 Running post-install script…"
-
-# Fix resources directory permissions if needed
-echo "🔍 Checking resources directory permissions..."
-if [[ -d "resources" ]]; then
-    # Check if it's a symlink and test the target directory
-    if [[ -L "resources" ]]; then
-        target_dir=$(readlink "resources")
-        echo "  🔗 Resources is a symlink pointing to: $target_dir"
-        # Test if user can write to the target directory
-        if ! as_original_user test -w "$target_dir" 2>/dev/null; then
-            echo "  ⚠️  Target directory requires sudo permissions, fixing ownership..."
-            fix_ownership "$target_dir"
-        fi
-        # Also fix the symlink itself
-        if ! as_original_user test -w "resources" 2>/dev/null; then
-            echo "  ⚠️  Symlink requires sudo permissions, fixing ownership..."
-            fix_ownership "resources"
-        fi
-    else
-        # It's a regular directory
-        if ! as_original_user test -w "resources" 2>/dev/null; then
-            echo "  ⚠️  Resources directory requires sudo permissions, fixing ownership..."
-            fix_ownership "resources"
-        fi
-    fi
-fi
-
-if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && hailo-post-install --group '$DOWNLOAD_GROUP'"; then
-    echo ""
-    echo "❌ Post-installation failed!"
-    echo "This usually means:"
-    echo "  - C++ compilation failed (check for permission issues in build directories)"
-    echo "  - Resource download failed (check network connection)"
-    echo "  - Environment setup failed"
-    echo ""
-    echo "Please check the error messages above and try again."
-    echo "If you see permission errors, you may need to clean up old build directories with sudo."
-    exit 1
-fi
-
-echo ""
-echo "🔍 Verifying installation..."
-
-# Verification function
-verify_installation() {
-    local success=true
+# Function to run a step
+run_step() {
+    local step_name="$1"
+    local script_path="$2"
+    shift 2
+    local args=("$@")
     
-    echo "  📁 Checking virtual environment..."
-    if [[ -f "${VENV_PATH}/bin/activate" ]]; then
-        echo "    ✅ Virtual environment created successfully"
-    else
-        echo "    ❌ Virtual environment not found"
-        success=false
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "[DRY-RUN] Would run: ${script_path} ${args[*]}"
+        return 0
     fi
     
-    echo "  🐍 Checking Python packages..."
-    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo_apps; print(\"Hailo Apps version:\", hailo_apps.__file__)'" 2>/dev/null; then
-        echo "    ✅ Hailo Apps package installed successfully"
+    log_info "Running step: ${step_name}..."
+    if "${script_path}" "${args[@]}"; then
+        log_info "Step ${step_name} completed successfully"
+        return 0
     else
-        echo "    ❌ Hailo Apps package not properly installed"
-        success=false
+        log_error "Step ${step_name} failed"
+        return 1
     fi
-    
-    echo "  📦 Checking HailoRT Python bindings..."
-    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo; print(\"HailoRT available\")'" 2>/dev/null; then
-        echo "    ✅ HailoRT Python bindings available"
-    else
-        echo "    ⚠️  HailoRT Python bindings not available (may need system installation)"
-    fi
-    
-    echo "  📦 Checking TAPPAS Python bindings..."
-    if as_original_user bash -c "source '${VENV_PATH}/bin/activate' && python3 -c 'import hailo_platform; print(\"TAPPAS available\")'" 2>/dev/null; then
-        echo "    ✅ TAPPAS Python bindings available"
-    else
-        echo "    ⚠️  TAPPAS Python bindings not available (may need system installation)"
-    fi
-    
-    echo "  📁 Checking resources directory..."
-    if [[ -d "resources" && -L "resources" ]]; then
-        echo "    ✅ Resources symlink created successfully"
-        if [[ -d "resources/models" ]]; then
-            local model_count=$(find resources/models -name "*.hef" 2>/dev/null | wc -l)
-            echo "    ✅ Found $model_count model files"
-        else
-            echo "    ⚠️  Models directory not found"
-        fi
-    else
-        echo "    ❌ Resources directory not properly set up"
-        success=false
-    fi
-    
-    
-    echo "  📄 Checking environment file..."
-    if [[ -f ".env" ]]; then
-        echo "    ✅ Environment file created successfully"
-    else
-        echo "    ❌ Environment file not found"
-        success=false
-    fi
-    
-    echo "  🔨 Checking C++ postprocess compilation..."
-    # Check for compiled C++ libraries in the expected location
-    if [[ -d "/usr/local/hailo/resources/so" ]]; then
-        local so_count=$(find /usr/local/hailo/resources/so -name "*.so" 2>/dev/null | wc -l)
-        if [[ $so_count -gt 0 ]]; then
-            echo "    ✅ Found $so_count compiled C++ postprocess libraries"
-        else
-            echo "    ⚠️  No compiled C++ postprocess libraries found"
-            echo "       This may affect some advanced features"
-        fi
-    else
-        echo "    ⚠️  C++ library directory not found"
-        echo "       This may affect some advanced features"
-    fi
-    
-    return 0
 }
 
-# Run verification
-verify_installation
+# Function to check prerequisites
+step_check_prerequisites() {
+    local args=()
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    
+    # Parse output to get versions (run before step to capture output)
+    if [[ "$DRY_RUN" != true ]]; then
+        local output
+        output=$("${SCRIPT_DIR}/scripts/installation/check_prerequisites.sh" "${args[@]}" 2>&1)
+        local exit_code=$?
+        
+        if [[ $exit_code -ne 0 ]]; then
+            log_error "Prerequisites check failed"
+            echo "$output"
+            return 1
+        fi
+        
+        local summary_line
+        summary_line=$(echo "$output" | sed -n 's/^SUMMARY: //p')
+        
+        if [[ -z "$summary_line" ]]; then
+            log_error "Could not find SUMMARY line from prerequisites check"
+            echo "$output"
+            return 1
+        fi
+        
+        IFS=' ' read -r -a pairs <<< "$summary_line"
+        export DRIVER_VERSION="${pairs[0]#*=}"
+        export HAILORT_VERSION="${pairs[1]#*=}"
+        export PYHAILORT_VERSION="${pairs[2]#*=}"
+        export TAPPAS_CORE_VERSION="${pairs[3]#*=}"
+        export PYTAPPAS_VERSION="${pairs[4]#*=}"
+        
+        # Determine if we need to install Python bindings
+        export INSTALL_HAILORT=false
+        export INSTALL_TAPPAS_CORE=false
+        
+        if [[ "$PYHAILORT_VERSION" == "-1" && "$NO_INSTALL" != true ]]; then
+            export INSTALL_HAILORT=true
+        fi
+        if [[ "$PYTAPPAS_VERSION" == "-1" && "$NO_INSTALL" != true ]]; then
+            export INSTALL_TAPPAS_CORE=true
+        fi
+        
+        log_info "Prerequisites check completed successfully"
+        log_debug "Driver: $DRIVER_VERSION, HailoRT: $HAILORT_VERSION, TAPPAS: $TAPPAS_CORE_VERSION"
+    else
+        log_info "[DRY-RUN] Would run: ${SCRIPT_DIR}/scripts/installation/check_prerequisites.sh ${args[*]}"
+    fi
+}
 
-# Final ownership fix for all project files
-echo ""
-echo "🔧 Ensuring all project files have correct ownership..."
-fix_ownership "${SCRIPT_DIR}"
-echo "✅ Project files ownership fixed to ${ORIGINAL_USER}:${ORIGINAL_GROUP}"
+# Function to setup venv
+step_setup_venv() {
+    local args=("-n" "$VENV_NAME" "--remove-existing")
+    [[ "$NO_SYSTEM_PYTHON" == true ]] && args+=("--no-system-python")
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    run_step "setup_venv" "${SCRIPT_DIR}/scripts/installation/setup_venv.sh" "${args[@]}"
+}
 
-echo ""
-echo "✅ Installation process completed!"
-echo "Virtual environment: ${VENV_NAME}"
-echo "Location: ${VENV_PATH}"
-echo "User: ${ORIGINAL_USER}"
-echo "Group: ${ORIGINAL_GROUP}"
+# Function to install Python packages
+step_install_python_packages() {
+    local args=("-n" "$VENV_NAME")
+    [[ -n "$PYHAILORT_PATH" ]] && args+=("-ph" "$PYHAILORT_PATH")
+    [[ -n "$PYTAPPAS_PATH" ]] && args+=("-pt" "$PYTAPPAS_PATH")
+    [[ "$NO_INSTALL" == true ]] && args+=("--no-install")
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    
+    # Pass version information if available
+    if [[ -n "${HAILORT_VERSION:-}" && -n "${TAPPAS_CORE_VERSION:-}" ]]; then
+        export HAILORT_VERSION
+        export TAPPAS_CORE_VERSION
+        export INSTALL_HAILORT
+        export INSTALL_TAPPAS_CORE
+    fi
+    
+    run_step "install_python_packages" "${SCRIPT_DIR}/scripts/installation/install_python_packages.sh" "${args[@]}"
+}
 
-echo "✅ All done! Your package is now in '${VENV_NAME}'."
-echo "source setup_env.sh to setup the environment"
+# Function to setup resources
+step_setup_resources() {
+    local args=()
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    run_step "setup_resources" "${SCRIPT_DIR}/scripts/installation/setup_resources.sh" "${args[@]}"
+}
+
+# Function to setup environment
+step_setup_environment() {
+    local args=("-n" "$VENV_NAME")
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    run_step "setup_environment" "${SCRIPT_DIR}/scripts/installation/setup_environment.sh" "${args[@]}"
+}
+
+# Function to run post-install
+step_run_post_install() {
+    local args=("-n" "$VENV_NAME" "--group" "$DOWNLOAD_GROUP")
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    run_step "run_post_install" "${SCRIPT_DIR}/scripts/installation/run_post_install.sh" "${args[@]}"
+}
+
+# Function to verify installation
+step_verify_installation() {
+    local args=("-n" "$VENV_NAME")
+    [[ "$VERBOSE" == true ]] && args+=("-v")
+    run_step "verify_installation" "${SCRIPT_DIR}/scripts/installation/verify_installation.sh" "${args[@]}"
+}
+
+# Main installation flow
+main() {
+    log_info "Starting Hailo Apps Infrastructure installation..."
+    log_info "Virtual environment: ${VENV_NAME}"
+    log_info "Download group: ${DOWNLOAD_GROUP}"
+    
+    # If --step is specified, run only that step
+    if [[ -n "$STEP" ]]; then
+        case "$STEP" in
+            check_prerequisites)
+                step_check_prerequisites
+                ;;
+            setup_venv)
+                step_setup_venv
+                ;;
+            install_python_packages)
+                step_install_python_packages
+                ;;
+            setup_resources)
+                step_setup_resources
+                ;;
+            setup_environment)
+                step_setup_environment
+                ;;
+            run_post_install)
+                step_run_post_install
+                ;;
+            verify_installation)
+                step_verify_installation
+                ;;
+            *)
+                log_error "Unknown step: $STEP"
+                echo "Available steps: check_prerequisites, setup_venv, install_python_packages, setup_resources, setup_environment, run_post_install, verify_installation"
+                exit 1
+                ;;
+        esac
+        exit $?
+    fi
+    
+    # Run all steps in order
+    if ! step_check_prerequisites; then
+        log_error "Prerequisites check failed. Please install missing components."
+        exit 1
+    fi
+    
+    if ! step_setup_venv; then
+        log_error "Virtual environment setup failed."
+        exit 1
+    fi
+    
+    if ! step_install_python_packages; then
+        log_error "Python package installation failed."
+        exit 1
+    fi
+    
+    if ! step_setup_resources; then
+        log_error "Resource setup failed."
+        exit 1
+    fi
+    
+    if ! step_setup_environment; then
+        log_error "Environment setup failed."
+        exit 1
+    fi
+    
+    if ! step_run_post_install; then
+        log_error "Post-installation failed."
+        exit 1
+    fi
+    
+    if ! step_verify_installation; then
+        log_warning "Installation verification found issues. Please review the output."
+    fi
+    
+    # Final ownership fix for all project files
+    if [[ "$DRY_RUN" != true ]]; then
+        log_info "Ensuring all project files have correct ownership..."
+        fix_ownership "${SCRIPT_DIR}"
+        log_info "Project files ownership fixed to ${ORIGINAL_USER}:${ORIGINAL_GROUP}"
+    fi
+    
+    log_info ""
+    log_info "Installation process completed!"
+    log_info "Virtual environment: ${VENV_NAME}"
+    log_info "Location: ${SCRIPT_DIR}/${VENV_NAME}"
+    log_info "User: ${ORIGINAL_USER}"
+    log_info "Group: ${ORIGINAL_GROUP}"
+    log_info ""
+    log_info "All done! Your package is now in '${VENV_NAME}'."
+    log_info "Run 'source setup_env.sh' to setup the environment"
+}
+
+# Run main function
+main

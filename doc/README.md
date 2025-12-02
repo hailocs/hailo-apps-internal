@@ -24,12 +24,12 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 ### ✔️ Applications Guide
 **References for applications guides.**
 
-*   **[Detection simple](../hailo_apps/hailo_app_python/apps/detection_simple/README.md)**
-*   **[Detection](../hailo_apps/hailo_app_python/apps/detection/README.md)**
-*   **[Depth](../hailo_apps/hailo_app_python/apps/depth/README.md)**
-*   **[Instance Segmentation](../hailo_apps/hailo_app_python/apps/instance_segmentation/README.md)**
-*   **[Pose Estimation](../hailo_apps/hailo_app_python/apps/pose_estimation/README.md)**
-*   **[Face Recognition](../hailo_apps/hailo_app_python/apps/face_recognition/README.md)**
-*   **[Tiling](../hailo_apps/hailo_app_python/apps/tiling/README.md)**
-*   **[Multisource](../hailo_apps/hailo_app_python/apps/multisource/README.md)**
-*   **[REID Multisource](../hailo_apps/hailo_app_python/apps/reid_multisource/README.md)**
+*   **[Detection simple](../hailo_apps/python/pipeline_apps/detection_simple/README.md)**
+*   **[Detection](../hailo_apps/python/pipeline_apps/detection/README.md)**
+*   **[Depth](../hailo_apps/python/pipeline_apps/depth/README.md)**
+*   **[Instance Segmentation](../hailo_apps/python/pipeline_apps/instance_segmentation/README.md)**
+*   **[Pose Estimation](../hailo_apps/python/pipeline_apps/pose_estimation/README.md)**
+*   **[Face Recognition](../hailo_apps/python/pipeline_apps/face_recognition/README.md)**
+*   **[Tiling](../hailo_apps/python/pipeline_apps/tiling/README.md)**
+*   **[Multisource](../hailo_apps/python/pipeline_apps/multisource/README.md)**
+*   **[REID Multisource](../hailo_apps/python/pipeline_apps/reid_multisource/README.md)**

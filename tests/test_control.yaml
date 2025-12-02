@@ -1,0 +1,188 @@
+# ============================================================================
+# TEST CONTROL CONFIGURATION
+# ============================================================================
+# Controls test execution parameters, logging, and special test configurations
+
+# Control parameters
+control_parameters:
+  default_run_time: 24  # seconds
+  term_timeout: 10      # seconds - timeout for test termination
+  human_verification_run_time: 48  # seconds - extended time for manual verification
+
+# Logging configuration
+logging:
+  base_dir: "./logs"
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR | CRITICAL
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+  subdirs:
+    per_app:
+      detection:
+        default: "./logs/detection/default"
+        extra: "./logs/detection/extra"
+        all: "./logs/detection/all"
+      simple_detection:
+        default: "./logs/simple_detection/default"
+        extra: "./logs/simple_detection/extra"
+        all: "./logs/simple_detection/all"
+      face_recognition:
+        default: "./logs/face_recognition/default"
+        extra: "./logs/face_recognition/extra"
+        all: "./logs/face_recognition/all"
+      instance_segmentation:
+        default: "./logs/instance_segmentation/default"
+        extra: "./logs/instance_segmentation/extra"
+        all: "./logs/instance_segmentation/all"
+      pose_estimation:
+        default: "./logs/pose_estimation/default"
+        extra: "./logs/pose_estimation/extra"
+        all: "./logs/pose_estimation/all"
+      depth:
+        default: "./logs/depth/default"
+        extra: "./logs/depth/extra"
+        all: "./logs/depth/all"
+      tiling:
+        default: "./logs/tiling/default"
+        extra: "./logs/tiling/extra"
+        all: "./logs/tiling/all"
+      paddle_ocr:
+        default: "./logs/paddle_ocr/default"
+        extra: "./logs/paddle_ocr/extra"
+        all: "./logs/paddle_ocr/all"
+      clip:
+        default: "./logs/clip/default"
+        extra: "./logs/clip/extra"
+        all: "./logs/clip/all"
+      retrain:
+        default: "./logs/retrain/default"
+        extra: "./logs/retrain/extra"
+        all: "./logs/retrain/all"
+      lane_detection:
+        default: "./logs/lane_detection/default"
+        extra: "./logs/lane_detection/extra"
+        all: "./logs/lane_detection/all"
+      super_resolution:
+        default: "./logs/super_resolution/default"
+        extra: "./logs/super_resolution/extra"
+        all: "./logs/super_resolution/all"
+      reid_multisource:
+        default: "./logs/reid_multisource/default"
+        extra: "./logs/reid_multisource/extra"
+        all: "./logs/reid_multisource/all"
+
+# ============================================================================
+# Test combinations configuration
+# ============================================================================
+
+test_combinations:
+  ci_run:
+    enabled: false
+  all_extra:
+    enabled: false
+  all_default:
+    enabled: false
+
+################################################################################
+# Custom Test Per App configuration
+################################################################################
+custom_tests:
+  enabled: false
+  apps:
+    detection:
+      test_suite_mode: "all"  # None | default | extra | all
+      model_selection: "all"  # default | extra | all
+      description: "Object Detection Pipeline"
+    
+    simple_detection:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Simple Detection Pipeline"
+    
+    face_recognition:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Face Recognition Pipeline"
+    
+    instance_segmentation:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Instance Segmentation Pipeline"
+    
+    pose_estimation:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Pose Estimation Pipeline"
+    
+    depth:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Depth Estimation Pipeline"
+    
+    tiling:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Tiling Pipeline"
+    
+    paddle_ocr:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Paddle OCR Pipeline"
+    
+    clip:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "CLIP Pipeline"
+    
+    retrain:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Retraining Pipeline"
+    
+    lane_detection:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Lane Detection Pipeline"
+    
+    super_resolution:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Super Resolution Pipeline"
+    
+    reid_multisource:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "REID Multisource Pipeline"
+
+# Special tests configuration
+special_tests:
+  h8l_on_h8:
+    enabled: true
+    description: "Run H8L architecture on H8 hardware"
+  
+  sanity_checks:
+    enabled: true
+    description: "Basic sanity checks before test execution"
+  
+  human_verification:
+    enabled: true
+    description: "Tests requiring human verification and validation"
+  
+  golden_tests:
+    enabled: true
+    description: "Golden reference tests for baseline validation"
+
+# Run methods configuration
+run_methods:
+  pythonpath:
+    enabled: true  # Always true (primary method)
+    priority: 1
+  
+  cli:
+    enabled: false
+    priority: 2
+    command_template: "python -m test_runner"
+  
+  module:
+    enabled: false
+    priority: 3
+    module_name: "test_execution.runner"
+

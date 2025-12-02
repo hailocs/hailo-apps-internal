@@ -5,7 +5,8 @@
 
 Welcome to the Hailo Applications repository! This project provides a foundational infrastructure, reusable components, and practical examples for building and deploying high-performance AI applications using Hailo hardware accelerators.
 
-It includes everything you need to get started with computer vision pipelines on both x86_64 Ubuntu systems and Raspberry Pi platforms.
+
+This repository is designed for both x86_64 Ubuntu systems and Raspberry Pi 5, with a special focus on Raspberry Pi 5, including integration with RPi cameras and GPIO-based applications.
 
 - **Ready-to-use AI pipelines** for object detection, pose estimation, and more.
 - **Modular infrastructure** for rapid development and custom applications.

@@ -9,7 +9,7 @@ hailo-apps-internal/
 │   ├── developer_guide/        # Developer-focused documentation
 │   └── images/                 # Images for documentation
 ├── hailo_apps/                 # Main AI application package (Python)
-│   └── hailo_app_python/       # Contains 'apps/' (AI apps) and 'core/' (shared logic)
+│   └── python/       # Contains 'apps/' (AI apps) and 'core/' (shared logic)
 │       ├── apps/               # Individual AI application folders (detection, pose, etc.)
 │       └── core/               # Shared logic, utilities, and GStreamer integration
 │           ├── common/         # Foundational utilities (installation, configuration, helpers)
@@ -35,7 +35,7 @@ Contains all project documentation, including user guides, developer guides, and
 
 ### `hailo_apps/`
 Main Python package for AI applications. Contains:
-- **`hailo_app_python/`**:
+- **`python/`**:
   - `apps/`: Individual AI application folders (e.g., detection, face_recognition, etc.)
   - `core/`: Shared logic, utilities, and GStreamer integration for apps.
     - `common/`: Foundational utilities (installation, configuration, helpers).
