@@ -11,15 +11,15 @@ import cv2
 import hailo
 from gi.repository import Gst
 
-from hailo_apps.hailo_app_python.apps.ocr.ocr_pipeline import GStreamerOCRApp
-from hailo_apps.hailo_app_python.core.common.buffer_utils import (
+from hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr_pipeline import GStreamerOCRApp
+from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
 )
 
 # Logger
-from hailo_apps.hailo_app_python.core.common.hailo_logger import get_logger
-from hailo_apps.hailo_app_python.core.gstreamer.gstreamer_app import app_callback_class
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 hailo_logger = get_logger(__name__)
 # endregion imports

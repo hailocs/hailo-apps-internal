@@ -137,7 +137,11 @@ else
     # Build hailo-post-install command
     POST_INSTALL_CMD="hailo-post-install"
     if [[ "$SKIP_DOWNLOAD" != true ]]; then
-        POST_INSTALL_CMD="${POST_INSTALL_CMD} --group '${DOWNLOAD_GROUP}'"
+        if [[ "$DOWNLOAD_GROUP" == "all" ]]; then
+            POST_INSTALL_CMD="${POST_INSTALL_CMD} --all"
+        else
+            POST_INSTALL_CMD="${POST_INSTALL_CMD} --group '${DOWNLOAD_GROUP}'"
+        fi
     fi
     
     if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && cd '${PROJECT_ROOT}' && ${POST_INSTALL_CMD}"; then
