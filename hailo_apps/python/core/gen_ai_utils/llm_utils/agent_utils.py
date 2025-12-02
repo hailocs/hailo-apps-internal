@@ -36,13 +36,13 @@ def update_context_with_tool_result(
 
     tool_result_text = json.dumps(result, ensure_ascii=False)
     tool_response_message = f"<tool_response>{tool_result_text}</tool_response>"
-    log.debug("Adding tool result to LLM context:\n%s", tool_response_message)
+    log.debug("Tool result: %s", tool_result_text)
 
     # LLM has context, just add the tool result
     prompt = [message_formatter.messages_tool(tool_response_message)]
 
     # Add to context by making a minimal generation (just to update context)
-    log.debug("Updating LLM context with tool result")
+    log.debug("Updating context")
     context_manager.add_to_context(llm, prompt, logger_instance=log)
 
 
@@ -68,20 +68,20 @@ def cleanup_resources(
         try:
             tool_module.cleanup_tool()
         except Exception as e:
-            log.debug("Tool cleanup failed: %s", e)
+            log.debug("Cleanup failed: %s", e)
 
     if llm:
         try:
             llm.clear_context()
         except Exception as e:
-            log.debug("Error clearing LLM context: %s", e)
+            log.debug("Context clear failed: %s", e)
         try:
             llm.release()
         except Exception as e:
-            log.debug("Error releasing LLM: %s", e)
+            log.debug("LLM release failed: %s", e)
 
     if vdevice:
         try:
             vdevice.release()
         except Exception as e:
-            log.debug("Error releasing VDevice: %s", e)
+            log.debug("VDevice release failed: %s", e)

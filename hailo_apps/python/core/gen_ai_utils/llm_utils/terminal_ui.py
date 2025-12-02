@@ -4,9 +4,13 @@ Terminal UI module for Hailo applications.
 Handles terminal interactions, input reading, and banner display.
 """
 
+import logging
 import sys
 import termios
 import tty
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class TerminalUI:
@@ -66,7 +70,11 @@ class TerminalUI:
                 ch = sys.stdin.read(1)
             except KeyboardInterrupt:
                 # Return control character for Ctrl+C
+                logger.debug("KeyboardInterrupt received in terminal input")
                 return "\x03"
+        except Exception as e:
+            logger.warning("Terminal input error: %s", e)
+            raise
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 

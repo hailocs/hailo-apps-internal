@@ -4,6 +4,7 @@ Text-to-Speech module for Hailo Voice Assistant.
 This module handles speech synthesis using Piper TTS.
 """
 
+import logging
 import os
 import queue
 import re
@@ -31,6 +32,9 @@ from hailo_apps.python.core.common.defines import (
     TTS_VOLUME,
     TTS_W_SCALE,
 )
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str = TTS_JSON_PATH) -> bool:
@@ -136,6 +140,7 @@ class TextToSpeechProcessor:
         json_path = onnx_path + ".json"
         check_piper_model_installed(onnx_path, json_path)
 
+        logger.info("Loading Piper TTS model: %s", onnx_path)
         # Suppress Piper warning messages
         with redirect_stderr(StringIO()):
             self.piper_voice = PiperVoice.load(onnx_path)
@@ -146,6 +151,7 @@ class TextToSpeechProcessor:
                 noise_w_scale=TTS_W_SCALE,
                 normalize_audio=True,
             )
+        logger.debug("TTS initialized with volume=%.2f, length_scale=%.2f", TTS_VOLUME, TTS_LENGTH_SCALE)
 
         self.speech_queue = queue.Queue()
         self.current_speech_process = None
@@ -166,6 +172,7 @@ class TextToSpeechProcessor:
         Stops current playback, increments generation ID to invalidate stale chunks,
         and clears the queue.
         """
+        logger.debug("Interrupting TTS")
         self._interrupted.set()
         with self._gen_id_lock:
             self.generation_id += 1
@@ -175,16 +182,21 @@ class TextToSpeechProcessor:
                 try:
                     # Terminate the 'aplay' process to stop audio instantly
                     self.current_speech_process.kill()
-                except OSError:
-                    pass
+                    logger.debug("TTS playback process terminated")
+                except OSError as e:
+                    logger.debug("Error terminating playback process: %s", e)
                 self.current_speech_process = None
 
         # Drain the queue of any stale audio chunks
+        drained = 0
         while not self.speech_queue.empty():
             try:
                 self.speech_queue.get_nowait()
+                drained += 1
             except queue.Empty:
                 continue
+        if drained > 0:
+            logger.debug("Drained %d stale audio chunks from queue", drained)
 
     def queue_text(self, text: str, gen_id: Optional[int] = None):
         """
@@ -243,6 +255,7 @@ class TextToSpeechProcessor:
 
     def stop(self):
         """Stop the worker thread and cleanup."""
+        logger.info("Stopping TTS processor")
         self._running = False
         if self.speech_thread.is_alive():
             self.speech_thread.join(timeout=1.0)
@@ -252,18 +265,21 @@ class TextToSpeechProcessor:
         """
         Background thread that processes the speech queue.
         """
+        logger.debug("TTS worker thread started")
         while self._running:
             try:
                 gen_id, text = self.speech_queue.get(timeout=0.1)
 
                 # If an interruption is signaled, discard this chunk
                 if self._interrupted.is_set():
+                    logger.debug("Discarding chunk due to interruption")
                     self.speech_queue.task_done()
                     continue
 
                 # If this chunk is from a previous generation, discard it
                 with self._gen_id_lock:
                     if gen_id != self.generation_id:
+                        logger.debug("Discarding stale chunk (gen_id=%d, current=%d)", gen_id, self.generation_id)
                         self.speech_queue.task_done()
                         continue
 
@@ -272,6 +288,7 @@ class TextToSpeechProcessor:
 
             except queue.Empty:
                 time.sleep(0.1)
+        logger.debug("TTS worker thread stopped")
 
     def _synthesize_and_play(self, text: str):
         """
@@ -283,8 +300,10 @@ class TextToSpeechProcessor:
         # Clean text before synthesis to prevent artifacts
         text = clean_text_for_tts(text)
         if not text.strip():
+            logger.debug("Empty text after cleaning, skipping synthesis")
             return
 
+        logger.debug("Synthesizing text: %s", text[:50] + "..." if len(text) > 50 else text)
         playback_process = None
         try:
             with tempfile.NamedTemporaryFile(
@@ -300,6 +319,7 @@ class TextToSpeechProcessor:
                 with self._speech_lock:
                     # Check if we should still play (might have been interrupted during synthesis)
                     if self._interrupted.is_set():
+                        logger.debug("Interrupted during synthesis, skipping playback")
                         return
 
                     self.current_speech_process = subprocess.Popen(
@@ -308,11 +328,16 @@ class TextToSpeechProcessor:
                         stderr=subprocess.DEVNULL,
                     )
                     playback_process = self.current_speech_process
+                    logger.debug("Playback started (PID: %d)", playback_process.pid)
 
                 # Wait for playback to finish
                 if playback_process:
                     playback_process.wait()
+                    logger.debug("Playback completed")
 
+        except Exception as e:
+            logger.error("TTS synthesis/playback failed: %s", e)
+            raise
         finally:
             with self._speech_lock:
                 if (

@@ -4,10 +4,14 @@ Streaming utilities for LLM generation.
 Handles streaming tokens, filtering XML tags, and cleaning up response content.
 """
 
+import logging
 import re
 from typing import Callable, List, Optional
 
 from hailo_platform.genai import LLM
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class StreamingTextFilter:
@@ -184,8 +188,9 @@ def generate_and_stream_response(
     recovery_seq = None
     try:
         recovery_seq = llm.get_generation_recovery_sequence()
+        logger.debug("Recovery sequence configured")
     except AttributeError:
-        pass
+        logger.debug("Recovery sequence not available")
 
     with llm.generate(
         prompt=prompt,
@@ -196,6 +201,7 @@ def generate_and_stream_response(
         for token in gen:
             # Check for abort signal
             if abort_callback and abort_callback():
+                logger.info("Generation aborted by user")
                 print("\n[Aborted]", end="", flush=True)
                 break
 
@@ -227,6 +233,7 @@ def generate_and_stream_response(
     print()  # New line after streaming completes
 
     raw_response = "".join(response_parts)
+    logger.debug("Generated %d tokens", len(response_parts))
     return raw_response
 
 

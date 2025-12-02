@@ -103,7 +103,7 @@ class VoiceAgentApp:
 
     def _init_context(self):
         system_text = system_prompt.create_system_prompt([self.selected_tool])
-        logger.debug("SYSTEM PROMPT:\n%s", system_text)
+        logger.debug("System prompt: %d chars", len(system_text))
 
         cache_dir = Path(os.path.dirname(os.path.abspath(__file__)))
         try:
@@ -113,7 +113,7 @@ class VoiceAgentApp:
             context_loaded = False
 
         if not context_loaded:
-            logger.info("Initializing system prompt...")
+            logger.info("Initializing context...")
             try:
                 prompt = [message_formatter.messages_system(system_text)]
                 context_manager.add_to_context(self.llm, prompt, logger)
@@ -121,7 +121,7 @@ class VoiceAgentApp:
             except Exception as e:
                 logger.error("Failed to initialize system context: %s", e)
         else:
-            logger.info("Loaded cached context.")
+            logger.debug("Using cached context")
 
         self.system_text = system_text
 
@@ -130,7 +130,7 @@ class VoiceAgentApp:
             try:
                 self.tts.interrupt()
             except Exception as e:
-                logger.warning("Failed to interrupt TTS: %s", e)
+                logger.debug("TTS interrupt failed: %s", e)
 
     def on_audio_ready(self, audio):
         # 1. Transcribe
@@ -161,26 +161,26 @@ class VoiceAgentApp:
                     self.llm, self.selected_tool_name, cache_dir, logger
                 )
                 if context_reloaded:
-                    logger.info("Context reloaded from cache after clear")
+                    logger.debug("Context reloaded")
                 else:
-                    logger.info("No cache available after clear, will reinitialize on next message")
+                    logger.debug("No cache, will reinit")
             except Exception as e:
                 print(f"[Error] Failed to clear context: {e}")
 
     def process_interaction(self, user_text):
         # Check if we need to trim context based on actual token usage
         if context_manager.is_context_full(self.llm, context_threshold=config.CONTEXT_THRESHOLD, logger_instance=logger):
-            logger.info("Context limit reached. Clearing context and reloading from cache...")
+            logger.info("Context full, clearing...")
             self.llm.clear_context()
             cache_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
             if context_manager.load_context_from_cache(self.llm, self.selected_tool_name, cache_dir, logger):
-                logger.info("Context restored from cache")
+                logger.debug("Context restored")
             else:
                 logger.warning("Context cleared but failed to restore from cache")
 
         prompt = [message_formatter.messages_user(user_text)]
-        logger.debug("Sending user message to LLM:\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+        logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
 
         # Prepare for streaming response
         current_gen_id = None
@@ -219,7 +219,8 @@ class VoiceAgentApp:
             )
         except Exception as e:
             print(f"\n[Error] LLM generation failed: {e}")
-            logger.error("LLM generation error: %s", traceback.format_exc())
+            logger.error("LLM generation failed: %s", e)
+            logger.debug("Traceback: %s", traceback.format_exc())
             return
 
         # Flush remaining speech
@@ -239,11 +240,7 @@ class VoiceAgentApp:
         if self.tts:
             if result.get("ok"):
                 res_str = str(result.get("result", ""))
-                # Speak result if it's short enough, or a summary
-                if len(res_str) < 200:
-                    self.tts.queue_text(f"The result is {res_str}")
-                else:
-                    self.tts.queue_text("I have calculated the result.")
+                self.tts.queue_text(res_str)
             else:
                 self.tts.queue_text("There was an error executing the tool.")
 

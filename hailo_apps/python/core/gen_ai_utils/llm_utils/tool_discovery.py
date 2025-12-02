@@ -47,7 +47,7 @@ def discover_tool_modules(tool_dir: Optional[Path] = None) -> List[ModuleType]:
     # The original code used __package__ because it was inside the package.
     # When scanning an external dir, we don't prepend the current package name.
 
-    logger.debug("Discovering tools in %s", target_dir)
+    logger.debug("Scanning: %s", target_dir)
 
     for module_info in pkgutil.iter_modules([str(target_dir)]):
         if not module_info.name.startswith("tool_"):
@@ -55,12 +55,12 @@ def discover_tool_modules(tool_dir: Optional[Path] = None) -> List[ModuleType]:
 
         module_name = module_info.name
         try:
-            logger.debug("Importing module: %s", module_name)
+            logger.debug("Importing: %s", module_name)
             modules.append(importlib.import_module(module_name))
         except Exception as e:
             # Reason: Log detailed error but don't crash app if one tool is broken
-            logger.error("Failed to import tool module '%s': %s", module_name, e)
-            logger.debug(traceback.format_exc())
+            logger.error("Import failed: %s - %s", module_name, e)
+            logger.debug("Traceback: %s", traceback.format_exc())
             continue
 
     return modules
@@ -91,13 +91,13 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
         # Check for run function
         run_fn = getattr(m, "run", None)
         if not callable(run_fn):
-            logger.warning("Skipping module %s: missing 'run' function", module_filename)
+            logger.warning("Missing 'run': %s", module_filename)
             continue
 
         # Check for template or example tools that shouldn't be loaded
         module_tool_name = getattr(m, "name", None)
         if module_tool_name == "template_tool" or module_tool_name == "mytool":
-            logger.debug("Skipping template tool in %s", module_filename)
+            logger.debug("Skipping template: %s", module_filename)
             continue
 
         # Get metadata attributes
@@ -109,7 +109,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
         if tool_schemas and isinstance(tool_schemas, list):
             for entry in tool_schemas:
                 if not isinstance(entry, dict):
-                    logger.warning("Skipping invalid schema entry in %s: expected dict, got %s", module_filename, type(entry))
+                    logger.warning("Invalid schema: %s - %s", module_filename, type(entry).__name__)
                     continue
 
                 if entry.get("type") != "function":
@@ -120,11 +120,11 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
                 description = function_def.get("description", llm_description_attr or "")
 
                 if not name:
-                    logger.warning("Skipping unnamed tool in %s", module_filename)
+                    logger.warning("Unnamed tool: %s", module_filename)
                     continue
 
                 if name in seen_names:
-                    logger.warning("Skipping duplicate tool name '%s' in %s", name, module_filename)
+                    logger.warning("Duplicate tool: %s in %s", name, module_filename)
                     continue
 
                 seen_names.add(name)
@@ -141,7 +141,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
                     }
                 )
         else:
-            logger.warning("Skipping module %s: missing or invalid 'TOOLS_SCHEMA'", module_filename)
+            logger.warning("Missing TOOLS_SCHEMA: %s", module_filename)
 
     tools.sort(key=lambda t: t["name"])
     return tools

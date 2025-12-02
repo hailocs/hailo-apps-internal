@@ -137,7 +137,7 @@ class SimulatedElevator(ElevatorInterface):
         }
         .building {
             display: flex;
-            flex-direction: column;
+            flex-direction: column-reverse;
             border: 3px solid #444;
             border-radius: 5px;
             overflow: hidden;
@@ -273,7 +273,9 @@ class SimulatedElevator(ElevatorInterface):
                     // Clear and rebuild floors
                     building.innerHTML = '';
 
-                    // Create floors 0-5 (0 at bottom, 5 at top)
+                    // Create floors 0-5 in DOM order (0 first, 5 last)
+                    // With column-reverse CSS, first DOM child appears at bottom, last at top
+                    // So floor 0 will be at bottom, floor 5 at top
                     for (let i = 0; i <= 5; i++) {
                         const floorDiv = document.createElement('div');
                         floorDiv.className = 'floor';
@@ -300,10 +302,13 @@ class SimulatedElevator(ElevatorInterface):
 
                     // Update elevator position (visual indicator)
                     // Calculate position based on floor (0 at bottom, 5 at top)
+                    // DOM order is [0,1,2,3,4,5], but column-reverse displays them visually reversed
+                    // So floor i is at DOM index i, but positioned visually in reverse
                     // Need to wait for DOM to update to get accurate floor heights
                     setTimeout(() => {
                         const floors = building.querySelectorAll('.floor');
-                        if (floors.length > 0 && data.current_floor < floors.length) {
+                        if (floors.length > 0 && data.current_floor >= 0 && data.current_floor <= 5) {
+                            // DOM order matches floor number: floor i is at index i
                             const targetFloor = floors[data.current_floor];
                             const buildingRect = building.getBoundingClientRect();
                             const floorRect = targetFloor.getBoundingClientRect();

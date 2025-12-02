@@ -4,6 +4,7 @@ Speech-to-Text module for Hailo Voice Assistant.
 This module handles the transcription of audio using Hailo's Speech2Text model.
 """
 
+import logging
 import time
 from typing import List, Optional
 
@@ -16,6 +17,9 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_MODELS_DIR_NAME,
     WHISPER_MODEL_NAME_H10,
 )
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class SpeechToTextProcessor:
@@ -41,6 +45,7 @@ class SpeechToTextProcessor:
                 model=model_name,
             )
         )
+        logger.info("Initializing Speech2Text with model: %s", model_name)
         self.speech2text = Speech2Text(vdevice, model_path)
 
     def transcribe(
@@ -68,12 +73,13 @@ class SpeechToTextProcessor:
         )
 
         if not segments:
+            logger.debug("No transcription segments returned")
             return ""
 
         # Log first segment for debugging/feedback
-        print("Captured text:\n")
-        print(f"text='{segments[0].text}', time={segments[0].end_sec}")
+        logger.debug("Transcription: text='%s', time=%.2fs", segments[0].text, segments[0].end_sec)
 
         full_text = "".join([seg.text for seg in segments])
+        logger.debug("Full transcription: %d segments, %d chars", len(segments), len(full_text))
         return full_text
 

@@ -117,7 +117,7 @@ def main() -> None:
         # Single conversation loop; type '/exit' to quit.
         # Only load the selected tool to save context
         system_text = system_prompt.create_system_prompt([selected_tool])
-        logger.debug("SYSTEM PROMPT:\n%s", system_text)
+        logger.debug("System prompt: %d chars", len(system_text))
 
         # Try to load cached context for this tool
         # If cache exists, we don't need to send system prompt on first message
@@ -133,10 +133,10 @@ def main() -> None:
 
         if context_loaded:
             # Context was loaded from cache, system prompt already in context
-            logger.info("Using cached context for tool '%s'", selected_tool_name)
+            logger.debug("Using cached context: %s", selected_tool_name)
         else:
             # No cache found, initialize system prompt and save context
-            logger.info("No cache found, initializing system prompt for tool '%s'", selected_tool_name)
+            logger.info("Initializing context: %s", selected_tool_name)
             try:
                 prompt = [message_formatter.messages_system(system_text)]
                 context_manager.add_to_context(llm, prompt, logger)
@@ -172,9 +172,9 @@ def main() -> None:
                     # Try to reload cached context after clearing
                     context_reloaded = context_manager.load_context_from_cache(llm, selected_tool_name, cache_dir, logger)
                     if context_reloaded:
-                        logger.info("Context reloaded from cache after clear")
+                        logger.debug("Context reloaded")
                     else:
-                        logger.info("No cache available after clear, will reinitialize on next message")
+                        logger.debug("No cache, will reinit")
                 except Exception as e:
                     print(f"[Error] Failed to clear context: {e}")
                 continue
@@ -187,10 +187,10 @@ def main() -> None:
 
             # Check if we need to trim context based on actual token usage
             if context_manager.is_context_full(llm, context_threshold=config.CONTEXT_THRESHOLD, logger_instance=logger):
-                logger.info("Context limit reached. Clearing context and reloading from cache...")
+                logger.info("Context full, clearing...")
                 context_manager.load_context_from_cache(llm, selected_tool_name, cache_dir, logger)
             prompt = [message_formatter.messages_user(user_text)]
-            logger.debug("Sending user message to LLM:\n%s", json.dumps(prompt, indent=2, ensure_ascii=False))
+            logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
 
             try:
                 # Use generate() for streaming output with on-the-fly filtering
@@ -201,17 +201,18 @@ def main() -> None:
                     prefix="Assistant: ",
                     debug_mode=is_debug,
                 )
-                logger.debug("LLM RAW RESPONSE (before filtering):\n%s", raw_response)
+                logger.debug("Raw response: %s", raw_response[:200] + "..." if len(raw_response) > 200 else raw_response)
             except Exception as e:
                 print(f"\n[Error] LLM generation failed: {e}")
-                logger.error("LLM generation error: %s", traceback.format_exc())
+                logger.error("LLM generation failed: %s", e)
+                logger.debug("Traceback: %s", traceback.format_exc())
                 continue
 
             # Parse tool call from raw response (before cleaning, as tool_call parsing needs the XML tags)
             tool_call = tool_parsing.parse_function_call(raw_response)
             if tool_call is None:
                 # No tool call; assistant answered directly
-                logger.debug("No tool call detected - LLM responded directly")
+                logger.debug("Direct response (no tool)")
                 # Response already printed above (streaming with filtering)
                 # Continue to next user input (LLM already has the response in context)
                 continue
