@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-from hailo_apps.python.api_apps.agent_tools_example import config
+from hailo_apps.python.standalone_apps.agent_tools_example import config
 
 logger = logging.getLogger(__name__)
 

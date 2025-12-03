@@ -282,11 +282,11 @@ def main():
     try:
         hef_path = config.get_hef_path()
     except ValueError as e:
-        print(f"[Error] {e}")
+        logger.error(f"{e}")
         return
 
     if not os.path.exists(hef_path):
-        print("[Error] HEF file not found.")
+        logger.error(f"HEF file, {hef_path}, not found.")
         return
 
     # Tool Selection

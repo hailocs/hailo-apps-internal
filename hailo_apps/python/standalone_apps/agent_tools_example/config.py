@@ -9,7 +9,10 @@ import os
 import sys
 
 from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import LLM_CODER_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME
+from hailo_apps.python.core.common.defines import (
+    LLM_CODER_MODEL_NAME_H10,
+    RESOURCES_MODELS_DIR_NAME,
+)
 
 # LLM Generation Parameters
 TEMPERATURE: float = 0.1
@@ -19,6 +22,10 @@ MAX_GENERATED_TOKENS: int = 200
 # Context Management
 CONTEXT_THRESHOLD: float = 0.95  # Clear context when usage reaches this percentage
 
+# Model Configuration
+# NOTE: This tool calling API was built for Qwen 2.5 Coder. Not all LLMs support this tool API format.
+# To use a different model, change DEFAULT_LLM_MODEL_NAME or set HAILO_HEF_PATH environment variable.
+DEFAULT_LLM_MODEL_NAME: str = LLM_CODER_MODEL_NAME_H10
 
 # Logging Configuration
 # Default log level (DEBUG, INFO, WARNING, ERROR)
@@ -127,11 +134,13 @@ def get_hef_path() -> str:
 
     Resolves the HEF path using get_resource_path().
 
+    NOTE: This tool calling API was built for Qwen 2.5 Coder. Not all LLMs support this tool API format.
+
     USER CONFIGURATION:
     To use a custom HEF model:
     1. Set the HAILO_HEF_PATH environment variable to the absolute path of your .hef file.
        Example: export HAILO_HEF_PATH=/path/to/my/model.hef
-    2. OR modify the code below to return your custom path string directly.
+    2. OR modify DEFAULT_LLM_MODEL_NAME in this config file to use a different model name.
 
     Returns:
         str: Absolute path to the HEF file as a string
@@ -145,14 +154,15 @@ def get_hef_path() -> str:
         return custom_path
 
     # Default: Use the standard model from resources
+    # LLM model is for H10 architecture
     hef_path = get_resource_path(
         pipeline_name=None,
         resource_type=RESOURCES_MODELS_DIR_NAME,
-        model=LLM_CODER_MODEL_NAME_H10
+        model=DEFAULT_LLM_MODEL_NAME
     )
 
     if hef_path is None:
         raise ValueError(
-            f"Could not find HEF file for model '{LLM_CODER_MODEL_NAME_H10}'."
+            f"Could not find HEF file for model '{DEFAULT_LLM_MODEL_NAME}'."
         )
     return str(hef_path)
