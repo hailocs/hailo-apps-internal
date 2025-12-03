@@ -64,19 +64,19 @@ def load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None) -> bool:
     if not os.path.exists(env_path):
         hailo_logger.warning(f".env file not found: {env_file}")
         print(f"⚠️ .env file not found: {env_file}")
-        return
+        return False
     if not os.access(env_path, os.R_OK):
         hailo_logger.warning(f".env file not readable: {env_file}")
         print(f"⚠️ .env file not readable: {env_file}")
-        return
+        return False
     if not os.access(env_path, os.W_OK):
         hailo_logger.warning(f".env file not writable: {env_file}")
         print(f"⚠️ .env file not writable: {env_file}")
-        return
+        return False
     if not os.access(env_path, os.F_OK):
         hailo_logger.warning(f".env file not found (F_OK): {env_file}")
         print(f"⚠️ .env file not found: {env_file}")
-        return
+        return False
 
     if required_vars is None:
         required_vars = DIC_CONFIG_VARIANTS

@@ -52,6 +52,10 @@ class GStreamerTilingApp(GStreamerApp):
         # Copy configuration attributes to self for compatibility
         self._copy_config_attributes()
 
+        # User-defined label JSON file
+        self.labels_json = self.options_menu.labels_json
+        hailo_logger.info(f"Labels JSON: {self.labels_json}")
+
         self.app_callback = app_callback
         setproctitle.setproctitle(TILING_APP_TITLE)
 
@@ -62,6 +66,13 @@ class GStreamerTilingApp(GStreamerApp):
 
     def _add_tiling_arguments(self, parser: Any) -> None:
         """Add tiling-specific command line arguments."""
+        # Labels JSON option
+        parser.add_argument(
+            "--labels-json",
+            default=None,
+            help="Path to custom labels JSON file",
+        )
+        
         # Tiling options (auto mode by default, manual if tiles-x/y specified)
         parser.add_argument("--tiles-x", type=int, default=None,
                           help="Number of tiles horizontally (triggers manual mode)")
@@ -205,7 +216,8 @@ class GStreamerTilingApp(GStreamerApp):
             hef_path=self.hef_path,
             post_process_so=self.post_process_so,
             post_function_name=self.post_function,
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            config_json=self.labels_json
         )
 
         # Configure tile cropper with calculated parameters
