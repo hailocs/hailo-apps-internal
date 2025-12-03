@@ -8,6 +8,18 @@ from pathlib import Path
 
 import pytest
 
+from hailo_apps.python.core.common.defines import (
+    DEFAULT_DOTENV_PATH,
+    RESOURCES_ROOT_PATH_DEFAULT,
+    RESOURCES_MODELS_DIR_NAME,
+    RESOURCES_VIDEOS_DIR_NAME,
+    RESOURCES_SO_DIR_NAME,
+    RESOURCES_JSON_DIR_NAME,
+    HAILO8_ARCH,
+    HAILO8L_ARCH,
+    HAILO10H_ARCH,
+)
+from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
@@ -20,12 +32,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sanity-tests")
 
-# Load test configuration
+# Configuration paths
 CONFIG_PATH = Path(__file__).parent / "test_config.yaml"
+RESOURCES_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "resources_config.yaml"
 
 
 def load_sanity_config():
-    """Load sanity check configuration from test_config.yaml."""
+    """Load sanity check configuration from test_config.yaml (optional).
+    
+    Note: test_config.yaml is optional. If it doesn't exist, defaults will be used.
+    The sanity check primarily uses resources_config.yaml for resource validation.
+    """
     if not CONFIG_PATH.exists():
         logger.warning(f"Test configuration file not found: {CONFIG_PATH}, using defaults")
         return {}
@@ -37,6 +54,18 @@ def load_sanity_config():
     # We need to find it in the full config
     sanity_config = config.get("sanity_checks", {})
     return sanity_config
+
+
+def load_resources_config():
+    """Load resources configuration from resources_config.yaml."""
+    if not RESOURCES_CONFIG_PATH.exists():
+        logger.warning(f"Resources configuration file not found: {RESOURCES_CONFIG_PATH}")
+        return {}
+    
+    with open(RESOURCES_CONFIG_PATH, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    return config
 
 
 def test_check_hailo_runtime_installed():
@@ -151,21 +180,16 @@ def test_check_hailo_runtime_installed():
 
 def test_check_resource_directory():
     """Test if the resources directory exists and has expected subdirectories."""
-    # Load configuration
+    # Load configurations
     sanity_config = load_sanity_config()
+    resources_config = load_resources_config()
     
-    # Get resources root from config or use default
-    resources_config = {}
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'r') as f:
-            full_config = yaml.safe_load(f)
-            resources_config = full_config.get("resources", {})
-    
-    resource_root = resources_config.get("root_path", "/usr/local/hailo/resources")
+    # Get resources root - check environment variable first, then default
+    resource_root = os.environ.get("RESOURCES_PATH", RESOURCES_ROOT_PATH_DEFAULT)
     resource_dir = Path(resource_root)
     
     # Also check local resources directory
-    local_resource_dir = Path("resources")
+    local_resource_dir = Path(__file__).resolve().parents[1] / "resources"
     if not resource_dir.exists() and local_resource_dir.exists():
         resource_dir = local_resource_dir
         logger.info(f"Using local resources directory: {resource_dir}")
@@ -174,40 +198,83 @@ def test_check_resource_directory():
     if not resource_dir.exists():
         pytest.fail(f"Resources directory does not exist: {resource_dir}")
 
-    # Get required resources from config or use defaults
-    required_resources = sanity_config.get("required_resources", [
-        "example.mp4",
-        "example_640.mp4",
-        "libdepth_postprocess.so",
-        "libyolo_hailortpp_postprocess.so",
-        "libyolov5seg_postprocess.so",
-        "libyolov8pose_postprocess.so",
-    ])
-
+    # Check directory structure
+    models_dir = resource_dir / RESOURCES_MODELS_DIR_NAME
+    videos_dir = resource_dir / RESOURCES_VIDEOS_DIR_NAME
+    so_dir = resource_dir / RESOURCES_SO_DIR_NAME
+    json_dir = resource_dir / RESOURCES_JSON_DIR_NAME
+    
+    # Get expected resources from resources_config.yaml
     missing_resources = []
-    for resource in required_resources:
-        if not (resource_dir / resource).exists():
-            missing_resources.append(resource)
-
+    found_resources = []
+    
+    # Check videos
+    if resources_config and "videos" in resources_config:
+        for video_entry in resources_config["videos"]:
+            video_name = video_entry.get("name", "")
+            if video_name:
+                video_path = videos_dir / video_name
+                if video_path.exists():
+                    found_resources.append(f"videos/{video_name}")
+                else:
+                    missing_resources.append(f"videos/{video_name}")
+    
+    # Check SO files (postprocess libraries)
+    if resources_config:
+        # Get all apps and check for required SO files
+        required_so_files = sanity_config.get("required_resources", [
+            "libdepth_postprocess.so",
+            "libyolo_hailortpp_postprocess.so",
+            "libyolov5seg_postprocess.so",
+            "libyolov8pose_postprocess.so",
+        ])
+        
+        for so_file in required_so_files:
+            so_path = so_dir / so_file
+            if so_path.exists():
+                found_resources.append(f"so/{so_file}")
+            else:
+                missing_resources.append(f"so/{so_file}")
+    
     if missing_resources:
         logger.warning(f"The following resource files are missing: {', '.join(missing_resources)}")
         logger.warning(
             "This might be normal if resources haven't been downloaded yet, but will cause tests to fail."
         )
+    else:
+        logger.info(f"Found all required resources: {len(found_resources)} files")
 
-    # Check for HEF files
-    hef_files = list(resource_dir.glob("*.hef"))
+    # Check for HEF files in architecture-specific subdirectories
+    hef_files = []
+    arch_dirs = [HAILO8_ARCH, HAILO8L_ARCH, HAILO10H_ARCH]
+    
+    for arch in arch_dirs:
+        arch_models_dir = models_dir / arch
+        if arch_models_dir.exists():
+            arch_hefs = list(arch_models_dir.glob("*.hef"))
+            hef_files.extend(arch_hefs)
+            if arch_hefs:
+                logger.info(f"Found {len(arch_hefs)} HEF files in {arch_models_dir}")
+    
     if not hef_files:
-        logger.warning("No HEF files found in resources directory. Tests will likely fail.")
+        logger.warning("No HEF files found in resources/models/<arch> directories. Tests will likely fail.")
     else:
-        logger.info(f"Found {len(hef_files)} HEF files: {', '.join(f.name for f in hef_files)}")
+        logger.info(f"Found {len(hef_files)} HEF files total across all architectures")
+        # Show sample of HEF files
+        sample_hefs = [str(f.relative_to(resource_dir)) for f in hef_files[:5]]
+        logger.info(f"Sample HEF files: {', '.join(sample_hefs)}")
+        if len(hef_files) > 5:
+            logger.info(f"... and {len(hef_files) - 5} more")
 
-    # Check for JSON configuration files for models
-    json_files = list(resource_dir.glob("*.json"))
-    if not json_files:
-        logger.warning("No JSON configuration files found in resources directory.")
+    # Check for JSON configuration files
+    if json_dir.exists():
+        json_files = list(json_dir.glob("*.json"))
+        if not json_files:
+            logger.warning("No JSON configuration files found in resources/json directory.")
+        else:
+            logger.info(f"Found {len(json_files)} JSON files: {', '.join(f.name for f in json_files)}")
     else:
-        logger.info(f"Found {len(json_files)} JSON files: {', '.join(f.name for f in json_files)}")
+        logger.warning(f"JSON directory does not exist: {json_dir}")
 
 
 def test_python_environment():
@@ -399,10 +466,28 @@ def test_setup_installation():
 
 def test_environment_variables():
     """Test if required environment variables are set."""
+    # Load .env file first
+    repo_env_file = Path(__file__).resolve().parents[1] / "resources" / ".env"
+    if repo_env_file.exists():
+        logger.info(f"Loading .env file from: {repo_env_file}")
+        load_environment(env_file=str(repo_env_file), required_vars=None)
+    else:
+        logger.info(f"Loading .env file from default location: {DEFAULT_DOTENV_PATH}")
+        load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None)
+    
+    # Detect and set environment variables if not already set
+    host_arch = detect_host_arch()
+    hailo_arch = detect_hailo_arch()
+    
+    # Set in current process environment
+    os.environ["HOST_ARCH"] = host_arch
+    if hailo_arch:
+        os.environ["HAILO_ARCH"] = hailo_arch
+    
     # Check for key environment variables
     env_vars = {
-        "DEVICE_ARCH": detect_host_arch(),
-        "HAILO_ARCH": detect_hailo_arch() or "unknown",
+        "HOST_ARCH": host_arch,
+        "HAILO_ARCH": hailo_arch or "unknown",
     }
 
     # Check if environment variables are set

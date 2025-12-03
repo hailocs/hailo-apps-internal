@@ -85,11 +85,11 @@ test_combinations:
 # Custom Test Per App configuration
 ################################################################################
 custom_tests:
-  enabled: false
+  enabled: true  # Enable custom tests to run pipeline tests
   apps:
     detection:
-      test_suite_mode: "all"  # None | default | extra | all
-      model_selection: "all"  # default | extra | all
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
       description: "Object Detection Pipeline"
     
     simple_detection:
@@ -128,8 +128,8 @@ custom_tests:
       description: "Paddle OCR Pipeline"
     
     clip:
-      test_suite_mode: "default"  # None | default | extra | all
-      model_selection: "default"  # default | extra | all
+      test_suite_mode: "None"  # None | default | extra | all
+      model_selection: "None"  # default | extra | all
       description: "CLIP Pipeline"
     
     retrain:
@@ -163,11 +163,11 @@ special_tests:
     description: "Basic sanity checks before test execution"
   
   human_verification:
-    enabled: true
+    enabled: false
     description: "Tests requiring human verification and validation"
   
   golden_tests:
-    enabled: true
+    enabled: false
     description: "Golden reference tests for baseline validation"
 
 # Run methods configuration

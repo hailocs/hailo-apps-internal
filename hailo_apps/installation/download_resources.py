@@ -10,22 +10,25 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
 
-# Try to import from local installation folder first, then fallback to path
+# Try to import config_utils: first relative (same package), then absolute (pip-installed), then file-based (source)
 try:
     from .config_utils import load_config
 except ImportError:
-    # Fallback: import from path
-    import importlib.util
-    from pathlib import Path
-    current_file = Path(__file__).resolve()
-    config_utils_path = current_file.parent / "config_utils.py"
-    if config_utils_path.exists():
-        spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
-        config_utils_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config_utils_module)
-        load_config = config_utils_module.load_config
-    else:
-        raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
+    try:
+        # Try absolute import (works when installed via pip)
+        from hailo_apps.installation.config_utils import load_config
+    except ImportError:
+        # Fallback: import from file path (works when running from source)
+        import importlib.util
+        current_file = Path(__file__).resolve()
+        config_utils_path = current_file.parent / "config_utils.py"
+        if config_utils_path.exists():
+            spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
+            config_utils_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config_utils_module)
+            load_config = config_utils_module.load_config
+        else:
+            raise ImportError(f"Could not find config_utils.py. Tried: relative import, hailo_apps.installation.config_utils, and {config_utils_path}")
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import *
 from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
@@ -113,14 +116,14 @@ def download_model_from_config(model_entry: dict, hailo_arch: str, resource_root
     
     # Handle None
     if model_entry is None:
-        hailo_logger.debug(f"Skipping None model entry for {hailo_arch}")
+        hailo_logger.warning(f"Skipping None model entry for {hailo_arch} - no model to download")
         return
     
     source = model_entry.get("source", "mz")
     name = model_entry.get("name")
     
-    if not name:
-        hailo_logger.warning(f"Model entry missing name: {model_entry}")
+    if not name or name == "None" or (isinstance(name, str) and name.lower() == "none"):
+        hailo_logger.warning(f"Model entry has invalid name (None or empty): {model_entry}")
         return
     
     # Build destination path
@@ -131,28 +134,25 @@ def download_model_from_config(model_entry: dict, hailo_arch: str, resource_root
         / f"{name}{HAILO_FILE_EXTENSION}"
     )
     
-    # Determine URL based on source
+    # Check for explicit URL first - if provided, use it regardless of source
+    if "url" in model_entry:
+        url = model_entry["url"]
+        hailo_logger.info(f"Downloading model from explicit URL: {url} → {dest}")
+        download_file(url, dest)
+        return
+    
+    # Determine URL based on source (only if no explicit URL provided)
     if source == "s3":
-        # S3 model - build URL dynamically if not provided
-        if "url" in model_entry:
-            # Explicit URL provided (backward compatibility)
-            url = model_entry["url"]
-            hailo_logger.info(f"Downloading model from S3 (explicit URL): {url} → {dest}")
-        else:
-            # Build URL dynamically based on architecture and model name
-            s3_arch = map_arch_to_s3_path(hailo_arch, name)
-            url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
-            hailo_logger.info(f"Downloading model from S3 (built URL): {url} → {dest}")
+        # S3 model - build URL dynamically
+        s3_arch = map_arch_to_s3_path(hailo_arch, name)
+        url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
+        hailo_logger.info(f"Downloading model from S3 (built URL): {url} → {dest}")
         download_file(url, dest)
     elif source == "gen-ai-mz":
-        # Gen-AI Model Zoo model - downloaded directly from server (explicit URL required)
-        if "url" not in model_entry:
-            hailo_logger.error(f"Gen-AI model '{name}' requires explicit URL")
-            return
-        url = model_entry["url"]
-        hailo_logger.info(f"Downloading gen-ai model from server: {url} → {dest}")
-        download_file(url, dest)
-    elif source == "mz" or "url" not in model_entry:
+        # Gen-AI Model Zoo model - requires explicit URL
+        hailo_logger.error(f"Gen-AI model '{name}' requires explicit URL")
+        return
+    elif source == "mz":
         # Model Zoo model
         url = f"{base_url}/{model_zoo_version}/{download_arch}/{name}{HAILO_FILE_EXTENSION}"
         hailo_logger.info(f"Downloading model from Model Zoo: {url} → {dest}")
@@ -171,10 +171,13 @@ def download_group_resources(
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
         hailo_logger.error(f"Config file not found at {cfg_path}")
+        hailo_logger.info(f"Tried to load config from: {cfg_path}")
+        hailo_logger.info(f"Default config path (from defines): {DEFAULT_RESOURCES_CONFIG_PATH}")
         return
 
     config = load_config(cfg_path)
     hailo_logger.debug(f"Loaded resource configuration from {cfg_path}")
+    hailo_logger.info(f"Using resource config from: {cfg_path}")
 
     # Detect or use provided architecture
     hailo_arch = arch or detect_hailo_arch()
@@ -207,7 +210,7 @@ def download_group_resources(
             download_arch = "hailo15h"
         model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
         if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-            model_zoo_version = "v5.1.0"
+            model_zoo_version = "v5.1.1"
         if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
             model_zoo_version = "v2.17.0"
         hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
@@ -222,7 +225,7 @@ def download_group_resources(
                 if "default" in arch_models:
                     default_model = arch_models["default"]
                     if default_model is None:
-                        hailo_logger.debug(f"No default model for {group_name}/{hailo_arch}")
+                        hailo_logger.warning(f"No default model for {group_name}/{hailo_arch} (set to None) - skipping")
                     elif isinstance(default_model, dict):
                         # Skip gen-ai-mz models
                         source = default_model.get("source", "mz")
@@ -230,23 +233,57 @@ def download_group_resources(
                             download_model_from_config(default_model, hailo_arch, resource_root, model_zoo_version, download_arch)
                     elif isinstance(default_model, str):
                         # Backward compatibility: string model name (assumed to be mz)
-                        url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{default_model}{HAILO_FILE_EXTENSION}"
-                        dest = (
-                            resource_root
-                            / RESOURCES_MODELS_DIR_NAME
-                            / hailo_arch
-                            / f"{default_model}{HAILO_FILE_EXTENSION}"
-                        )
-                        hailo_logger.info(f"Downloading model: {url} → {dest}")
-                        download_file(url, dest)
+                        if not default_model or default_model == "None" or default_model.lower() == "none":
+                            hailo_logger.warning(f"Skipping invalid model name (None or empty) for {group_name}/{hailo_arch}")
+                        else:
+                            url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{default_model}{HAILO_FILE_EXTENSION}"
+                            dest = (
+                                resource_root
+                                / RESOURCES_MODELS_DIR_NAME
+                                / hailo_arch
+                                / f"{default_model}{HAILO_FILE_EXTENSION}"
+                            )
+                            hailo_logger.info(f"Downloading model: {url} → {dest}")
+                            download_file(url, dest)
                     elif isinstance(default_model, list):
                         # Backward compatibility: list of models
                         for model_entry in default_model:
+                            if model_entry is None:
+                                hailo_logger.warning(f"Skipping None model entry in default model list for {group_name}/{hailo_arch} - no model to download")
+                                continue
                             if isinstance(model_entry, dict):
                                 source = model_entry.get("source", "mz")
                                 if source != "gen-ai-mz":
                                     download_model_from_config(model_entry, hailo_arch, resource_root, model_zoo_version, download_arch)
                             elif isinstance(model_entry, str):
+                                if not model_entry or model_entry == "None" or model_entry.lower() == "none":
+                                    hailo_logger.warning(f"Skipping invalid model name (None or empty) in list for {group_name}/{hailo_arch}")
+                                else:
+                                    url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{model_entry}{HAILO_FILE_EXTENSION}"
+                                    dest = (
+                                        resource_root
+                                        / RESOURCES_MODELS_DIR_NAME
+                                        / hailo_arch
+                                        / f"{model_entry}{HAILO_FILE_EXTENSION}"
+                                    )
+                                    hailo_logger.info(f"Downloading model: {url} → {dest}")
+                                    download_file(url, dest)
+                
+                # Download extra models
+                if "extra" in arch_models:
+                    for model_entry in arch_models["extra"]:
+                        if model_entry is None:
+                            hailo_logger.warning(f"Skipping None extra model entry for {group_name}/{hailo_arch} - no model to download")
+                            continue
+                        if isinstance(model_entry, dict):
+                            source = model_entry.get("source", "mz")
+                            if source != "gen-ai-mz":
+                                download_model_from_config(model_entry, hailo_arch, resource_root, model_zoo_version, download_arch)
+                        elif isinstance(model_entry, str):
+                            # Backward compatibility: string model name (assumed to be mz)
+                            if not model_entry or model_entry == "None" or model_entry.lower() == "none":
+                                hailo_logger.warning(f"Skipping invalid extra model name (None or empty) for {group_name}/{hailo_arch}")
+                            else:
                                 url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{model_entry}{HAILO_FILE_EXTENSION}"
                                 dest = (
                                     resource_root
@@ -256,36 +293,41 @@ def download_group_resources(
                                 )
                                 hailo_logger.info(f"Downloading model: {url} → {dest}")
                                 download_file(url, dest)
-                
-                # Download extra models
-                if "extra" in arch_models:
-                    for model_entry in arch_models["extra"]:
-                        if isinstance(model_entry, dict):
-                            source = model_entry.get("source", "mz")
-                            if source != "gen-ai-mz":
-                                download_model_from_config(model_entry, hailo_arch, resource_root, model_zoo_version, download_arch)
-                        elif isinstance(model_entry, str):
-                            # Backward compatibility: string model name (assumed to be mz)
-                            url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{model_entry}{HAILO_FILE_EXTENSION}"
-                            dest = (
-                                resource_root
-                                / RESOURCES_MODELS_DIR_NAME
-                                / hailo_arch
-                                / f"{model_entry}{HAILO_FILE_EXTENSION}"
-                            )
-                            hailo_logger.info(f"Downloading model: {url} → {dest}")
-                            download_file(url, dest)
         
         # Download videos from top-level config (shared across all apps)
         if "videos" in config:
             for video_entry in config["videos"]:
+                if video_entry is None:
+                    hailo_logger.warning("Skipping None video entry - no video to download")
+                    continue
                 if isinstance(video_entry, dict):
                     video_name = video_entry.get("name")
+                    source = video_entry.get("source", None)
                     video_url = video_entry.get("url")
-                    if video_url:
-                        dest = resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
+                    
+                    if not video_name:
+                        hailo_logger.warning(f"Video entry missing name: {video_entry}")
+                        continue
+                    
+                    dest = resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
+                    
+                    # Build URL based on source
+                    if source == "s3":
+                        # S3 video - build URL dynamically if not provided
+                        if video_url:
+                            # Explicit URL provided (backward compatibility)
+                            hailo_logger.info(f"Downloading video from S3 (explicit URL): {video_url} → {dest}")
+                        else:
+                            # Build URL dynamically
+                            video_url = f"{S3_RESOURCES_BASE_URL}/video/{video_name}"
+                            hailo_logger.info(f"Downloading video from S3 (built URL): {video_url} → {dest}")
+                        download_file(video_url, dest)
+                    elif video_url:
+                        # Non-S3 video with explicit URL
                         hailo_logger.info(f"Downloading video: {video_url} → {dest}")
                         download_file(video_url, dest)
+                    else:
+                        hailo_logger.warning(f"Video entry '{video_name}' missing URL and source is not 's3': {video_entry}")
                 elif isinstance(video_entry, str) and video_entry.startswith(("http://", "https://")):
                     # Backward compatibility: direct URL
                     filename = Path(video_entry).name
@@ -296,13 +338,37 @@ def download_group_resources(
         # Download images from top-level config (shared across all apps)
         if "images" in config:
             for image_entry in config["images"]:
+                if image_entry is None:
+                    hailo_logger.warning("Skipping None image entry - no image to download")
+                    continue
                 if isinstance(image_entry, dict):
                     image_name = image_entry.get("name")
+                    source = image_entry.get("source", None)
                     image_url = image_entry.get("url")
-                    if image_url:
-                        dest = resource_root / "images" / image_name
+                    
+                    if not image_name:
+                        hailo_logger.warning(f"Image entry missing name: {image_entry}")
+                        continue
+                    
+                    dest = resource_root / "images" / image_name
+                    
+                    # Build URL based on source
+                    if source == "s3":
+                        # S3 image - build URL dynamically if not provided
+                        if image_url:
+                            # Explicit URL provided (backward compatibility)
+                            hailo_logger.info(f"Downloading image from S3 (explicit URL): {image_url} → {dest}")
+                        else:
+                            # Build URL dynamically
+                            image_url = f"{S3_RESOURCES_BASE_URL}/images/{image_name}"
+                            hailo_logger.info(f"Downloading image from S3 (built URL): {image_url} → {dest}")
+                        download_file(image_url, dest)
+                    elif image_url:
+                        # Non-S3 image with explicit URL
                         hailo_logger.info(f"Downloading image: {image_url} → {dest}")
                         download_file(image_url, dest)
+                    else:
+                        hailo_logger.warning(f"Image entry '{image_name}' missing URL and source is not 's3': {image_entry}")
                 elif isinstance(image_entry, str) and image_entry.startswith(("http://", "https://")):
                     # Backward compatibility: direct URL
                     filename = Path(image_entry).name
@@ -313,6 +379,9 @@ def download_group_resources(
         # Download JSON files
         if "json" in group_config:
             for json_entry in group_config["json"]:
+                if json_entry is None:
+                    hailo_logger.warning(f"Skipping None JSON entry for {group_name} - no JSON file to download")
+                    continue
                 if isinstance(json_entry, dict):
                     json_name = json_entry.get("name")
                     source = json_entry.get("source", None)
@@ -437,13 +506,37 @@ def download_all_images_and_videos(config: dict, resource_root: Path):
     # Download videos from top-level config (shared across all apps)
     if "videos" in config:
         for video_entry in config["videos"]:
+            if video_entry is None:
+                hailo_logger.warning("Skipping None video entry - no video to download")
+                continue
             if isinstance(video_entry, dict):
                 video_name = video_entry.get("name")
+                source = video_entry.get("source", None)
                 video_url = video_entry.get("url")
-                if video_url:
-                    dest = resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
+                
+                if not video_name:
+                    hailo_logger.warning(f"Video entry missing name: {video_entry}")
+                    continue
+                
+                dest = resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
+                
+                # Build URL based on source
+                if source == "s3":
+                    # S3 video - build URL dynamically if not provided
+                    if video_url:
+                        # Explicit URL provided (backward compatibility)
+                        hailo_logger.info(f"Downloading video from S3 (explicit URL): {video_url} → {dest}")
+                    else:
+                        # Build URL dynamically
+                        video_url = f"{S3_RESOURCES_BASE_URL}/video/{video_name}"
+                        hailo_logger.info(f"Downloading video from S3 (built URL): {video_url} → {dest}")
+                    download_file(video_url, dest)
+                elif video_url:
+                    # Non-S3 video with explicit URL
                     hailo_logger.info(f"Downloading video: {video_url} → {dest}")
                     download_file(video_url, dest)
+                else:
+                    hailo_logger.warning(f"Video entry '{video_name}' missing URL and source is not 's3': {video_entry}")
             elif isinstance(video_entry, str) and video_entry.startswith(("http://", "https://")):
                 # Backward compatibility: direct URL
                 filename = Path(video_entry).name
@@ -454,13 +547,37 @@ def download_all_images_and_videos(config: dict, resource_root: Path):
     # Download images from top-level config (shared across all apps)
     if "images" in config:
         for image_entry in config["images"]:
+            if image_entry is None:
+                hailo_logger.warning("Skipping None image entry - no image to download")
+                continue
             if isinstance(image_entry, dict):
                 image_name = image_entry.get("name")
+                source = image_entry.get("source", None)
                 image_url = image_entry.get("url")
-                if image_url:
-                    dest = resource_root / "images" / image_name
+                
+                if not image_name:
+                    hailo_logger.warning(f"Image entry missing name: {image_entry}")
+                    continue
+                
+                dest = resource_root / "images" / image_name
+                
+                # Build URL based on source
+                if source == "s3":
+                    # S3 image - build URL dynamically if not provided
+                    if image_url:
+                        # Explicit URL provided (backward compatibility)
+                        hailo_logger.info(f"Downloading image from S3 (explicit URL): {image_url} → {dest}")
+                    else:
+                        # Build URL dynamically
+                        image_url = f"{S3_RESOURCES_BASE_URL}/images/{image_name}"
+                        hailo_logger.info(f"Downloading image from S3 (built URL): {image_url} → {dest}")
+                    download_file(image_url, dest)
+                elif image_url:
+                    # Non-S3 image with explicit URL
                     hailo_logger.info(f"Downloading image: {image_url} → {dest}")
                     download_file(image_url, dest)
+                else:
+                    hailo_logger.warning(f"Image entry '{image_name}' missing URL and source is not 's3': {image_entry}")
             elif isinstance(image_entry, str) and image_entry.startswith(("http://", "https://")):
                 # Backward compatibility: direct URL
                 filename = Path(image_entry).name
@@ -481,6 +598,9 @@ def download_all_json_files(config: dict, resource_root: Path):
         
         # Download JSON files for this app
         for json_entry in app_config["json"]:
+            if json_entry is None:
+                hailo_logger.warning(f"Skipping None JSON entry for {app_name} - no JSON file to download")
+                continue
             if isinstance(json_entry, dict):
                 json_name = json_entry.get("name")
                 source = json_entry.get("source", None)
@@ -517,16 +637,51 @@ def download_all_json_files(config: dict, resource_root: Path):
                 download_file(json_entry, dest)
 
 
+def is_gen_ai_app(app_config: dict) -> bool:
+    """Check if an app is a gen-ai app by checking if any model has source 'gen-ai-mz'."""
+    if not isinstance(app_config, dict) or "models" not in app_config:
+        return False
+    
+    models_config = app_config.get("models", {})
+    for arch_models in models_config.values():
+        if not isinstance(arch_models, dict):
+            continue
+        
+        # Check default model
+        if "default" in arch_models:
+            default_model = arch_models["default"]
+            if isinstance(default_model, dict):
+                if default_model.get("source") == "gen-ai-mz":
+                    return True
+            elif isinstance(default_model, list):
+                for model_entry in default_model:
+                    if isinstance(model_entry, dict) and model_entry.get("source") == "gen-ai-mz":
+                        return True
+        
+        # Check extra models
+        if "extra" in arch_models:
+            for model_entry in arch_models["extra"]:
+                if isinstance(model_entry, dict) and model_entry.get("source") == "gen-ai-mz":
+                    return True
+    
+    return False
+
+
 def download_all_default_models_for_arch(
-    config: dict, hailo_arch: str, resource_root: Path, model_zoo_version: str, download_arch: str, include_extra: bool = False
+    config: dict, hailo_arch: str, resource_root: Path, model_zoo_version: str, download_arch: str, include_extra: bool = False, exclude_gen_ai: bool = True
 ):
-    """Download all default models (and optionally extra) for a given architecture, excluding gen-ai-mz models."""
-    hailo_logger.info(f"Downloading {'all' if include_extra else 'default'} models for {hailo_arch} (excluding gen-ai-mz)...")
+    """Download all default models (and optionally extra) for a given architecture, optionally excluding gen-ai apps."""
+    hailo_logger.info(f"Downloading {'all' if include_extra else 'default'} models for {hailo_arch} {'(excluding gen-ai apps)' if exclude_gen_ai else ''}...")
     
     # Iterate through all apps in config
     for app_name, app_config in config.items():
         # Skip non-app entries (videos, images, etc.)
         if not isinstance(app_config, dict) or "models" not in app_config:
+            continue
+        
+        # Skip gen-ai apps if requested
+        if exclude_gen_ai and is_gen_ai_app(app_config):
+            hailo_logger.debug(f"Skipping gen-ai app: {app_name}")
             continue
         
         models_config = app_config["models"]
@@ -538,7 +693,9 @@ def download_all_default_models_for_arch(
         # Download default model
         if "default" in arch_models:
             default_model = arch_models["default"]
-            if default_model is not None:
+            if default_model is None:
+                hailo_logger.warning(f"No default model for {app_name}/{hailo_arch} (set to None) - skipping")
+            elif default_model is not None:
                 # Skip gen-ai-mz models
                 if isinstance(default_model, dict):
                     source = default_model.get("source", "mz")
@@ -546,36 +703,48 @@ def download_all_default_models_for_arch(
                         download_model_from_config(default_model, hailo_arch, resource_root, model_zoo_version, download_arch)
                 elif isinstance(default_model, str):
                     # Backward compatibility: string model name (assumed to be mz)
-                    url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{default_model}{HAILO_FILE_EXTENSION}"
-                    dest = (
-                        resource_root
-                        / RESOURCES_MODELS_DIR_NAME
-                        / hailo_arch
-                        / f"{default_model}{HAILO_FILE_EXTENSION}"
-                    )
-                    hailo_logger.info(f"Downloading model: {url} → {dest}")
-                    download_file(url, dest)
+                    if not default_model or default_model == "None" or default_model.lower() == "none":
+                        hailo_logger.warning(f"Skipping invalid model name (None or empty) for {app_name}/{hailo_arch}")
+                    else:
+                        url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{default_model}{HAILO_FILE_EXTENSION}"
+                        dest = (
+                            resource_root
+                            / RESOURCES_MODELS_DIR_NAME
+                            / hailo_arch
+                            / f"{default_model}{HAILO_FILE_EXTENSION}"
+                        )
+                        hailo_logger.info(f"Downloading model: {url} → {dest}")
+                        download_file(url, dest)
                 elif isinstance(default_model, list):
                     # Backward compatibility: list of models
                     for model_entry in default_model:
+                        if model_entry is None:
+                            hailo_logger.warning(f"Skipping None model entry in default model list for {app_name}/{hailo_arch} - no model to download")
+                            continue
                         if isinstance(model_entry, dict):
                             source = model_entry.get("source", "mz")
                             if source != "gen-ai-mz":
                                 download_model_from_config(model_entry, hailo_arch, resource_root, model_zoo_version, download_arch)
                         elif isinstance(model_entry, str):
-                            url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{model_entry}{HAILO_FILE_EXTENSION}"
-                            dest = (
-                                resource_root
-                                / RESOURCES_MODELS_DIR_NAME
-                                / hailo_arch
-                                / f"{model_entry}{HAILO_FILE_EXTENSION}"
-                            )
-                            hailo_logger.info(f"Downloading model: {url} → {dest}")
-                            download_file(url, dest)
+                            if not model_entry or model_entry == "None" or model_entry.lower() == "none":
+                                hailo_logger.warning(f"Skipping invalid model name (None or empty) in list for {app_name}/{hailo_arch}")
+                            else:
+                                url = f"{MODEL_ZOO_URL}/{model_zoo_version}/{download_arch}/{model_entry}{HAILO_FILE_EXTENSION}"
+                                dest = (
+                                    resource_root
+                                    / RESOURCES_MODELS_DIR_NAME
+                                    / hailo_arch
+                                    / f"{model_entry}{HAILO_FILE_EXTENSION}"
+                                )
+                                hailo_logger.info(f"Downloading model: {url} → {dest}")
+                                download_file(url, dest)
         
         # Download extra models if requested
         if include_extra and "extra" in arch_models:
             for model_entry in arch_models["extra"]:
+                if model_entry is None:
+                    hailo_logger.warning(f"Skipping None extra model entry for {app_name}/{hailo_arch} - no model to download")
+                    continue
                 if isinstance(model_entry, dict):
                     source = model_entry.get("source", "mz")
                     if source != "gen-ai-mz":
@@ -675,6 +844,8 @@ def list_models_for_arch(
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
         hailo_logger.error(f"Config file not found at {cfg_path}")
+        hailo_logger.info(f"Tried to load config from: {cfg_path}")
+        hailo_logger.info(f"Default config path (from defines): {DEFAULT_RESOURCES_CONFIG_PATH}")
         return
 
     config = load_config(cfg_path)
@@ -748,6 +919,23 @@ def list_models_for_arch(
     print(f"\nTotal: {len(default_models)} default model(s)" + (f", {len(extra_models)} extra model(s)" if include_extra else ""))
 
 
+def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
+    """Get Model Zoo version and download architecture for a given Hailo architecture.
+    
+    Returns:
+        Tuple of (model_zoo_version, download_arch)
+    """
+    download_arch = hailo_arch
+    if hailo_arch == HAILO10H_ARCH:
+        download_arch = "hailo15h"
+    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
+    if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
+        model_zoo_version = "v5.1.1"
+    if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
+        model_zoo_version = "v2.17.0"
+    return model_zoo_version, download_arch
+
+
 def download_resources(
     resource_config_path: str | None = None, 
     arch: str | None = None, 
@@ -761,11 +949,12 @@ def download_resources(
         resource_config_path: Path to resources config file
         arch: Hailo architecture override (hailo8, hailo8l, hailo10h)
         group: Specific group/app name to download resources for
-        all_models: If True, download all models (default + extra), otherwise only default
+        all_models: If True, download all models (default + extra) for all apps, otherwise only default
         model: Specific model name to download
     """
-    # If group is specified, use group-specific download
-    if group:
+    # If group is specified and not "default", use group-specific download
+    # "default" means download default resources for all apps (same as group=None)
+    if group and group.lower() != "default":
         download_group_resources(group, resource_config_path, arch)
         return
 
@@ -775,49 +964,63 @@ def download_resources(
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
         hailo_logger.error(f"Config file not found at {cfg_path}")
+        hailo_logger.info(f"Tried to load config from: {cfg_path}")
+        hailo_logger.info(f"Default config path (from defines): {DEFAULT_RESOURCES_CONFIG_PATH}")
         return
 
     config = load_config(cfg_path)
     hailo_logger.debug(f"Loaded resource configuration from {cfg_path}")
-
-    # Detect or use provided architecture
-    hailo_arch = arch or detect_hailo_arch()
-    if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
-    hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
-
-    # Setup Model Zoo version
-    download_arch = hailo_arch
-    if hailo_arch == HAILO10H_ARCH:
-        download_arch = "hailo15h"
-    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
-    if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-        model_zoo_version = "v5.1.0"
-    if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
-        model_zoo_version = "v2.17.0"
-    hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
+    hailo_logger.info(f"Using resource config from: {cfg_path}")
 
     resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
 
-    # Always download all images, videos, and JSON files
+    # Always download all images, videos, and JSON files (as default)
+    hailo_logger.info("Downloading default resources: images, videos, and JSON files...")
     download_all_images_and_videos(config, resource_root)
     download_all_json_files(config, resource_root)
 
     # Download models based on flags
     if model:
-        # Download specific model
+        # Download specific model for detected/selected architecture
+        hailo_arch = arch or detect_hailo_arch()
+        if not hailo_arch:
+            hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
+            hailo_arch = HAILO8_ARCH
+        hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
+        model_zoo_version, download_arch = get_model_zoo_version_for_arch(hailo_arch)
+        hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
         download_specific_model(config, model, hailo_arch, resource_root, model_zoo_version, download_arch)
-    else:
-        # Download default models (or all if --all flag is set)
+    elif all_models:
+        # --all flag: Download default + extra models for all apps (except gen-ai) for detected/selected architecture
+        hailo_arch = arch or detect_hailo_arch()
+        if not hailo_arch:
+            hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
+            hailo_arch = HAILO8_ARCH
+        hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
+        model_zoo_version, download_arch = get_model_zoo_version_for_arch(hailo_arch)
+        hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
+        hailo_logger.info(f"Downloading default + extra models for all apps (except gen-ai) for {hailo_arch}...")
         download_all_default_models_for_arch(
-            config, hailo_arch, resource_root, model_zoo_version, download_arch, include_extra=all_models
+            config, hailo_arch, resource_root, model_zoo_version, download_arch, include_extra=True, exclude_gen_ai=True
+        )
+    else:
+        # Default behavior: Download default models for all apps (except gen-ai) for detected/selected architecture only
+        hailo_arch = arch or detect_hailo_arch()
+        if not hailo_arch:
+            hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
+            hailo_arch = HAILO8_ARCH
+        hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
+        hailo_logger.info(f"Downloading default models for all apps (except gen-ai) for {hailo_arch}...")
+        model_zoo_version, download_arch = get_model_zoo_version_for_arch(hailo_arch)
+        hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
+        download_all_default_models_for_arch(
+            config, hailo_arch, resource_root, model_zoo_version, download_arch, include_extra=False, exclude_gen_ai=True
         )
 
 
 def main():
     parser = argparse.ArgumentParser(description="Install and download Hailo resources")
-    parser.add_argument("--all", action="store_true", help="Download all models (default + extra) for detected architecture (excluding gen-ai-mz)")
+    parser.add_argument("--all", action="store_true", help="Download all models (default + extra) for all apps (except gen-ai) for detected/selected architecture")
     parser.add_argument(
         "--config", type=str, default=DEFAULT_RESOURCES_CONFIG_PATH, help="Path to config file"
     )

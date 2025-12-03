@@ -19,15 +19,17 @@ import pytest
 from hailo_apps.python.core.common.defines import (
     DEFAULT_DOTENV_PATH,
     HAILO8_ARCH,
+    HAILO8L_ARCH,
     RESOURCES_ROOT_PATH_DEFAULT,
 )
+from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.installation_utils import (
     detect_hailo_arch,
     detect_host_arch,
 )
 
-from .all_tests import get_pipeline_test_function
-from .test_utils import (
+from all_tests import get_pipeline_test_function
+from test_utils import (
     build_hef_path,
     get_log_file_path,
     run_pipeline_test,
@@ -44,6 +46,19 @@ logger = logging.getLogger("test_runner")
 CONTROL_CONFIG_PATH = Path(__file__).parent / "test_control.yaml"
 DEFINITION_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "test_definition_config.yaml"
 RESOURCES_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "resources_config.yaml"
+
+
+def load_env_file():
+    """Load .env file from resources directory or default location."""
+    # First try to load from repo's resources/.env
+    repo_env_file = Path(__file__).parent.parent / "resources" / ".env"
+    if repo_env_file.exists():
+        logger.info(f"Loading .env file from: {repo_env_file}")
+        load_environment(env_file=str(repo_env_file), required_vars=None)
+    else:
+        # Fall back to default location
+        logger.info(f"Loading .env file from default location: {DEFAULT_DOTENV_PATH}")
+        load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None)
 
 
 def detect_and_set_environment():
@@ -332,16 +347,25 @@ def generate_test_cases(
         logger.warning("No test combination enabled and custom_tests disabled. No tests will run.")
         apps_to_test = []
     
-    # Determine architectures to test
-    architectures = ["hailo8", "hailo8l", "hailo10h"]
+    # Determine architectures to test - only run tests for detected/specified architecture
+    architectures = []
     if detected_hailo_arch:
-        if detected_hailo_arch == HAILO8_ARCH:
-            # Hailo8 can run hailo8 and hailo10h models
-            architectures = ["hailo8", "hailo10h"]
-                else:
-            architectures = [detected_hailo_arch]
-                
-                # Generate test cases
+        # Only run tests for the detected architecture
+        architectures = [detected_hailo_arch]
+        
+        # Special case: if hailo8 is detected and h8l_on_h8 special test is enabled,
+        # also allow hailo8l tests (hailo8l models can run on hailo8 hardware)
+        special_tests = control_config.get("special_tests", {})
+        h8l_on_h8_enabled = special_tests.get("h8l_on_h8", {}).get("enabled", False)
+        if detected_hailo_arch == HAILO8_ARCH and h8l_on_h8_enabled:
+            logger.info("h8l_on_h8 special test enabled - adding hailo8l architecture tests")
+            architectures.append(HAILO8L_ARCH)
+    else:
+        # If no device detected, don't run architecture-specific tests
+        logger.warning("No Hailo device detected - skipping architecture-specific tests")
+        architectures = []
+    
+    # Generate test cases
     if isinstance(apps_to_test, list) and len(apps_to_test) > 0 and isinstance(apps_to_test[0], tuple):
         # Use individual app configurations (from custom_tests)
         for app_config_tuple in apps_to_test:
@@ -489,6 +513,8 @@ def get_log_file_path_new(
 
 # Initialize at module level
 logger.info("Initializing test runner...")
+# Load .env file first to get any environment variables from it
+load_env_file()
 _host_arch, _hailo_arch = detect_and_set_environment()
 _control_config = load_control_config()
 _definition_config = load_definition_config()

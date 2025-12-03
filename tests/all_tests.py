@@ -8,7 +8,7 @@ Each function can be called with configuration options to run tests.
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from .test_utils import (
+from test_utils import (
     build_test_args,
     get_log_file_path,
     run_pipeline_test,
