@@ -20,17 +20,21 @@ An interactive computer vision application using Hailo's Vision Language Model (
 
 ## Files
 
-- `app.py` - Main application with interactive video processing
+- `vlm_chat.py` - Main application with interactive video processing
 - `backend.py` - Hailo VLM backend with multiprocessing support
 
 ## Usage
 
 1. Run the application:
    ```bash
-   python app.py --input usb
+   python vlm_chat.py --input usb
+   ```
+   Or for Raspberry Pi camera:
+   ```bash
+   python vlm_chat.py --input rpi
    ```
 
-   **Note:** This application requires a live camera input (USB camera or Raspberry Pi camera).
+   **Note:** This application requires a live camera input.
 
 2. The application will show two windows:
    - **Video**: Continuous live camera feed
@@ -41,6 +45,17 @@ An interactive computer vision application using Hailo's Vision Language Model (
    - Type your question about the captured image
    - Press `Enter` to get VLM response
    - Press `Enter` again to continue normal processing
+
+## Configuration
+
+You can modify the following constants in `vlm_chat.py` to customize the application behavior:
+
+- `MAX_TOKENS` (Default: 200) - Maximum number of tokens to generate in the response.
+- `TEMPERATURE` (Default: 0.1) - Sampling temperature for the model (lower means more deterministic).
+- `SEED` (Default: 42) - Random seed for reproducibility.
+- `SYSTEM_PROMPT` - The system prompt used to guide the VLM's behavior.
+- `INFERENCE_TIMEOUT` (Default: 30) - Timeout in seconds for VLM inference.
+- `SAVE_FRAMES` (Default: False) - Set to `True` to save captured frames to disk.
 
 ## How it works
 
