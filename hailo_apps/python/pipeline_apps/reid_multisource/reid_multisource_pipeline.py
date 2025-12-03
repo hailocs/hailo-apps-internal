@@ -72,9 +72,8 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         if parser == None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
-        # Note: --width and --height are already in the base parser, but we override defaults here
-        parser.add_argument("--width", type=int, default=640, help="Video width (resolution) for ALL the sources. Default is 640.")
-        parser.add_argument("--height", type=int, default=640, help="Video height (resolution) for ALL the sources. Default is 640.")
+        # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
+        parser.set_defaults(width=640, height=640)
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 

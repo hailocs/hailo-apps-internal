@@ -117,6 +117,7 @@ class TilingConfiguration:
             self.hef_path = get_resource_path(
                 pipeline_name=None,
                 resource_type=RESOURCES_MODELS_DIR_NAME,
+                arch=self.arch,
                 model=TILING_MODEL_NAME
             )
             hailo_logger.info(f"Using default HEF: {self.hef_path}")
@@ -134,6 +135,7 @@ class TilingConfiguration:
         self.post_process_so = get_resource_path(
             pipeline_name=None,
             resource_type=RESOURCES_SO_DIR_NAME,
+            arch=self.arch,
             model=TILING_POSTPROCESS_SO_FILENAME
         )
 

@@ -27,14 +27,14 @@ videos:
     source: s3
   - name: face_recognition.mp4
     source: s3
-  - name: ocr.mp4
-    source: s3
+  #- #name: ocr.mp4
+    #source: s3
   - name: tiling_visdrone_720p.mp4
     source: s3
   - name: barcode.mp4
     source: s3
-  - name: full_mov_slow.mp4
-    source: s3
+#  - name: full_mov_slow.mp4
+#    source: s3
 
 # Shared images for all apps
 images:
@@ -121,23 +121,20 @@ face_recognition:
   models:
     hailo8:
       default:
-        name: scrfd_10g
-        source: mz
-      extra:
+        - name: scrfd_10g
+          source: mz
         - name: arcface_mobilefacenet
           source: mz
     hailo8l:
       default:
-        name: scrfd_2.5g
-        source: mz
-      extra:
+        - name: scrfd_2.5g
+          source: mz
         - name: arcface_mobilefacenet
           source: mz
     hailo10h:
       default:
-        name: scrfd_10g
-        source: mz
-      extra:
+        - name: scrfd_10g
+          source: mz
         - name: arcface_mobilefacenet
           source: mz
   json:
@@ -235,18 +232,16 @@ paddle_ocr:
   models:
     hailo8:
       default:
-        name: ocr_det
-        source: s3
-      extra:
+        - name: ocr_det
+          source: s3
         - name: ocr
           source: s3
     hailo8l:
       default: None
     hailo10h:
       default:
-        name: ocr_det
-        source: s3
-      extra:
+        - name: ocr_det
+          source: s3
         - name: ocr
           source: s3
 
@@ -276,10 +271,12 @@ retrain:
     hailo8:
       default:
         name: yolov8s-hailo8-barcode
+        url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
         source: s3
     hailo8l:
       default:
         name: yolov8s-hailo8l-barcode
+        url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
         source: s3
     hailo10h:
       default: None
@@ -327,6 +324,10 @@ reid_multisource:
       default:
         name: repvgg_a0_person_reid_512
         source: mz
+
+########################################################
+# Gen AI models
+########################################################
 
 vlm_chat:
   models:

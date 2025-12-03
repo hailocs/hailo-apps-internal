@@ -157,7 +157,7 @@ def run_pipeline_test(
         # Check for QOS messages (these are warnings that may appear during pipeline operation)
         # QOS messages are normal during pipeline rebuild/startup, so we just log if they appear
         if "qos" in combined_output or "qoS" in combined_output:
-            logger.info(f"QOS messages detected in output (this is normal during pipeline operation)")
+            logger.warning(f"QOS messages detected in output (this is normal during pipeline operation)")
         
         # but the pipeline still runs normally. Both enabled and disabled states result
         # in successful pipeline execution, so we cannot distinguish them from output.
