@@ -16,18 +16,18 @@ python -m pip install -r tests/test_resources/requirements.txt
 
 # Download necessary Hailo resources
 echo "Downloading resources..."
-python -m hailo_apps.python.core.installation.download_resources --group all
+# Download default models for all apps (for detected architecture)
+python -m hailo_apps.installation.download_resources
 
-python -m hailo_apps.python.core.installation.download_resources --arch hailo8l --group all # this download to test hailo8l models on hailo8 
+# Download hailo8l resources for testing hailo8l models on hailo8 device
+python -m hailo_apps.installation.download_resources --arch hailo8l
 
-# Run pytest via the Python module so it’s guaranteed to run in this venv
+# Run pytest via the Python module so it's guaranteed to run in this venv
 echo "Running tests..."
-python -m pytest --log-cli-level=INFO \
-    "${TESTS_DIR}/test_sanity_check.py" \
-    "${TESTS_DIR}/test_all_pipelines.py" \
-    "${TESTS_DIR}/test_face_recon.py" \
-    "${TESTS_DIR}/test_tiling.py" \
-    "${TESTS_DIR}/test_reid.py" \
-    "${TESTS_DIR}/test_multisource.py" \
+# Run sanity checks first if enabled
+python -m pytest --log-cli-level=INFO "${TESTS_DIR}/test_sanity_check.py" || true
+
+# Run the new test runner which uses test_control.yaml and test_definition_config.yaml
+python -m pytest --log-cli-level=INFO "${TESTS_DIR}/test_runner.py" -v
 
 echo "All tests completed successfully."

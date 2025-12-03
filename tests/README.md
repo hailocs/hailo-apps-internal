@@ -2,7 +2,11 @@
 
 ## Overview
 
-The Hailo Apps Infrastructure test framework is a comprehensive, configuration-driven testing system designed to validate all pipeline applications across different architectures, models, and execution methods. The framework uses a centralized YAML configuration file (`test_config.yaml`) to control test execution, making it easy to customize which tests run without modifying code.
+The Hailo Apps Infrastructure test framework is a comprehensive, configuration-driven testing system designed to validate all pipeline applications across different architectures, models, and execution methods. The framework uses three YAML configuration files to control test execution, making it easy to customize which tests run without modifying code:
+
+- **`test_control.yaml`** - Controls what tests to run (test combinations, custom tests, run methods)
+- **`test_definition_config.yaml`** - Defines test suites, app configurations, and test combinations
+- **`resources_config.yaml`** - Defines models and resources for each app and architecture
 
 ## Table of Contents
 
@@ -21,12 +25,16 @@ The Hailo Apps Infrastructure test framework is a comprehensive, configuration-d
 
 ```
 tests/
-├── test_config.yaml          # Central configuration file
+├── test_control.yaml          # Test execution control (what to run)
 ├── test_runner.py             # Main test orchestrator
 ├── test_sanity_check.py       # Environment and dependency checks
 ├── all_tests.py              # Pipeline-specific test functions
 ├── test_utils.py             # Utility functions for test execution
 └── README.md                 # This file
+
+hailo_apps/config/
+├── test_definition_config.yaml  # Test definitions (suites, apps, combinations)
+└── resources_config.yaml        # Resources configuration (models, videos, etc.)
 ```
 
 ### How It Works
@@ -35,12 +43,16 @@ tests/
    - Detects host architecture (x86, ARM, RPi)
    - Detects Hailo device architecture (hailo8, hailo8l, hailo10h)
    - Sets environment variables if needed
-   - Loads and validates configuration from `test_config.yaml`
+   - Loads and validates configuration from:
+     - `test_control.yaml` (test execution control)
+     - `test_definition_config.yaml` (test definitions)
+     - `resources_config.yaml` (resources and models)
 
 2. **Configuration Parsing**:
-   - Reads control section (top) - what to run
-   - Reads configurations section (bottom) - available options
-   - Merges them based on enabled flags
+   - Reads `test_control.yaml` - what to run (test combinations, custom tests)
+   - Reads `test_definition_config.yaml` - available test suites and app definitions
+   - Reads `resources_config.yaml` - models and resources for each app
+   - Merges configurations based on enabled flags
    - Validates the merged configuration
 
 3. **Test Generation**:
@@ -57,13 +69,11 @@ tests/
 ### Data Flow
 
 ```
-test_config.yaml
+test_control.yaml + test_definition_config.yaml + resources_config.yaml
     ↓
-test_runner.py (loads & validates)
+test_runner.py (loads & validates all configs)
     ↓
-resolve_test_selection() (determines what to run)
-    ↓
-generate_test_cases() (creates test combinations)
+generate_test_cases() (creates test combinations from configs)
     ↓
 pytest parametrization (executes tests)
     ↓
@@ -76,180 +86,204 @@ Log files & Results
 
 ## Configuration File Structure
 
-The `test_config.yaml` file is divided into two main sections:
+The test framework uses three separate configuration files:
 
-### 1. Control Section (Top)
+### 1. `test_control.yaml` (Test Execution Control)
 
-This section controls **what to run**. It includes:
+This file controls **what to run**. It includes:
 
-- **Execution settings**: Run times, timeouts
+- **Control parameters**: Run times, timeouts
 - **Logging configuration**: Log directories and levels
-- **Test profiles**: Quick selection presets
-- **Test selection**: Fine-grained control
-- **Enabled flags**: Enable/disable pipelines, run methods, special tests
+- **Test combinations**: Predefined test combinations (ci_run, all_extra, all_default)
+- **Custom tests**: Per-app test configuration (test_suite_mode, model_selection)
+- **Run methods**: Enable/disable execution methods (pythonpath, cli, module)
+- **Special tests**: Enable/disable special test categories
 
-### 2. Configurations Section (Bottom)
+### 2. `test_definition_config.yaml` (Test Definitions)
 
-This section contains **all available options**:
+This file contains **all available test options**:
 
-- **Pipeline definitions**: All pipelines with their models per architecture
-- **Run methods**: Available execution methods
-- **Test suites**: Different test scenarios
-- **Test profile configurations**: What each profile includes
-- **Special test configs**: Hailo8L-on-Hailo8, retraining, human verification, sanity checks
-- **Resource paths**: Default resource locations
+- **App definitions**: All pipelines with their module/script/cli paths
+- **Test suites**: Different test scenarios with their arguments
+- **Test run combinations**: Predefined combinations of apps, test suites, and models
+- **Test suite modes**: default, extra, all
 
-The framework merges these sections: the control section decides what to enable from the configurations section.
+### 3. `resources_config.yaml` (Resources Configuration)
+
+This file defines **models and resources**:
+
+- **App models**: Models for each app per architecture (hailo8, hailo8l, hailo10h)
+- **Model selection**: default, extra, all models
+- **Videos**: Shared video files for all apps
+- **Images**: Shared image files for all apps
+- **JSON files**: Configuration JSON files per app
+
+The framework merges these configurations: `test_control.yaml` decides what to enable from `test_definition_config.yaml`, and `resources_config.yaml` provides the models and resources.
 
 ## Configuration Options
 
-### Execution Settings
+### Execution Settings (test_control.yaml)
 
 ```yaml
-execution:
-  default_run_time: 10              # Default test duration in seconds
-  term_timeout: 5                   # Termination timeout in seconds
-  human_verification_run_time: 25   # Duration for human verification tests
+control_parameters:
+  default_run_time: 24              # Default test duration in seconds
+  term_timeout: 10                  # Termination timeout in seconds
+  human_verification_run_time: 48    # Duration for human verification tests
 ```
 
-### Logging Configuration
+### Logging Configuration (test_control.yaml)
 
 ```yaml
 logging:
-  base_dir: "logs"                   # Base log directory
+  base_dir: "./logs"                 # Base log directory
   level: "INFO"                      # Log level (DEBUG, INFO, WARNING, ERROR)
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  subdirectories:
-    hef_tests: "logs/hef_tests"
-    h8l_on_h8: "logs/h8l_on_h8_tests"
-    h8l_on_h8_comprehensive: "logs/h8l_on_h8_comprehensive"
-    human_verification: "logs/human_verification"
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+  subdirs:
+    per_app:
+      detection:
+        default: "./logs/detection/default"
+        extra: "./logs/detection/extra"
+        all: "./logs/detection/all"
+      # ... more apps
 ```
 
-### Test Profiles
+### Test Combinations (test_control.yaml)
 
-Quick selection presets. Enable one or more:
+Predefined test combinations. Enable one or more:
 
 ```yaml
-test_profiles:
-  all:
-    enabled: false                   # Run all available tests
-  quick:
-    enabled: false                   # Quick smoke test
-  all_pipelines:
-    enabled: false                   # Test all pipelines
-  detection_only:
-    enabled: false                   # Test only detection pipeline
-  hailo8_only:
-    enabled: false                   # Test only Hailo8 architecture
-  hailo8l_only:
-    enabled: false                   # Test only Hailo8L architecture
-  hailo10h_only:
-    enabled: false                   # Test only Hailo10H architecture
-  hailo8l_on_hailo8:
-    enabled: false                   # Test Hailo8L models on Hailo8 device
-  human_verification:
-    enabled: false                   # Human verification tests (25s each)
-  retraining:
-    enabled: false                   # Retraining pipeline tests
+test_combinations:
+  ci_run:
+    enabled: false                   # CI/CD test run
+  all_extra:
+    enabled: false                   # All apps with extra models
+  all_default:
+    enabled: false                   # All apps with default models
 ```
 
-### Fine-Grained Test Selection
+### Custom Tests (test_control.yaml)
 
-Override profiles with specific selections:
+Per-app test configuration:
 
 ```yaml
-test_selection:
-  pipelines: "all"                   # "all" or list: ["detection", "pose_estimation"]
-  architectures: "all"               # "all" or list: ["hailo8", "hailo8l", "hailo10h"]
-  run_methods: "all"                 # "all" or list: ["module", "pythonpath", "cli"]
-  test_suites: ["default", "video_file"]  # List of test suite names
+custom_tests:
+  enabled: false                     # Enable custom tests
+  apps:
+    detection:
+      test_suite_mode: "all"         # None | default | extra | all
+      model_selection: "all"         # default | extra | all
+    pose_estimation:
+      test_suite_mode: "default"
+      model_selection: "default"
+    # ... more apps
 ```
 
-### Pipeline Control
-
-Enable/disable specific pipelines:
-
-```yaml
-enabled_pipelines:
-  detection: true
-  pose_estimation: true
-  depth: true
-  instance_segmentation: true
-  simple_detection: true
-  face_recognition: true
-  multisource: true
-  reid_multisource: true
-  tiling: true
-```
-
-### Run Method Control
+### Run Methods (test_control.yaml)
 
 Enable/disable execution methods:
 
 ```yaml
-enabled_run_methods:
-  module: true        # Run as Python module: python -m <module>
-  pythonpath: true   # Run script with PYTHONPATH set
-  cli: true          # Run using CLI command (e.g., hailo-detect)
+run_methods:
+  pythonpath:
+    enabled: true     # Run script with PYTHONPATH set (primary method)
+    priority: 1
+  cli:
+    enabled: false    # Run using CLI command (e.g., hailo-detect)
+    priority: 2
+  module:
+    enabled: false    # Run as Python module: python -m <module>
+    priority: 3
 ```
 
-### Special Tests
+### Special Tests (test_control.yaml)
 
 Enable/disable special test categories:
 
 ```yaml
 special_tests:
-  hailo8l_on_hailo8: true      # Hailo8L compatibility tests
-  retraining: true              # Retraining pipeline tests
-  human_verification: true      # Human verification tests
-  sanity_checks: true           # Environment sanity checks
+  h8l_on_h8:
+    enabled: true     # Hailo8L compatibility tests on Hailo8 device
+  sanity_checks:
+    enabled: true     # Environment sanity checks
+  human_verification:
+    enabled: true     # Human verification tests
+  golden_tests:
+    enabled: true     # Golden reference tests
 ```
 
-### Pipeline Definitions
+### App Definitions (test_definition_config.yaml)
 
-Each pipeline is defined with:
+Each app is defined with:
 
 ```yaml
-pipelines:
+apps:
   detection:
-    name: "detection"
+    name: "Object Detection Pipeline"
     description: "Object Detection Pipeline"
     module: "hailo_apps.python.pipeline_apps.detection.detection_pipeline"
     script: "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py"
     cli: "hailo-detect"
-    models:
-      hailo8:
-        - yolov5m_wo_spp
-        - yolov6n
-        # ... more models
-      hailo8l:
-        - yolov5m_wo_spp
-        # ... more models
-      hailo10h:
-        - yolov5m_wo_spp
-        # ... more models
+    default_test_suites:
+      - "basic_show_fps"
+      - "basic_input_video"
+      - "basic_input_usb"
+      - "input_video_with_hef"
+    extra_test_suites:
+      - "input_video_with_labels"
+      - "input_video_hef_labels"
+      # ... more suites
 ```
 
-### Test Suites
+### Test Suites (test_definition_config.yaml)
 
 Test suites define different execution scenarios:
 
 ```yaml
 test_suites:
-  default:
-    description: "Empty arguments - uses default behavior"
-    args: []
-  video_file:
+  basic_show_fps:
+    description: "Show FPS output"
+    flags: ["--show-fps"]
+  basic_input_video:
     description: "Use video file as input"
-    args: ["--input", "resources/example.mp4"]
-  usb_camera:
-    description: "Use USB camera as input"
-    args: ["--input", "usb"]
-  rpi_camera:
-    description: "Use Raspberry Pi camera as input"
-    args: ["--input", "rpi"]
+    flags: ["--input", "${VIDEO_PATH}"]
+  input_video_with_hef:
+    description: "Use video file with HEF path"
+    flags: ["--input", "${VIDEO_PATH}", "--hef-path", "${HEF_PATH}"]
   # ... more suites
+```
+
+### Resources Configuration (resources_config.yaml)
+
+Models and resources are defined per app:
+
+```yaml
+detection:
+  models:
+    hailo8:
+      default:
+        name: yolov8m
+        source: mz
+      extra:
+        - name: yolov5m_wo_spp
+          source: mz
+        - name: yolov8s
+          source: mz
+    hailo8l:
+      default:
+        name: yolov8s
+        source: mz
+      extra:
+        - name: yolov6n
+          source: mz
+  json:
+    - name: hailo_4_classes.json
+      source: s3
+
+videos:
+  - name: example.mp4
+    source: s3
+  - name: example_640.mp4
+    source: s3
 ```
 
 ### Placeholders
@@ -263,41 +297,15 @@ The following placeholders are automatically replaced in test suite arguments:
 
 ### Sanity Checks Configuration
 
-```yaml
-sanity_checks:
-  required_packages:
-    - gi
-    - numpy
-    - opencv-python
-    - hailo
-  optional_packages:
-    - setproctitle
-    - python-dotenv
-    - picamera2
-  gstreamer_elements:
-    critical:
-      - videotestsrc
-      - appsink
-      - videoconvert
-      - autovideosink
-    hailo:
-      - hailonet
-      - hailofilter
-  required_resources:
-    - example.mp4
-    - example_640.mp4
-    - face_recognition.mp4
-    - libdepth_postprocess.so
-    - libyolo_hailortpp_postprocess.so
-    - libyolov5seg_postprocess.so
-    - libyolov8pose_postprocess.so
-```
+Sanity checks can optionally use `test_config.yaml` (if it exists) for configuration, but will use defaults if not found. The sanity check now uses `resources_config.yaml` to determine expected resources.
 
 ## Running Tests
 
 ### Basic Usage
 
-1. **Edit `tests/test_config.yaml`** to configure what tests to run
+1. **Edit `tests/test_control.yaml`** to configure what tests to run:
+   - Enable a test combination (e.g., `test_combinations.ci_run.enabled: true`), OR
+   - Enable custom tests (`custom_tests.enabled: true`) and configure per-app settings
 2. **Run the test runner**:
    ```bash
    pytest tests/test_runner.py -v
@@ -434,14 +442,17 @@ Each log file contains:
 
 ## Examples
 
-### Example 1: Quick Smoke Test
+### Example 1: Enable Custom Tests for Detection
 
-Run a minimal set of tests to verify basic functionality:
+Edit `test_control.yaml`:
 
 ```yaml
-test_profiles:
-  quick:
-    enabled: true
+custom_tests:
+  enabled: true
+  apps:
+    detection:
+      test_suite_mode: "default"  # Run default test suites
+      model_selection: "default"  # Use default models
 ```
 
 Then run:
@@ -449,52 +460,44 @@ Then run:
 pytest tests/test_runner.py -v
 ```
 
-### Example 2: Test Only Detection Pipeline on Hailo8
+### Example 2: Enable Test Combination
+
+Edit `test_control.yaml`:
 
 ```yaml
-test_profiles:
-  detection_only:
+test_combinations:
+  all_default:
+    enabled: true  # Run all apps with default models and test suites
+```
+
+### Example 3: Custom Tests for Multiple Apps
+
+Edit `test_control.yaml`:
+
+```yaml
+custom_tests:
+  enabled: true
+  apps:
+    detection:
+      test_suite_mode: "all"      # All test suites
+      model_selection: "default"  # Default models only
+    pose_estimation:
+      test_suite_mode: "default"
+      model_selection: "extra"    # Extra models only
+```
+
+### Example 4: Enable Specific Run Method
+
+Edit `test_control.yaml`:
+
+```yaml
+run_methods:
+  pythonpath:
     enabled: true
-test_selection:
-  architectures: ["hailo8"]
-```
-
-### Example 3: Test All Pipelines with CLI Only
-
-```yaml
-test_profiles:
-  all_pipelines:
-    enabled: true
-test_selection:
-  run_methods: ["cli"]
-```
-
-### Example 4: Custom Selection
-
-```yaml
-test_selection:
-  pipelines: ["detection", "pose_estimation"]
-  architectures: ["hailo8", "hailo10h"]
-  run_methods: ["module", "cli"]
-  test_suites: ["default", "video_file"]
-```
-
-### Example 5: Disable Specific Pipeline
-
-```yaml
-enabled_pipelines:
-  detection: true
-  face_recognition: false  # Skip face recognition tests
-```
-
-### Example 6: Test with Video File Input Only
-
-```yaml
-test_selection:
-  pipelines: "all"
-  architectures: "all"
-  run_methods: "all"
-  test_suites: ["video_file"]  # Only video file suite
+  cli:
+    enabled: true   # Also enable CLI method
+  module:
+    enabled: false
 ```
 
 ### Example 7: Run Sanity Checks Before Tests
@@ -534,10 +537,14 @@ pytest tests/test_runner.py -v
 **Problem**: Configuration validation fails.
 
 **Solutions**:
-1. Validate YAML syntax in `test_config.yaml`
-2. Check that all required sections exist
-3. Verify pipeline names match between sections
-4. Ensure indentation is correct (YAML is sensitive to indentation)
+1. Validate YAML syntax in all three config files:
+   - `tests/test_control.yaml`
+   - `hailo_apps/config/test_definition_config.yaml`
+   - `hailo_apps/config/resources_config.yaml`
+2. Run `python tests/verify_configs.py` to verify all configs can be loaded
+3. Check that all required sections exist
+4. Verify app names match between config files
+5. Ensure indentation is correct (YAML is sensitive to indentation)
 
 ### Missing Resources
 
@@ -582,43 +589,57 @@ pytest tests/test_runner.py -v
 
 ### Custom Test Suites
 
-Add custom test suites to the configuration:
+Add custom test suites to `test_definition_config.yaml`:
 
 ```yaml
 test_suites:
   my_custom_suite:
     description: "My custom test scenario"
-    args: ["--input", "usb", "--show-fps", "--disable-sync"]
+    flags: ["--input", "usb", "--show-fps", "--disable-sync"]
 ```
 
-Then use it in `test_selection.test_suites`.
+Then reference it in an app's `default_test_suites` or `extra_test_suites` in `test_definition_config.yaml`.
 
 ### Adding New Pipelines
 
-1. Add pipeline definition to `pipelines` section:
+1. Add app definition to `test_definition_config.yaml`:
 ```yaml
-pipelines:
+apps:
   my_new_pipeline:
-    name: "my_new_pipeline"
+    name: "My New Pipeline"
     description: "My New Pipeline"
     module: "hailo_apps.python.pipeline_apps.my_new_pipeline.pipeline"
     script: "hailo_apps/python/pipeline_apps/my_new_pipeline/pipeline.py"
     cli: "hailo-my-new-pipeline"
-    models:
-      hailo8:
-        - model1
-        - model2
+    default_test_suites:
+      - "basic_show_fps"
+      - "basic_input_video"
+    extra_test_suites:
+      - "input_video_with_hef"
 ```
 
-2. Add test function to `all_tests.py`:
+2. Add models to `resources_config.yaml`:
+```yaml
+my_new_pipeline:
+  models:
+    hailo8:
+      default:
+        name: model1
+        source: mz
+      extra:
+        - name: model2
+          source: mz
+```
+
+3. Add test function to `all_tests.py`:
 ```python
 def run_my_new_pipeline_test(...):
     # Implementation
 ```
 
-3. Add to `PIPELINE_TEST_FUNCTIONS` mapping in `all_tests.py`
+4. Add to `PIPELINE_TEST_FUNCTIONS` mapping in `all_tests.py`
 
-4. Enable in `enabled_pipelines` section
+5. Enable in `test_control.yaml` under `custom_tests.apps` or in a test combination
 
 ### Environment Variables
 
@@ -642,15 +663,20 @@ These are written to `.env` file if not already present.
 
 When adding new tests or modifying the test framework:
 
-1. Update `test_config.yaml` with new configurations
+1. Update configuration files:
+   - `test_control.yaml` - Add test combinations or custom test configs
+   - `test_definition_config.yaml` - Add app definitions or test suites
+   - `resources_config.yaml` - Add models and resources
 2. Add test functions to `all_tests.py` if needed
 3. Update utility functions in `test_utils.py` if needed
 4. Update this README with new features
-5. Ensure backward compatibility with existing configurations
+5. Run `python tests/verify_configs.py` to verify configurations
 
 ## See Also
 
-- `test_config.yaml` - Full configuration file with inline documentation
-- `README_TEST_RUNNER.md` - Additional test runner documentation
-- `TEST_CONFIGURATION_GUIDE.md` - Detailed configuration guide
+- `test_control.yaml` - Test execution control configuration
+- `test_definition_config.yaml` - Test definitions and app configurations
+- `resources_config.yaml` - Resources and models configuration
+- `verify_configs.py` - Script to verify all configuration files
+- `TEST_FRAMEWORK_DOCUMENTATION.md` - Additional test framework documentation
 
