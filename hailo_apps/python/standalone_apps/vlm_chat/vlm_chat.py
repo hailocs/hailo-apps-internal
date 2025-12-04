@@ -24,7 +24,7 @@ from hailo_apps.python.core.common.defines import (
 MAX_TOKENS = 200
 TEMPERATURE = 0.1
 SEED = 42
-SYSTEM_PROMPT = "You are a helpful assistant that analyzes images and answers questions about them. Answer in a concise and informative manner."
+SYSTEM_PROMPT = "You are a helpful assistant that analyzes images and answers questions about them."
 INFERENCE_TIMEOUT = 60
 SAVE_FRAMES = False
 
@@ -99,7 +99,8 @@ class VLMChatApp:
                 config = picam2.create_preview_configuration(main={"size": (640, 480), "format": "RGB888"})
                 picam2.configure(config)
                 picam2.start()
-                get_frame = lambda: picam2.capture_array()
+                # Convert RGB to BGR to match OpenCV/USB standard
+                get_frame = lambda: cv2.cvtColor(picam2.capture_array(), cv2.COLOR_RGB2BGR)
                 cleanup = lambda: picam2.stop()
                 camera_name = "RPI"
                 return get_frame, cleanup, camera_name
@@ -170,10 +171,16 @@ class VLMChatApp:
             while self.running:
                 # Display Logic
                 if self.current_state == STATE_STREAMING:
-                    frame = get_frame()
-                    if frame is None:
+                    raw_frame = get_frame()
+                    if raw_frame is None:
                         logger.error("Failed to read frame from camera")
                         break
+
+                    # Pre-process frame to show user exactly what the model sees
+                    # This ensures live video matches the aspect ratio (central crop)
+                    rgb_frame = Backend.convert_resize_image(raw_frame)
+                    frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+
                     cv2.imshow('Video', frame)
                 elif self.current_state in [STATE_CAPTURED, STATE_PROCESSING, STATE_RESULT]:
                     if self.frozen_frame is not None:

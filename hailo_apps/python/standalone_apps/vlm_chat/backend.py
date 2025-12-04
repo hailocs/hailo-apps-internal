@@ -205,7 +205,7 @@ class Backend:
     @staticmethod
     def convert_resize_image(image_array: np.ndarray, target_size: tuple[int, int] = (336, 336)) -> np.ndarray:
         """
-        Convert and resize image for VLM.
+        Convert and resize image for VLM using central crop to maintain aspect ratio.
 
         Args:
             image_array (np.ndarray): Input image (BGR).
@@ -218,9 +218,23 @@ class Backend:
         if len(image_array.shape) == 3 and image_array.shape[2] == 3:
             image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
 
-        # Resize to target size
-        resized = cv2.resize(image_array, target_size, interpolation=cv2.INTER_LINEAR)
-        return resized.astype(np.uint8)
+        h, w = image_array.shape[:2]
+        target_w, target_h = target_size
+
+        # Scale to cover the target size (Central Crop strategy)
+        scale = max(target_w / w, target_h / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+
+        # Resize the image
+        resized = cv2.resize(image_array, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Center crop
+        x_start = (new_w - target_w) // 2
+        y_start = (new_h - target_h) // 2
+        cropped = resized[y_start:y_start+target_h, x_start:x_start+target_w]
+
+        return cropped.astype(np.uint8)
 
     def close(self) -> None:
         """Close the backend process."""
