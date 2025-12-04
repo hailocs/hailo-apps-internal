@@ -408,7 +408,8 @@ def get_resource_path(
         hailo_logger.debug(f"Auto-detected arch: {arch}")
     if not arch and resource_type == RESOURCES_MODELS_DIR_NAME:
         hailo_logger.error("Could not detect Hailo architecture.")
-        return None
+        assert False, "Could not detect Hailo architecture."
+
 
     if resource_type == RESOURCES_SO_DIR_NAME and model:
         return root / RESOURCES_SO_DIR_NAME / model
