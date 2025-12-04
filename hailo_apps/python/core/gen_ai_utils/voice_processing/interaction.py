@@ -1,3 +1,4 @@
+import logging
 import threading
 import traceback
 from typing import Callable, Optional
@@ -6,6 +7,9 @@ import numpy as np
 
 from hailo_apps.python.core.gen_ai_utils.llm_utils.terminal_ui import TerminalUI
 from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_recorder import AudioRecorder
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class VoiceInteractionManager:
@@ -60,30 +64,36 @@ class VoiceInteractionManager:
     def run(self):
         """Starts the main interaction loop."""
         TerminalUI.show_banner(title=self.title, controls=self.controls)
+        logger.info("Voice interaction started")
 
         try:
             while True:
                 ch = TerminalUI.get_char().lower()
                 if ch == "q":
+                    logger.info("Quit requested")
                     self.close()
                     break
                 elif ch == " ":
                     self.toggle_recording()
                 elif ch == "\x03":  # Ctrl+C
+                    logger.info("Ctrl+C received")
                     self.close()
                     break
                 elif ch == "c":
+                    logger.info("Clear context requested")
                     if self.on_clear_context:
                         self.on_clear_context()
                 elif ch == "x":
+                    logger.info("Abort requested")
                     if self.on_abort:
                         self.on_abort()
         except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt in main loop")
             self.close()
         except Exception as e:
-            print(f"[Error] Unexpected error in main loop: {e}")
+            logger.error("Unexpected error in main loop: %s", e)
             if self.debug:
-                traceback.print_exc()
+                logger.debug("Traceback: %s", traceback.format_exc())
 
     def toggle_recording(self):
         with self.lock:
@@ -97,14 +107,14 @@ class VoiceInteractionManager:
             try:
                 self.on_processing_start()
             except Exception as e:
-                print(f"[Warning] Failed to execute start callback: {e}")
+                logger.warning("Failed to execute start callback: %s", e)
 
         try:
             self.recorder.start()
             self.is_recording = True
             print("\n🔴 Recording started. Press SPACE to stop.")
         except Exception as e:
-            print(f"[Error] Failed to start recording: {e}")
+            logger.error("Failed to start recording: %s", e)
             self.is_recording = False
 
     def stop_recording(self):
@@ -112,47 +122,48 @@ class VoiceInteractionManager:
         try:
             audio = self.recorder.stop()
         except Exception as e:
-            print(f"[Error] Failed to stop recording: {e}")
+            logger.error("Failed to stop recording: %s", e)
             self.is_recording = False
             return
 
         self.is_recording = False
 
         if audio.size > 0:
+            logger.debug("Audio captured: %d samples", audio.size)
             if self.on_audio_ready:
                 # Run processing in a separate thread to keep UI responsive (for abort)
                 def processing_wrapper():
                     try:
                         self.on_audio_ready(audio)
                     except Exception as e:
-                        print(f"\n[Error] Processing failed: {e}")
+                        logger.error("Processing failed: %s", e)
                         if self.debug:
-                            traceback.print_exc()
+                            logger.debug("Traceback: %s", traceback.format_exc())
                     finally:
                         # Show banner again after processing is done
                         TerminalUI.show_banner(title=self.title, controls=self.controls)
 
                 threading.Thread(target=processing_wrapper, daemon=True).start()
         else:
-            print("No audio recorded.")
+            logger.warning("No audio recorded")
             TerminalUI.show_banner(title=self.title, controls=self.controls)
 
     def close(self):
-        print("\nShutting down...")
+        logger.info("Shutting down voice interaction")
         if self.is_recording:
             try:
                 self.recorder.stop()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Error stopping recorder during shutdown: %s", e)
 
         try:
             self.recorder.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Error closing recorder: %s", e)
 
         if self.on_shutdown:
             try:
                 self.on_shutdown()
             except Exception as e:
-                print(f"[Error] Failed during shutdown callback: {e}")
+                logger.error("Failed during shutdown callback: %s", e)
 

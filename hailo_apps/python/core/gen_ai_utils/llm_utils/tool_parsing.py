@@ -32,7 +32,7 @@ def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
     def validate_and_fix_call(call: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Validate that call has required fields and fix nested JSON."""
         if not isinstance(call, dict):
-            logger.debug(f"Invalid call format: expected dict, got {type(call)}")
+            logger.debug("Invalid format: %s", type(call).__name__)
             return None
 
         # Must have 'name' field
@@ -56,12 +56,12 @@ def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
                     args_str = args_str.replace("'", '"')
                 call["arguments"] = json.loads(args_str)
             except Exception as e:
-                logger.debug(f"Failed to parse nested arguments JSON: {e}")
+                logger.debug("JSON parse failed: %s", e)
                 pass
 
         # Ensure arguments is a dict
         if not isinstance(call.get("arguments"), dict):
-            logger.debug(f"Tool arguments invalid format: expected dict, got {type(call.get('arguments'))}")
+            logger.debug("Invalid args format: %s", type(call.get('arguments')).__name__)
             return None
 
         return call
@@ -132,13 +132,13 @@ def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
             call = json.loads(json_str)
             return validate_and_fix_call(call)
         except json.JSONDecodeError as e:
-            logger.debug(f"JSON decode failed: {e}. Content: {json_str}")
+            logger.debug("JSON decode failed: %s", e)
             # Last resort: try partial fix for unquoted keys?
             # (Maybe too risky for general tool calling)
             return None
 
     except Exception as e:
-        logger.error(f"Error parsing tool call: {e}")
-        logger.debug(traceback.format_exc())
+        logger.error("Parse error: %s", e)
+        logger.debug("Traceback: %s", traceback.format_exc())
         return None
 

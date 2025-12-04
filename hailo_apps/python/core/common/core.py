@@ -98,10 +98,10 @@ def load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None) -> bool:
 def get_base_parser():
     """
     Creates the base argument parser with core flags shared by all Hailo applications.
-    
+
     This parser defines the standard interface for common functionality across
     all applications, ensuring consistent flag naming and behavior.
-    
+
     Returns:
         argparse.ArgumentParser: Base parser with core flags
     """
@@ -110,7 +110,7 @@ def get_base_parser():
         description="Hailo Application Base Parser",
         add_help=False  # Allow parent parsers to control help display
     )
-    
+
     # Core input/output flags
     parser.add_argument(
         "--input", "-i",
@@ -123,7 +123,7 @@ def get_base_parser():
             "For Raspberry Pi camera, use 'rpi'. If not specified, defaults to application-specific source."
         )
     )
-    
+
     parser.add_argument(
         "--hef-path", "-n",
         type=str,
@@ -134,7 +134,7 @@ def get_base_parser():
             "If not specified, the application will attempt to use a default model based on the pipeline type."
         )
     )
-    
+
     parser.add_argument(
         "--batch-size", "-b",
         type=int,
@@ -145,7 +145,7 @@ def get_base_parser():
             "Default is 1 (sequential processing)."
         )
     )
-    
+
     parser.add_argument(
         "--labels", "-l",
         type=str,
@@ -156,7 +156,7 @@ def get_base_parser():
             "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
         )
     )
-    
+
     parser.add_argument(
         "--width", "-W",
         type=int,
@@ -167,7 +167,7 @@ def get_base_parser():
             "If not specified, uses the input resolution or model default."
         )
     )
-    
+
     parser.add_argument(
         "--height", "-H",
         type=int,
@@ -178,7 +178,7 @@ def get_base_parser():
             "If not specified, uses the input resolution or model default."
         )
     )
-    
+
     parser.add_argument(
         "--arch", "-a",
         type=str,
@@ -191,7 +191,7 @@ def get_base_parser():
             "If not specified, the architecture will be auto-detected from the connected device."
         )
     )
-    
+
     parser.add_argument(
         "--show-fps",
         action="store_true",
@@ -201,7 +201,7 @@ def get_base_parser():
             "showing the current processing rate. Useful for performance monitoring and optimization."
         )
     )
-    
+
     parser.add_argument(
         "--save-output", "-s",
         action="store_true",
@@ -211,7 +211,7 @@ def get_base_parser():
             "or application-specific defaults. Without this flag, output is only displayed (if applicable)."
         )
     )
-    
+
     parser.add_argument(
         "--frame-rate", "-f",
         type=int,
@@ -222,17 +222,17 @@ def get_base_parser():
             "Default is 30 FPS. Lower values reduce processing load, higher values increase throughput."
         )
     )
-    
+
     return parser
 
 
 def get_pipeline_parser():
     """
     Creates an argument parser for GStreamer pipeline applications.
-    
+
     This parser extends the base parser with pipeline-specific flags for
     GStreamer-based applications that process video streams in real-time.
-    
+
     Returns:
         argparse.ArgumentParser: Parser with base and pipeline-specific flags
     """
@@ -243,7 +243,7 @@ def get_pipeline_parser():
         parents=[base_parser],
         add_help=True  # Enable --help flag to show all available options
     )
-    
+
     parser.add_argument(
         "--use-frame",
         action="store_true",
@@ -254,7 +254,7 @@ def get_pipeline_parser():
             "Useful for applications that need to perform additional operations on individual frames."
         )
     )
-    
+
     parser.add_argument(
         "--disable-sync",
         action="store_true",
@@ -265,7 +265,7 @@ def get_pipeline_parser():
             "where you want maximum throughput rather than real-time playback speed."
         )
     )
-    
+
     parser.add_argument(
         "--disable-callback",
         action="store_true",
@@ -276,7 +276,7 @@ def get_pipeline_parser():
             "or when you want to run the pipeline without custom post-processing logic."
         )
     )
-    
+
     parser.add_argument(
         "--dump-dot",
         action="store_true",
@@ -287,17 +287,17 @@ def get_pipeline_parser():
             "to understand the pipeline topology and debug pipeline configuration issues."
         )
     )
-    
+
     return parser
 
 
 def get_standalone_parser():
     """
     Creates an argument parser for standalone processing applications.
-    
+
     This parser extends the base parser with standalone-specific flags for
     applications that process files or batches without GStreamer pipelines.
-    
+
     Returns:
         argparse.ArgumentParser: Parser with base and standalone-specific flags
     """
@@ -308,7 +308,7 @@ def get_standalone_parser():
         parents=[base_parser],
         add_help=True  # Enable --help flag to show all available options
     )
-    
+
     parser.add_argument(
         "--track",
         action="store_true",
@@ -319,7 +319,7 @@ def get_standalone_parser():
             "trajectory visualization, and multi-frame association. Useful for video processing applications."
         )
     )
-    
+
     parser.add_argument(
         "--resolution", "-r",
         type=str,
@@ -332,7 +332,7 @@ def get_standalone_parser():
             "Default is 'sd'. This flag is only applicable when using camera input sources."
         )
     )
-    
+
     parser.add_argument(
         "--output-dir", "-o",
         type=str,
@@ -344,17 +344,17 @@ def get_standalone_parser():
             "or the current working directory. The directory will be created if it does not exist."
         )
     )
-    
+
     return parser
 
 
 def get_default_parser():
     """
     Legacy function for backward compatibility.
-    
+
     Returns the pipeline parser as the default to maintain compatibility
     with existing code that uses get_default_parser().
-    
+
     Returns:
         argparse.ArgumentParser: Pipeline parser (for backward compatibility)
     """
@@ -396,16 +396,20 @@ def get_model_name(pipeline_name: str, arch: str) -> str:
 
 
 def get_resource_path(
-    pipeline_name: str, resource_type: str,arch: str, model: str | None = None
+    pipeline_name: str, resource_type: str, arch: str | None = None, model: str | None = None
 ) -> Path | None:
     hailo_logger.debug(
         f"Getting resource path for pipeline={pipeline_name}, resource_type={resource_type}, model={model}"
     )
     root = Path(RESOURCES_ROOT_PATH_DEFAULT)
-    # arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
-    if not arch:
+    # Auto-detect arch if not provided and needed for RESOURCES_MODELS_DIR_NAME
+    if arch is None and resource_type == RESOURCES_MODELS_DIR_NAME:
+        arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+        hailo_logger.debug(f"Auto-detected arch: {arch}")
+    if not arch and resource_type == RESOURCES_MODELS_DIR_NAME:
         hailo_logger.error("Could not detect Hailo architecture.")
-        return None
+        assert False, "Could not detect Hailo architecture."
+
 
     if resource_type == RESOURCES_SO_DIR_NAME and model:
         return root / RESOURCES_SO_DIR_NAME / model

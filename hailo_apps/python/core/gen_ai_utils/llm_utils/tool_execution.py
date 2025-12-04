@@ -26,8 +26,7 @@ def initialize_tool_if_needed(tool: Dict[str, Any]) -> None:
             tool_module.initialize_tool()
         except Exception as e:
             logger.warning("Tool initialization failed: %s", e)
-            # Reason: Logging traceback helps debug initialization issues which might be hardware related
-            logger.debug("Initialization traceback: %s", traceback.format_exc())
+            logger.debug("Traceback: %s", traceback.format_exc())
 
 
 def execute_tool_call(
@@ -54,22 +53,21 @@ def execute_tool_call(
     if not isinstance(args, dict):
         return {"ok": False, "error": f"Invalid arguments format for tool '{tool_name}': expected dictionary, got {type(args).__name__}"}
 
-    logger.info("TOOL CALL: %s", tool_name)
-    logger.debug("Tool call details - name: %s", tool_name)
-    logger.debug("Tool call arguments:\n%s", json.dumps(args, indent=2, ensure_ascii=False))
+    logger.info("Tool call: %s", tool_name)
+    logger.debug("Args: %s", json.dumps(args, ensure_ascii=False))
 
     selected = tools_lookup.get(tool_name)
     if not selected:
         # Reason: Provide available tools to help user correct the request
         available = ", ".join(sorted(tools_lookup.keys()))
         error_msg = f"Unknown tool '{tool_name}'. Available: {available}"
-        logger.error(error_msg)
+        logger.error("%s", error_msg)
         return {"ok": False, "error": error_msg}
 
     runner = selected.get("runner")
     if not callable(runner):
         error_msg = f"Tool '{tool_name}' is missing an executable runner."
-        logger.error(error_msg)
+        logger.error("%s", error_msg)
         return {"ok": False, "error": error_msg}
 
     try:
@@ -79,15 +77,15 @@ def execute_tool_call(
         if not isinstance(result, dict):
             # Reason: Ensure tool follows contract even if implementation is buggy
             error_msg = f"Tool '{tool_name}' returned invalid format: expected dict, got {type(result).__name__}"
-            logger.error(error_msg)
+            logger.error("%s", error_msg)
             return {"ok": False, "error": error_msg}
 
-        logger.debug("TOOL EXECUTION RESULT:\n%s", json.dumps(result, indent=2, ensure_ascii=False))
+        logger.debug("Result: %s", json.dumps(result, ensure_ascii=False))
         return result
     except Exception as exc:
         # Reason: Capture full traceback in debug mode for developers
-        logger.error("Tool execution raised exception: %s", exc)
-        logger.debug("Tool execution traceback: %s", traceback.format_exc())
+        logger.error("%s: %s", tool_name, exc)
+        logger.debug("Traceback: %s", traceback.format_exc())
 
         error_msg = f"Tool '{tool_name}' execution failed: {str(exc)}"
         result = {"ok": False, "error": error_msg}
@@ -106,12 +104,11 @@ def print_tool_result(result: Dict[str, Any]) -> None:
         return
 
     if result.get("ok"):
-        logger.info("Tool execution: SUCCESS")
         tool_result_text = result.get("result", "")
         if tool_result_text:
             print(f"\n[Tool] {tool_result_text}\n")
     else:
         error_msg = result.get("error", "Unknown error")
-        logger.info("Tool execution: FAILED - %s", error_msg)
-        print(f"\n[Tool Error] {error_msg}\n")
+        logger.warning("%s", error_msg)
+        print(f"\n[Tool Error] {error_msg}\n")  # User-facing error message
 

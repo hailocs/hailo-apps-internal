@@ -4,8 +4,12 @@ Tool selection module.
 Handles interactive tool selection in a separate thread.
 """
 
+import logging
 import threading
 from typing import Any, Dict, List, Optional, cast
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 def select_tool_interactive(tools: List[Dict[str, Any]], result: Dict[str, Any]) -> None:
@@ -23,9 +27,12 @@ def select_tool_interactive(tools: List[Dict[str, Any]], result: Dict[str, Any])
     for idx, tool_info in enumerate(tools, start=1):
         print(f"  {idx}. {tool_info['name']}: {tool_info['display_description']}")
 
+    logger.info("Tool selection started: %d tools available", len(tools))
+
     while True:
         choice = input("\nSelect a tool by number (or 'q' to quit): ").strip()
         if choice.lower() in {"q", "quit", "exit"}:
+            logger.info("User chose to exit tool selection")
             print("Bye.")
             with result["lock"]:
                 result["should_exit"] = True
@@ -33,11 +40,15 @@ def select_tool_interactive(tools: List[Dict[str, Any]], result: Dict[str, Any])
         try:
             tool_idx = int(choice) - 1
             if 0 <= tool_idx < len(tools):
+                selected_tool = tools[tool_idx]
+                logger.info("Tool selected: %s", selected_tool.get("name", "unknown"))
                 with result["lock"]:
-                    result["selected_tool"] = tools[tool_idx]
+                    result["selected_tool"] = selected_tool
                 return
+            logger.warning("Invalid tool selection: %s (valid range: 1-%d)", choice, len(tools))
             print(f"Invalid selection. Please choose 1-{len(tools)}.")
         except ValueError:
+            logger.warning("Invalid input in tool selection: %s", choice)
             print("Invalid input. Please enter a number or 'q' to quit.")
 
 
@@ -95,6 +106,7 @@ def get_tool_selection_result(
         selected_tool = tool_result["selected_tool"]
 
     if selected_tool is None:
+        logger.error("No tool selected")
         print("[Error] No tool selected.")
         return None
 
@@ -102,9 +114,11 @@ def get_tool_selection_result(
     selected_tool = cast(Dict[str, Any], selected_tool)
     selected_tool_name = selected_tool.get("name", "")
     if not selected_tool_name:
+        logger.error("Selected tool missing 'name' field")
         print("[Error] Selected tool missing 'name' field.")
         return None
 
+    logger.info("Tool selection completed: %s", selected_tool_name)
     print(f"\nSelected tool: {selected_tool_name}")
     return selected_tool
 

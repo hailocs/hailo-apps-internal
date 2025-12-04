@@ -4,11 +4,15 @@ Audio Recorder module.
 Handles microphone recording and audio processing.
 """
 
+import logging
 from datetime import datetime
 import wave
 import numpy as np
 import pyaudio
 from hailo_apps.python.core.common.defines import TARGET_SR, CHUNK_SIZE
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 
 class AudioRecorder:
@@ -47,6 +51,7 @@ class AudioRecorder:
             stream_callback=self._callback
         )
         self.stream.start_stream()
+        logger.debug("Recording started")
 
     def stop(self) -> np.ndarray:
         """
@@ -106,16 +111,17 @@ class AudioRecorder:
                 wav_file.setframerate(TARGET_SR)
                 wav_file.writeframes(audio_int16.tobytes())
 
-            print(f"Debug: Audio saved to {filename}")
+            logger.info("Audio saved to %s", filename)
 
         except Exception as e:
-            print(f"Warning: Failed to save debug audio: {e}")
+            logger.warning("Failed to save debug audio: %s", e)
 
     def close(self):
         """Release PyAudio resources."""
         if self.p:
             self.p.terminate()
             self.p = None
+            logger.debug("Audio recorder closed")
 
     def _callback(self, in_data, frame_count, time_info, status):
         """

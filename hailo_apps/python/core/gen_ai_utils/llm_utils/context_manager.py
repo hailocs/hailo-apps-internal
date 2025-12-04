@@ -47,13 +47,11 @@ def is_context_full(
         if current_usage < threshold:
             return False
 
-        log.debug(
-            f"Context at {current_usage}/{max_capacity} tokens ({current_usage*100//max_capacity}%); threshold reached."
-        )
+        log.debug("Context: %d/%d tokens (%d%%)", current_usage, max_capacity, current_usage*100//max_capacity)
         return True
 
     except Exception as e:
-        log.warning(f"Failed to check context usage: {e}")
+        log.warning("Context check failed: %s", e)
         return False
 
 
@@ -79,15 +77,15 @@ def print_context_usage(
         filled = (current_usage * bar_length) // max_capacity if max_capacity > 0 else 0
         bar = "█" * filled + "░" * (bar_length - filled)
 
-        usage_str = f"Context: [{bar}] {current_usage}/{max_capacity} tokens ({percentage}%)"
+        usage_str = f"[{bar}] {current_usage}/{max_capacity} ({percentage}%)"
 
         if show_always:
-            print(f"[Info] {usage_str}")
+            print(f"[Info] Context: {usage_str}")
         else:
-            log.debug(usage_str)
+            log.debug("Context: %s", usage_str)
 
     except Exception as e:
-        log.debug(f"Could not get context usage: {e}")
+        log.debug("Context usage unavailable: %s", e)
 
 
 def get_context_cache_path(tool_name: str, cache_dir: Path) -> Path:
@@ -132,13 +130,13 @@ def save_context_to_cache(
             cache_dir.mkdir(parents=True, exist_ok=True)
 
         cache_path = get_context_cache_path(tool_name, cache_dir)
-        log.debug(f"Saving context to cache file: {cache_path}")
+        log.debug("Saving cache: %s", cache_path)
 
         # Get context data from LLM
         try:
             context_data = llm.save_context()
         except Exception as e:
-            log.warning(f"LLM save_context failed: {e}")
+            log.warning("Failed to save context: %s", e)
             return False
 
         if not context_data:
@@ -153,10 +151,10 @@ def save_context_to_cache(
         # Rename is atomic on POSIX
         shutil.move(str(temp_path), str(cache_path))
 
-        log.info(f"Context cache saved successfully for tool '{tool_name}'")
+        log.info("Cache saved: %s", tool_name)
         return True
     except Exception as e:
-        log.warning(f"Failed to save context cache for tool '{tool_name}': {e}")
+        log.warning("Cache save failed: %s - %s", tool_name, e)
         # Clean up temp file
         try:
             if 'temp_path' in locals() and temp_path.exists():
@@ -187,20 +185,20 @@ def load_context_from_cache(
         cache_path = get_context_cache_path(tool_name, cache_dir)
 
         if not cache_path.exists():
-            log.info(f"No context cache found for tool '{tool_name}' at {cache_path}")
+            log.debug("No cache: %s", tool_name)
             return False
 
         if cache_path.stat().st_size == 0:
-            log.warning(f"Context cache file for '{tool_name}' is empty, skipping load")
+            log.warning("Cache empty: %s", tool_name)
             return False
 
-        log.debug(f"Loading context from cache file: {cache_path}")
+        log.debug("Loading cache: %s", cache_path)
 
         try:
             with open(cache_path, 'rb') as f:
                 context_data = f.read()
         except Exception as e:
-            log.warning(f"Failed to read cache file: {e}")
+            log.warning("Failed to read cache file: %s", e)
             return False
 
         if not context_data:
@@ -209,14 +207,14 @@ def load_context_from_cache(
         try:
             llm.load_context(context_data)
         except Exception as e:
-            log.warning(f"LLM failed to load context data: {e}")
-            log.warning(f"Cache file might be corrupted: {cache_path}")
+            log.warning("Failed to load context: %s", e)
+            log.debug("Cache may be corrupted: %s", cache_path)
             return False
 
-        log.info(f"Context cache loaded successfully for tool '{tool_name}'")
+        log.info("Cache loaded: %s", tool_name)
         return True
     except Exception as e:
-        log.warning(f"Failed to load context cache for tool '{tool_name}': {e}")
+        log.warning("Cache load failed: %s - %s", tool_name, e)
         return False
 
 
@@ -241,16 +239,14 @@ def add_to_context(
     log = logger_instance or logger
     try:
         # Generate a single token to add the prompt to context
-        generated_tokens = []
         for token in llm.generate(prompt=prompt, max_generated_tokens=1):
-            generated_tokens.append(token)
+            # Consume token to add prompt to context
+            pass
 
-        # Log debug info
-        generated_text = "".join(generated_tokens)
-        log.debug("Context addition generated token: %s", repr(generated_text))
+        log.debug("Context updated")
         return True
 
     except Exception as e:
-        log.warning("Failed to add to context: %s", e)
+        log.warning("Context update failed: %s", e)
         return False
 

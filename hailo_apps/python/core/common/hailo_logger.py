@@ -82,20 +82,24 @@ def init_logging(
 
     root.setLevel(resolved_level)
 
-    # Simple, standard format
-    fmt = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    # Full format for DEBUG mode (with timestamp, run_id, full name)
+    debug_fmt = "%(asctime)s | %(levelname)s | run=%(run_id)s | %(name)s | %(message)s"
+    # Concise format for normal mode (severity, short name, message)
+    normal_fmt = "%(levelname)s | %(name)s | %(message)s"
     datefmt = "%H:%M:%S"
 
-    # Console handler (stderr)
+    # Console handler with custom formatter
     ch = logging.StreamHandler(sys.stderr)
-    ch.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    ch.setFormatter(_ShortNameFormatter(debug_fmt=debug_fmt, normal_fmt=normal_fmt, datefmt=datefmt))
+    ch.addFilter(_RunContextFilter(_RUN_ID))
     root.addHandler(ch)
 
-    # Optional file handler
+    # Optional file handler (always use full format for files)
     log_file = log_file or os.getenv("HAILO_LOG_FILE")
     if log_file:
         fh = logging.FileHandler(log_file, encoding="utf-8")
-        fh.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+        fh.setFormatter(logging.Formatter(fmt=debug_fmt, datefmt=datefmt))
+        fh.addFilter(_RunContextFilter(_RUN_ID))
         root.addHandler(fh)
 
     # Be quiet about common noisy deps unless user explicitly wants DEBUG
@@ -103,6 +107,61 @@ def init_logging(
     logging.getLogger("PIL").setLevel(max(resolved_level, logging.WARNING))
 
     _CONFIGURED = True
+
+
+class _RunContextFilter(logging.Filter):
+    """Inject a stable run_id into every record."""
+
+    def __init__(self, run_id: str):
+        super().__init__()
+        self.run_id = run_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "run_id"):
+            record.run_id = self.run_id
+        return True
+
+
+class _ShortNameFormatter(logging.Formatter):
+    """Formatter that shortens logger names to last 2 hierarchies."""
+
+    def __init__(self, debug_fmt: str, normal_fmt: str, datefmt: str = None):
+        """
+        Initialize formatter with two formats.
+
+        Args:
+            debug_fmt: Full format string for DEBUG level (includes timestamp, run_id, full name)
+            normal_fmt: Concise format string for non-DEBUG levels
+            datefmt: Date format string
+        """
+        super().__init__(fmt=normal_fmt, datefmt=datefmt)
+        self.debug_fmt = debug_fmt
+        self.normal_fmt = normal_fmt
+        self.datefmt = datefmt
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record with appropriate format based on level."""
+        # Shorten logger name to last 2 hierarchies for non-DEBUG
+        name_parts = record.name.split(".")
+        if len(name_parts) > 2:
+            short_name = ".".join(name_parts[-2:])
+        else:
+            short_name = record.name
+
+        # Use full format for DEBUG, concise for others
+        if record.levelno == logging.DEBUG:
+            # Create a new formatter with debug format
+            debug_formatter = logging.Formatter(fmt=self.debug_fmt, datefmt=self.datefmt)
+            return debug_formatter.format(record)
+        else:
+            # Use concise format with short name
+            original_name = record.name
+            record.name = short_name
+            # Create a new formatter with normal format
+            normal_formatter = logging.Formatter(fmt=self.normal_fmt, datefmt=self.datefmt)
+            result = normal_formatter.format(record)
+            record.name = original_name
+            return result
 
 
 def get_logger(name: str) -> logging.Logger:
