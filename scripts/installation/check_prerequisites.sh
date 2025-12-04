@@ -78,8 +78,10 @@ detect_user_and_group
 log_info "Checking prerequisites..."
 
     # Run check_installed_packages.sh and parse output
+    # Run as original user to check packages from user's perspective
+    # Preserve critical environment variables (PATH, LANG, etc.) for proper command execution
     SUMMARY_LINE=$(
-        as_original_user bash -c "cd '${PROJECT_ROOT}' && ./scripts/check_installed_packages.sh" 2>&1 \
+        as_original_user env PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" LC_ALL="${LC_ALL:-}" bash -c "cd '${PROJECT_ROOT}' && ./scripts/check_installed_packages.sh" 2>&1 \
             | sed -n 's/^SUMMARY: //p'
     )
 
@@ -90,11 +92,20 @@ fi
 
 IFS=' ' read -r -a pairs <<< "$SUMMARY_LINE"
 
-DRIVER_VERSION="${pairs[0]#*=}"
-HAILORT_VERSION="${pairs[1]#*=}"
-PYHAILORT_VERSION="${pairs[2]#*=}"
-TAPPAS_CORE_VERSION="${pairs[3]#*=}"
-PYTAPPAS_VERSION="${pairs[4]#*=}"
+# SUMMARY format: hailo_arch=... hailo_pci=... hailort=... pyhailort=... tappas-core=... tappas-python=...
+# Skip pairs[0] (hailo_arch) and start from pairs[1] (hailo_pci/driver)
+# Use default empty value to avoid unbound variable errors with set -u
+DRIVER_VERSION="${pairs[1]:-}"
+HAILORT_VERSION="${pairs[2]:-}"
+PYHAILORT_VERSION="${pairs[3]:-}"
+TAPPAS_CORE_VERSION="${pairs[4]:-}"
+PYTAPPAS_VERSION="${pairs[5]:-}"
+# Remove key= prefix from each value
+DRIVER_VERSION="${DRIVER_VERSION#*=}"
+HAILORT_VERSION="${HAILORT_VERSION#*=}"
+PYHAILORT_VERSION="${PYHAILORT_VERSION#*=}"
+TAPPAS_CORE_VERSION="${TAPPAS_CORE_VERSION#*=}"
+PYTAPPAS_VERSION="${PYTAPPAS_VERSION#*=}"
 
 # Check required components
 ERRORS=0

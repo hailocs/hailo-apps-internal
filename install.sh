@@ -182,11 +182,21 @@ step_check_prerequisites() {
         fi
         
         IFS=' ' read -r -a pairs <<< "$summary_line"
-        export DRIVER_VERSION="${pairs[0]#*=}"
-        export HAILORT_VERSION="${pairs[1]#*=}"
-        export PYHAILORT_VERSION="${pairs[2]#*=}"
-        export TAPPAS_CORE_VERSION="${pairs[3]#*=}"
-        export PYTAPPAS_VERSION="${pairs[4]#*=}"
+        # SUMMARY format: hailo_arch=... hailo_pci=... hailort=... pyhailort=... tappas-core=... tappas-python=...
+        # Skip pairs[0] (hailo_arch) and start from pairs[1] (hailo_pci/driver)
+        # Use default empty value to avoid unbound variable errors with set -u
+        export DRIVER_VERSION="${pairs[1]:-}"
+        export HAILORT_VERSION="${pairs[2]:-}"
+        export PYHAILORT_VERSION="${pairs[3]:-}"
+        export TAPPAS_CORE_VERSION="${pairs[4]:-}"
+        export PYTAPPAS_VERSION="${pairs[5]:-}"
+        # Remove key= prefix from each value
+        DRIVER_VERSION="${DRIVER_VERSION#*=}"
+        HAILORT_VERSION="${HAILORT_VERSION#*=}"
+        PYHAILORT_VERSION="${PYHAILORT_VERSION#*=}"
+        TAPPAS_CORE_VERSION="${TAPPAS_CORE_VERSION#*=}"
+        PYTAPPAS_VERSION="${PYTAPPAS_VERSION#*=}"
+        export DRIVER_VERSION HAILORT_VERSION PYHAILORT_VERSION TAPPAS_CORE_VERSION PYTAPPAS_VERSION
         
         # Determine if we need to install Python bindings
         export INSTALL_HAILORT=false
