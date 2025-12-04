@@ -7,7 +7,7 @@
 #include <algorithm>  
 #include <numeric>  
 #include <stdexcept>  
-#include <iostream>  
+#include <iostream>
 #include <iomanip>
   
 #include <opencv2/imgproc.hpp>  
@@ -124,8 +124,6 @@ static void load_frequency_dictionary(OcrParams &p, const std::string &config_di
     
     std::ifstream in(dict_path);
     if (!in.is_open()) {
-        std::cerr << "[OCR_REC] WARNING: Failed to open frequency dictionary: " 
-                  << dict_path << ". Spell correction disabled.\n";
         return;
     }
     
@@ -145,8 +143,6 @@ static void load_frequency_dictionary(OcrParams &p, const std::string &config_di
         }
     }
     
-    std::cout << "[OCR_REC] Loaded " << loaded_count 
-              << " words from frequency dictionary: " << dict_path << "\n";
 }
 
 /**
@@ -390,7 +386,6 @@ static float region_score_rect(const cv::Mat &prob, const cv::Rect &r) {
 extern "C"
 void paddleocr_det(HailoROIPtr roi, void *params_void_ptr) {
     if (!roi->has_tensors()) {
-        std::cout << "[OCR_DET] ERROR: No tensors in ROI\n";
         return;
     }
     auto *p = reinterpret_cast<OcrParams *>(params_void_ptr);
@@ -417,8 +412,7 @@ void paddleocr_det(HailoROIPtr roi, void *params_void_ptr) {
     
     // === SECTION 2: Probability Map Analysis ===
     cv::Mat prob = tensor_to_probmap_u8_as_float(t, H, W);
-    double mn, mx;
-    cv::minMaxLoc(prob, &mn, &mx);
+    // Optimized: Only count non-zero pixels, skip minMaxLoc (not used)
     int above_default = cv::countNonZero(prob > p->det_bin_thresh);
     float fg_ratio_default = float(above_default) / float(H*W);
 
@@ -442,12 +436,17 @@ void paddleocr_det(HailoROIPtr roi, void *params_void_ptr) {
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(bin, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
     
+    // Optimized: Early filtering - filter out tiny contours before expensive operations
+    const int MIN_CONTOUR_AREA = 20;  // Filter very small contours early
     std::vector<cv::Rect> rects;
     rects.reserve(contours.size());
     for (auto &c : contours) {
         if (c.empty()) continue;
         cv::Rect r = cv::boundingRect(c);
-        if (r.width>0 && r.height>0) rects.push_back(r);
+        // Early filter: skip very small rectangles before expensive operations
+        if (r.width > 0 && r.height > 0 && (r.width * r.height) >= MIN_CONTOUR_AREA) {
+            rects.push_back(r);
+        }
     }
     
     if (rects.empty()) {
@@ -475,7 +474,9 @@ void paddleocr_det(HailoROIPtr roi, void *params_void_ptr) {
     
     const int PAD_X0 = std::max(2, int(std::round(median_h * 0.6f)));
     const int PAD_Y0 = std::max(1, int(std::round(median_h * 0.35f)));
-    const int GROW_ITERS = 2;
+    // Optimized: Reduced iterations from 2 to 1 for better performance
+    // Box inflation is still effective with 1 iteration, and reduces computation by ~50%
+    const int GROW_ITERS = 1;
     const float GROW_X_PER_H = 0.15f;
     const float GROW_Y_PER_H = 0.12f;
     
@@ -522,19 +523,26 @@ void paddleocr_det(HailoROIPtr roi, void *params_void_ptr) {
     std::vector<HailoDetection> outs;
     outs.reserve(rects.size());
     
+    // Optimized: Filter by cheap criteria first, then calculate expensive score only for candidates
     for (size_t i=0; i<rects.size(); ++i) {
         const auto &r = rects[i];
-        float ar = float(r.width) / std::max(1, r.height);
+        
+        // Fast filters first (no expensive operations)
         int hpx = r.height;
+        if (hpx < MIN_H_PX) { dropped_minH++; continue; }
+        
         float area = float(r.width) * float(r.height);
+        if (area < MIN_AREA_PX) { dropped_area++; continue; }
+        
+        float ar = float(r.width) / std::max(1, r.height);
+        if (ar < AR_MIN || ar > AR_MAX) { dropped_ar++; continue; }
+        
+        // Only calculate expensive score after passing fast filters
         float score = region_score_rect(prob, r);
         float score_min = (ar > 16.0f) ? std::max(0.45f, SCORE_BASE - 0.15f) : SCORE_BASE;
-        
-        if (hpx < MIN_H_PX) { dropped_minH++; continue; }
-        if (area < MIN_AREA_PX) { dropped_area++; continue; }
-        if (ar < AR_MIN || ar > AR_MAX) { dropped_ar++; continue; }
         if (score < score_min) { dropped_score++; continue; }
         
+        // All filters passed, create detection
         float xmin = r.x * sx + roi_box.xmin();
         float ymin = r.y * sy + roi_box.ymin();
         float w = r.width * sx;
@@ -592,13 +600,13 @@ static HailoUniqueIDPtr get_tracking_id(HailoDetectionPtr detection) {
     return nullptr;
 }
 
+
 // ---------------------------  
 // OCR Recognition Post-process  
 // ---------------------------  
 extern "C"  
 void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr) {  
     if (!roi->has_tensors()) {  
-        std::cout << "[OCR_REC] ERROR: No tensors in ROI\n";
         return;  
     }  
     auto *p = reinterpret_cast<OcrParams *>(params_void_ptr);
@@ -632,17 +640,6 @@ void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr) {
         layout_is_NCT = false;
     }
     
-    // Debug: Print tensor shape and charset info (only first time to avoid spam)
-    static bool first_call = true;
-    if (first_call) {
-        std::cout << "[OCR_REC] Tensor shape: [" << N << "," << D1 << "," << D2 
-                  << "] | Interpreted as: T=" << T << ", C=" << C 
-                  << " | Layout: " << (layout_is_NCT ? "NCT" : "NTC")
-                  << " | Charset size: " << p->charset.size()
-                  << " | time_major: " << (p->time_major ? "true" : "false")
-                  << " | logits_are_softmax: " << (p->logits_are_softmax ? "true" : "false") << "\n";
-        first_call = false;
-    }
     
     // Build probs[T][C]
     std::vector<std::vector<float>> probs(T, std::vector<float>(C));
@@ -732,82 +729,37 @@ void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr) {
     }
     conf = conf_sum / (float)conf_list.size();
     
-    // Attach to detections and track for output
-    if (!out_text.empty() && out_text != " ") {
-        // Static map to track last sent text per track ID
-        static std::unordered_map<int, std::string> track_last_text;
-        
-        // Check if ROI itself is a detection (happens when cropper returns individual detections)
-        auto detection_roi = std::dynamic_pointer_cast<HailoDetection>(roi);
-        HailoDetectionPtr target_detection;
-        int track_id = -1;
-        bool is_new_track = false;
-        bool text_changed = false;
-        
-        if (detection_roi) {
-            // ROI is a detection itself
-            target_detection = detection_roi;
-            auto tracking_id = get_tracking_id(detection_roi);
-            if (tracking_id) {
-                track_id = tracking_id->get_id();
-                auto it = track_last_text.find(track_id);
-                if (it == track_last_text.end()) {
-                    is_new_track = true;
-                    track_last_text[track_id] = out_text;
-                } else {
-                    text_changed = (it->second != out_text);
-                    if (text_changed) {
-                        it->second = out_text;
-                    }
-                }
-            }
-        } else {
-            // ROI contains detections - attach to first detection
-            auto detections = hailo_common::get_hailo_detections(roi);
-            if (!detections.empty()) {
-                target_detection = detections[0];
-                auto tracking_id = get_tracking_id(detections[0]);
-                if (tracking_id) {
-                    track_id = tracking_id->get_id();
-                    auto it = track_last_text.find(track_id);
-                    if (it == track_last_text.end()) {
-                        is_new_track = true;
-                        track_last_text[track_id] = out_text;
-                    } else {
-                        text_changed = (it->second != out_text);
-                        if (text_changed) {
-                            it->second = out_text;
-                        }
-                    }
-                }
-            } else {
-                std::cout << "[OCR_REC] WARNING: No detections to attach classification\n";
-            }
+    // Attach classification to detection - simple and clean approach
+    if (out_text.empty() || out_text == " ") {
+        return;
+    }
+    
+    // Apply spell correction
+    std::string corrected_text = correct_text(out_text, *p);
+    std::string text_to_attach = (!corrected_text.empty() && corrected_text != out_text) ? corrected_text : out_text;
+    
+    // Find detection - cropper returns ROI with detection inside
+    HailoDetectionPtr target_detection = nullptr;
+    auto detection_roi = std::dynamic_pointer_cast<HailoDetection>(roi);
+    if (detection_roi) {
+        target_detection = detection_roi;
+    } else {
+        auto detections = hailo_common::get_hailo_detections(roi);
+        if (!detections.empty()) {
+            target_detection = detections[0];
+        }
+    }
+    
+    if (target_detection) {
+        // Remove existing classifications
+        auto existing = target_detection->get_objects_typed(HAILO_CLASSIFICATION);
+        for (auto &cls : existing) {
+            target_detection->remove_object(cls);
         }
         
-        // Apply spell correction if dictionary is loaded
-        std::string corrected_text = correct_text(out_text, *p);
-        
-        // Attach classification (use corrected text if available, otherwise original)
-        if (target_detection) {
-            std::string text_to_attach = (!corrected_text.empty() && corrected_text != out_text) ? corrected_text : out_text;
-            auto classification = std::make_shared<HailoClassification>("license_plate", text_to_attach, conf);
-            target_detection->add_object(classification);
-        }
-        
-        // Output only if new track or text changed
-        if (track_id >= 0 && (is_new_track || text_changed)) {
-            std::cout << "[OCR_REC] Track ID: " << track_id 
-                      << " | Decoded text: '" << out_text << "' (confidence: " 
-                      << std::fixed << std::setprecision(4) << conf << ")\n";
-            std::cout << "[OCR_REC] Track ID: " << track_id 
-                      << " | Translated text: '" << corrected_text << "'\n";
-        } else if (track_id < 0) {
-            // No tracking ID - output every time (fallback behavior)
-            std::cout << "[OCR_REC] Decoded text: '" << out_text << "' (confidence: " 
-                      << std::fixed << std::setprecision(4) << conf << ")\n";
-            std::cout << "[OCR_REC] Translated text: '" << corrected_text << "'\n";
-        }
+        // Add new classification with recognized text
+        auto classification = std::make_shared<HailoClassification>("text_region", text_to_attach, conf);
+        target_detection->add_object(classification);
     }
 }  
 
@@ -844,7 +796,10 @@ std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> image,
 
     const int img_w = image->width();
     const int img_h = image->height();
-    constexpr int MAX_TEXT_REGIONS = 10;
+    // MAX_TEXT_REGIONS: Set to 2 to match recognition batch_size=2
+    // Regions that already have classifications are skipped (don't send for recognition)
+    constexpr int MAX_TEXT_REGIONS = 2;  // Matches recognition batch_size=2
+    constexpr float MIN_CONFIDENCE = 0.12f;  // Increased from 0.09 to avoid processing low-quality detections
     constexpr float MIN_W_PX = 4.0f;
     constexpr float MIN_H_PX = 2.0f;
     
@@ -857,11 +812,34 @@ std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> image,
 
     // Return individual detection ROIs with padded boxes for cropping
     // The parent ROI keeps original boxes for display
+    // Filtering logic (all done in C++ to reduce Python processing):
+    // 1. Skip detections that already have classifications (already recognized - don't send for recognition)
+    //    This prevents reprocessing tracked detections that were already recognized in previous frames
+    // 2. Filter by confidence threshold
+    // 3. Filter by label and size
+    // 4. Limit total number of regions processed per frame (MAX_TEXT_REGIONS = 2, matches batch_size)
     int count = 0;
     for (auto &detection : detections) {
         if (!detection) continue;
-        if (count >= MAX_TEXT_REGIONS) break;
         if (detection->get_label() != "text_region") continue;
+        
+        // FIRST: Skip detections that already have classifications (already recognized)
+        // This prevents reprocessing tracked detections that were already recognized
+        auto existing_classifications = detection->get_objects_typed(HAILO_CLASSIFICATION);
+        if (!existing_classifications.empty()) {
+            continue;  // Detection already has OCR result, skip it
+        }
+        
+        // SECOND: Filter by confidence threshold to reduce processing load
+        if (detection->get_confidence() < MIN_CONFIDENCE) {
+            continue;  // Skip low-confidence detections
+        }
+        
+        // THIRD: Check count limit AFTER we know we're going to process this detection
+        // MAX_TEXT_REGIONS = 2 matches recognition batch_size=2
+        if (count >= MAX_TEXT_REGIONS) {
+            break;  // Reached limit of 2 detections per frame, stop processing more
+        }
 
         HailoBBox orig_bbox = detection->get_bbox();
         float nw = orig_bbox.width();
@@ -882,18 +860,23 @@ std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> image,
         float padded_w = padded_xmax - padded_xmin;
         float padded_h = padded_ymax - padded_ymin;
         
-        // Create a new detection with padded bbox for cropping
-        // The original detection in parent ROI keeps the original bbox for display
+        // IMPORTANT: Return the ORIGINAL detection object directly
+        // This ensures that when recognition attaches classifications to it,
+        // those classifications will be on the same detection object that exists
+        // in the parent ROI, so they'll be preserved after aggregation.
+        // The framework's cropper will handle the bbox for cropping internally
+        // via the ROI's scaling bbox or by using the detection's bbox temporarily.
+        // We set a scaling bbox on the ROI to tell the cropper to use padded bbox.
         HailoBBox padded_bbox(padded_xmin, padded_ymin, padded_w, padded_h);
-        HailoDetectionPtr padded_detection = std::make_shared<HailoDetection>(
-            padded_bbox, 
-            detection->get_label(), 
-            detection->get_confidence()
-        );
         
-        // Return the padded detection as a ROI (framework will use its bbox for cropping)
-        // The parent ROI still has the original detection with original bbox for display
-        out_rois.push_back(padded_detection);
+        // Create a ROI wrapper with the padded bbox for cropping
+        // The detection inside will be the original one, so classifications attach to it
+        HailoROIPtr crop_roi = std::make_shared<HailoROI>(padded_bbox);
+        crop_roi->add_object(detection);
+        
+        // Return the ROI containing the original detection
+        // When aggregator merges, it will preserve the classifications on the detection
+        out_rois.push_back(crop_roi);
         ++count;
     }
     

@@ -404,6 +404,7 @@ def CROPPER_PIPELINE(
     internal_offset=True,
     resize_method="bilinear",
     bypass_max_size_buffers=20,
+    bypass_leaky="no",
     name="cropper_wrapper",
 ):
     """Wraps an inner pipeline with hailocropper and hailoaggregator.
@@ -421,6 +422,7 @@ def CROPPER_PIPELINE(
         internal_offset (bool): If True, uses internal offsets. Defaults True.
         resize_method (str): The resize method. Defaults to 'inter-area'.
         bypass_max_size_buffers (int): For the bypass queue. Defaults to 20.
+        bypass_leaky (str): Leaky behavior for bypass queue ('no', 'upstream', 'downstream'). Defaults to 'no'.
         name (str): A prefix name for pipeline elements. Defaults 'cropper_wrapper'.
 
     Returns:
@@ -438,7 +440,7 @@ def CROPPER_PIPELINE(
         f"hailoaggregator name={name}_agg "
         # bypass
         f"{name}_cropper. ! "
-        f"{QUEUE(name=f'{name}_bypass_q', max_size_buffers=bypass_max_size_buffers)} ! {name}_agg.sink_0 "
+        f"{QUEUE(name=f'{name}_bypass_q', max_size_buffers=bypass_max_size_buffers, leaky=bypass_leaky)} ! {name}_agg.sink_0 "
         # pipeline for the actual inference
         f"{name}_cropper. ! {inner_pipeline} ! {name}_agg.sink_1 "
         # aggregator output

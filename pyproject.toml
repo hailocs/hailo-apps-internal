@@ -66,6 +66,7 @@ hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
 hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
 hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip_app:main"
+hailo-ocr  =                "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main"
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*"]
