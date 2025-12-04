@@ -160,15 +160,23 @@ if [[ "$SKIP_HAILO_BINDINGS" != true ]]; then
         
         if [[ -n "$summary_line" ]]; then
             IFS=' ' read -r -a pairs <<< "$summary_line"
-            HAILORT_VERSION="${pairs[1]#*=}"
-            TAPPAS_CORE_VERSION="${pairs[3]#*=}"
+            # SUMMARY format: hailo_arch=... hailo_pci=... hailort=... pyhailort=... tappas-core=... tappas-python=...
+            # Skip pairs[0] (hailo_arch) and start from pairs[1] (hailo_pci/driver)
+            # Use default empty value to avoid unbound variable errors with set -u
+            local hailort_val="${pairs[2]:-}"
+            local tappas_val="${pairs[4]:-}"
+            local pyhailort_val="${pairs[3]:-}"
+            local pytappas_val="${pairs[5]:-}"
+            # Remove key= prefix from each value
+            HAILORT_VERSION="${hailort_val#*=}"
+            TAPPAS_CORE_VERSION="${tappas_val#*=}"
             INSTALL_HAILORT=false
             INSTALL_TAPPAS_CORE=false
             
-            if [[ "${pairs[2]#*=}" == "-1" ]]; then
+            if [[ "${pyhailort_val#*=}" == "-1" ]]; then
                 INSTALL_HAILORT=true
             fi
-            if [[ "${pairs[4]#*=}" == "-1" ]]; then
+            if [[ "${pytappas_val#*=}" == "-1" ]]; then
                 INSTALL_TAPPAS_CORE=true
             fi
         else

@@ -210,7 +210,7 @@ def download_group_resources(
             download_arch = "hailo15h"
         model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
         if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-            model_zoo_version = "v5.1.1"
+            model_zoo_version = "v5.1.0"
         if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
             model_zoo_version = "v2.17.0"
         hailo_logger.info(f"Using Model Zoo version: {model_zoo_version}")
@@ -930,7 +930,7 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
         download_arch = "hailo15h"
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-        model_zoo_version = "v5.1.1"
+        model_zoo_version = "v5.1.0"
     if (hailo_arch == HAILO8_ARCH or hailo_arch == HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
         model_zoo_version = "v2.17.0"
     return model_zoo_version, download_arch
