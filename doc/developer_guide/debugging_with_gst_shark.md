@@ -22,6 +22,7 @@ sudo apt-get install -y \
     libtool \
     graphviz \
     pkg-config \
+    gtk-doc-tools
 ```
 
 ### Build and Install
@@ -39,12 +40,12 @@ We will build `gst-shark` from source.
 
     *   **For x86_64 PCs (Standard Ubuntu):**
         ```bash
-        ./autogen.sh --prefix=/usr/ --libdir=/usr/lib/x86_64-linux-gnu/
+        ./autogen.sh --prefix=/usr/ --libdir=/usr/lib/x86_64-linux-gnu/gstreamer-1.0/
         ```
 
     *   **For Raspberry Pi 5 (aarch64 / Debian Trixie):**
         ```bash
-        ./autogen.sh --prefix=/usr/ --libdir=/usr/lib/aarch64-linux-gnu/
+        ./autogen.sh --prefix=/usr/ --libdir=/usr/lib/aarch64-linux-gnu/gstreamer-1.0/
         ```
 
     *   *Tip: If you are unsure of your architecture, run `uname -m`. `x86_64` uses the first command, `aarch64` uses the second.*
@@ -63,7 +64,7 @@ Check if GStreamer can see the new tracers:
 gst-inspect-1.0 sharktracers
 ```
 
-You should see a list of tracers including `interlatency`, `proctime`, `framerate`, `queue_level`, etc.
+You should see a list of tracers including `interlatency`, `proctime`, `framerate`, `queuelevel`, etc.
 
 ---
 
@@ -76,7 +77,7 @@ You can print trace information directly to the console to debug bottlenecks liv
 This is critical for diagnosing "stuck" pipelines or jitter.
 
 ```bash
-GST_DEBUG="GST_TRACER:7" GST_TRACERS="queue_level" python3 your_app.py
+GST_DEBUG="GST_TRACER:7" GST_TRACERS="queuelevel" python3 your_app.py
 ```
 
 **What to look for:**
@@ -113,7 +114,7 @@ mkdir -p trace_data
 
 # Run the app with desired tracers
 GST_DEBUG="GST_TRACER:7" \
-GST_TRACERS="proc_time;interlatency;framerate;schedule_time;cpu_usage;queue_level" \
+GST_TRACERS="proctime;interlatency;framerate;scheduletime;cpuusage;queuelevel" \
 GST_SHARK_LOCATION=trace_data \
 python3 your_app.py
 ```
@@ -137,10 +138,10 @@ This will analyze the logs and generate PDF charts inside the `trace_data` direc
 
 Open the generated PDFs:
 
-*   **`queue_level.pdf`**: Shows the buffer count in every queue over time. Look for lines that plateau at the top (full) or bottom (empty).
+*   **`queuelevel.pdf`**: Shows the buffer count in every queue over time. Look for lines that plateau at the top (full) or bottom (empty).
 *   **`framerate.pdf`**: Shows the FPS at various points. Look for drops.
-*   **`cpu_usage.pdf`**: Shows CPU load per element.
-*   **`proc_time.pdf`**: Shows how long each element takes to process a buffer. This helps identify the slowest specific element (e.g., is it the inference engine, the post-process, or the display?).
+*   **`cpuusage.pdf`**: Shows CPU load per element.
+*   **`proctime.pdf`**: Shows how long each element takes to process a buffer. This helps identify the slowest specific element (e.g., is it the inference engine, the post-process, or the display?).
 
 ---
 
