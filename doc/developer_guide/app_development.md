@@ -49,6 +49,10 @@ The framework provides many specialized GStreamer elements.
 
 </details>
 
+### Debugging Tools
+For optimizing and debugging your GStreamer pipelines, we recommend using **GstShark**. It allows you to visualize queue levels, latency, and framerate to identify bottlenecks.
+See our [GstShark Debugging Guide](debugging_with_gst_shark.md) for installation and usage instructions.
+
 ### Level 3: Hailo Apps Python Layer
 This layer is developed in this repository to simplify the process of building and running applications on top of the GStreamer and TAPPAS foundation. It consists of three main components:
 *   **The Application Runner (`gstreamer_app.py`)**: This component features the `GStreamerApp` class, which serves as the core engine of the application. It is responsible for managing the pipeline's lifecycle, handling bus messages (such as errors or End-Of-Stream), and integrating your Python callback functions.
@@ -66,7 +70,7 @@ We suggest using one of our example callback applications, such as `hailo_apps/p
 The GStreamer pipeline handles all complex tasks, including video decoding, inference, and rendering. Your Python **callback** function is invoked for each frame processed by the pipeline, receiving both the video frame and the AI metadata.
 
 1.  **Data Production**: The pipeline processes a video frame, and the C++ post-processing library generates structured metadata (containing detections, etc.).
-2.  **Callback Invocation**: An `identity` element in the pipeline intercepts the GStreamer buffer and triggers your Python function, passing the metadata object to it.
+2.  **Callback Invocation**: An `identity` element in the pipeline intercepts the GStreamer buffer and triggers your Python function via the `handoff` signal, passing the element, buffer, and user data.
 3.  **Your Custom Logic**: Within your callback, you parse the metadata and perform any necessary actions.
 
 > **IMPORTANT**: The callback function must be non-blocking. Long-running tasks should be dispatched to a separate thread or process to prevent stalling the video pipeline.
@@ -98,11 +102,11 @@ gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 import hailo
 
-def app_callback(pad, info, user_data):
+def app_callback(element, buffer, user_data):
     user_data.increment()  # Count the number of frames
-    buffer = info.get_buffer()  # Get the GstBuffer from the probe info
+    # buffer is passed directly
     if buffer is None:
-        return Gst.PadProbeReturn.OK
+        return
     detections = hailo.get_roi_from_buffer(buffer).get_objects_typed(hailo.HAILO_DETECTION)
     people_count = 0
     for det in detections:
@@ -124,7 +128,7 @@ def app_callback(pad, info, user_data):
             "Detection: " + detection.get_label() + " Confidence: " + str(round(detection.get_confidence(), 2)) + "\n"
         )
     print(string_to_print)
-    return Gst.PadProbeReturn.OK
+    return
 ```
 
 #### 3. Write the Main Execution Block
