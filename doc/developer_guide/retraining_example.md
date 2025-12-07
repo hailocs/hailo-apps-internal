@@ -9,85 +9,83 @@ In this example, we're going to retrain the model to detect barcodes using the b
 - RAM: 202 GB
 - OS: Ubuntu 24.04
 
-## On the development machine
+#### However:
+- Training phase can be executed on any cloud service providing GPU resources (including Python notebook based).
+- Hailo compilation phase (convertion to HEF), although compute intensive, is managable on regular PC's (e.g., as an overnight task).
 
-#### Preparations:
+## On the training machine
+
+First we recommened to set a Python virtual envioronment:
+
+```bash
+python -m venv env
+source env/bin/activate
+```
+
+### Get the dataset:
  
-1. In order to easily download the Kaggle dataset via CLI on the development machine (which in many cases might be accessible only remotely via CLI): `pip install kagglehub`. Then go to the dataset page on Kaggle [barcode-detector](https://www.kaggle.com/datasets/kushagrapandya/barcode-detection) - click "Download" and copy-paste the Python code to a Python file (script) saved on the development machine. Then execute the script. This will download the dataset directly to the development machine to a location similar to: `~/.cache/kagglehub/datasets/kushagrapandya/barcode-detection/versions/1:/data`. Explore the folder structure, please pay attention to various data sets (test, train, valid), the structure - images & labels folders with corresponding by name samples (files) and how a label file looks like: object per row, leading class number (0-Barcode or 1-QR Code in our case) and then represented via bounding box coordinates.
-2. Follow the instructions on the YOLOv8 retraining page: [YOLOv8 Retraining](https://github.com/hailo-ai/hailo_model_zoo/tree/833ae6175c06dbd6c3fc8faeb23659c9efaa2dbe/training/yolov8/)
-    - In the "Build the docker image" section, in order to execute without cloning the model zoo git repo, a Dockerfile is required - It exists in the directory alongside the readme file (`~/hailo_model_zoo/training/yolov8`). Download it to the current directory and rename: `mv Dockerfile.txt Dockerfile`.
-    - In the "Start your docker" section, please pay attention to the part about mapping (mounting) the location on the development machine where the Kaggle dataset was downloaded to the Docker container. For example: `~/.cache/kagglehub/datasets/kushagrapandya/barcode-detection/versions/1:/data` - This will add a volume mount named `data` to the Docker container. 
-    
-    **Throughout this tutorial we will assume `/data/`**
+In order to easily download the Kaggle dataset via CLI on the development machine (which in many cases might be accessible only remotely via CLI):
 
-#### Launch the retraining
+```bash
+pip install kagglehub
+```
+
+Go to the dataset page on Kaggle [barcode-detector](https://www.kaggle.com/datasets/kushagrapandya/barcode-detection) - click "Download" and copy-paste the Python code to a new Python file (script) saved on the development machine. 
+It should look like:
+
+```bash
+import kagglehub
+path = kagglehub.dataset_download("kushagrapandya/barcode-detection")
+print("Path to dataset files:", path)
+```
+
+Execute the script. This will download the dataset directly to the development machine to a location similar to: `~/.cache/kagglehub/datasets/kushagrapandya/barcode-detection/versions/1:/data`. 
+
+Explore the folder structure, please pay attention to various data sets (test, train, valid), the structure - images & labels folders with files corresponding by name, how a label file looks like: object per row, leading with class number (0-Barcode or 1-QR Code in our case) and then represented via bounding box coordinates.
+
+### Launch the retraining
 
 This process might take a couple of hours. It's possible to execute with `epochs=1` to expedite testing the process validity end-to-end before launching full-scale training.
 
+The following dependency installation takes time:
 ```bash
-yolo detect train data=/data/barcode-detect/data.yaml model=yolov8s.pt name=retrain_yolov8s epochs=20 batch=8
+pip install ultralytics
 ```
 
-After the final epoch has finished, you should see a message like this:
-![final-epoch](../images/final-epoch.png)
-
-#### Validate the new checkpoint
+Execute the script (we will use 20 epochs):
 
 ```bash
-yolo predict task=detect source=/data/barcode-detect/valid/images/05102009190_jpg.rf.e9661dd52bd50001b08e7a510978560b.jpg model=./runs/detect/retrain_yolov8s/weights/best.pt
-```
-Expected output:
-![validate-model](../images/validate-model.png)
-
-#### Convert the model to ONNX
-
-Execute the CLI command within the container:
-
-(Tip: How to run CLI commands within the container: `exit` the container, `sudo docker start <container_id>`, then `sudo docker exec -it <container_id> bash`, and the container will start with CLI).
-
-```bash
-yolo export model=/workspace/ultralytics/runs/detect/retrain_yolov8s/weights/best.pt imgsz=640 format=onnx opset=11
+from ultralytics import YOLO
+dataset_dir = '.cache/kagglehub/datasets/kushagrapandya/barcode-detection/versions/1'
+model = YOLO('yolov8s.pt')
+results = model.train(data=f'{dataset_dir}/data.yaml', epochs=20, imgsz=640, batch=8, name='retrain_yolov8s')
+success = model.export(format='onnx', opset=11)
 ```
 
-#### Export the ONNX to a directory mapped outside the Docker container
+The trained model file (onnx) typically is saved to `~/runs/detect/retrain_yolov8s/weights/best.onnx`.
 
-```bash
-cp ./runs/detect/retrain_yolov8s/weights/best.onnx /data/barcode-detection.onnx
-```
-
-#### Exit the Docker 
+## Hailo compilation
 
 1. Download Hailo Dataflow Compiler (DFC) & Hailo Model Zoo (HMZ) from the [Developer Zone](https://hailo.ai/developer-zone/software-downloads/). These are two `.whl` files.
-2. Create a Python virtual environment, e.g., `python3 -m venv venv_dfc` and inside (`source venv_dfc/bin/activate`) pip install the two `.whl` files downloaded above (DFC & HMZ).
+2. pip install the two `.whl` files downloaded above (DFC & HMZ) (we recommend to use a Python virtual envioronment).
+3. Download the corresponding YAML from [our networks configuration directory](https://github.com/hailo-ai/hailo_model_zoo/tree/833ae6175c06dbd6c3fc8faeb23659c9efaa2dbe/hailo_model_zoo/cfg/networks), i.e., `hailo_model_zoo/cfg/networks/yolov8s.yaml`.
+4. `yolov8s_nms_config.json` file is required in a dedicated directory. Create the directory manually and move the required JSON file there:
 
-Make sure to be inside the venv.
+    ```bash
+    cd ~/lib/python3.12/site-packages/hailo_model_zoo/cfg/
+    mkdir postprocess_config
+    ```
+    The JSON file can be found as follows: 
+    In the YAML file mentioned above, find the zip URL - download the file - unzip - copy the JSON file into the above `postprocess_config` directory.
 
-#### Convert the ONNX to Hailo Executable Format (HEF)
+5. Use the Hailo Model Zoo command (this can take up to hours):
 
-Choose the corresponding YAML from [our networks configuration directory](https://github.com/hailo-ai/hailo_model_zoo/tree/833ae6175c06dbd6c3fc8faeb23659c9efaa2dbe/hailo_model_zoo/cfg/networks), i.e., `hailo_model_zoo/cfg/networks/yolov8s.yaml`.
-
-`yolov8s_nms_config.json` file is required in a dedicated directory.
-
-Create the directory manually and move the required JSON file there:
-```bash
-cd ~/lib/python3.12/site-packages/hailo_model_zoo/cfg/
-mkdir postprocess_config
-```
-The JSON file can be found as follows: In the YAML file mentioned above, find the zip URL - download the file - unzip - copy the JSON file into the above `postprocess_config` directory.
-
-Use the Hailo Model Zoo command (this can take up to hours):
+    - Note 1: In this example we are compiling to a target Hailo 10H device, other platforms (such as 8 or 8L) also available.
+    - Note 2: For compilation use the validation set (`valid`) for calibration data, as it represents unseen data but is available during the model optimization process: Used to tune hyperparameters and monitor training progress.
 
 ```bash
-hailomz compile \
---ckpt barcode-detection.onnx \
---calib-path <path to kaggle downloaded dataset - "valid" subdirectory> \
---yaml yolov8s.yaml \
---classes 2 \
---hw-arch <hailo8 or hailo8l or hailo10h> \
---performance
+hailomz compile --ckpt ~/path_to/best.onnx --calib-path ~/path_to_valid_data_set/ --yaml yolov8s.yaml --classes 2 --hw-arch hailo10h --performance
 ```
-You should get a message like this: 
-![successful-compilation](../images/successful-compilation.png)
 
 ## The yolov8s.hef file is now ready and can be used on the Raspberry Pi 5 AI Kit
 
@@ -99,19 +97,16 @@ The Kaggle barcode dataset has 2 classes: ['Barcode', 'QR Code'].
 
 YOLO assigns class IDs starting from 0:
 
-Class 0 = 'Barcode'
-
-Class 1 = 'QR Code'
+    Class 0 = 'Barcode'
+    Class 1 = 'QR Code'
 
 Hailo Model Conversion: 
 
 When YOLO models are converted to Hailo format, they allocate an extra class at index 0 for background/unlabeled detections. This shifts the actual classes:
 
-Class 0 = 'unlabeled' (background)
-
-Class 1 = 'Barcode'
-
-Class 2 = 'QR Code'
+    Class 0 = 'unlabeled' (background)
+    Class 1 = 'Barcode'
+    Class 2 = 'QR Code'
 
 ### Running the detection application with the example retrained model
 To download the example retrained model, run the following command:
