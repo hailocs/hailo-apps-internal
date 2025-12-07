@@ -18,16 +18,16 @@ class user_app_callback_class(app_callback_class):
         super().__init__()
 
 # User-defined callback function: This is the callback function that will be called when data is available from the pipeline
-def app_callback(pad, info, user_data):
+def app_callback(element, buffer, user_data):
     user_data.increment()  # Using the user_data to count the number of frames
     string_to_print = f"Frame count: {user_data.get_count()}\n"
-    buffer = info.get_buffer()  # Get the GstBuffer from the probe info
+    # buffer is passed directly
     if buffer is None:  # Check if the buffer is valid
-        return Gst.PadProbeReturn.OK
+        return
     for detection in hailo.get_roi_from_buffer(buffer).get_objects_typed(hailo.HAILO_DETECTION):  # Get the detections from the buffer & Parse the detections
         string_to_print += (f"Detection: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n")
     print(string_to_print)
-    return Gst.PadProbeReturn.OK
+    return
 
 def main():
     """Main function for CLI entry point."""

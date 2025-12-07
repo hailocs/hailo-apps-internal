@@ -9,13 +9,13 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.python.pipeline_apps.clip.clip_pipeline import GStreamerClipApp
 # endregion
 
-def app_callback(pad, info, user_data):
-    return Gst.PadProbeReturn.OK
+def app_callback(element, buffer, user_data):
+    return
 
 def main():
     user_data = app_callback_class()
     app = GStreamerClipApp(app_callback, user_data)
     app.run()
-    
+
 if __name__ == "__main__":
     main()

@@ -18,16 +18,17 @@ class user_app_callback_class(app_callback_class):
         super().__init__()
 
 # User-defined callback function: This is the callback function that will be called when data is available from the pipeline
-def app_callback(pad, info, user_data):
-    buffer = info.get_buffer()
+def app_callback(element, buffer, user_data):
     if buffer is None:
-        return Gst.PadProbeReturn.OK
+        return
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     for detection in detections:
-        track_id = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)[0].get_id()
-        print(f'Unified callback, {roi.get_stream_id()}_{detection.get_label()}_{track_id}')
-    return Gst.PadProbeReturn.OK
+        ids = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        if ids:
+            track_id = ids[0].get_id()
+            print(f'Unified callback, {roi.get_stream_id()}_{detection.get_label()}_{track_id}')
+    return
 
 def main():
     user_data = user_app_callback_class()  # Create an instance of the user app callback class

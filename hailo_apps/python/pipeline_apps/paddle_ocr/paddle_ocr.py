@@ -54,17 +54,16 @@ class user_app_callback_class(app_callback_class):
 
 
 # This is the callback function that will be called when data is available from the pipeline
-def app_callback(pad, info, user_data):
-    # Get the GstBuffer from the probe info
-    buffer = info.get_buffer()
-    # Check if the buffer is valid
+def app_callback(element, buffer, user_data):
+    # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer | frame=%s", user_data.get_count())
-        return Gst.PadProbeReturn.OK
+        return
 
     # Get video format and dimensions from pad caps
+    pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
-    
+
     # Using the user_data to count the number of frames
     user_data.increment()
     frame_idx = user_data.get_count()
@@ -84,7 +83,7 @@ def app_callback(pad, info, user_data):
         label = detection.get_label()
         bbox = detection.get_bbox()
         confidence = detection.get_confidence()
-        
+
         # Check for text regions (OCR detection uses "text_region" label)
         # Use confidence threshold 0.12 to match C++ postprocess code (MIN_CONFIDENCE)
         # Note: Classifications should be added in postprocess
@@ -100,13 +99,13 @@ def app_callback(pad, info, user_data):
                         break
                 if not text_result and len(ocr_objects) > 0:
                     text_result = ocr_objects[0].get_label()
-            
+
             # Filter out empty text results - only store and display non-empty text
             # Empty text usually indicates recognition failed or detection was false positive
             if text_result and text_result.strip():
                 # Store OCR result
                 user_data.add_ocr_result(text_result, confidence, bbox)
-                
+
                 string_to_print += (
                     f"OCR Detection: Text: '{text_result}' Confidence: {confidence:.2f}\n"
                 )
@@ -139,37 +138,37 @@ def app_callback(pad, info, user_data):
     if user_data.use_frame and format is not None and width is not None and height is not None:
         # Get video frame from the current buffer (extract fresh for each frame)
         frame = get_numpy_from_buffer(buffer, format, width, height)
-        
+
         if frame is not None:
             hailo_logger.debug("Frame extracted: shape=%s, dtype=%s", frame.shape, frame.dtype)
-            
+
             # Draw OCR results on frame
             ocr_results = user_data.get_ocr_results()
             hailo_logger.debug("Drawing %d OCR results on frame", len(ocr_results))
-            
+
             for idx, ocr_result in enumerate(ocr_results):
                 bbox = ocr_result['bbox']
                 text = ocr_result['text']
                 confidence = ocr_result['confidence']
-                
+
                 # Draw bounding box (use video dimensions from caps)
                 x1 = int(bbox.xmin() * width)
                 y1 = int(bbox.ymin() * height)
                 x2 = int((bbox.xmin() + bbox.width()) * width)
                 y2 = int((bbox.ymin() + bbox.height()) * height)
-                
+
                 # Ensure coordinates are within frame bounds
                 x1 = max(0, min(x1, width - 1))
                 y1 = max(0, min(y1, height - 1))
                 x2 = max(0, min(x2, width - 1))
                 y2 = max(0, min(y2, height - 1))
-                
-                hailo_logger.debug("Drawing box %d: text='%s' at (%d,%d)-(%d,%d)", 
+
+                hailo_logger.debug("Drawing box %d: text='%s' at (%d,%d)-(%d,%d)",
                                  idx, text, x1, y1, x2, y2)
-                
+
                 # Draw bounding box (BGR color: green)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                
+
                 # Draw text result (ensure text position is within frame)
                 text_label = f"{text} ({confidence:.2f})"
                 text_y = max(15, y1 - 10)  # Ensure text is visible above box
@@ -193,7 +192,7 @@ def app_callback(pad, info, user_data):
                 (0, 255, 0),
                 2,
             )
-            
+
             # Convert the frame to BGR for OpenCV display (frame is RGB from buffer)
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             user_data.set_frame(frame)
@@ -203,7 +202,7 @@ def app_callback(pad, info, user_data):
 
     print(string_to_print)
     hailo_logger.info(string_to_print.strip())
-    return Gst.PadProbeReturn.OK
+    return
 
 
 def main():
