@@ -280,6 +280,7 @@ MULTI_SOURCE_PARAMS_JSON_NAME = "multisource_params.json"
 TAPPAS_STREAM_ID_TOOL_SO_FILENAME = 'libstream_id_tool.so'
 
 # REID Multisource pipeline defaults
+REID_MULTISOURCE_PIPELINE = "reid_multisource"
 REID_MULTISOURCE_APP_TITLE = "Hailo REID Multisource App"
 REID_MULTI_SOURCE_DATABASE_DIR_NAME = "database"
 REID_POSTPROCESS_SO_FILENAME = "librepvgg_reid_postprocess.so"
@@ -293,6 +294,7 @@ REID_CLASSIFICATION_TYPE = 'reid'
 RTSP_APP_TITLE = "Hailo RTSP App"
 
 # TILING pipeline defaults
+TILING_PIPELINE = "tiling"
 TILING_APP_TITLE = "Hailo Tiling App"
 TILING_VIDEO_EXAMPLE_NAME = "tiling_visdrone_720p.mp4"
 
@@ -362,8 +364,8 @@ LLM_PROMPT_PREFIX = "Respond in up to three sentences. "
 TEMP_WAV_DIR = "/tmp"
 
 # OCR pipeline defaults
+PADDLE_OCR_PIPELINE = "paddle_ocr"
 OCR_APP_TITLE = "Hailo OCR App"
-OCR_PIPELINE = "ocr"
 OCR_DETECTION_MODEL_NAME = "ocr_det"
 OCR_RECOGNITION_MODEL_NAME = "ocr"
 OCR_POSTPROCESS_SO_FILENAME = "libocr_postprocess.so"

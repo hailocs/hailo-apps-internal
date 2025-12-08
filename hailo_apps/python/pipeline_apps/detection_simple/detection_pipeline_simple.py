@@ -2,7 +2,7 @@
 # Standard library imports
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.defines import (
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
@@ -47,6 +47,10 @@ class GStreamerDetectionApp(GStreamerApp):
             default=None,
             help="Path to costume labels JSON file",
         )
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, SIMPLE_DETECTION_PIPELINE)
+        
         hailo_logger.info("Initializing GStreamer Detection Simple App...")
         # Call the parent class constructor
         super().__init__(parser, user_data)
@@ -76,14 +80,12 @@ class GStreamerDetectionApp(GStreamerApp):
         # Architecture is already handled by GStreamerApp parent class
         # Use self.arch which is set by parent
 
-        # Set HEF path if not provided via parser
-        if self.hef_path is None:
-            self.hef_path = get_resource_path(
-                pipeline_name=SIMPLE_DETECTION_PIPELINE,
-                resource_type=RESOURCES_MODELS_DIR_NAME,
-                arch=self.arch,
-            )
-
+        # Resolve HEF path with smart lookup and auto-download
+        self.hef_path = resolve_hef_path(
+            self.hef_path,
+            app_name=SIMPLE_DETECTION_PIPELINE,
+            arch=self.arch
+        )
         hailo_logger.info(f"Using HEF path: {self.hef_path}")
 
         self.post_process_so = get_resource_path(

@@ -10,8 +10,8 @@ gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 
 # Local application-specific imports
-from hailo_apps.python.core.common.core import get_pipeline_parser
-from hailo_apps.python.core.common.defines import TILING_APP_TITLE
+from hailo_apps.python.core.common.core import get_pipeline_parser, handle_list_models_flag
+from hailo_apps.python.core.common.defines import TILING_APP_TITLE, TILING_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import SOURCE_PIPELINE, INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, TILE_CROPPER_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -37,6 +37,9 @@ class GStreamerTilingApp(GStreamerApp):
 
         # Add tiling-specific arguments
         self._add_tiling_arguments(parser)
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, TILING_PIPELINE)
 
         # Call the parent class constructor
         super().__init__(parser, user_data)

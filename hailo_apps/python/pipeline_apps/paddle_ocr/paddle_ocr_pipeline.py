@@ -5,10 +5,10 @@ import os
 
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
 from hailo_apps.python.core.common.defines import (
     OCR_APP_TITLE,
-    OCR_PIPELINE,
+    PADDLE_OCR_PIPELINE,
     OCR_DETECTION_MODEL_NAME,
     OCR_RECOGNITION_MODEL_NAME,
     OCR_POSTPROCESS_SO_FILENAME,
@@ -53,6 +53,9 @@ class GStreamerOCRApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, PADDLE_OCR_PIPELINE)
         
         hailo_logger.info("Initializing GStreamer OCR App...")
 

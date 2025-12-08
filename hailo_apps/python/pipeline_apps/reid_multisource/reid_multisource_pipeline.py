@@ -15,7 +15,7 @@ import numpy as np
 # Local application-specific imports
 import hailo
 from hailo import HailoTracker
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
 from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
@@ -49,7 +49,8 @@ from hailo_apps.python.core.common.defines import (
     RPI_NAME_I,
     HAILO8_ARCH,
     HAILO10H_ARCH,
-    HAILO8L_ARCH
+    HAILO8L_ARCH,
+    REID_MULTISOURCE_PIPELINE,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
@@ -74,6 +75,9 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
         # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
         parser.set_defaults(width=640, height=640)
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, REID_MULTISOURCE_PIPELINE)
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 

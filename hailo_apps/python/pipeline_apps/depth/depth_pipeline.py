@@ -9,7 +9,12 @@ import setproctitle
 gi.require_version("Gst", "1.0")
 
 # Local application-specific imports
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    resolve_hef_path,
+)
 from hailo_apps.python.core.common.defines import (
     DEPTH_APP_TITLE,
     DEPTH_PIPELINE,
@@ -49,6 +54,9 @@ class GStreamerDepthApp(GStreamerApp):
         if parser is None:
             parser = get_pipeline_parser()
             add_logging_cli_args(parser)
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, DEPTH_PIPELINE)
 
         hailo_logger.info("Initializing GStreamer Depth App...")
 
@@ -70,7 +78,12 @@ class GStreamerDepthApp(GStreamerApp):
         setproctitle.setproctitle(DEPTH_APP_TITLE)  # Set the process title
         hailo_logger.debug("Process title set to %s", DEPTH_APP_TITLE)
 
-        self.hef_path = get_resource_path(DEPTH_PIPELINE, RESOURCES_MODELS_DIR_NAME, self.arch)
+        # Resolve HEF path with smart lookup and auto-download
+        self.hef_path = resolve_hef_path(
+            self.hef_path,
+            app_name=DEPTH_PIPELINE,
+            arch=self.arch
+        )
         self.post_process_so = get_resource_path(
             DEPTH_PIPELINE, RESOURCES_SO_DIR_NAME, self.arch, DEPTH_POSTPROCESS_SO_FILENAME
         )

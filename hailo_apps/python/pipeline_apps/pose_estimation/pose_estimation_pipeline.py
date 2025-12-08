@@ -2,7 +2,12 @@
 # Standard library imports
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    resolve_hef_path,
+)
 from hailo_apps.python.core.common.defines import (
     POSE_ESTIMATION_APP_TITLE,
     POSE_ESTIMATION_PIPELINE,
@@ -37,10 +42,13 @@ hailo_logger = get_logger(__name__)
 # -----------------------------------------------------------------------------------------------
 class GStreamerPoseEstimationApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
-        hailo_logger.info("Initializing GStreamer Pose Estimation App...")
-
         if parser is None:
             parser = get_pipeline_parser()
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, POSE_ESTIMATION_PIPELINE)
+        
+        hailo_logger.info("Initializing GStreamer Pose Estimation App...")
 
         super().__init__(parser, user_data)
         hailo_logger.debug("Parser initialized, user_data ready.")
@@ -59,16 +67,13 @@ class GStreamerPoseEstimationApp(GStreamerApp):
         # Architecture is already handled by GStreamerApp parent class
         # Use self.arch which is set by parent
 
-        # Set HEF path if not provided via parser
-        if self.hef_path is None:
-            self.hef_path = get_resource_path(
-                pipeline_name=POSE_ESTIMATION_PIPELINE,
-                resource_type=RESOURCES_MODELS_DIR_NAME,
-                arch=self.arch,
-            )
-            hailo_logger.debug("Using default HEF path: %s", self.hef_path)
-        else:
-            hailo_logger.debug("Using custom HEF path: %s", self.hef_path)
+        # Resolve HEF path with smart lookup and auto-download
+        self.hef_path = resolve_hef_path(
+            self.hef_path,
+            app_name=POSE_ESTIMATION_PIPELINE,
+            arch=self.arch
+        )
+        hailo_logger.debug("Using HEF path: %s", self.hef_path)
 
         self.app_callback = app_callback
         self.post_process_so = get_resource_path(
