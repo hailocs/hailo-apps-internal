@@ -8,10 +8,12 @@ import logging
 import os
 import sys
 
-from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.core import get_resource_path, resolve_hef_path
 from hailo_apps.python.core.common.defines import (
+    AGENT_APP,
     LLM_CODER_MODEL_NAME_H10,
     RESOURCES_MODELS_DIR_NAME,
+    HAILO10H_ARCH,
 )
 
 # LLM Generation Parameters
@@ -128,11 +130,12 @@ def setup_logging() -> None:
     print(f"Logging level set to {log_level_str}")
 
 
-def get_hef_path() -> str:
+def get_hef_path(hef_path_arg: str | None = None) -> str:
     """
-    Get HEF path from configuration.
+    Get HEF path from configuration with auto-download support.
 
-    Resolves the HEF path using get_resource_path().
+    Resolves the HEF path using resolve_hef_path() which will automatically
+    download the model if not found locally.
 
     NOTE: This tool calling API was built for Qwen 2.5 Coder. Not all LLMs support this tool API format.
 
@@ -140,7 +143,11 @@ def get_hef_path() -> str:
     To use a custom HEF model:
     1. Set the HAILO_HEF_PATH environment variable to the absolute path of your .hef file.
        Example: export HAILO_HEF_PATH=/path/to/my/model.hef
-    2. OR modify DEFAULT_LLM_MODEL_NAME in this config file to use a different model name.
+    2. OR use --hef-path argument
+    3. OR modify DEFAULT_LLM_MODEL_NAME in this config file to use a different model name.
+
+    Args:
+        hef_path_arg: Optional HEF path from command line argument
 
     Returns:
         str: Absolute path to the HEF file as a string
@@ -152,17 +159,22 @@ def get_hef_path() -> str:
     custom_path = os.environ.get("HAILO_HEF_PATH")
     if custom_path:
         return custom_path
+    
+    # Check if user provided a path via argument
+    if hef_path_arg:
+        custom_path = hef_path_arg
 
-    # Default: Use the standard model from resources
-    # LLM model is for H10 architecture
-    hef_path = get_resource_path(
-        pipeline_name=None,
-        resource_type=RESOURCES_MODELS_DIR_NAME,
-        model=DEFAULT_LLM_MODEL_NAME
+    # Use resolve_hef_path which handles auto-download
+    # Agent is Hailo-10H only
+    hef_path = resolve_hef_path(
+        custom_path,
+        app_name=AGENT_APP,
+        arch=HAILO10H_ARCH
     )
 
     if hef_path is None:
         raise ValueError(
-            f"Could not find HEF file for model '{DEFAULT_LLM_MODEL_NAME}'."
+            f"Could not find or download HEF file for agent model. "
+            f"Please run: hailo-download-resources --group agent"
         )
     return str(hef_path)

@@ -561,11 +561,16 @@ def resolve_hef_path(
     resources_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
     models_dir = resources_root / RESOURCES_MODELS_DIR_NAME / arch
     
+    # Get available models for this app/arch
+    available_models = get_all_models_for_app_and_arch(app_name, arch)
+    default_model = get_default_model_for_app_and_arch(app_name, arch)
+    is_using_default = False
+    
     # Case 1: No hef_path provided - use default model
     if hef_path is None:
-        default_model = get_default_model_for_app_and_arch(app_name, arch)
         if default_model:
             hef_path = default_model
+            is_using_default = True
             hailo_logger.info(f"Using default model: {default_model}")
         else:
             # Fallback to legacy pipeline-based model
@@ -599,10 +604,18 @@ def resolve_hef_path(
         hailo_logger.info(f"Found HEF in resources: {resource_path}")
         return resource_path
     
-    # Case 4: Check if it's a known model and download it
-    available_models = get_all_models_for_app_and_arch(app_name, arch)
+    # Case 4: Model not found locally - check if it's in the available models list
     if model_name in available_models:
-        hailo_logger.info(f"Model '{model_name}' not found locally, downloading...")
+        # Show warning before downloading
+        if is_using_default:
+            print(f"\n⚠️  WARNING: Default model '{model_name}' is not downloaded.")
+            print(f"   Downloading model for {app_name}/{arch}...")
+            print(f"   This may take a while depending on your internet connection.\n")
+        else:
+            print(f"\n⚠️  WARNING: Model '{model_name}' is not downloaded.")
+            print(f"   Downloading model for {app_name}/{arch}...")
+            print(f"   This may take a while depending on your internet connection.\n")
+        
         if _download_model(model_name, arch):
             if resource_path.exists():
                 hailo_logger.info(f"Model downloaded successfully: {resource_path}")
@@ -614,10 +627,10 @@ def resolve_hef_path(
             hailo_logger.error(f"Failed to download model: {model_name}")
             return None
     
-    # Not found
+    # Model not in available list - don't auto-download unknown models
     hailo_logger.error(
-        f"Model '{model_name}' not found. "
-        f"Available models for {app_name}/{arch}: {', '.join(available_models)}"
+        f"Model '{model_name}' not found and not in available models list. "
+        f"Available models for {app_name}/{arch}: {', '.join(available_models) if available_models else 'None'}"
     )
     return None
 

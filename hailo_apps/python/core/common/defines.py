@@ -338,7 +338,13 @@ BARCODE_VIDEO_EXAMPLE_NAME = "barcode.mp4"
 # Gstreamer pipeline defaults
 GST_VIDEO_SINK = "autovideosink"
 
-# Gen AI defaults
+# Gen AI app defaults
+VLM_CHAT_APP = "vlm_chat"
+LLM_CHAT_APP = "llm_chat"
+WHISPER_CHAT_APP = "whisper_chat"
+AGENT_APP = "agent"
+
+# Gen AI model defaults
 VLM_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
 LLM_MODEL_NAME_H10 = "Qwen2.5-1.5B-Instruct"
 LLM_CODER_MODEL_NAME_H10 = "Qwen2.5-Coder-1.5B-Instruct"

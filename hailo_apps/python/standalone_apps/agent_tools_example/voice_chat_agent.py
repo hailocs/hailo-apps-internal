@@ -33,7 +33,8 @@ from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     tool_parsing,
     tool_selection,
 )
-from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
+from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID, AGENT_APP
+from hailo_apps.python.core.common.core import handle_list_models_flag
 
 try:
     from . import config, system_prompt
@@ -274,19 +275,22 @@ def main():
         return
 
     parser = argparse.ArgumentParser(description='Voice-enabled AI Tool Agent')
+    parser.add_argument('--hef-path', type=str, default=None, help='Path to HEF model file')
+    parser.add_argument('--list-models', action='store_true', help='List available models')
+    parser.add_argument('--arch', type=str, default='hailo10h', help='Hailo architecture')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--no-tts', action='store_true', help='Disable TTS')
+    
+    # Handle --list-models flag before full initialization
+    handle_list_models_flag(parser, AGENT_APP)
+    
     args = parser.parse_args()
 
-    # Get HEF
+    # Get HEF (with auto-download support)
     try:
-        hef_path = config.get_hef_path()
+        hef_path = config.get_hef_path(args.hef_path)
     except ValueError as e:
         logger.error(f"{e}")
-        return
-
-    if not os.path.exists(hef_path):
-        logger.error(f"HEF file, {hef_path}, not found.")
         return
 
     # Tool Selection
