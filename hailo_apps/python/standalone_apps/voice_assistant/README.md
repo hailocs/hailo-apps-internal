@@ -106,19 +106,19 @@ ctl.!default {
 
 ## Files
 
-- `voice_asistant.py` - Main application with terminal-based voice interface
+- `voice_assistant.py` - Main application with terminal-based voice interface
 
 ## Usage
 
 1. Run the application:
    ```bash
-   python voice_asistant.py
+   python voice_assistant.py
    ```
 
 2. Optional flags:
    ```bash
-   python voice_asistant.py --debug      # Enable audio file saving
-   python voice_asistant.py --no-tts     # Disable text-to-speech
+   python voice_assistant.py --debug      # Enable audio file saving
+   python voice_assistant.py --no-tts     # Disable text-to-speech
    ```
 
 3. **Interactive controls**:
