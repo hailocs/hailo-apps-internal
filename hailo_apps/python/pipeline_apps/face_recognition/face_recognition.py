@@ -50,10 +50,9 @@ class user_callbacks_class(app_callback_class):
             self.telegram_handler.send_notification(name, global_id, confidence, frame)
     # endregion
 
-def app_callback(pad, info, user_data):
-    buffer = info.get_buffer()
+def app_callback(element, buffer, user_data):
     if buffer is None:
-        return Gst.PadProbeReturn.OK
+        return
     user_data.increment()
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
@@ -76,9 +75,9 @@ def app_callback(pad, info, user_data):
                     if track_id > user_data.latest_track_id:
                         user_data.latest_track_id = track_id
                         print(string_to_print)
-    return Gst.PadProbeReturn.OK
+    return
 
-def main():  
+def main():
     user_data = user_callbacks_class()
     pipeline = GStreamerFaceRecognitionApp(app_callback, user_data)  # appsink_callback argument provided anyway although in non UI interface where eventually not used - since here we don't have access to requested UI/CLI mode
     if pipeline.options_menu.mode == 'delete':
@@ -90,5 +89,5 @@ def main():
     else:  # 'run' mode
         pipeline.run()
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     main()

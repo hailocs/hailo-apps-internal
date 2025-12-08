@@ -44,13 +44,13 @@ class user_app_callback_class(app_callback_class):
 
 
 # This is the callback function that will be called when data is available from the pipeline
-def app_callback(pad, info, user_data):
+def app_callback(element, buffer, user_data):
     # Get the GstBuffer from the probe info
-    buffer = info.get_buffer()
+    # buffer = info.get_buffer() # handoff callback passes the buffer directly
     # Check if the buffer is valid
     if buffer is None:
         hailo_logger.warning("Received None buffer | frame=%s", user_data.get_count())
-        return Gst.PadProbeReturn.OK
+        return
 
     # Using the user_data to count the number of frames
     user_data.increment()
@@ -58,6 +58,7 @@ def app_callback(pad, info, user_data):
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
     # Get the caps from the pad
+    pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
     hailo_logger.debug("Frame=%s | caps fmt=%s %sx%s", frame_idx, format, width, height)
 
@@ -126,7 +127,7 @@ def app_callback(pad, info, user_data):
 
     print(string_to_print)
     hailo_logger.info(string_to_print.strip())
-    return Gst.PadProbeReturn.OK
+    return
 
 
 def main():

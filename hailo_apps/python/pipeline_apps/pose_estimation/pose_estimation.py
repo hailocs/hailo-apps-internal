@@ -39,18 +39,19 @@ class user_app_callback_class(app_callback_class):
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
-def app_callback(pad, info, user_data):
+def app_callback(element, buffer, user_data):
     hailo_logger.debug("Callback triggered. Current frame count=%d", user_data.get_count())
 
-    buffer = info.get_buffer()
+    # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer.")
-        return Gst.PadProbeReturn.OK
+        return
 
     user_data.increment()
     hailo_logger.debug("Frame count incremented to %d", user_data.get_count())
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
+    pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
     hailo_logger.debug("Video format=%s width=%d height=%d", format, width, height)
 
@@ -103,7 +104,7 @@ def app_callback(pad, info, user_data):
 
     print(string_to_print)
     hailo_logger.debug("Frame log:\n%s", string_to_print)
-    return Gst.PadProbeReturn.OK
+    return
 
 
 def get_keypoints():

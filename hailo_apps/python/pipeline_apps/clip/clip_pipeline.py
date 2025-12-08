@@ -13,8 +13,8 @@ from gi.repository import Gst
 # Local application-specific imports
 import hailo
 from hailo_apps.python.core.common.defines import (
-    RESOURCES_SO_DIR_NAME, 
-    RESOURCES_MODELS_DIR_NAME, 
+    RESOURCES_SO_DIR_NAME,
+    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     RESOURCES_JSON_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
@@ -30,13 +30,13 @@ from hailo_apps.python.core.common.defines import (
 from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    QUEUE, 
-    SOURCE_PIPELINE, 
-    INFERENCE_PIPELINE, 
-    INFERENCE_PIPELINE_WRAPPER, 
-    TRACKER_PIPELINE, 
-    USER_CALLBACK_PIPELINE, 
-    DISPLAY_PIPELINE, 
+    QUEUE,
+    SOURCE_PIPELINE,
+    INFERENCE_PIPELINE,
+    INFERENCE_PIPELINE_WRAPPER,
+    TRACKER_PIPELINE,
+    USER_CALLBACK_PIPELINE,
+    DISPLAY_PIPELINE,
     CROPPER_PIPELINE,
     OVERLAY_PIPELINE
 )
@@ -96,19 +96,20 @@ class GStreamerClipApp(GStreamerApp):
         self.classified_tracks = set()  # Track which track_ids have already been classified
 
         self.matching_callback_name = 'matching_identity_callback'
-    
+
         self.create_pipeline()
 
         identity = self.pipeline.get_by_name(self.matching_callback_name)
-        identity_pad = identity.get_static_pad("src")  # src is the output of an element
-        identity_pad.add_probe(Gst.PadProbeType.BUFFER, self.matching_identity_callback, self.user_data)  # trigger - when the pad gets buffer
+        if identity:
+            identity.set_property("signal-handoffs", True)
+            identity.connect("handoff", self.matching_identity_callback, self.user_data)
 
     def run(self):
         self.win.connect('delete-event', self.on_window_close)
         self.win.show_all()
         signal.signal(signal.SIGINT, signal.SIG_DFL)
         super().run()
-        
+
     def on_window_close(self, window, event):
         self.loop.quit()
         return False
@@ -140,7 +141,7 @@ class GStreamerClipApp(GStreamerApp):
                 scheduler_timeout_ms=1000,
                 name='clip_inference'
         )
-    
+
         tracker_pipeline = TRACKER_PIPELINE(class_id=self.class_id, keep_past_metadata=True)
 
         clip_cropper_pipeline = CROPPER_PIPELINE(
@@ -157,11 +158,11 @@ class GStreamerClipApp(GStreamerApp):
             clip_hmux. ! {QUEUE(name="clip_hmux_queue")} '
 
         display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps='True')
-        
+
         overlay_pipeline = OVERLAY_PIPELINE()
 
         matching_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.matching_callback_name)
-        
+
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
 
         if self.detector == 'none':
@@ -184,13 +185,12 @@ class GStreamerClipApp(GStreamerApp):
                 f'{display_pipeline}'
             )
 
-    def matching_identity_callback(self, pad, info, user_data):
-        buffer = info.get_buffer()
+    def matching_identity_callback(self, element, buffer, user_data):
         if buffer is None:
-            return Gst.PadProbeReturn.OK
+            return
         roi = hailo.get_roi_from_buffer(buffer)
         if roi is None:
-            return Gst.PadProbeReturn.OK
+            return
         top_level_matrix = roi.get_objects_typed(hailo.HAILO_MATRIX)
         if len(top_level_matrix) == 0:
             detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
@@ -221,19 +221,19 @@ class GStreamerClipApp(GStreamerApp):
             matches = text_image_matcher.match(embeddings_np, report_all=True, update_tracked_probability=update_tracked_probability)
             for match in matches:  # (row_idx - in embeddings_np or used_detection, text, similarity (confidence), entry_index - TextImageMatcher.entries - which text prompt matched best) = match
                 detection = used_detection[match.row_idx]
-                
+
                 # Get old classifications BEFORE adding new ones
                 old_classification = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)
-                
+
                 if (match.passed_threshold and not match.negative):
                     # Add label as classification metadata
                     classification = hailo.HailoClassification('clip', match.text, match.similarity)
                     detection.add_object(classification)
-                    
+
                     # Remove old classifications only when new one is added
                     for old in old_classification:
                         detection.remove_object(old)
-        return Gst.PadProbeReturn.OK
+        return
 
 if __name__ == "__main__":
     user_data = app_callback_class()

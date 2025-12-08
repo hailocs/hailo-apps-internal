@@ -58,13 +58,13 @@ COLORS = [
 # -----------------------------------------------------------------------------------------------
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
-def app_callback(pad, info, user_data):
+def app_callback(element, buffer, user_data):
     hailo_logger.debug("Callback triggered. Current frame count=%d", user_data.get_count())
 
-    buffer = info.get_buffer()
+    # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer in callback.")
-        return Gst.PadProbeReturn.OK
+        return
 
     user_data.increment()
     hailo_logger.debug("Incremented frame count to %d", user_data.get_count())
@@ -74,8 +74,9 @@ def app_callback(pad, info, user_data):
         hailo_logger.debug(
             "Skipping frame %d due to frame_skip=%d", user_data.get_count(), user_data.frame_skip
         )
-        return Gst.PadProbeReturn.OK
+        return
 
+    pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
     hailo_logger.debug("Video format=%s width=%d height=%d", format, width, height)
 
@@ -167,7 +168,7 @@ def app_callback(pad, info, user_data):
         user_data.set_frame(reduced_frame)
         hailo_logger.debug("Frame set for user_data after processing.")
 
-    return Gst.PadProbeReturn.OK
+    return
 
 
 def main():

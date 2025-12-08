@@ -5,6 +5,21 @@ import signal
 import sys
 import threading
 from pathlib import Path
+
+# Fix for X11 threading issue
+import ctypes
+import ctypes.util
+
+# Try to find and load X11 to initialize threads
+_x11_lib = ctypes.util.find_library('X11')
+if _x11_lib is None:
+    _x11_lib = 'libX11.so.6'  # Fallback to standard SONAME
+
+try:
+    ctypes.CDLL(_x11_lib).XInitThreads()
+except OSError:
+    pass  # X11 likely not present (headless or non-Linux)
+
 import cv2
 import setproctitle
 
@@ -109,9 +124,9 @@ class app_callback_class:
             return None
 
 
-def dummy_callback(pad, info, user_data):
+def dummy_callback(element, buffer, user_data):
     hailo_logger.debug("dummy_callback invoked; doing nothing.")
-    return Gst.PadProbeReturn.OK
+    return
 
 
 # -----------------------------------------------------------------------------------------------
@@ -192,19 +207,19 @@ class GStreamerApp:
 
         # Handle batch-size from parser (default: 1)
         self.batch_size = getattr(self.options_menu, 'batch_size', 1)
-        
+
         # Handle width/height from parser (defaults: 1280x720)
         # Note: parser sets default=None, so we need to check for None explicitly
         width = getattr(self.options_menu, 'width', None)
         height = getattr(self.options_menu, 'height', None)
         self.video_width = width if width is not None else 1280
         self.video_height = height if height is not None else 720
-        
+
         self.video_format = HAILO_RGB_VIDEO_FORMAT
-        
+
         # Handle hef-path from parser (default: None, apps can override)
         self.hef_path = getattr(self.options_menu, 'hef_path', None)
-        
+
         self.app_callback = None
 
         user_data.use_frame = self.options_menu.use_frame
@@ -298,6 +313,22 @@ class GStreamerApp:
             hailo_logger.debug("Non-file source detected; shutting down")
             self.shutdown()
 
+    def _connect_callback(self):
+        """
+        Connects the user callback to the identity_callback element using the handoff signal.
+        """
+        if not self.options_menu.disable_callback:
+            identity = self.pipeline.get_by_name("identity_callback")
+            if identity is None:
+                hailo_logger.warning("identity_callback not found in pipeline")
+                print("Warning: identity_callback element not found...")
+            else:
+                hailo_logger.debug("Connecting handoff signal to identity_callback")
+                identity.set_property("signal-handoffs", True)
+                # Disconnect old handlers if any (though difficult to track without ID,
+                # assuming this is called on fresh pipeline or rebuild)
+                identity.connect("handoff", self.app_callback, self.user_data)
+
     def _rebuild_pipeline(self):
         """
         Completely rebuild the pipeline from scratch for clean looping.
@@ -342,14 +373,8 @@ class GStreamerApp:
             bus.add_signal_watch()
             bus.connect("message", self.bus_call, self.loop)
 
-            # Step 4: Reattach pad probe if needed
-            if not self.options_menu.disable_callback:
-                identity = self.pipeline.get_by_name("identity_callback")
-                if identity:
-                    hailo_logger.debug("Reattaching pad probe to identity_callback")
-                    identity.get_static_pad("src").add_probe(
-                        Gst.PadProbeType.BUFFER, self.app_callback, self.user_data
-                    )
+            # Step 4: Reattach callback
+            self._connect_callback()
 
             # Step 5: Start the new pipeline
             hailo_logger.debug("Starting new pipeline")
@@ -430,16 +455,7 @@ class GStreamerApp:
         bus.add_signal_watch()
         bus.connect("message", self.bus_call, self.loop)
 
-        if not self.options_menu.disable_callback:
-            identity = self.pipeline.get_by_name("identity_callback")
-            if identity is None:
-                hailo_logger.warning("identity_callback not found in pipeline")
-                print("Warning: identity_callback element not found...")
-            else:
-                hailo_logger.debug("Adding pad probe to identity_callback")
-                identity.get_static_pad("src").add_probe(
-                    Gst.PadProbeType.BUFFER, self.app_callback, self.user_data
-                )
+        self._connect_callback()
 
         hailo_display = self.pipeline.get_by_name("hailo_display")
         if hailo_display is None and not getattr(self.options_menu, "ui", False):

@@ -68,7 +68,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_cal
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
 class GStreamerREIDMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
-        
+
         if parser == None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
@@ -125,7 +125,7 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         self.tracker = HailoTracker.get_instance()  # tracker object
 
         self.app_callback = app_callback
-        self.generate_callbacks()        
+        self.generate_callbacks()
         self.create_pipeline()
         self.connect_src_callbacks()
 
@@ -135,9 +135,9 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         os.makedirs(self.database_dir, exist_ok=True)
 
         # Initialize the database and table
-        self.db_handler = DatabaseHandler(db_name='cross_tracked.db', 
-                                          table_name='cross_tracked', 
-                                          schema=Record, 
+        self.db_handler = DatabaseHandler(db_name='cross_tracked.db',
+                                          table_name='cross_tracked',
+                                          schema=Record,
                                           threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
                                           database_dir=self.database_dir,
                                           samples_dir=None)
@@ -149,8 +149,8 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         tappas_post_process_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, '')
         set_stream_id_so = os.path.join(tappas_post_process_dir, TAPPAS_STREAM_ID_TOOL_SO_FILENAME)
         for id in range(self.num_sources):
-            sources_string += SOURCE_PIPELINE(video_source=self.video_sources_types[id][0], 
-                                              video_width=self.video_width, video_height=self.video_height, 
+            sources_string += SOURCE_PIPELINE(video_source=self.video_sources_types[id][0],
+                                              video_width=self.video_width, video_height=self.video_height,
                                               frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=True)
             sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path='src_{id}' "
             sources_string += f"! robin.sink_{id} "
@@ -178,49 +178,67 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
 
         pipeline_string = sources_string + inference_string + router_string
         return pipeline_string
-    
+
     def generate_callbacks(self):
         # Dynamically define callback functions per sources
         for id in range(self.num_sources):
-            def callback_function(pad, info, user_data, id=id):  # roi.get_stream_id() == id
-                tracker_names = self.tracker.get_trackers_list()
-                buffer = info.get_buffer()
-                if buffer is None:
-                    return Gst.PadProbeReturn.OK
-                roi = hailo.get_roi_from_buffer(buffer)
-                detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-                for detection in detections:
-                    embedding = detection.get_objects_typed(hailo.HAILO_MATRIX)
-                    if len(embedding) == 0:
-                        continue
-                    embedding_vector = np.array(embedding[0].get_data())
-                    res = self.db_handler.search_record(embedding=embedding_vector)
-                    s_id = roi.get_stream_id().replace("'", "")
-                    classifications = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)  # remove all old classifications both from detection object & tracker's detection pointer 
-                    for classification in classifications:
-                        detection.remove_object(classification)
-                    track_id = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)[0].get_id()
-                    new_classification = None
-                    if res['label'] == 'Unknown':
-                        res = self.db_handler.create_record(embedding=embedding_vector, sample=None, timestamp=int(time.time()), label=f"first created at src {id}_{detection.get_label()}_{str(uuid.uuid4())[-4:]}")
-                        new_classification = hailo.HailoClassification(type=REID_CLASSIFICATION_TYPE, label=f'{s_id}, first created at src {id}_{detection.get_label()}_{str(uuid.uuid4())[-4:]}', confidence=0)
-                    else:
-                        if res['_distance'] < 0: res['_distance'] = 0  # Ensure distance is non-negative, happens with values like -1.19e-7
-                        new_classification = hailo.HailoClassification(type=REID_CLASSIFICATION_TYPE, label=f"{s_id}," + res['label'], confidence=(1-res['_distance']))
-                    detection.add_object(new_classification)
-                    for tracker_name in tracker_names:
-                        self.tracker.remove_classifications_from_track(tracker_name, track_id, REID_CLASSIFICATION_TYPE)
-                        self.tracker.add_object_to_track(tracker_name, track_id, new_classification)
-                return Gst.PadProbeReturn.OK
+            # Using handoff signature: (element, buffer, user_data)
+            def callback_function(element, buffer, user_data, id=id):  # roi.get_stream_id() == id
+                try:
+                    if buffer is None:
+                        return
+
+                    tracker_names = self.tracker.get_trackers_list()
+                    roi = hailo.get_roi_from_buffer(buffer)
+                    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+
+                    for detection in detections:
+                        embedding = detection.get_objects_typed(hailo.HAILO_MATRIX)
+                        if len(embedding) == 0:
+                            continue
+
+                        embedding_vector = np.array(embedding[0].get_data())
+                        res = self.db_handler.search_record(embedding=embedding_vector)
+                        s_id = roi.get_stream_id().replace("'", "")
+
+                        classifications = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)  # remove all old classifications both from detection object & tracker's detection pointer
+                        for classification in classifications:
+                            detection.remove_object(classification)
+
+                        ids = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+                        if not ids:
+                            continue
+                        track_id = ids[0].get_id()
+
+                        new_classification = None
+                        if res['label'] == 'Unknown':
+                            res = self.db_handler.create_record(embedding=embedding_vector, sample=None, timestamp=int(time.time()), label=f"first created at src {id}_{detection.get_label()}_{str(uuid.uuid4())[-4:]}")
+                            new_classification = hailo.HailoClassification(type=REID_CLASSIFICATION_TYPE, label=f'{s_id}, first created at src {id}_{detection.get_label()}_{str(uuid.uuid4())[-4:]}', confidence=0)
+                        else:
+                            if res['_distance'] < 0: res['_distance'] = 0  # Ensure distance is non-negative, happens with values like -1.19e-7
+                            new_classification = hailo.HailoClassification(type=REID_CLASSIFICATION_TYPE, label=f"{s_id}," + res['label'], confidence=(1-res['_distance']))
+
+                        detection.add_object(new_classification)
+                        for tracker_name in tracker_names:
+                            self.tracker.remove_classifications_from_track(tracker_name, track_id, REID_CLASSIFICATION_TYPE)
+                            self.tracker.add_object_to_track(tracker_name, track_id, new_classification)
+
+                except Exception as e:
+                    print(f"Error in callback source {id}: {e}")
+                return
+
             # Attach the callback function to the instance
             setattr(self, f'src_{id}_callback', callback_function)
-    
+
     def connect_src_callbacks(self):
         for id in range(self.num_sources):
             identity = self.pipeline.get_by_name(f'src_{id}_callback')
-            identity_pad = identity.get_static_pad(f'src')
-            callback_function = getattr(self, f'src_{id}_callback', None)
-            identity_pad.add_probe(Gst.PadProbeType.BUFFER, callback_function, self.user_data)
+            if identity:
+                # Enable handoff signal
+                identity.set_property("signal-handoffs", True)
+                callback_function = getattr(self, f'src_{id}_callback', None)
+                # Connect to the handoff signal instead of using a pad probe
+                identity.connect("handoff", callback_function, self.user_data)
 
 def main():
     # Create an instance of the user app callback class
@@ -228,7 +246,7 @@ def main():
     app_callback = dummy_callback
     app = GStreamerREIDMultisourceApp(app_callback, user_data)
     app.run()
-    
+
 if __name__ == "__main__":
     print("Starting Hailo REID Multisource App...")
     main()
