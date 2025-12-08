@@ -8,8 +8,11 @@ from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.python.pipeline_apps.tiling.tiling_pipeline import GStreamerTilingApp
+
+hailo_logger = get_logger(__name__)
 # endregion imports
 
 # User-defined class to be used in the callback function: Inheritance from the app_callback_class

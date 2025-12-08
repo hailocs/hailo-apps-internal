@@ -135,11 +135,11 @@ def app_callback(element, buffer, user_data):
 This part ties everything together. It creates an instance of your callback class, sets up the detection pipeline, and starts the application. This is the entry point of your script.
 
 ```python
-from hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
+from hailo_apps.python.pipeline_apps.detection_simple.detection_simple_pipeline import GStreamerDetectionSimpleApp
 
 if __name__ == "__main__":
     user_data = user_app_callback_class()
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerDetectionSimpleApp(app_callback, user_data)
     app.run()
 ```
 
@@ -152,7 +152,7 @@ gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 import hailo
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
-from hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple import GStreamerDetectionApp
+from hailo_apps.python.pipeline_apps.detection_simple.detection_simple_pipeline import GStreamerDetectionSimpleApp
 
 class user_app_callback_class(app_callback_class):
     def __init__(self):
@@ -190,7 +190,7 @@ def app_callback(pad, info, user_data):
 
 if __name__ == "__main__":
     user_data = user_app_callback_class()
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerDetectionSimpleApp(app_callback, user_data)
     app.run()
 ```
 
@@ -226,7 +226,7 @@ The process is straightforward:
 
 ### Example: Building a Simple Detection Pipeline
 
-Here is a simplified example based on `detection_pipeline_simple.py` that illustrates the concept:
+Here is a simplified example based on `detection_simple_pipeline.py` that illustrates the concept:
 
 ```python
 # Import necessary classes and pipeline helpers
@@ -236,7 +236,7 @@ from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
 )
 
 # 1. Create a class that inherits from GStreamerApp
-class GStreamerDetectionApp(GStreamerApp):
+class MyCustomPipelineApp(GStreamerApp):
     def __init__(self, args, user_data):
         # Call the parent constructor
         super().__init__(args, user_data)
@@ -261,7 +261,7 @@ class GStreamerDetectionApp(GStreamerApp):
 # 3. Run the application
 if __name__ == "__main__":
     # app_callback and user_data are for the basic path; can be simple for this case
-    app = GStreamerDetectionApp(app_callback=dummy_callback, user_data=app_callback_class())
+    app = MyCustomPipelineApp(app_callback=dummy_callback, user_data=app_callback_class())
     app.run()
 ```
 You have full control to reorder, remove, or add new GStreamer elements in the string returned by `get_pipeline_string` to create your desired data flow.

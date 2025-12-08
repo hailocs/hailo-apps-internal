@@ -11,7 +11,7 @@ import cv2
 import hailo
 from gi.repository import Gst
 
-from hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr_pipeline import GStreamerOCRApp
+from hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr_pipeline import GStreamerPaddleOCRApp
 from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
@@ -209,7 +209,7 @@ def main():
     # Create an instance of the user app callback class
     hailo_logger.info("Starting Hailo OCR App...")
     user_data = user_app_callback_class()
-    app = GStreamerOCRApp(app_callback, user_data)
+    app = GStreamerPaddleOCRApp(app_callback, user_data)
     app.run()
 
 

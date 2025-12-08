@@ -38,7 +38,7 @@ hailo_logger = get_logger(__name__)
 
 
 # This class inherits from the hailo_rpi_common.GStreamerApp class
-class GStreamerDetectionApp(GStreamerApp):
+class GStreamerDetectionSimpleApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
@@ -154,10 +154,11 @@ def main():
     hailo_logger.info("Creating user data for the app callback...")
     user_data = app_callback_class()
     app_callback = dummy_callback
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerDetectionSimpleApp(app_callback, user_data)
     app.run()
 
 
 if __name__ == "__main__":
     hailo_logger.info("Starting the GStreamer Detection Simple App...")
     main()
+

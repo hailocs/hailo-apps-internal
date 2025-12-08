@@ -26,8 +26,8 @@ apps:
   simple_detection:
     name: "Simple Detection Pipeline"
     description: "Simple Detection Pipeline"
-    module: "hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple"
-    script: "hailo_apps/python/pipeline_apps/detection_simple/detection_pipeline_simple.py"
+    module: "hailo_apps.python.pipeline_apps.detection_simple.detection_simple_pipeline"
+    script: "hailo_apps/python/pipeline_apps/detection_simple/detection_simple_pipeline.py"
     cli: "hailo-detect-simple"
     default_test_suites:
       - "basic_show_fps"

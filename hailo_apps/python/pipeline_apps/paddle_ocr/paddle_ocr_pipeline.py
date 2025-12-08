@@ -49,7 +49,7 @@ hailo_logger = get_logger(__name__)
 # -----------------------------------------------------------------------------------------------
 
 
-class GStreamerOCRApp(GStreamerApp):
+class GStreamerPaddleOCRApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
@@ -268,7 +268,7 @@ def main():
     hailo_logger.info("Starting Hailo OCR App...")
     user_data = app_callback_class()
     app_callback = dummy_callback
-    app = GStreamerOCRApp(app_callback, user_data)
+    app = GStreamerPaddleOCRApp(app_callback, user_data)
     app.run()
 
 

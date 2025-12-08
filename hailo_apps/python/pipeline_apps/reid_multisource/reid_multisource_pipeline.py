@@ -64,13 +64,16 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     get_source_type
 )
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
 # endregion imports
 
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
 class GStreamerREIDMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
 
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
         # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
