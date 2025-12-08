@@ -138,12 +138,11 @@ SERVER_URL_DEFAULT = "http://dev-public.hailo.ai/2025_10"
 RESOURCES_PATH_DEFAULT = RESOURCES_ROOT_PATH_DEFAULT
 VIRTUAL_ENV_NAME_DEFAULT = "hailo_infra_venv"
 STORAGE_PATH_DEFAULT = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "storage_deb_whl_dir")
-# Default Tappas post-processing directory
-import subprocess
 
-TAPPAS_POSTPROC_PATH_DEFAULT = subprocess.check_output(
-    ["pkg-config", "--variable=tappas_postproc_lib_dir", "hailo-tappas-core"], text=True
-).strip()
+# Default Tappas post-processing directory - set via environment variable during installation
+# The installer runs: pkg-config --variable=tappas_postproc_lib_dir hailo-tappas-core
+# and stores the result in the .env file as TAPPAS_POSTPROC_PATH
+TAPPAS_POSTPROC_PATH_DEFAULT = ""  # Will be populated from environment at runtime
 
 # Resource groups for download_resources
 RESOURCES_GROUP_DEFAULT = "default"
