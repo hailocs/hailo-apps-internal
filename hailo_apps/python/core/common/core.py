@@ -63,19 +63,15 @@ def load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None) -> bool:
     env_path = Path(env_file)
     if not os.path.exists(env_path):
         hailo_logger.warning(f".env file not found: {env_file}")
-        print(f"⚠️ .env file not found: {env_file}")
         return False
     if not os.access(env_path, os.R_OK):
         hailo_logger.warning(f".env file not readable: {env_file}")
-        print(f"⚠️ .env file not readable: {env_file}")
         return False
     if not os.access(env_path, os.W_OK):
         hailo_logger.warning(f".env file not writable: {env_file}")
-        print(f"⚠️ .env file not writable: {env_file}")
         return False
     if not os.access(env_path, os.F_OK):
         hailo_logger.warning(f".env file not found (F_OK): {env_file}")
-        print(f"⚠️ .env file not found: {env_file}")
         return False
 
     if required_vars is None:
@@ -88,10 +84,8 @@ def load_environment(env_file=DEFAULT_DOTENV_PATH, required_vars=None) -> bool:
 
     if missing:
         hailo_logger.warning(f"Missing environment variables: {missing}")
-        print("⚠️ Missing environment variables: %s", ", ".join(missing))
         return False
     hailo_logger.info("All required environment variables loaded successfully.")
-    print("✅ All required environment variables loaded.")
     return True
 
 
@@ -357,9 +351,15 @@ def get_default_parser():
 
     Returns:
         argparse.ArgumentParser: Pipeline parser (for backward compatibility)
+
+    .. deprecated::
+        Use :func:`get_pipeline_parser` or :func:`get_standalone_parser` instead.
     """
-    hailo_logger.warning(
-        "get_default_parser() is deprecated. Use get_pipeline_parser() or get_standalone_parser() instead."
+    import warnings
+    warnings.warn(
+        "get_default_parser() is deprecated. Use get_pipeline_parser() or get_standalone_parser() instead.",
+        DeprecationWarning,
+        stacklevel=2
     )
     return get_pipeline_parser()
 
