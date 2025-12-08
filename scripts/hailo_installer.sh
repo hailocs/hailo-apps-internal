@@ -18,7 +18,7 @@
 #
 #
 
-set -e
+set -euo pipefail
 
 # --- Configurable Variables ---
 
