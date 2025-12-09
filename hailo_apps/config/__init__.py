@@ -2,9 +2,8 @@
 Configuration package for Hailo applications.
 
 This package contains YAML configuration files:
-- config.yaml: Main application configuration
-- install_config.yaml: Installation configuration
-- resources_config.yaml: Resource download definitions
+- config.yaml: Main configuration (environment, venv, resources, system packages)
+- resources_config.yaml: Resource download definitions (models, videos, images, JSON)
 - test_definition_config.yaml: Test configuration
 """
 

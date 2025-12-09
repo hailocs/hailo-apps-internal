@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Run post-installation tasks for Hailo Apps Infrastructure
+#===============================================================================
+# Run Post-Installation Tasks for Hailo Apps Infrastructure
+#===============================================================================
 #
-# This script runs post-installation tasks:
-# - Fixes resources directory permissions
-# - Runs hailo-post-install which:
-#   - Downloads resources and models (optional)
-#   - Compiles C++ postprocess modules
-#   - Creates symlinks from resources to /usr/local/hailo/resources
-# - Handles post-install errors with helpful messages
+# This script runs post-installation tasks as the original user (not root).
+# It delegates to the Python-based hailo-post-install command.
+#
+# Tasks performed by hailo-post-install:
+#   1. Setup environment configuration (.env file)
+#   2. Create symlink from resources to /usr/local/hailo/resources
+#   3. Download resources (models, videos, images, JSON configs)
+#   4. Compile C++ postprocess modules
+#
+#===============================================================================
 
 set -uo pipefail
 
@@ -24,6 +29,7 @@ VENV_PATH="${PROJECT_ROOT}/${VENV_NAME}"
 DOWNLOAD_GROUP="${DEFAULT_DOWNLOAD_GROUP}"
 SKIP_DOWNLOAD=false
 SKIP_COMPILE=false
+VERBOSE=false
 
 show_help() {
     cat << EOF
@@ -31,7 +37,13 @@ Usage: sudo $0 [OPTIONS]
 
 Run post-installation tasks for Hailo Apps Infrastructure.
 
-⚠️  This script MUST be run with sudo.
+This script runs hailo-post-install as the original user (not root) to:
+  - Setup environment configuration
+  - Create resources symlink
+  - Download resources (optional)
+  - Compile C++ postprocess modules (optional)
+
+⚠️  This script MUST be run with sudo (for ownership fixes).
 
 OPTIONS:
     -n, --venv-name NAME          Virtual environment name (default: ${DEFAULT_VENV_NAME})
@@ -43,16 +55,15 @@ OPTIONS:
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
-    sudo $0                                    # Run post-install with default settings
-    sudo $0 --all                              # Download all resources
-    sudo $0 --skip-compile                     # Skip C++ compilation
-    sudo $0 --group detection                  # Download specific resource group
+    sudo $0                        # Run post-install with default settings
+    sudo $0 --all                  # Download all resources
+    sudo $0 --skip-compile         # Skip C++ compilation
+    sudo $0 --group detection      # Download specific resource group
 
 EOF
 }
 
 # Parse arguments
-VERBOSE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -n|--venv-name)
@@ -92,7 +103,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Detect user and group
+# Detect user and group (requires sudo)
 detect_user_and_group
 
 # Check if venv exists
@@ -102,62 +113,69 @@ if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
     exit 1
 fi
 
-log_info "Running post-install script..."
+log_info "Running post-install as user: ${ORIGINAL_USER}"
+log_debug "Virtual environment: ${VENV_PATH}"
+log_debug "Download group: ${DOWNLOAD_GROUP}"
 
-# Fix resources directory permissions if needed
-log_info "Checking resources directory permissions..."
-if [[ -d "${PROJECT_ROOT}/resources" ]]; then
-    # Check if it's a symlink and test the target directory
-    if [[ -L "${PROJECT_ROOT}/resources" ]]; then
-        target_dir=$(readlink "${PROJECT_ROOT}/resources")
-        log_debug "Resources is a symlink pointing to: $target_dir"
-        # Test if user can write to the target directory
-        if ! as_original_user test -w "$target_dir" 2>/dev/null; then
-            log_warning "Target directory requires sudo permissions, fixing ownership..."
-            fix_ownership "$target_dir"
-        fi
-        # Also fix the symlink itself
-        if ! as_original_user test -w "${PROJECT_ROOT}/resources" 2>/dev/null; then
-            log_warning "Symlink requires sudo permissions, fixing ownership..."
-            fix_ownership "${PROJECT_ROOT}/resources"
-        fi
-    else
-        # It's a regular directory
-        if ! as_original_user test -w "${PROJECT_ROOT}/resources" 2>/dev/null; then
-            log_warning "Resources directory requires sudo permissions, fixing ownership..."
-            fix_ownership "${PROJECT_ROOT}/resources"
-        fi
-    fi
+# Fix project directory ownership before running
+log_info "Fixing project directory ownership..."
+fix_ownership "${PROJECT_ROOT}"
+
+# Fix resources root ownership
+if [[ -d "${DEFAULT_RESOURCES_ROOT}" ]]; then
+    log_info "Fixing resources directory ownership..."
+    fix_ownership "${DEFAULT_RESOURCES_ROOT}"
 fi
 
-# Run post-install (this handles both download and compile)
-if [[ "$SKIP_DOWNLOAD" == true && "$SKIP_COMPILE" == true ]]; then
-    log_info "Skipping post-install (both download and compile skipped)"
-else
-    # Build hailo-post-install command
-    POST_INSTALL_CMD="hailo-post-install"
-    if [[ "$SKIP_DOWNLOAD" != true ]]; then
-        if [[ "$DOWNLOAD_GROUP" == "all" ]]; then
-            POST_INSTALL_CMD="${POST_INSTALL_CMD} --all"
-        else
-            POST_INSTALL_CMD="${POST_INSTALL_CMD} --group '${DOWNLOAD_GROUP}'"
-        fi
-    fi
-    
-    if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && cd '${PROJECT_ROOT}' && ${POST_INSTALL_CMD}"; then
-        log_error "Post-installation failed!"
-        echo ""
-        echo "This usually means:"
-        echo "  - C++ compilation failed (check for permission issues in build directories)"
-        echo "  - Resource download failed (check network connection)"
-        echo "  - Environment setup failed"
-        echo ""
-        echo "Please check the error messages above and try again."
-        echo "If you see permission errors, you may need to clean up old build directories with sudo."
-        exit 1
-    fi
+# Build the hailo-post-install command
+POST_INSTALL_CMD="hailo-post-install"
+
+# Add download options
+if [[ "$SKIP_DOWNLOAD" == true ]]; then
+    POST_INSTALL_CMD="${POST_INSTALL_CMD} --skip-download"
+elif [[ "$DOWNLOAD_GROUP" == "all" ]]; then
+    POST_INSTALL_CMD="${POST_INSTALL_CMD} --all"
+elif [[ -n "$DOWNLOAD_GROUP" && "$DOWNLOAD_GROUP" != "default" ]]; then
+    POST_INSTALL_CMD="${POST_INSTALL_CMD} --group '${DOWNLOAD_GROUP}'"
 fi
 
+# Add compile options
+if [[ "$SKIP_COMPILE" == true ]]; then
+    POST_INSTALL_CMD="${POST_INSTALL_CMD} --skip-compile"
+fi
+
+log_debug "Running command: ${POST_INSTALL_CMD}"
+
+# Run hailo-post-install as the original user
+log_info "Executing hailo-post-install..."
+echo ""
+
+if ! as_original_user bash -c "source '${VENV_PATH}/bin/activate' && cd '${PROJECT_ROOT}' && ${POST_INSTALL_CMD}"; then
+    log_error "Post-installation failed!"
+    echo ""
+    echo "Troubleshooting tips:"
+    echo "  1. Check if the virtual environment is properly set up:"
+    echo "     source ${VENV_PATH}/bin/activate && pip list | grep hailo"
+    echo ""
+    echo "  2. If you see permission errors, try fixing ownership:"
+    echo "     sudo chown -R ${ORIGINAL_USER}:${ORIGINAL_GROUP} ${PROJECT_ROOT}"
+    echo ""
+    echo "  3. If C++ compilation fails, check if meson/ninja are installed:"
+    echo "     which meson ninja"
+    echo ""
+    echo "  4. If resource download fails, check your network connection"
+    echo ""
+    exit 1
+fi
+
+echo ""
 log_info "Post-installation completed successfully!"
-exit 0
 
+# Final ownership fix
+log_info "Final ownership fix..."
+fix_ownership "${PROJECT_ROOT}"
+if [[ -d "${DEFAULT_RESOURCES_ROOT}" ]]; then
+    fix_ownership "${DEFAULT_RESOURCES_ROOT}"
+fi
+
+exit 0

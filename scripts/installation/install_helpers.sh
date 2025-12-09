@@ -155,7 +155,7 @@ ensure_directory() {
 }
 
 # Load YAML configuration file
-# Usage: load_config [config_file_path]
+# Usage: load_config [config_file_path] [project_root]
 # Sets variables: DEFAULT_VENV_NAME, DEFAULT_DOWNLOAD_GROUP, DEFAULT_RESOURCES_ROOT, 
 #                 DEFAULT_ENV_FILE, REQUIRED_SYSTEM_PACKAGES (array), RESOURCE_DIRS (array)
 load_config() {
@@ -165,7 +165,7 @@ load_config() {
     # Default config file path (in hailo_apps/config/)
     if [[ -z "$config_file" ]]; then
         if [[ -n "$project_root" ]]; then
-            config_file="${project_root}/hailo_apps/config/install_config.yaml"
+            config_file="${project_root}/hailo_apps/config/config.yaml"
         else
             # Try to find project root
             local script_path="${BASH_SOURCE[0]}"
@@ -173,7 +173,7 @@ load_config() {
                 script_path=$(readlink -f "$script_path")
             fi
             project_root="$(cd "$(dirname "$script_path")/../.." && pwd)"
-            config_file="${project_root}/hailo_apps/config/install_config.yaml"
+            config_file="${project_root}/hailo_apps/config/config.yaml"
         fi
     fi
     
@@ -185,7 +185,6 @@ load_config() {
     log_debug "Loading configuration from: $config_file"
     
     # Use Python to parse YAML and export variables
-    # This is more reliable than trying to parse YAML in bash
     eval "$(python3 << PYTHON_EOF
 import yaml
 import sys
@@ -221,8 +220,8 @@ try:
     else:
         print('export REQUIRED_SYSTEM_PACKAGES=()')
     
-    # Export resource directories as array
-    resource_dirs = config.get('resource_dirs', [])
+    # Export resource directories as array (now under resources.dirs)
+    resource_dirs = resources.get('dirs', [])
     if resource_dirs:
         dirs_str = ' '.join(f'"{d}"' for d in resource_dirs)
         print(f'export RESOURCE_DIRS=({dirs_str})')
@@ -241,8 +240,8 @@ PYTHON_EOF
         export DEFAULT_DOWNLOAD_GROUP="default"
         export DEFAULT_RESOURCES_ROOT="/usr/local/hailo/resources"
         export DEFAULT_ENV_FILE="${DEFAULT_RESOURCES_ROOT}/.env"
-        export REQUIRED_SYSTEM_PACKAGES=("meson" "portaudio19-dev" "python3-gi" "python3-gi-cairo")
-        export RESOURCE_DIRS=("models/hailo8" "models/hailo8l" "models/hailo10h" "videos" "so" "photos" "json" "packages" "face_recon/train" "face_recon/samples")
+        export REQUIRED_SYSTEM_PACKAGES=("meson" "ninja-build" "portaudio19-dev" "python3-gi" "python3-gi-cairo")
+        export RESOURCE_DIRS=("models/hailo8" "models/hailo8l" "models/hailo10h" "videos" "images" "json" "so" "packages")
         return 1
     }
     

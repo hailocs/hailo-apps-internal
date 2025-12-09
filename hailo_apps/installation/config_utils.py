@@ -36,8 +36,6 @@ try:
         MODEL_ZOO_VERSION_DEFAULT,
         MODEL_ZOO_VERSION_KEY,
         RESOURCES_PATH_KEY,
-        SERVER_URL_DEFAULT,
-        SERVER_URL_KEY,
         TAPPAS_VARIANT_DEFAULT,
         TAPPAS_VARIANT_KEY,
         TAPPAS_VERSION_DEFAULT,
@@ -47,7 +45,6 @@ try:
         VALID_HAILORT_VERSION,
         VALID_HOST_ARCH,
         VALID_MODEL_ZOO_VERSION,
-        VALID_SERVER_URL,
         VALID_TAPPAS_VARIANT,
         VALID_TAPPAS_VERSION,
         VIRTUAL_ENV_NAME_DEFAULT,
@@ -73,8 +70,6 @@ except ImportError:
         MODEL_ZOO_VERSION_DEFAULT = defines_module.MODEL_ZOO_VERSION_DEFAULT
         MODEL_ZOO_VERSION_KEY = defines_module.MODEL_ZOO_VERSION_KEY
         RESOURCES_PATH_KEY = defines_module.RESOURCES_PATH_KEY
-        SERVER_URL_DEFAULT = defines_module.SERVER_URL_DEFAULT
-        SERVER_URL_KEY = defines_module.SERVER_URL_KEY
         TAPPAS_VARIANT_DEFAULT = defines_module.TAPPAS_VARIANT_DEFAULT
         TAPPAS_VARIANT_KEY = defines_module.TAPPAS_VARIANT_KEY
         TAPPAS_VERSION_DEFAULT = defines_module.TAPPAS_VERSION_DEFAULT
@@ -83,7 +78,6 @@ except ImportError:
         VALID_HAILORT_VERSION = defines_module.VALID_HAILORT_VERSION
         VALID_HOST_ARCH = defines_module.VALID_HOST_ARCH
         VALID_MODEL_ZOO_VERSION = defines_module.VALID_MODEL_ZOO_VERSION
-        VALID_SERVER_URL = defines_module.VALID_SERVER_URL
         VALID_TAPPAS_VARIANT = defines_module.VALID_TAPPAS_VARIANT
         VALID_TAPPAS_VERSION = defines_module.VALID_TAPPAS_VERSION
         VIRTUAL_ENV_NAME_DEFAULT = defines_module.VIRTUAL_ENV_NAME_DEFAULT
@@ -118,17 +112,29 @@ def load_default_config() -> dict:
         MODEL_ZOO_VERSION_KEY: MODEL_ZOO_VERSION_DEFAULT,
         HOST_ARCH_KEY: HOST_ARCH_DEFAULT,
         HAILO_ARCH_KEY: HAILO_ARCH_DEFAULT,
-        SERVER_URL_KEY: SERVER_URL_DEFAULT,
         TAPPAS_VARIANT_KEY: TAPPAS_VARIANT_DEFAULT,
-        RESOURCES_PATH_KEY: DEFAULT_RESOURCES_SYMLINK_PATH,
-        VIRTUAL_ENV_NAME_KEY: VIRTUAL_ENV_NAME_DEFAULT,
+        # Nested configs with defaults
+        'venv': {
+            'name': VIRTUAL_ENV_NAME_DEFAULT,
+            'use_system_site_packages': True,
+        },
+        'resources': {
+            'path': DEFAULT_RESOURCES_SYMLINK_PATH,
+            'root': '/usr/local/hailo/resources',
+            'env_file': '/usr/local/hailo/resources/.env',
+            'download_group': 'default',
+            'dirs': [
+                'models/hailo8', 'models/hailo8l', 'models/hailo10h',
+                'videos', 'images', 'json', 'so', 'packages'
+            ],
+        },
     }
     hailo_logger.debug(f"Loaded default configuration: {default_cfg}")
     return default_cfg
 
 
 def validate_config(config: dict) -> bool:
-    """Validate each config value against its valid choices."""
+    """Validate top-level config values against valid choices."""
     hailo_logger.debug(f"Validating configuration: {config}")
     valid_config = True
     valid_map = {
@@ -137,11 +143,13 @@ def validate_config(config: dict) -> bool:
         MODEL_ZOO_VERSION_KEY: VALID_MODEL_ZOO_VERSION,
         HOST_ARCH_KEY: VALID_HOST_ARCH,
         HAILO_ARCH_KEY: VALID_HAILO_ARCH,
-        SERVER_URL_KEY: VALID_SERVER_URL,
         TAPPAS_VARIANT_KEY: VALID_TAPPAS_VARIANT,
     }
     for key, valid_choices in valid_map.items():
         val = config.get(key)
+        # Skip validation if key doesn't exist (will use default)
+        if val is None:
+            continue
         if val not in valid_choices:
             hailo_logger.warning(
                 f"Invalid value for {key}: '{val}'. Valid options: {valid_choices}"
