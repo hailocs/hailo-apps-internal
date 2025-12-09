@@ -172,18 +172,21 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback):
     This ensures watchdog monitoring works without requiring users to modify their callbacks.
 
     Debug Mode:
-        When logger is at DEBUG level (set log_level: "debug" in config.yaml), this wrapper
-        automatically tracks callback performance:
+        When logger is at DEBUG level, this wrapper automatically tracks callback performance:
         - Measures execution time for each callback invocation
         - Tracks average time (rolling 100-frame window)
         - Records maximum time observed
         - Prints statistics every 100 frames
-
-        To enable: Edit hailo_apps/config/config.yaml and set:
-            log_level: "debug"
-
+        
+        To enable debug mode, set the HAILO_LOG_LEVEL environment variable:
+            export HAILO_LOG_LEVEL=debug
+            hailo-detect --enable-watchdog
+        
+        Or run with inline environment variable:
+            HAILO_LOG_LEVEL=debug hailo-detect --enable-watchdog
+        
         Example output:
-            DEBUG | gstreamer_app | Callback Performance [100 frames]:
+            DEBUG | gstreamer_app | Callback Performance [100 frames]: 
                 avg=2.34ms, max=8.12ms, current=2.56ms
 
     Args:
