@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+import traceback
 
 # Fix for X11 threading issue
 import ctypes
@@ -181,16 +182,16 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback, disabl
         - Tracks average time (rolling 100-frame window)
         - Records maximum time observed
         - Prints statistics every 100 frames
-        
+
         To enable debug mode, set the HAILO_LOG_LEVEL environment variable:
             export HAILO_LOG_LEVEL=debug
             hailo-detect --enable-watchdog
-        
+
         Or run with inline environment variable:
             HAILO_LOG_LEVEL=debug hailo-detect --enable-watchdog
-        
+
         Example output:
-            DEBUG | gstreamer_app | Callback Performance [100 frames]: 
+            DEBUG | gstreamer_app | Callback Performance [100 frames]:
                 avg=2.34ms, max=8.12ms, current=2.56ms
 
     Args:
@@ -280,10 +281,7 @@ class GStreamerApp:
 
         tappas_post_process_dir = Path(os.environ.get(TAPPAS_POSTPROC_PATH_KEY, ""))
         if tappas_post_process_dir == "":
-            hailo_logger.error("TAPPAS_POST_PROC_DIR environment variable not set.")
-            print(
-                "TAPPAS_POST_PROC_DIR environment variable is not set. Please set it by running set-env in cli"
-            )
+            hailo_logger.error("TAPPAS_POST_PROC_DIR environment variable not set. Please set it by sourcing set_env.sh")
             exit(1)
 
         self.current_path = os.path.dirname(os.path.abspath(__file__))
@@ -303,9 +301,6 @@ class GStreamerApp:
             self.video_source = get_usb_video_devices()
             if not self.video_source:
                 hailo_logger.error("No USB camera found for '--input usb'")
-                print(
-                    'Provided argument "--input" is set to "usb", however no available USB cameras found. Please connect a camera or specifiy different input method.'
-                )
                 exit(1)
             else:
                 hailo_logger.debug(f"Using USB camera: {self.video_source[0]}")
@@ -385,7 +380,6 @@ class GStreamerApp:
 
     def on_fps_measurement(self, sink, fps, droprate, avgfps):
         hailo_logger.debug(f"FPS measurement: {fps:.2f}, drop={droprate:.2f}, avg={avgfps:.2f}")
-        print(f"FPS: {fps:.2f}, Droprate: {droprate:.2f}, Avg FPS: {avgfps:.2f}")
         return True
 
     def _watchdog_monitor(self):
@@ -424,9 +418,8 @@ class GStreamerApp:
 
                 if elapsed >= self.watchdog_timeout:
                     hailo_logger.warning(
-                        f"Watchdog detected stall! No frames for {elapsed:.1f}s. Initiating rebuild..."
+                        f"\033[91mWatchdog detected stall! No frames for {elapsed:.1f}s. Initiating rebuild...\033[0m"
                     )
-                    print(f"\033[91mWatchdog: Pipeline stalled for {elapsed:.1f}s. Rebuilding...\033[0m")
                     # Schedule rebuild on main thread
                     GLib.idle_add(self._rebuild_pipeline)
 
@@ -446,7 +439,6 @@ class GStreamerApp:
             self.pipeline = Gst.parse_launch(pipeline_string)
         except Exception as e:
             hailo_logger.error(f"Error creating pipeline: {e}")
-            print(f"Error creating pipeline: {e}", file=sys.stderr)
             sys.exit(1)
 
         if self.show_fps:
@@ -466,7 +458,6 @@ class GStreamerApp:
         elif t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             hailo_logger.error(f"GStreamer Error: {err}, debug: {debug}")
-            print(f"Error: {err}, {debug}", file=sys.stderr)
             self.error_occurred = True
             self.shutdown()
         elif t == Gst.MessageType.QOS:
@@ -477,8 +468,7 @@ class GStreamerApp:
             # QoS messages are normal during pipeline rebuild/startup
             if self.qos_count % 100 == 0:
                 qos_element = message.src.get_name()
-                hailo_logger.warning(f"QoS messages: {self.qos_count} total (from {qos_element})")
-                print(f"\033[93mQoS messages: {self.qos_count} total\033[0m")
+                hailo_logger.warning(f"\033[93mQoS messages: {self.qos_count} total (from {qos_element})\033[0m")
         return True
 
     def on_eos(self):
@@ -500,7 +490,6 @@ class GStreamerApp:
         identity = self.pipeline.get_by_name("identity_callback")
         if identity is None:
             hailo_logger.warning("identity_callback not found in pipeline")
-            print("Warning: identity_callback element not found...")
         else:
             disable_callback = self.options_menu.disable_callback
             if disable_callback:
@@ -569,20 +558,16 @@ class GStreamerApp:
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
                 hailo_logger.error("Failed to start new pipeline")
-                print("Error: Failed to start new pipeline.", file=sys.stderr)
                 self.loop.quit()
                 return False
 
             hailo_logger.debug("Pipeline rebuilt and restarted successfully")
-            print("Pipeline rebuilt successfully.")
 
             # Resume watchdog monitoring
             self.watchdog_paused = False
 
         except Exception as e:
             hailo_logger.error(f"Exception during pipeline rebuild: {e}")
-            print(f"Error rebuilding pipeline: {e}", file=sys.stderr)
-            import traceback
             traceback.print_exc()
             self.loop.quit()
 
@@ -620,7 +605,6 @@ class GStreamerApp:
         videorate = self.pipeline.get_by_name(videorate_name)
         if videorate is None:
             hailo_logger.error(f"Element {videorate_name} not found")
-            print(f"Element {videorate_name} not found in the pipeline.")
             return
 
         current_max_rate = videorate.get_property("max-rate")
@@ -634,8 +618,6 @@ class GStreamerApp:
             new_caps_str = f"video/x-raw, framerate={new_fps}/1"
             hailo_logger.debug(f"Updating capsfilter to: {new_caps_str}")
             capsfilter.set_property("caps", Gst.Caps.from_string(new_caps_str))
-            print("Updated capsfilter caps to match new rate")
-
         self.frame_rate = new_fps
 
     def get_pipeline_string(self):
@@ -703,11 +685,9 @@ class GStreamerApp:
                 t.join()
         except Exception as e:
             hailo_logger.error(f"Error during cleanup: {e}")
-            print(f"Error during cleanup: {e}", file=sys.stderr)
         finally:
             if self.error_occurred:
                 hailo_logger.error("Exiting with error")
-                print("Exiting with error...", file=sys.stderr)
                 sys.exit(1)
             else:
                 hailo_logger.info("Exiting successfully")
