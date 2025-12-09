@@ -59,7 +59,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Chat Agent with Tool Calling")
     parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
     parser.add_argument("--list-models", action="store_true", help="List available models")
-    parser.add_argument("--arch", type=str, default="hailo10h", help="Hailo architecture")
     
     # Handle --list-models flag before full initialization
     handle_list_models_flag(parser, AGENT_APP)

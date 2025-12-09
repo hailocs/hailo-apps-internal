@@ -9,7 +9,6 @@ from hailo_apps.python.core.common.defines import LLM_CHAT_APP, LLM_MODEL_NAME_H
 parser = argparse.ArgumentParser(description="LLM Chat Example")
 parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
 parser.add_argument("--list-models", action="store_true", help="List available models")
-parser.add_argument("--arch", type=str, default=HAILO10H_ARCH, help="Hailo architecture")
 
 # Handle --list-models flag before full initialization
 handle_list_models_flag(parser, LLM_CHAT_APP)

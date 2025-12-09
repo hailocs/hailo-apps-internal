@@ -11,7 +11,6 @@ from hailo_apps.python.core.common.defines import WHISPER_CHAT_APP, RESOURCES_MO
 parser = argparse.ArgumentParser(description="Whisper Speech-to-Text Example")
 parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
 parser.add_argument("--list-models", action="store_true", help="List available models")
-parser.add_argument("--arch", type=str, default=HAILO10H_ARCH, help="Hailo architecture")
 parser.add_argument("--audio", type=str, default="audio.wav", help="Path to audio file")
 
 # Handle --list-models flag before full initialization
