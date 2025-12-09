@@ -420,8 +420,10 @@ class GStreamerApp:
                     hailo_logger.warning(
                         f"\033[91mWatchdog detected stall! No frames for {elapsed:.1f}s. Initiating rebuild...\033[0m"
                     )
-                    # Schedule rebuild on main thread
-                    GLib.idle_add(self._rebuild_pipeline)
+                    # Use timeout_add with high priority instead of idle_add
+                    # This ensures rebuild executes even if main loop is busy/stuck
+                    # Priority HIGH (default is DEFAULT=0, HIGH=-100) runs before most callbacks
+                    GLib.timeout_add(10, self._rebuild_pipeline, priority=GLib.PRIORITY_HIGH)
 
                     # Reset timer to prevent multiple triggers while waiting for rebuild
                     last_progress_time = current_time
