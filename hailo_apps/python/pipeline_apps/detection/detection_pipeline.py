@@ -13,6 +13,7 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
 )
+from hailo_apps.python.core.common.hef_utils import get_hef_labels_json
 
 # Logger
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -85,6 +86,10 @@ class GStreamerDetectionApp(GStreamerApp):
         self.post_function_name = DETECTION_POSTPROCESS_FUNCTION
         # User-defined label JSON file
         self.labels_json = self.options_menu.labels_json
+        if self.labels_json is None: # if no labels JSON file is provided, try auto-detect it from the HEF file
+            self.labels_json = get_hef_labels_json(self.hef_path)
+            if self.labels_json is not None:
+                hailo_logger.info("Auto detected Labels JSON: %s", self.labels_json)
 
         hailo_logger.info(
             "Resources | hef=%s | post_so=%s | post_fn=%s | labels_json=%s",
