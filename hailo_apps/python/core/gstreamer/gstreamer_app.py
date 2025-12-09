@@ -437,6 +437,11 @@ class GStreamerApp:
         Gst.init(None)
         pipeline_string = self.get_pipeline_string()
         hailo_logger.debug(f"Pipeline string: {pipeline_string}")
+
+        if getattr(self.options_menu, "get_gst_launch", False):
+            print(f"\ngst-launch-1.0 {pipeline_string}")
+            sys.exit(0)
+
         try:
             self.pipeline = Gst.parse_launch(pipeline_string)
         except Exception as e:

@@ -120,7 +120,6 @@ class GStreamerPoseEstimationApp(GStreamerApp):
             f"{display_pipeline}"
         )
         hailo_logger.debug("Pipeline string: %s", pipeline_string)
-        print(pipeline_string)
         return pipeline_string
 
 

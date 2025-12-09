@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import time
+import shlex
 
 import pytest
 from pathlib import Path
@@ -128,13 +129,52 @@ def run_pipeline_cli_with_args(cli: str, args: list[str], log_file: str, **kwarg
     return run_pipeline_generic([cli, *args], log_file, **kwargs)
 
 
+def run_pipeline_gst_launch_with_args(script: str, args: list[str], log_file: str, **kwargs):
+    """Run the pipeline using gst-launch-1.0 by first generating the pipeline string."""
+    # 1. Run with --get-gst-launch to get the pipeline string
+    cmd = ["python", "-u", script, *args, "--get-gst-launch"]
+
+    # We need to set PYTHONPATH for the generation step too
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "./hailo_apps_infra"
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
+        output = proc.stdout
+    except subprocess.CalledProcessError as e:
+        with open(log_file, "w") as f:
+            f.write(f"Failed to get gst-launch command. Exit code: {e.returncode}\n")
+            f.write("stdout:\n" + e.stdout + "\n")
+            f.write("stderr:\n" + e.stderr + "\n")
+        return e.stdout.encode(), e.stderr.encode()
+
+    # 2. Extract gst-launch command
+    gst_cmd_str = ""
+    for line in output.splitlines():
+        if line.strip().startswith("gst-launch-1.0"):
+            gst_cmd_str = line.strip()
+            break
+
+    if not gst_cmd_str:
+        with open(log_file, "w") as f:
+            f.write("Failed to find gst-launch-1.0 command in output\n")
+            f.write("stdout:\n" + output + "\n")
+        return output.encode(), b"gst-launch command not found"
+
+    # 3. Run the extracted command
+    gst_cmd = shlex.split(gst_cmd_str)
+
+    # We use run_pipeline_generic to execute it
+    return run_pipeline_generic(gst_cmd, log_file, **kwargs)
+
+
 def safe_decode(data: bytes, errors: str = 'replace') -> str:
     """Safely decode bytes to string, handling encoding errors gracefully.
-    
+
     Args:
         data: Bytes to decode
         errors: Error handling strategy ('replace', 'ignore', or 'strict')
-    
+
     Returns:
         Decoded string, or empty string if decoding fails
     """
@@ -152,11 +192,11 @@ def safe_decode(data: bytes, errors: str = 'replace') -> str:
 
 def check_hailo8l_on_hailo8_warning(stdout: bytes, stderr: bytes) -> bool:
     """Check if the HailoRT warning about Hailo8L HEF on Hailo8 device is present.
-    
+
     Args:
         stdout: Standard output from the pipeline
         stderr: Standard error from the pipeline
-    
+
     Returns:
         bool: True if the warning is found, False otherwise
     """
@@ -175,13 +215,13 @@ def check_hailo8l_on_hailo8_warning(stdout: bytes, stderr: bytes) -> bool:
 
 def check_qos_performance_warning(stdout: bytes, stderr: bytes) -> tuple[bool, int]:
     """Check for QoS messages indicating performance issues.
-    
+
     Args:
         stdout: Standard output from the pipeline
         stderr: Standard error from the pipeline
-    
+
     Returns:
-        tuple: (has_warning, qos_count) where has_warning is True if QoS >= 100, 
+        tuple: (has_warning, qos_count) where has_warning is True if QoS >= 100,
                and qos_count is the number of QoS messages found
     """
     import re
@@ -193,15 +233,15 @@ def check_qos_performance_warning(stdout: bytes, stderr: bytes) -> tuple[bool, i
             output = (stdout.decode(errors='ignore') if stdout else "") + (stderr.decode(errors='ignore') if stderr else "")
         except Exception:
             return False, 0
-    
+
     # Look for "QoS messages: X total" pattern
     pattern = r"QoS messages:\s*(\d+)\s+total"
     matches = re.findall(pattern, output)
-    
+
     if matches:
         # Get the highest count found (in case there are multiple)
         qos_count = max(int(match) for match in matches)
         has_warning = qos_count >= 100
         return has_warning, qos_count
-    
+
     return False, 0

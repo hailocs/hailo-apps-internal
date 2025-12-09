@@ -93,6 +93,8 @@ Open the interface on: http://localhost:5151/ (When executed from an IDE such as
 
 Please refer to the https://voxel51.com/fiftyone/ guide for more details about using the interface.
 
+> **Note:** This application does not support the `--get-gst-launch` flag for CLI-only execution. Face recognition requires Python-based database operations and vector search that cannot be replaced by GStreamer-only pipelines.
+
 ---
 
 ## Telegram Notifications

@@ -80,7 +80,6 @@ class GStreamerMultisourceApp(GStreamerApp):
             inference_string += f"src_{id}::input-streams=\"<sink_{id}>\" "
 
         pipeline_string = sources_string + inference_string + router_string
-        print(pipeline_string)
         return pipeline_string
 
 def main():
@@ -91,5 +90,5 @@ def main():
     app.run()
 
 if __name__ == "__main__":
-    print("Starting Hailo Multisource App...")
+    hailo_logger.info("Starting Hailo Multisource App...")
     main()

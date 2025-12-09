@@ -21,7 +21,7 @@ The pipeline is rather complex, combining elements from multisource and face rec
 
 Similar to the face recognition application, dedicated networks assign unique embedding for each face, which is stored in LanceDB. Every detected face is first queried against the database for recognition.
 
-The available arguments are similar to the multisource application and include `--sources`, `--width` & `--height`, while `--frame-rate` is hardcoded to be 15 for optimization of performance. 
+The available arguments are similar to the multisource application and include `--sources`, `--width` & `--height`, while `--frame-rate` is hardcoded to be 15 for optimization of performance.
 
 Please note that the DB is populated persistently on each run, and will remember the faces. For a fresh start, simply delete the database files.
 
@@ -33,3 +33,5 @@ For additional options, execute:
 ```bash
 hailo-reid --help
 ```
+
+> **Note:** This application does not support the `--get-gst-launch` flag for CLI-only execution. Person re-identification requires Python-based cross-camera tracking database and vector matching logic that cannot be replaced by GStreamer-only pipelines.

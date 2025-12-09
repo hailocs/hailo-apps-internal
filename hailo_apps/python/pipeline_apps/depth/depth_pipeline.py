@@ -154,5 +154,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting Hailo Depth App...")
+    hailo_logger.info("Starting Hailo Depth App...")
     main()

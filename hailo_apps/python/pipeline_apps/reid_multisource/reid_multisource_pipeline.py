@@ -255,5 +255,5 @@ def main():
     app.run()
 
 if __name__ == "__main__":
-    print("Starting Hailo REID Multisource App...")
+    hailo_logger.info("Starting Hailo REID Multisource App...")
     main()

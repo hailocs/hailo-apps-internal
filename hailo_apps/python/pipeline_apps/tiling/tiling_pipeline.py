@@ -67,7 +67,7 @@ class GStreamerTilingApp(GStreamerApp):
         setproctitle.setproctitle(TILING_APP_TITLE)
 
         # Print configuration summary
-        self._print_configuration()
+	self._print_configuration()
 
         self.create_pipeline()
 
@@ -276,5 +276,5 @@ def main() -> None:
     app.run()
 
 if __name__ == "__main__":
-    print("Starting Hailo Tiling App...")
+    hailo_logger.info("Starting Hailo Tiling App...")
     main()

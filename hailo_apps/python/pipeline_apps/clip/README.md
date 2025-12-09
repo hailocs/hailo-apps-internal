@@ -1,5 +1,6 @@
 # CLIP Application
 
+
 A real-time zero-shot image classification and object recognition application using OpenAI's CLIP model with Hailo AI acceleration.
 
 [![CLIP Application Demo](https://img.youtube.com/vi/XXizBHtCLew/0.jpg)](https://www.youtube.com/watch?v=XXizBHtCLew)
@@ -94,6 +95,8 @@ hailo-clip --input usb --json-path office_objects.json --detector none
 ```
 - Direct CLIP on USB camera feed
 - Uses custom object descriptions
+
+> **Note:** This application does not support the `--get-gst-launch` flag for CLI-only execution. CLIP functionality requires Python-based text-image matching, GUI interaction, and embedding calculations that cannot be replaced by GStreamer-only pipelines.
 
 ## How CLIP Works
 
@@ -257,12 +260,12 @@ The application includes example files:
 
 ### CLIP-Specific Options
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--detector, -d` | Detection mode: `person`, `face`, or `none` | `none` |
-| `--json-path` | Path to JSON embeddings file | `embeddings.json` or `example_embeddings.json` |
-| `--detection-threshold` | Similarity threshold for matching (0.0-1.0) | `0.5` |
-| `--disable-runtime-prompts` | Skip CLIP text encoder initialization | `False` |
+| Argument                    | Description                                 | Default                                        |
+| --------------------------- | ------------------------------------------- | ---------------------------------------------- |
+| `--detector, -d`            | Detection mode: `person`, `face`, or `none` | `none`                                         |
+| `--json-path`               | Path to JSON embeddings file                | `embeddings.json` or `example_embeddings.json` |
+| `--detection-threshold`     | Similarity threshold for matching (0.0-1.0) | `0.5`                                          |
+| `--disable-runtime-prompts` | Skip CLIP text encoder initialization       | `False`                                        |
 
 ### Common Pipeline Arguments
 
@@ -322,11 +325,11 @@ Pipeline elements are prioritized for optimal performance:
 
 ### Models Used
 
-| Component | Model | Input Size | Purpose |
-|-----------|-------|------------|---------|
-| Detection | YOLOv8n-personface | 480×640 | Person/face detection |
-| CLIP Image | CLIP ResNet-50x4 | 640×640 | Visual feature extraction |
-| CLIP Text | CLIP ResNet-50x4 Text | N/A | Text encoding (CPU) |
+| Component  | Model                 | Input Size | Purpose                   |
+| ---------- | --------------------- | ---------- | ------------------------- |
+| Detection  | YOLOv8n-personface    | 480×640    | Person/face detection     |
+| CLIP Image | CLIP ResNet-50x4      | 640×640    | Visual feature extraction |
+| CLIP Text  | CLIP ResNet-50x4 Text | N/A        | Text encoding (CPU)       |
 
 ### Post-Processing
 

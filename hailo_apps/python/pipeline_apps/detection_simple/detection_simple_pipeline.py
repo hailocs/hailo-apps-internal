@@ -145,7 +145,6 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
             f"{user_callback_pipeline} ! "
             f"{display_pipeline}"
         )
-        hailo_logger.info(f"Pipeline string: {pipeline_string}")
         return pipeline_string
 
 
