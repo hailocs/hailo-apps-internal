@@ -33,6 +33,8 @@ videos:
     source: s3
   - name: barcode.mp4
     source: s3
+  - name: clip_example.mp4
+    source: s3
 #  - name: full_mov_slow.mp4
 #    source: s3
 
@@ -252,19 +254,22 @@ clip:
         name: clip_resnet_50x4_image_encoder
         source: mz
       extra:
-        - name: hailo_yolov8n_480_640_h8_rgb
+        - name: hailo_yolov8n_4_classes_vga
           source: mz
     hailo8l:
       default:
         name: clip_resnet_50x4_image_encoder
         source: mz
       extra:
-        - name: hailo_yolov8n_480_640_h8l_rgb
+        - name: hailo_yolov8n_4_classes_vga
           source: mz
     hailo10h:
       default:
         name: clip_resnet_50x4_image_encoder
         source: mz
+      extra:
+        - name: hailo_yolov8n_4_classes_vga
+          source: mz
 
 retrain:
   models:

@@ -16,13 +16,11 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_SO_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
-    RESOURCES_JSON_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
     CLIP_APP_TITLE,
     CLIP_VIDEO_NAME,
     CLIP_PIPELINE,
     CLIP_DETECTION_PIPELINE,
-    CLIP_DETECTION_JSON_NAME,
     DETECTION_POSTPROCESS_SO_FILENAME,
     CLIP_POSTPROCESS_SO_FILENAME,
     CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
@@ -30,15 +28,14 @@ from hailo_apps.python.core.common.defines import (
 from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    QUEUE,
-    SOURCE_PIPELINE,
-    INFERENCE_PIPELINE,
-    INFERENCE_PIPELINE_WRAPPER,
-    TRACKER_PIPELINE,
-    USER_CALLBACK_PIPELINE,
-    DISPLAY_PIPELINE,
-    CROPPER_PIPELINE,
-    OVERLAY_PIPELINE
+    QUEUE, 
+    SOURCE_PIPELINE, 
+    INFERENCE_PIPELINE, 
+    INFERENCE_PIPELINE_WRAPPER, 
+    TRACKER_PIPELINE, 
+    USER_CALLBACK_PIPELINE, 
+    DISPLAY_PIPELINE, 
+    CROPPER_PIPELINE
 )
 from hailo_apps.python.pipeline_apps.clip.text_image_matcher import text_image_matcher
 from hailo_apps.python.pipeline_apps.clip import gui
@@ -49,7 +46,7 @@ class GStreamerClipApp(GStreamerApp):
         setproctitle.setproctitle(CLIP_APP_TITLE)
         if parser == None:
             parser = get_pipeline_parser()
-        parser.add_argument("--detector", "-d", type=str, choices=["person", "face", "none"], default="none", help="Which detection pipeline to use.")
+        parser.add_argument("--detector", "-d", type=str, choices=["person", "vehicle", "face", "license-plate", "none"], default="none", help="Which detection pipeline to use.")
         parser.add_argument("--json-path", type=str, default=None, help="Path to JSON file to load and save embeddings. If not set, embeddings.json will be used.")
         parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
         parser.add_argument("--disable-runtime-prompts", action="store_true", help="When set, app will not support runtime prompts. Default is False.")
@@ -66,30 +63,32 @@ class GStreamerClipApp(GStreamerApp):
         self.detection_batch_size = 2
         self.clip_batch_size = 2
 
-        # Architecture is already handled by GStreamerApp parent class
-        # Use self.arch which is set by parent
-
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
-            self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=BASIC_PIPELINES_VIDEO_EXAMPLE_NAME)
+            self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=CLIP_VIDEO_NAME)
 
         self.hef_path_detection = get_resource_path(pipeline_name=CLIP_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
         self.hef_path_clip = get_resource_path(pipeline_name=CLIP_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
-
-        self.detection_config_json_path = get_resource_path(pipeline_name=None, resource_type=RESOURCES_JSON_DIR_NAME, model=CLIP_DETECTION_JSON_NAME)
 
         self.post_process_so_detection = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=DETECTION_POSTPROCESS_SO_FILENAME)
         self.post_process_so_clip = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=CLIP_POSTPROCESS_SO_FILENAME)
         self.post_process_so_cropper = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=CLIP_CROPPER_POSTPROCESS_SO_FILENAME)
 
         self.detection_post_process_function_name = 'yolov8n_personface'
+
         self.clip_post_process_function_name = 'filter'
         if self.options_menu.detector == 'person':
             self.class_id = 1
             self.cropper_post_process_function_name = 'person_cropper'
-        elif self.options_menu.detector == 'face':
+        elif self.options_menu.detector == 'vehicle':
             self.class_id = 2
+            self.cropper_post_process_function_name = 'vehicle_cropper'
+        elif self.options_menu.detector == 'face':
+            self.class_id = 3
             self.cropper_post_process_function_name = 'face_cropper'
-        else: # fast_sam
+        elif self.options_menu.detector == 'license-plate':
+            self.class_id = 4
+            self.cropper_post_process_function_name = 'license_plate_cropper'
+        else:
             self.class_id = 0
             self.cropper_post_process_function_name = 'object_cropper'
 
@@ -122,7 +121,6 @@ class GStreamerClipApp(GStreamerApp):
                 post_process_so=self.post_process_so_detection,
                 post_function_name=self.detection_post_process_function_name,
                 batch_size=self.detection_batch_size,
-                config_json=self.detection_config_json_path,
                 scheduler_priority=31,
                 scheduler_timeout_ms=100,
                 name='detection_inference'
@@ -159,8 +157,6 @@ class GStreamerClipApp(GStreamerApp):
 
         display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps='True')
 
-        overlay_pipeline = OVERLAY_PIPELINE()
-
         matching_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.matching_callback_name)
 
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
@@ -171,7 +167,6 @@ class GStreamerClipApp(GStreamerApp):
                 f'{clip_pipeline_wrapper} ! '
                 f'{matching_callback_pipeline} ! '
                 f'{user_callback_pipeline} ! '
-                f'{overlay_pipeline} ! '
                 f'{display_pipeline}'
             )
         else:
