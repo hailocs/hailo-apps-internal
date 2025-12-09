@@ -29,6 +29,7 @@ from hailo_platform.genai import LLM
 
 from hailo_apps.python.core.common.core import handle_list_models_flag
 from hailo_apps.python.core.common.defines import AGENT_APP
+from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, init_logging, level_from_args
 
 from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     agent_utils,
@@ -59,14 +60,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Chat Agent with Tool Calling")
     parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
     parser.add_argument("--list-models", action="store_true", help="List available models")
-    
+    add_logging_cli_args(parser)
+
     # Handle --list-models flag before full initialization
     handle_list_models_flag(parser, AGENT_APP)
-    
+
     args = parser.parse_args()
-    
-    # Set up logging level from environment variable
-    config.setup_logging()
+
+    # Initialize logging
+    init_logging(level=level_from_args(args))
 
     # Validate configuration
     try:
@@ -208,7 +210,7 @@ def main() -> None:
 
             try:
                 # Use generate() for streaming output with on-the-fly filtering
-                is_debug = logger.level == logging.DEBUG
+                is_debug = logger.isEnabledFor(logging.DEBUG)
                 raw_response = streaming.generate_and_stream_response(
                     llm=llm,
                     prompt=prompt,

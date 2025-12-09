@@ -29,12 +29,6 @@ CONTEXT_THRESHOLD: float = 0.95  # Clear context when usage reaches this percent
 # To use a different model, change DEFAULT_LLM_MODEL_NAME or set HAILO_HEF_PATH environment variable.
 DEFAULT_LLM_MODEL_NAME: str = LLM_CODER_MODEL_NAME_H10
 
-# Logging Configuration
-# Default log level (DEBUG, INFO, WARNING, ERROR)
-# - DEBUG: Shows all data passed between agent and tools (prompts, responses, tool calls/results)
-# - INFO (default): Shows only tool call indications
-DEFAULT_LOG_LEVEL: str = "INFO"
-
 # Hardware Configuration
 HARDWARE_MODE: str = "simulator"  # "real" or "simulator"
 # SPI configuration for NeoPixel (Raspberry Pi 5)
@@ -55,11 +49,6 @@ ENABLE_TTS: bool = True
 
 # Logger Setup
 LOGGER: logging.Logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
 
 
 def validate_config() -> None:
@@ -97,39 +86,6 @@ def validate_config() -> None:
         raise ValueError(f"Invalid CONTEXT_THRESHOLD {CONTEXT_THRESHOLD}. Must be between 0.1 and 1.0.")
 
 
-def setup_logging() -> None:
-    """
-    Set up logging level from configuration.
-
-    Creates a custom handler with a simple format for cleaner output,
-    while preserving the framework's detailed logging for other components.
-    """
-    log_level_str = DEFAULT_LOG_LEVEL.upper()
-    log_level = getattr(logging, log_level_str, logging.INFO)
-    LOGGER.setLevel(log_level)
-    # Also set root logger to ensure messages are shown
-    logging.root.setLevel(log_level)
-
-    # Add a custom handler with simple format for our logger
-    # This gives us clean output without interfering with framework logging
-    # agent_utils also uses this same logger, so it will get the same format
-
-    # Simple format: just level and message
-    simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
-
-    if not any(isinstance(h, logging.StreamHandler) and getattr(h, '_chat_agent_handler', False)
-               for h in LOGGER.handlers):
-        simple_handler = logging.StreamHandler(sys.stdout)
-        simple_handler._chat_agent_handler = True  # type: ignore # Mark as our custom handler
-        simple_handler.setFormatter(simple_formatter)
-        simple_handler.setLevel(log_level)
-        LOGGER.addHandler(simple_handler)
-        # Prevent propagation to root logger to avoid duplicate messages
-        LOGGER.propagate = False
-
-    print(f"Logging level set to {log_level_str}")
-
-
 def get_hef_path(hef_path_arg: str | None = None) -> str:
     """
     Get HEF path from configuration with auto-download support.
@@ -159,7 +115,7 @@ def get_hef_path(hef_path_arg: str | None = None) -> str:
     custom_path = os.environ.get("HAILO_HEF_PATH")
     if custom_path:
         return custom_path
-    
+
     # Check if user provided a path via argument
     if hef_path_arg:
         custom_path = hef_path_arg

@@ -35,6 +35,7 @@ from hailo_apps.python.core.gen_ai_utils.llm_utils import (
 )
 from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID, AGENT_APP
 from hailo_apps.python.core.common.core import handle_list_models_flag
+from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, init_logging, level_from_args
 
 try:
     from . import config, system_prompt
@@ -209,7 +210,7 @@ class VoiceAgentApp:
 
         try:
             # Use generate() for streaming output with on-the-fly filtering and TTS callback
-            is_debug = logger.level == logging.DEBUG
+            is_debug = logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
                 prompt=prompt,
@@ -265,26 +266,24 @@ class VoiceAgentApp:
 
 
 def main():
-    config.setup_logging()
-
-    # Validate configuration
-    try:
-        config.validate_config()
-    except ValueError as e:
-        print(f"[Configuration Error] {e}")
-        return
-
     parser = argparse.ArgumentParser(description='Voice-enabled AI Tool Agent')
     parser.add_argument('--hef-path', type=str, default=None, help='Path to HEF model file')
     parser.add_argument('--list-models', action='store_true', help='List available models')
     parser.add_argument('--arch', type=str, default='hailo10h', help='Hailo architecture')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--no-tts', action='store_true', help='Disable TTS')
-    
+    add_logging_cli_args(parser)
+
     # Handle --list-models flag before full initialization
     handle_list_models_flag(parser, AGENT_APP)
-    
+
     args = parser.parse_args()
+
+    # Initialize logging
+    init_logging(level=level_from_args(args))
+
+    # Validate configuration
+    try:
+        config.validate_config()
 
     # Get HEF (with auto-download support)
     try:

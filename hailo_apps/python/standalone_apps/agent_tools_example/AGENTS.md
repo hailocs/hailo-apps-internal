@@ -200,8 +200,8 @@ The tool will be automatically discovered when you run `chat_agent.py`. No code 
 # Basic usage
 python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
-# With debug logging (edit config.py: DEFAULT_LOG_LEVEL = "DEBUG")
-python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
+# With debug logging (use --debug flag)
+python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent --debug
 
 # With custom model
 HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
@@ -255,7 +255,7 @@ The voice chat agent:
 
 1. **Check tool description**: Ensure it clearly instructs when to use the tool
 2. **Check system prompt**: Should be simple and general
-3. **Enable debug logging**: Set `DEFAULT_LOG_LEVEL = "DEBUG"` in `config.py` to see full LLM responses
+3. **Enable debug logging**: Use `--debug` flag or set `HAILO_LOG_LEVEL=DEBUG` to see full LLM responses
 4. **Verify tool schema**: Ensure parameters are clearly described
 5. **Check function name**: Ensure description explicitly states the function name
 
@@ -275,7 +275,7 @@ The voice chat agent:
 When a tool isn't working as expected, follow this process:
 
 1.  **Enable Debug Logging**:
-    Set `DEFAULT_LOG_LEVEL = "DEBUG"` in `config.py` or use `--debug` flag.
+    Use `--debug` flag or set `HAILO_LOG_LEVEL=DEBUG`.
     This reveals:
     - The raw system prompt being sent
     - The raw LLM response (including XML tags)

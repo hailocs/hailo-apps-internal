@@ -52,6 +52,7 @@ try:
         VALID_TAPPAS_VERSION,
         VIRTUAL_ENV_NAME_DEFAULT,
         VIRTUAL_ENV_NAME_KEY,
+        LOG_LEVEL_KEY,
     )
 except ImportError:
     # Fallback: import from path
@@ -88,6 +89,7 @@ except ImportError:
         VALID_TAPPAS_VERSION = defines_module.VALID_TAPPAS_VERSION
         VIRTUAL_ENV_NAME_DEFAULT = defines_module.VIRTUAL_ENV_NAME_DEFAULT
         VIRTUAL_ENV_NAME_KEY = defines_module.VIRTUAL_ENV_NAME_KEY
+        LOG_LEVEL_KEY = defines_module.LOG_LEVEL_KEY
     else:
         raise ImportError(f"Could not find defines.py at {defines_path}")
 
@@ -122,6 +124,7 @@ def load_default_config() -> dict:
         TAPPAS_VARIANT_KEY: TAPPAS_VARIANT_DEFAULT,
         RESOURCES_PATH_KEY: DEFAULT_RESOURCES_SYMLINK_PATH,
         VIRTUAL_ENV_NAME_KEY: VIRTUAL_ENV_NAME_DEFAULT,
+        LOG_LEVEL_KEY: "INFO",
     }
     hailo_logger.debug(f"Loaded default configuration: {default_cfg}")
     return default_cfg
@@ -139,6 +142,7 @@ def validate_config(config: dict) -> bool:
         HAILO_ARCH_KEY: VALID_HAILO_ARCH,
         SERVER_URL_KEY: VALID_SERVER_URL,
         TAPPAS_VARIANT_KEY: VALID_TAPPAS_VARIANT,
+        LOG_LEVEL_KEY: ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     }
     for key, valid_choices in valid_map.items():
         val = config.get(key)
@@ -181,7 +185,7 @@ def _load_resources_config() -> dict:
     global _RESOURCES_CONFIG_CACHE
     if _RESOURCES_CONFIG_CACHE is not None:
         return _RESOURCES_CONFIG_CACHE
-    
+
     try:
         from hailo_apps.python.core.common.defines import DEFAULT_RESOURCES_CONFIG_PATH
     except ImportError:
@@ -189,12 +193,12 @@ def _load_resources_config() -> dict:
         DEFAULT_RESOURCES_CONFIG_PATH = str(
             current_file.parent.parent / "config" / "resources_config.yaml"
         )
-    
+
     config_path = Path(DEFAULT_RESOURCES_CONFIG_PATH)
     if not config_path.is_file():
         hailo_logger.warning(f"Resources config not found at {config_path}")
         return {}
-    
+
     _RESOURCES_CONFIG_CACHE = load_config(config_path)
     return _RESOURCES_CONFIG_CACHE
 
@@ -214,11 +218,11 @@ def _get_arch_models(config: dict, app_name: str, arch: str | None = None) -> di
     app_config = config.get(app_name)
     if not isinstance(app_config, dict) or "models" not in app_config:
         return None
-    
+
     models_config = app_config["models"]
     if arch is None:
         return models_config
-    
+
     arch_models = models_config.get(arch)
     return arch_models if isinstance(arch_models, dict) else None
 
@@ -279,7 +283,7 @@ def get_supported_architectures_for_app(app_name: str, resources_config: dict | 
     models_config = _get_arch_models(config, app_name)
     if not models_config:
         return []
-    
+
     supported = []
     for arch, arch_models in models_config.items():
         if isinstance(arch_models, dict):
@@ -321,7 +325,7 @@ def get_model_info(app_name: str, arch: str, model_name: str, resources_config: 
     arch_models = _get_arch_models(config, app_name, arch)
     if not arch_models:
         return None
-    
+
     # Search in default, then extra
     return _find_model_entry(arch_models.get("default"), model_name) or \
            _find_model_entry(arch_models.get("extra"), model_name)
@@ -333,7 +337,7 @@ def is_gen_ai_app(app_name: str, resources_config: dict | None = None) -> bool:
     models_config = _get_arch_models(config, app_name)
     if not models_config:
         return False
-    
+
     for arch_models in models_config.values():
         if isinstance(arch_models, dict):
             if _has_source(arch_models.get("default"), "gen-ai-mz") or \

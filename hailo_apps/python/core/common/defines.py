@@ -112,6 +112,7 @@ RESOURCES_PATH_KEY = "resources_path"
 VIRTUAL_ENV_NAME_KEY = "virtual_env_name"
 TAPPAS_POSTPROC_PATH_KEY = "tappas_postproc_path"
 HAILO_APPS_INFRA_PATH_KEY = "hailo_apps_infra_path"
+LOG_LEVEL_KEY = "log_level"
 
 # Environment variable groups
 DIC_CONFIG_VARIANTS = [
@@ -278,7 +279,7 @@ CLIP_CROPPER_OBJECT_POSTPROCESS_FUNCTION_NAME = 'object_cropper'
 CLIP_DETECTOR_TYPE_PERSON = 'person'
 CLIP_DETECTOR_TYPE_VEHICLE = 'vehicle'
 CLIP_DETECTOR_TYPE_FACE = 'face'
-CLIP_DETECTOR_TYPE_LICENSE_PLATE = 'license-plate'  
+CLIP_DETECTOR_TYPE_LICENSE_PLATE = 'license-plate'
 
 # Multisource pipeline defaults
 MULTI_SOURCE_APP_TITLE = "Hailo Multisource App"

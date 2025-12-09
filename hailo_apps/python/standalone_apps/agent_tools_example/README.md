@@ -24,9 +24,14 @@ python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
 ### With Debug Logging
 
-To enable debug logging, edit `config.py` and set:
-```python
-DEFAULT_LOG_LEVEL = "DEBUG"
+To enable debug logging, use the `--debug` flag:
+```bash
+python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent --debug
+```
+
+Or set the environment variable:
+```bash
+HAILO_LOG_LEVEL=DEBUG python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 ```
 
 ## Interactive Commands

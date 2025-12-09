@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import uuid
+from pathlib import Path
 from datetime import datetime
 from typing import Any
 
@@ -58,7 +59,7 @@ def init_logging(
     Priority for level:
       1) explicit param
       2) env HAILO_LOG_LEVEL
-      3) env LOG_LEVEL
+      3) config.yaml
       4) INFO (default)
 
     If log_file is provided (or $HAILO_LOG_FILE is set),
@@ -72,8 +73,24 @@ def init_logging(
         return
 
     # Resolve level from param or env
-    env_level = os.getenv("HAILO_LOG_LEVEL") or os.getenv("LOG_LEVEL")
-    resolved_level = _coerce_level(level if level is not None else env_level)
+    env_level = os.getenv("HAILO_LOG_LEVEL")
+
+    config_level = None
+    if level is None and env_level is None:
+        try:
+            # Lazy import to avoid circular dependencies
+            from hailo_apps.installation.config_utils import load_config
+            from hailo_apps.python.core.common.defines import DEFAULT_CONFIG_PATH, LOG_LEVEL_KEY
+
+            if os.path.exists(DEFAULT_CONFIG_PATH):
+                cfg = load_config(Path(DEFAULT_CONFIG_PATH))
+                config_level = cfg.get(LOG_LEVEL_KEY)
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    resolved_level = _coerce_level(level or env_level or config_level)
 
     # Clear existing handlers to avoid duplicates (tests/notebooks/CLI reuse)
     root = logging.getLogger()
@@ -188,9 +205,9 @@ def add_logging_cli_args(parser: Any) -> None:
     """
     parser.add_argument(
         "--log-level",
-        default=os.getenv("HAILO_LOG_LEVEL", "INFO"),
+        default=None,
         choices=[k.lower() for k in _LEVELS.keys()],
-        help="Logging level (default: %(default)s or $HAILO_LOG_LEVEL / $LOG_LEVEL).",
+        help="Logging level (default: INFO, or configured in config.yaml, or $HAILO_LOG_LEVEL).",
     )
     parser.add_argument(
         "--debug",
@@ -204,17 +221,18 @@ def add_logging_cli_args(parser: Any) -> None:
     )
 
 
-def level_from_args(args: Any) -> str:
+def level_from_args(args: Any) -> str | None:
     """Resolve level string from argparse args."""
-    return (
-        "DEBUG"
-        if getattr(args, "debug", False)
-        else str(getattr(args, "log_level", "INFO")).upper()
-    )
+    if getattr(args, "debug", False):
+        return "DEBUG"
+
+    val = getattr(args, "log_level", None)
+    return str(val).upper() if val is not None else None
 
 
-# If someone forgets to init, default to simple INFO console logging.
-if os.getenv("HAILO_LOG_AUTOCONFIG", "1") == "1":
+# Auto-config is opt-in: set HAILO_LOG_AUTOCONFIG=1 to enable.
+# Useful for notebooks/REPL but applications should explicitly call init_logging().
+if os.getenv("HAILO_LOG_AUTOCONFIG", "0") == "1":
     try:
         init_logging()
     except Exception:
