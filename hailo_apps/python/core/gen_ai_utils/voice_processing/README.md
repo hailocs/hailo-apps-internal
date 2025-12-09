@@ -265,7 +265,7 @@ If you see this error, the Piper model files are not installed. Follow the insta
 
 ## Applications Using This Module
 
-- **voice_asistant**: Interactive voice-controlled AI assistant
+- **voice_assistant**: Interactive voice-controlled AI assistant
 - **voice_chat_agent**: Voice-enabled tool-calling agent
 
 See their respective README files for application-specific setup and usage.

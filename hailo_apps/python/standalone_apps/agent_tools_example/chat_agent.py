@@ -16,6 +16,7 @@ References:
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import os
@@ -25,6 +26,9 @@ from pathlib import Path
 
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
+
+from hailo_apps.python.core.common.core import handle_list_models_flag
+from hailo_apps.python.core.common.defines import AGENT_APP
 
 from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     agent_utils,
@@ -51,6 +55,16 @@ logger = config.LOGGER
 
 
 def main() -> None:
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="Chat Agent with Tool Calling")
+    parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
+    parser.add_argument("--list-models", action="store_true", help="List available models")
+    
+    # Handle --list-models flag before full initialization
+    handle_list_models_flag(parser, AGENT_APP)
+    
+    args = parser.parse_args()
+    
     # Set up logging level from environment variable
     config.setup_logging()
 
@@ -61,9 +75,9 @@ def main() -> None:
         print(f"[Configuration Error] {e}")
         return
 
-    # Get HEF path from config
+    # Get HEF path from config (with auto-download support)
     try:
-        HEF_PATH = config.get_hef_path()
+        HEF_PATH = config.get_hef_path(args.hef_path)
     except ValueError as e:
         print(f"[Error] {e}")
         return

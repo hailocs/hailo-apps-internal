@@ -22,13 +22,8 @@ dependencies = [
     "opencv-python",
     "python-dotenv",
     "pyyaml",
-    "lancedb",
     "Pillow",
-    "ruff>=0.5.7",
-    "pre-commit>=3.7.0",
-    "PyAudio",
-    "piper-tts",
-    # Dependencies from hace-internal
+    # Dependencies from hace-internal (tracker, etc.)
     "loguru",
     "scipy>=1.9.3",
     "lap",
@@ -37,12 +32,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Development tools - install with: pip install -e ".[dev]"
+dev = [
+    "ruff>=0.5.7",
+    "pre-commit>=3.7.0",
+    "pytest>=7.0.0",
+    "pytest-timeout>=2.0.0",
+]
+
+# Gen-AI dependencies (voice assistant, LLM, embeddings) - install with: pip install -e ".[gen-ai]"
+gen-ai = [
+    "lancedb",
+    "PyAudio",
+    "piper-tts",
+]
+
+# OCR dependencies - install with: pip install -e ".[ocr]"
 ocr = [
     "paddlepaddle",
     "shapely",
     "pyclipper",
     "symspellpy",
 ]
+
+# Speech recognition (Whisper) dependencies - install with: pip install -e ".[speech-rec]"
 speech-rec = [
     "transformers==4.50.1",
     "sounddevice==0.5.1",
@@ -65,7 +78,7 @@ hailo-face-recon =          "hailo_apps.python.pipeline_apps.face_recognition.fa
 hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
 hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
-hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip_app:main"
+hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip:main"
 hailo-ocr  =                "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main"
 
 [tool.setuptools.packages.find]

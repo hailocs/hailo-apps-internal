@@ -10,10 +10,13 @@ from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.python.pipeline_apps.face_recognition.face_recognition_pipeline import GStreamerFaceRecognitionApp
 from hailo_apps.python.core.common.telegram_handler import TelegramHandler
-# endregion
+
+hailo_logger = get_logger(__name__)
+# endregion imports
 
 # region Constants
 TELEGRAM_ENABLED = False  # Enable Telegram notifications

@@ -249,7 +249,6 @@ class GStreamerApp:
                     self.webrtc_frames_queue.put(frame)
                 except queue.Full:
                     hailo_logger.warning("Frame queue full; dropping frame")
-                    print("Frame queue is full. Dropping frame.")
         return Gst.FlowReturn.OK
 
     def on_fps_measurement(self, sink, fps, droprate, avgfps):
@@ -281,8 +280,7 @@ class GStreamerApp:
         t = message.type
         hailo_logger.debug(f"Bus message received: {t}")
         if t == Gst.MessageType.EOS:
-            hailo_logger.debug("End of Stream")
-            print("End-of-stream")
+            hailo_logger.info("End of Stream")
             self.on_eos()
         elif t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
@@ -299,14 +297,12 @@ class GStreamerApp:
             if self.qos_count % 100 == 0:
                 qos_element = message.src.get_name()
                 hailo_logger.warning(f"QoS messages: {self.qos_count} total (from {qos_element})")
-                print(f"\033[93mQoS messages: {self.qos_count} total\033[0m")
         return True
 
     def on_eos(self):
         hailo_logger.debug("on_eos() called")
         if self.source_type == "file":
-            hailo_logger.debug("File source detected; rebuilding pipeline")
-            print("End-of-stream reached. Rebuilding pipeline...")
+            hailo_logger.info("File source detected; rebuilding pipeline")
             # Use GLib.idle_add to defer pipeline rebuild and avoid blocking
             GLib.idle_add(self._rebuild_pipeline)
         else:
@@ -321,7 +317,6 @@ class GStreamerApp:
             identity = self.pipeline.get_by_name("identity_callback")
             if identity is None:
                 hailo_logger.warning("identity_callback not found in pipeline")
-                print("Warning: identity_callback element not found...")
             else:
                 hailo_logger.debug("Connecting handoff signal to identity_callback")
                 identity.set_property("signal-handoffs", True)
@@ -385,8 +380,7 @@ class GStreamerApp:
                 self.loop.quit()
                 return False
 
-            hailo_logger.debug("Pipeline rebuilt and restarted successfully")
-            print("Pipeline rebuilt successfully.")
+            hailo_logger.info("Pipeline rebuilt and restarted successfully")
 
         except Exception as e:
             hailo_logger.error(f"Exception during pipeline rebuild: {e}")
@@ -420,8 +414,7 @@ class GStreamerApp:
 
         videorate = self.pipeline.get_by_name(videorate_name)
         if videorate is None:
-            hailo_logger.error(f"Element {videorate_name} not found")
-            print(f"Element {videorate_name} not found in the pipeline.")
+            hailo_logger.error(f"Element {videorate_name} not found in the pipeline")
             return
 
         current_max_rate = videorate.get_property("max-rate")
@@ -435,7 +428,6 @@ class GStreamerApp:
             new_caps_str = f"video/x-raw, framerate={new_fps}/1"
             hailo_logger.debug(f"Updating capsfilter to: {new_caps_str}")
             capsfilter.set_property("caps", Gst.Caps.from_string(new_caps_str))
-            print("Updated capsfilter caps to match new rate")
 
         self.frame_rate = new_fps
 
@@ -444,8 +436,7 @@ class GStreamerApp:
         return ""
 
     def dump_dot_file(self):
-        hailo_logger.debug("Dumping GStreamer dot file")
-        print("Dumping dot file...")
+        hailo_logger.info("Dumping GStreamer dot file")
         Gst.debug_bin_to_dot_file(self.pipeline, Gst.DebugGraphDetails.ALL, "pipeline")
         return False
 
@@ -460,7 +451,6 @@ class GStreamerApp:
         hailo_display = self.pipeline.get_by_name("hailo_display")
         if hailo_display is None and not getattr(self.options_menu, "ui", False):
             hailo_logger.warning("hailo_display not found in pipeline")
-            print("Warning: hailo_display element not found...")
 
         disable_qos(self.pipeline)
 
@@ -508,8 +498,7 @@ class GStreamerApp:
                 print("Exiting with error...", file=sys.stderr)
                 sys.exit(1)
             else:
-                hailo_logger.debug("Exiting successfully")
-                print("Exiting...")
+                hailo_logger.info("Exiting successfully")
                 sys.exit(0)
 
 
@@ -518,7 +507,7 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
     appsrc = pipeline.get_by_name("app_source")
     appsrc.set_property("is-live", True)
     appsrc.set_property("format", Gst.Format.TIME)
-    print("appsrc properties: ", appsrc)
+    hailo_logger.debug(f"appsrc properties: {appsrc}")
 
     with Picamera2() as picam2:
         if picamera_config is None:
@@ -543,13 +532,13 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
         )
         picam2.start()
         frame_count = 0
-        print("picamera_process started")
+        hailo_logger.info("picamera_process started")
 
         while True:
             frame_data = picam2.capture_array("lores")
             if frame_data is None:
                 hailo_logger.error("Failed to capture frame")
-                print("Failed to capture frame.")
+                print("Error: Failed to capture frame.", file=sys.stderr)
                 break
 
             frame = cv2.cvtColor(frame_data, cv2.COLOR_BGR2RGB)
@@ -572,7 +561,7 @@ def disable_qos(pipeline):
     hailo_logger.debug("disable_qos() called")
     if not isinstance(pipeline, Gst.Pipeline):
         hailo_logger.error("Provided object is not a GStreamer Pipeline")
-        print("The provided object is not a GStreamer Pipeline")
+        print("Error: Provided object is not a GStreamer Pipeline", file=sys.stderr)
         return
 
     it = pipeline.iterate_elements()
@@ -584,7 +573,6 @@ def disable_qos(pipeline):
         if "qos" in GObject.list_properties(element):
             element.set_property("qos", False)
             hailo_logger.debug(f"Set qos=False for {element.get_name()}")
-            print(f"Set qos to False for {element.get_name()}")
 
 
 def display_user_data_frame(user_data: app_callback_class):

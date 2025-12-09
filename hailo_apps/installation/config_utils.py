@@ -169,3 +169,175 @@ def load_and_validate_config(config_path: str | None = None) -> dict:
     hailo_logger.info("Configuration loaded and validated successfully.")
     return config
 
+# =============================================================================
+# Resources Config Utilities
+# =============================================================================
+
+_RESOURCES_CONFIG_CACHE: dict | None = None
+
+
+def _load_resources_config() -> dict:
+    """Load the resources configuration file (cached)."""
+    global _RESOURCES_CONFIG_CACHE
+    if _RESOURCES_CONFIG_CACHE is not None:
+        return _RESOURCES_CONFIG_CACHE
+    
+    try:
+        from hailo_apps.python.core.common.defines import DEFAULT_RESOURCES_CONFIG_PATH
+    except ImportError:
+        current_file = Path(__file__).resolve()
+        DEFAULT_RESOURCES_CONFIG_PATH = str(
+            current_file.parent.parent / "config" / "resources_config.yaml"
+        )
+    
+    config_path = Path(DEFAULT_RESOURCES_CONFIG_PATH)
+    if not config_path.is_file():
+        hailo_logger.warning(f"Resources config not found at {config_path}")
+        return {}
+    
+    _RESOURCES_CONFIG_CACHE = load_config(config_path)
+    return _RESOURCES_CONFIG_CACHE
+
+
+def _get_config(resources_config: dict | None) -> dict:
+    """Get config from parameter or load from default."""
+    return resources_config if resources_config is not None else _load_resources_config()
+
+
+def _is_none(value) -> bool:
+    """Check if value is None or YAML 'None' string."""
+    return value is None or (isinstance(value, str) and value.lower() == "none")
+
+
+def _get_arch_models(config: dict, app_name: str, arch: str | None = None) -> dict | None:
+    """Get arch_models dict for an app. If arch is None, returns models_config."""
+    app_config = config.get(app_name)
+    if not isinstance(app_config, dict) or "models" not in app_config:
+        return None
+    
+    models_config = app_config["models"]
+    if arch is None:
+        return models_config
+    
+    arch_models = models_config.get(arch)
+    return arch_models if isinstance(arch_models, dict) else None
+
+
+def _normalize_model_entries(entries) -> list:
+    """Convert model entries to a flat list (handles single entry, list, or None)."""
+    if _is_none(entries):
+        return []
+    return entries if isinstance(entries, list) else [entries]
+
+
+def _extract_names(entries) -> list[str]:
+    """Extract model names from entries list."""
+    names = []
+    for entry in _normalize_model_entries(entries):
+        if _is_none(entry):
+            continue
+        name = entry.get("name") if isinstance(entry, dict) else entry
+        if name and not _is_none(name):
+            names.append(name)
+    return names
+
+
+def _has_source(entries, source: str) -> bool:
+    """Check if any entry has the specified source."""
+    for entry in _normalize_model_entries(entries):
+        if isinstance(entry, dict) and entry.get("source") == source:
+            return True
+    return False
+
+
+def _find_model_entry(entries, model_name: str) -> dict | None:
+    """Find a model entry by name, return as normalized dict."""
+    for entry in _normalize_model_entries(entries):
+        if _is_none(entry):
+            continue
+        if isinstance(entry, dict) and entry.get("name") == model_name:
+            return entry
+        if isinstance(entry, str) and entry == model_name:
+            return {"name": model_name, "source": "mz"}
+    return None
+
+
+# =============================================================================
+# Public API
+# =============================================================================
+
+def get_available_apps(resources_config: dict | None = None) -> list[str]:
+    """Get list of all available app names from resources config."""
+    config = _get_config(resources_config)
+    shared_keys = {"videos", "images"}
+    return sorted(k for k, v in config.items() if isinstance(v, dict) and k not in shared_keys)
+
+
+def get_supported_architectures_for_app(app_name: str, resources_config: dict | None = None) -> list[str]:
+    """Get architectures that have valid models for an app."""
+    config = _get_config(resources_config)
+    models_config = _get_arch_models(config, app_name)
+    if not models_config:
+        return []
+    
+    supported = []
+    for arch, arch_models in models_config.items():
+        if isinstance(arch_models, dict):
+            if _extract_names(arch_models.get("default")) or _extract_names(arch_models.get("extra")):
+                supported.append(arch)
+    return sorted(supported)
+
+
+def get_default_models_for_app_and_arch(app_name: str, arch: str, resources_config: dict | None = None) -> list[str]:
+    """Get default model names for an app and architecture."""
+    config = _get_config(resources_config)
+    arch_models = _get_arch_models(config, app_name, arch)
+    return _extract_names(arch_models.get("default")) if arch_models else []
+
+
+def get_extra_models_for_app_and_arch(app_name: str, arch: str, resources_config: dict | None = None) -> list[str]:
+    """Get extra model names for an app and architecture."""
+    config = _get_config(resources_config)
+    arch_models = _get_arch_models(config, app_name, arch)
+    return _extract_names(arch_models.get("extra")) if arch_models else []
+
+
+def get_all_models_for_app_and_arch(app_name: str, arch: str, resources_config: dict | None = None) -> list[str]:
+    """Get all model names (default + extra) for an app and architecture."""
+    config = _get_config(resources_config)
+    return get_default_models_for_app_and_arch(app_name, arch, config) + \
+           get_extra_models_for_app_and_arch(app_name, arch, config)
+
+
+def get_default_model_for_app_and_arch(app_name: str, arch: str, resources_config: dict | None = None) -> str | None:
+    """Get first default model name for an app and architecture."""
+    models = get_default_models_for_app_and_arch(app_name, arch, resources_config)
+    return models[0] if models else None
+
+
+def get_model_info(app_name: str, arch: str, model_name: str, resources_config: dict | None = None) -> dict | None:
+    """Get full model info (name, source, url) for a specific model."""
+    config = _get_config(resources_config)
+    arch_models = _get_arch_models(config, app_name, arch)
+    if not arch_models:
+        return None
+    
+    # Search in default, then extra
+    return _find_model_entry(arch_models.get("default"), model_name) or \
+           _find_model_entry(arch_models.get("extra"), model_name)
+
+
+def is_gen_ai_app(app_name: str, resources_config: dict | None = None) -> bool:
+    """Check if an app has any gen-ai-mz source models."""
+    config = _get_config(resources_config)
+    models_config = _get_arch_models(config, app_name)
+    if not models_config:
+        return False
+    
+    for arch_models in models_config.values():
+        if isinstance(arch_models, dict):
+            if _has_source(arch_models.get("default"), "gen-ai-mz") or \
+               _has_source(arch_models.get("extra"), "gen-ai-mz"):
+                return True
+    return False
+

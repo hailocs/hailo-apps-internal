@@ -1,7 +1,7 @@
 #!/bin/bash
+# Check installed Hailo packages and their versions
 
-set -e
-set -o pipefail
+set -euo pipefail
 
 # Terminal colors
 RED='\033[0;31m'

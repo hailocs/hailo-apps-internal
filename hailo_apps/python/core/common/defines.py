@@ -138,12 +138,11 @@ SERVER_URL_DEFAULT = "http://dev-public.hailo.ai/2025_10"
 RESOURCES_PATH_DEFAULT = RESOURCES_ROOT_PATH_DEFAULT
 VIRTUAL_ENV_NAME_DEFAULT = "hailo_infra_venv"
 STORAGE_PATH_DEFAULT = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "storage_deb_whl_dir")
-# Default Tappas post-processing directory
-import subprocess
 
-TAPPAS_POSTPROC_PATH_DEFAULT = subprocess.check_output(
-    ["pkg-config", "--variable=tappas_postproc_lib_dir", "hailo-tappas-core"], text=True
-).strip()
+# Default Tappas post-processing directory - set via environment variable during installation
+# The installer runs: pkg-config --variable=tappas_postproc_lib_dir hailo-tappas-core
+# and stores the result in the .env file as TAPPAS_POSTPROC_PATH
+TAPPAS_POSTPROC_PATH_DEFAULT = ""  # Will be populated from environment at runtime
 
 # Resource groups for download_resources
 RESOURCES_GROUP_DEFAULT = "default"
@@ -230,6 +229,7 @@ POSE_ESTIMATION_MODEL_NAME_H8 = "yolov8m_pose"
 POSE_ESTIMATION_MODEL_NAME_H8L = "yolov8s_pose"
 
 # Face recognition pipeline defaults
+FACE_RECOGNITION_APP_TITLE = "Hailo Face Recognition App"
 FACE_DETECTION_PIPELINE = "face_detection"
 FACE_DETECTION_MODEL_NAME_H8 = "scrfd_10g"
 FACE_DETECTION_MODEL_NAME_H8L = "scrfd_2.5g"
@@ -286,6 +286,7 @@ MULTI_SOURCE_PARAMS_JSON_NAME = "multisource_params.json"
 TAPPAS_STREAM_ID_TOOL_SO_FILENAME = 'libstream_id_tool.so'
 
 # REID Multisource pipeline defaults
+REID_MULTISOURCE_PIPELINE = "reid_multisource"
 REID_MULTISOURCE_APP_TITLE = "Hailo REID Multisource App"
 REID_MULTI_SOURCE_DATABASE_DIR_NAME = "database"
 REID_POSTPROCESS_SO_FILENAME = "librepvgg_reid_postprocess.so"
@@ -299,6 +300,7 @@ REID_CLASSIFICATION_TYPE = 'reid'
 RTSP_APP_TITLE = "Hailo RTSP App"
 
 # TILING pipeline defaults
+TILING_PIPELINE = "tiling"
 TILING_APP_TITLE = "Hailo Tiling App"
 TILING_VIDEO_EXAMPLE_NAME = "tiling_visdrone_720p.mp4"
 
@@ -342,7 +344,13 @@ BARCODE_VIDEO_EXAMPLE_NAME = "barcode.mp4"
 # Gstreamer pipeline defaults
 GST_VIDEO_SINK = "autovideosink"
 
-# Gen AI defaults
+# Gen AI app defaults
+VLM_CHAT_APP = "vlm_chat"
+LLM_CHAT_APP = "llm_chat"
+WHISPER_CHAT_APP = "whisper_chat"
+AGENT_APP = "agent"
+
+# Gen AI model defaults
 VLM_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
 LLM_MODEL_NAME_H10 = "Qwen2.5-1.5B-Instruct"
 LLM_CODER_MODEL_NAME_H10 = "Qwen2.5-Coder-1.5B-Instruct"
@@ -368,8 +376,8 @@ LLM_PROMPT_PREFIX = "Respond in up to three sentences. "
 TEMP_WAV_DIR = "/tmp"
 
 # OCR pipeline defaults
+PADDLE_OCR_PIPELINE = "paddle_ocr"
 OCR_APP_TITLE = "Hailo OCR App"
-OCR_PIPELINE = "ocr"
 OCR_DETECTION_MODEL_NAME = "ocr_det"
 OCR_RECOGNITION_MODEL_NAME = "ocr"
 OCR_POSTPROCESS_SO_FILENAME = "libocr_postprocess.so"

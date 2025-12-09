@@ -9,8 +9,8 @@ gi.require_version("Gst", "1.0")
 import hailo
 from gi.repository import Gst
 
-from hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple import (
-    GStreamerDetectionApp,
+from hailo_apps.python.pipeline_apps.detection_simple.detection_simple_pipeline import (
+    GStreamerDetectionSimpleApp,
 )
 
 # Logger
@@ -52,7 +52,7 @@ def app_callback(element, buffer, user_data):
 def main():
     hailo_logger.info("Starting GStreamer Detection Simple App...")
     user_data = user_app_callback_class()  # Create an instance of the user app callback class
-    app = GStreamerDetectionApp(app_callback, user_data)
+    app = GStreamerDetectionSimpleApp(app_callback, user_data)
     app.run()
 
 

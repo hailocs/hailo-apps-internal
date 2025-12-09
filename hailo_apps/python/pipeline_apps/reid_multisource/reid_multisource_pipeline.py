@@ -15,7 +15,7 @@ import numpy as np
 # Local application-specific imports
 import hailo
 from hailo import HailoTracker
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
 from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
@@ -49,7 +49,8 @@ from hailo_apps.python.core.common.defines import (
     RPI_NAME_I,
     HAILO8_ARCH,
     HAILO10H_ARCH,
-    HAILO8L_ARCH
+    HAILO8L_ARCH,
+    REID_MULTISOURCE_PIPELINE,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
@@ -63,17 +64,23 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     get_source_type
 )
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
 # endregion imports
 
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
 class GStreamerREIDMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
 
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
         # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
         parser.set_defaults(width=640, height=640)
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, REID_MULTISOURCE_PIPELINE)
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 
