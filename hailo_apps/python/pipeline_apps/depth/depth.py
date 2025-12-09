@@ -56,7 +56,6 @@ def app_callback(element, buffer, user_data):
 
     roi = hailo.get_roi_from_buffer(buffer)
     depth_mat = roi.get_objects_typed(hailo.HAILO_DEPTH_MASK)
-    hailo_logger.debug("Frame=%s | depth_masks=%d", user_data.get_count(), len(depth_mat))
 
     if len(depth_mat) > 0:
         detection_average_depth = user_data.calculate_average_depth(depth_mat[0].get_data())
@@ -65,13 +64,12 @@ def app_callback(element, buffer, user_data):
 
     string_to_print += f"average depth: {detection_average_depth:.2f}\n"
     print(string_to_print)
-    hailo_logger.info(string_to_print.strip())
 
     return
 
 
 def main():
-    hailo_logger.info("Starting Depth callback runner...")
+    hailo_logger.info("Starting Depth App.")
     user_data = user_app_callback_class()
     app = GStreamerDepthApp(app_callback, user_data)
     app.run()

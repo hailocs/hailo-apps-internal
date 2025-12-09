@@ -12,14 +12,17 @@ from hailo_apps.python.pipeline_apps.clip.clip_pipeline import GStreamerClipApp
 hailo_logger = get_logger(__name__)
 # endregion imports
 
+
 def app_callback(element, buffer, user_data):
     return
 
+
 def main():
+    hailo_logger.info("Starting CLIP App.")
     user_data = app_callback_class()
     app = GStreamerClipApp(app_callback, user_data)
     app.run()
 
+
 if __name__ == "__main__":
     main()
-
