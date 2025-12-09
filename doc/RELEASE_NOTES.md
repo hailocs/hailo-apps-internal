@@ -128,9 +128,9 @@ sudo ./install.sh
 ## 📚 Learn More
 
 Full documentation for each application is available in:
-- `hailo_apps/hailo_app_python/apps/tiling/README.md`
-- `hailo_apps/hailo_app_python/apps/multisource/README.md`
-- `hailo_apps/hailo_app_python/apps/reid_multisource/README.md`
+- `hailo_apps/python/pipeline_apps/tiling/README.md`
+- `hailo_apps/python/pipeline_apps/multisource/README.md`
+- `hailo_apps/python/pipeline_apps/reid_multisource/README.md`
 
 ---
 

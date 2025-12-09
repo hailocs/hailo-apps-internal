@@ -151,17 +151,6 @@ def get_base_parser():
     )
 
     parser.add_argument(
-        "--labels", "-l",
-        type=str,
-        default=None,
-        help=(
-            "Path to a text file containing class labels, one per line. "
-            "Used for mapping model output indices to human-readable class names. "
-            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
-        )
-    )
-
-    parser.add_argument(
         "--width", "-W",
         type=int,
         default=None,
@@ -203,16 +192,6 @@ def get_base_parser():
             "Enable FPS (frames per second) counter display. "
             "When enabled, the application will display real-time performance metrics "
             "showing the current processing rate. Useful for performance monitoring and optimization."
-        )
-    )
-
-    parser.add_argument(
-        "--save-output", "-s",
-        action="store_true",
-        help=(
-            "Enable output file saving. When enabled, processed images or videos will be saved to disk. "
-            "The output location is determined by the --output-dir flag (for standalone apps) "
-            "or application-specific defaults. Without this flag, output is only displayed (if applicable)."
         )
     )
 
@@ -338,6 +317,17 @@ def get_standalone_parser():
     )
 
     parser.add_argument(
+        "--labels", "-l",
+        type=str,
+        default=None,
+        help=(
+            "Path to a text file containing class labels, one per line. "
+            "Used for mapping model output indices to human-readable class names. "
+            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
+        )
+    )
+
+    parser.add_argument(
         "--output-dir", "-o",
         type=str,
         default=None,
@@ -346,6 +336,15 @@ def get_standalone_parser():
             "When --save-output is enabled, processed images, videos, or result files will be "
             "written to this directory. If not specified, outputs are saved to a default location "
             "or the current working directory. The directory will be created if it does not exist."
+        )
+    )
+
+    parser.add_argument(
+        "--save-output", "-s",
+        action="store_true",
+        help=(
+            "Enable output file saving. When enabled, processed images or videos will be saved to disk. "
+            "The output location is determined by the --output-dir flag. Without this flag, output is only displayed (if applicable)."
         )
     )
 
