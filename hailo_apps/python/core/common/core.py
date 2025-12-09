@@ -292,6 +292,17 @@ def get_pipeline_parser():
         )
     )
 
+    parser.add_argument(
+        "--enable-watchdog",
+        action="store_true",
+        help=(
+            "Enable pipeline watchdog. "
+            "When enabled, the pipeline will be monitored for stalled frame processing. "
+            "If no frames are processed for the configured timeout, the pipeline will be automatically "
+            "rebuilt. Note: This requires the application callback to be enabled (i.e., not disabled via --disable-callback)."
+        )
+    )
+
     return parser
 
 

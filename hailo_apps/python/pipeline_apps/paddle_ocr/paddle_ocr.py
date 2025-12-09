@@ -55,6 +55,7 @@ class user_app_callback_class(app_callback_class):
 
 # This is the callback function that will be called when data is available from the pipeline
 def app_callback(element, buffer, user_data):
+    # Note: Frame counting is handled automatically by the framework wrapper
     # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer | frame=%s", user_data.get_count())
@@ -64,8 +65,7 @@ def app_callback(element, buffer, user_data):
     pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
 
-    # Using the user_data to count the number of frames
-    user_data.increment()
+    # Get current frame index
     frame_idx = user_data.get_count()
     hailo_logger.debug("Frame=%s | caps fmt=%s %sx%s", frame_idx, format, width, height)
     string_to_print = f"Frame count: {user_data.get_count()}\n"

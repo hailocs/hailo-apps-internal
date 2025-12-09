@@ -54,9 +54,9 @@ class user_callbacks_class(app_callback_class):
     # endregion
 
 def app_callback(element, buffer, user_data):
+    # Note: Frame counting is handled automatically by the framework wrapper
     if buffer is None:
         return
-    user_data.increment()
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     for detection in detections:
