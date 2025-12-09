@@ -22,7 +22,7 @@ class user_app_callback_class(app_callback_class):
 
 # User-defined callback function: This is the callback function that will be called when data is available from the pipeline
 def app_callback(element, buffer, user_data):
-    user_data.increment()  # Using the user_data to count the number of frames
+    # Note: Frame counting is handled automatically by the framework wrapper
     string_to_print = f"Frame count: {user_data.get_count()}\n"
     # buffer is passed directly
     if buffer is None:  # Check if the buffer is valid

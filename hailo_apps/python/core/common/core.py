@@ -48,7 +48,7 @@ from .defines import (
     CLIP_DETECTION_PIPELINE,
     CLIP_DETECTION_MODEL_NAME
 )
-from .hailo_logger import get_logger
+from .hailo_logger import add_logging_cli_args, get_logger
 from .installation_utils import detect_hailo_arch
 
 hailo_logger = get_logger(__name__)
@@ -104,6 +104,10 @@ def get_base_parser():
         description="Hailo Application Base Parser",
         add_help=False  # Allow parent parsers to control help display
     )
+
+    # Logging configuration group
+    log_group = parser.add_argument_group('logging options', 'Configure logging behavior')
+    add_logging_cli_args(log_group)
 
     # Core input/output flags
     parser.add_argument(
@@ -289,6 +293,17 @@ def get_pipeline_parser():
             "When enabled, the GStreamer pipeline structure will be saved as a Graphviz DOT file "
             "(typically named 'pipeline.dot'). This file can be visualized using tools like 'dot' "
             "to understand the pipeline topology and debug pipeline configuration issues."
+        )
+    )
+
+    parser.add_argument(
+        "--enable-watchdog",
+        action="store_true",
+        help=(
+            "Enable pipeline watchdog. "
+            "When enabled, the pipeline will be monitored for stalled frame processing. "
+            "If no frames are processed for the configured timeout, the pipeline will be automatically "
+            "rebuilt. Note: This requires the application callback to be enabled (i.e., not disabled via --disable-callback)."
         )
     )
 
