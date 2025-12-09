@@ -36,7 +36,6 @@ Check prerequisites for Hailo Apps Infrastructure installation.
 ⚠️  This script MUST be run with sudo.
 
 OPTIONS:
-    -v, --verbose              Show detailed output
     -h, --help                 Show this help message and exit
 
 OUTPUT:
@@ -56,10 +55,6 @@ EOF
 VERBOSE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v|--verbose)
-            VERBOSE=true
-            shift
-            ;;
         -h|--help)
             show_help
             exit 0

@@ -36,7 +36,6 @@ Verify installation of Hailo Apps Infrastructure.
 OPTIONS:
     -n, --venv-name NAME          Virtual environment name (default: ${DEFAULT_VENV_NAME})
     --json                         Output results in JSON format
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -58,10 +57,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --json)
             JSON_OUTPUT=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
             shift
             ;;
         -h|--help)

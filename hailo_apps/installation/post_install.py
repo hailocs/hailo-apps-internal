@@ -2,9 +2,11 @@
 
 This script handles the post-installation tasks:
 1. Load/create environment configuration (.env file)
-2. Create symlink from resources root to local resources directory
-3. Download resources (models, videos, images, JSON configs)
-4. Compile C++ postprocess modules
+2. Download resources (models, videos, images, JSON configs)
+3. Compile C++ postprocess modules
+
+Note: Resources symlink creation is handled by install.sh for better
+      privilege handling and filesystem operations (industry standard).
 
 Usage:
     hailo-post-install                      # Run with default settings
@@ -16,7 +18,6 @@ Usage:
 
 import argparse
 import os
-import shutil
 from pathlib import Path
 
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -27,9 +28,7 @@ from hailo_apps.python.core.common.defines import (
     DEFAULT_RESOURCES_CONFIG_PATH,
     RESOURCES_PATH_DEFAULT,
     RESOURCES_PATH_KEY,
-    RESOURCES_ROOT_PATH_DEFAULT,
 )
-from hailo_apps.python.core.common.installation_utils import create_symlink
 from hailo_apps.installation.config_utils import load_and_validate_config
 from hailo_apps.installation.compile_cpp import compile_postprocess
 from hailo_apps.installation.download_resources import download_resources
@@ -39,27 +38,6 @@ from hailo_apps.installation.set_env import (
 )
 
 hailo_logger = get_logger(__name__)
-
-
-def setup_resources_symlink(resources_path: Path) -> None:
-    """Setup the resources symlink from project to resources root.
-    
-    Args:
-        resources_path: Target path for the symlink (in project directory)
-    """
-    hailo_logger.info(f"Setting up resources symlink...")
-    
-    if resources_path.exists():
-        hailo_logger.warning(f"{resources_path} already exists — removing before symlink creation.")
-        if resources_path.is_symlink():
-            resources_path.unlink()
-        elif resources_path.is_dir():
-            shutil.rmtree(resources_path)
-        else:
-            resources_path.unlink()
-
-    hailo_logger.info(f"Creating symlink: {resources_path} -> {RESOURCES_ROOT_PATH_DEFAULT}")
-    create_symlink(RESOURCES_ROOT_PATH_DEFAULT, str(resources_path))
 
 
 def post_install(
@@ -93,12 +71,10 @@ def post_install(
     set_environment_vars(config, dotenv_path)
     load_environment(dotenv_path)
     
-    # Step 2: Setup resources symlink
-    print("🔗 Setting up resources symlink...")
+    # Note: Resources symlink is created by install.sh (shell handles filesystem ops)
     resources_path = Path(os.getenv(RESOURCES_PATH_KEY, RESOURCES_PATH_DEFAULT))
-    setup_resources_symlink(resources_path)
     
-    # Step 3: Download resources (if not skipped)
+    # Step 2: Download resources (if not skipped)
     if not skip_download:
         print("⬇️  Downloading resources...")
         hailo_logger.info("Starting resource download...")
@@ -113,7 +89,7 @@ def post_install(
         print("⏭️  Skipping resource download (--skip-download)")
         hailo_logger.info("Skipping resource download")
     
-    # Step 4: Compile postprocess (if not skipped)
+    # Step 3: Compile postprocess (if not skipped)
     if not skip_compile:
         print("⚙️  Compiling C++ post-process modules...")
         hailo_logger.info("Compiling C++ post-process modules...")

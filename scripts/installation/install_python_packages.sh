@@ -42,7 +42,6 @@ OPTIONS:
     --skip-hailo                   Skip installation of Hailo Python bindings
     --skip-package                 Skip installation of hailo_apps package
     --no-install                   Skip all Python package installation
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -81,10 +80,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-install)
             NO_INSTALL=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
             shift
             ;;
         -h|--help)

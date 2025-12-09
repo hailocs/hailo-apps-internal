@@ -30,7 +30,6 @@ Setup environment variables for Hailo Apps Infrastructure.
 
 OPTIONS:
     -n, --venv-name NAME          Virtual environment name (default: ${DEFAULT_VENV_NAME})
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -48,10 +47,6 @@ while [[ $# -gt 0 ]]; do
             VENV_NAME="$2"
             VENV_PATH="${PROJECT_ROOT}/${VENV_NAME}"
             shift 2
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            shift
             ;;
         -h|--help)
             show_help

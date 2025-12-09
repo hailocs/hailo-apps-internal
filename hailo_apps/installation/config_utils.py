@@ -36,8 +36,6 @@ try:
         MODEL_ZOO_VERSION_DEFAULT,
         MODEL_ZOO_VERSION_KEY,
         RESOURCES_PATH_KEY,
-        TAPPAS_VARIANT_DEFAULT,
-        TAPPAS_VARIANT_KEY,
         TAPPAS_VERSION_DEFAULT,
         TAPPAS_VERSION_KEY,
         VALID_HAILO_ARCH,
@@ -45,7 +43,6 @@ try:
         VALID_HAILORT_VERSION,
         VALID_HOST_ARCH,
         VALID_MODEL_ZOO_VERSION,
-        VALID_TAPPAS_VARIANT,
         VALID_TAPPAS_VERSION,
         VIRTUAL_ENV_NAME_DEFAULT,
         VIRTUAL_ENV_NAME_KEY,
@@ -70,15 +67,12 @@ except ImportError:
         MODEL_ZOO_VERSION_DEFAULT = defines_module.MODEL_ZOO_VERSION_DEFAULT
         MODEL_ZOO_VERSION_KEY = defines_module.MODEL_ZOO_VERSION_KEY
         RESOURCES_PATH_KEY = defines_module.RESOURCES_PATH_KEY
-        TAPPAS_VARIANT_DEFAULT = defines_module.TAPPAS_VARIANT_DEFAULT
-        TAPPAS_VARIANT_KEY = defines_module.TAPPAS_VARIANT_KEY
         TAPPAS_VERSION_DEFAULT = defines_module.TAPPAS_VERSION_DEFAULT
         TAPPAS_VERSION_KEY = defines_module.TAPPAS_VERSION_KEY
         VALID_HAILO_ARCH = defines_module.VALID_HAILO_ARCH
         VALID_HAILORT_VERSION = defines_module.VALID_HAILORT_VERSION
         VALID_HOST_ARCH = defines_module.VALID_HOST_ARCH
         VALID_MODEL_ZOO_VERSION = defines_module.VALID_MODEL_ZOO_VERSION
-        VALID_TAPPAS_VARIANT = defines_module.VALID_TAPPAS_VARIANT
         VALID_TAPPAS_VERSION = defines_module.VALID_TAPPAS_VERSION
         VIRTUAL_ENV_NAME_DEFAULT = defines_module.VIRTUAL_ENV_NAME_DEFAULT
         VIRTUAL_ENV_NAME_KEY = defines_module.VIRTUAL_ENV_NAME_KEY
@@ -112,7 +106,6 @@ def load_default_config() -> dict:
         MODEL_ZOO_VERSION_KEY: MODEL_ZOO_VERSION_DEFAULT,
         HOST_ARCH_KEY: HOST_ARCH_DEFAULT,
         HAILO_ARCH_KEY: HAILO_ARCH_DEFAULT,
-        TAPPAS_VARIANT_KEY: TAPPAS_VARIANT_DEFAULT,
         # Nested configs with defaults
         'venv': {
             'name': VIRTUAL_ENV_NAME_DEFAULT,
@@ -133,29 +126,78 @@ def load_default_config() -> dict:
     return default_cfg
 
 
-def validate_config(config: dict) -> bool:
-    """Validate top-level config values against valid choices."""
-    hailo_logger.debug(f"Validating configuration: {config}")
-    valid_config = True
-    valid_map = {
+def _get_valid_choices_from_config(config: dict, key: str) -> list:
+    """Get valid choices for a key from config's valid_versions section.
+    
+    Always includes 'auto' as a valid option for auto-detection.
+    Falls back to defines.py values if not found in config.
+    """
+    AUTO = "auto"
+    valid_versions = config.get("valid_versions", {})
+    valid_model_zoo = config.get("valid_model_zoo_versions", {})
+    
+    # Map config keys to their valid_versions keys
+    key_mapping = {
+        HAILORT_VERSION_KEY: "hailort",
+        TAPPAS_VERSION_KEY: "tappas",
+        HOST_ARCH_KEY: "host_arch",
+        HAILO_ARCH_KEY: "hailo_arch",
+    }
+    
+    # Special handling for model_zoo_version - combine h8 and h10 versions
+    if key == MODEL_ZOO_VERSION_KEY:
+        h8_versions = valid_model_zoo.get("h8", [])
+        h10_versions = valid_model_zoo.get("h10", [])
+        if h8_versions or h10_versions:
+            return [AUTO] + h10_versions + h8_versions
+        # Fallback to defines.py
+        return VALID_MODEL_ZOO_VERSION
+    
+    # Get from valid_versions section
+    config_key = key_mapping.get(key)
+    if config_key and config_key in valid_versions:
+        versions = valid_versions[config_key]
+        if versions:
+            return [AUTO] + versions
+    
+    # Fallback to defines.py values
+    fallback_map = {
         HAILORT_VERSION_KEY: VALID_HAILORT_VERSION,
         TAPPAS_VERSION_KEY: VALID_TAPPAS_VERSION,
-        MODEL_ZOO_VERSION_KEY: VALID_MODEL_ZOO_VERSION,
         HOST_ARCH_KEY: VALID_HOST_ARCH,
         HAILO_ARCH_KEY: VALID_HAILO_ARCH,
-        TAPPAS_VARIANT_KEY: VALID_TAPPAS_VARIANT,
     }
-    for key, valid_choices in valid_map.items():
+    return fallback_map.get(key, [AUTO])
+
+
+def validate_config(config: dict) -> bool:
+    """Validate top-level config values against valid choices from config file."""
+    hailo_logger.debug(f"Validating configuration: {config}")
+    valid_config = True
+    
+    # Keys to validate
+    keys_to_validate = [
+        HAILORT_VERSION_KEY,
+        TAPPAS_VERSION_KEY,
+        MODEL_ZOO_VERSION_KEY,
+        HOST_ARCH_KEY,
+        HAILO_ARCH_KEY,
+    ]
+    
+    for key in keys_to_validate:
         val = config.get(key)
         # Skip validation if key doesn't exist (will use default)
         if val is None:
             continue
+        
+        valid_choices = _get_valid_choices_from_config(config, key)
         if val not in valid_choices:
             hailo_logger.warning(
                 f"Invalid value for {key}: '{val}'. Valid options: {valid_choices}"
             )
             valid_config = False
             print(f"Invalid value '{val}'. Valid options: {valid_choices}")
+    
     hailo_logger.debug(f"Configuration validation result: {valid_config}")
     return valid_config
 

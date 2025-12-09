@@ -38,7 +38,6 @@ sudo ./scripts/installation/check_prerequisites.sh [OPTIONS]
 ```
 
 **Options**:
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 **Output**: Summary line in format: `SUMMARY: driver=<version> hailort=<version> pyhailort=<version> tappas=<version> pytappas=<version>`
@@ -64,7 +63,6 @@ sudo ./scripts/installation/setup_venv.sh [OPTIONS]
 - `-n, --venv-name NAME`: Virtual environment name (default: venv_hailo_apps)
 - `--no-system-python`: Don't use system site-packages
 - `--remove-existing`: Remove existing virtualenv if it exists
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---
@@ -92,7 +90,6 @@ sudo ./scripts/installation/install_python_packages.sh [OPTIONS]
 - `--skip-hailo`: Skip installation of Hailo Python bindings
 - `--skip-package`: Skip installation of hailo_apps package
 - `--no-install`: Skip all Python package installation
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---
@@ -115,7 +112,6 @@ sudo ./scripts/installation/setup_resources.sh [OPTIONS]
 **Options**:
 - `--resources-root PATH`: Resources root directory
 - `--env-file PATH`: Environment file path
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---
@@ -136,7 +132,6 @@ sudo ./scripts/installation/setup_environment.sh [OPTIONS]
 
 **Options**:
 - `-n, --venv-name NAME`: Virtual environment name
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---
@@ -163,7 +158,6 @@ sudo ./scripts/installation/run_post_install.sh [OPTIONS]
 - `--all`: Download all available models/resources
 - `--skip-download`: Skip resource download
 - `--skip-compile`: Skip C++ compilation
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---
@@ -189,7 +183,6 @@ sudo ./scripts/installation/verify_installation.sh [OPTIONS]
 **Options**:
 - `-n, --venv-name NAME`: Virtual environment name
 - `--json`: Output results in JSON format
-- `-v, --verbose`: Show detailed output
 - `-h, --help`: Show help message
 
 ---

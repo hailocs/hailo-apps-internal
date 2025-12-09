@@ -151,9 +151,12 @@ class GStreamerApp:
             arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
             if not arch:
                 hailo_logger.error("Could not detect Hailo architecture.")
-                raise ValueError(
-                    "Could not auto-detect Hailo architecture. Please specify --arch manually."
+                print(
+                    "ERROR: Could not auto-detect Hailo architecture. "
+                    "Please specify --arch manually (e.g., --arch hailo8, --arch hailo8l, --arch hailo10h).",
+                    file=sys.stderr
                 )
+                sys.exit(1)
             self.arch = arch
             hailo_logger.debug(f"Auto-detected Hailo architecture: {self.arch}")
         else:

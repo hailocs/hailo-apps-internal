@@ -1,6 +1,7 @@
 # region imports
 # Standard library imports
 import os
+import sys
 import time
 import uuid
 import setproctitle
@@ -108,7 +109,13 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         elif self.arch == HAILO8L_ARCH:
             self.post_function_scrfd_detection = SCRFD_8L_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
 
         self.post_function_arcface_mobilefacenet_recognition = ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION
         self.post_function_vms_cropper = VMS_CROPPER_POSTPROCESS_FUNCTION

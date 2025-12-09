@@ -32,7 +32,6 @@ Setup resource directories for Hailo Apps Infrastructure.
 OPTIONS:
     --resources-root PATH         Resources root directory (default: ${DEFAULT_RESOURCES_ROOT})
     --env-file PATH                Environment file path (default: ${DEFAULT_ENV_FILE})
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -53,10 +52,6 @@ while [[ $# -gt 0 ]]; do
         --env-file)
             ENV_FILE="$2"
             shift 2
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            shift
             ;;
         -h|--help)
             show_help

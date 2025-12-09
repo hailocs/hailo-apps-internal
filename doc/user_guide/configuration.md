@@ -10,13 +10,13 @@ Here is a breakdown of what each option in the configuration file controls.
 
 ```yaml
 # HailoRT version configuration
-hailort_version: "auto"  # Options: "auto", "latest", or a specific version like "4.15.0"
+hailort_version: "auto"  # Options: "auto", "latest", or a specific version like "4.23.0"
 
 # TAPPAS framework version
-tappas_version: "auto"   # TAPPAS model version. "auto" is recommended for automatic detection.
+tappas_version: "auto"   # TAPPAS version. "auto" is recommended for automatic detection.
 
 # Model zoo version for downloading models
-model_zoo_version: "v2.14.0"  # The specific version of the Hailo Model Zoo to use.
+model_zoo_version: "v2.17.0"  # The specific version of the Hailo Model Zoo to use.
 
 # Hardware architecture detection
 host_arch: "auto"        # The host system architecture. Options: "rpi", "x86", "arm", or "auto".
@@ -28,10 +28,9 @@ virtual_env_name: "hailo_infra_venv"     # The default name for the Python virtu
 storage_dir: "hailo_temp_resources"      # A temporary directory for downloads.
 
 # Server configuration
-server_url: "http://dev-public.hailo.ai/2025_01"  # The server from which to download models.
+server_url: "http://dev-public.hailo.ai/2025_10"  # The server from which to download models.
 
 # TAPPAS configuration
-tappas_variant: "auto"           # The TAPPAS variant to use. Options: "tappas", "tappas-core", or "auto".
 tappas_postproc_path: "auto"     # The path to the post-processing libraries. "auto" will use the default path.
 ```
 

@@ -51,7 +51,6 @@ OPTIONS:
     --all                          Download all available models/resources
     --skip-download                Skip resource download
     --skip-compile                 Skip C++ compilation
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -85,10 +84,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-compile)
             SKIP_COMPILE=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
             shift
             ;;
         -h|--help)

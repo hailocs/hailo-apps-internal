@@ -34,7 +34,6 @@ OPTIONS:
     -n, --venv-name NAME          Set virtual environment name (default: ${DEFAULT_VENV_NAME})
     --no-system-python             Don't use system site-packages
     --remove-existing              Remove existing virtualenv if it exists
-    -v, --verbose                  Show detailed output
     -h, --help                     Show this help message and exit
 
 EXAMPLES:
@@ -60,10 +59,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --remove-existing)
             REMOVE_EXISTING=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
             shift
             ;;
         -h|--help)

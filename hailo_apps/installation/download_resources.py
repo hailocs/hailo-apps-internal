@@ -17,6 +17,7 @@ Features:
 
 import argparse
 import os
+import sys
 import tempfile
 import time
 import urllib.error
@@ -974,8 +975,17 @@ def download_group_resources(
     
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
     
@@ -1037,8 +1047,17 @@ def download_resources(
     # Detect architecture
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
     
     resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
@@ -1103,8 +1122,17 @@ def list_models_for_arch(
     
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     
     print(f"\nAvailable models for architecture: {hailo_arch}\n")
     print("=" * 80)

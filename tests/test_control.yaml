@@ -5,9 +5,9 @@
 
 # Control parameters
 control_parameters:
-  default_run_time: 24  # seconds
+  default_run_time: 40  # seconds
   term_timeout: 10      # seconds - timeout for test termination
-  human_verification_run_time: 48  # seconds - extended time for manual verification
+  human_verification_run_time: 60  # seconds - extended time for manual verification
 
 # Logging configuration
 logging:

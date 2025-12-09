@@ -13,11 +13,48 @@
 
 hailort_version: "auto"       # Options: "auto", "4.23.0", "5.1.1"
 tappas_version: "auto"        # Options: "auto", "5.1.0"
-tappas_variant: "auto"        # Options: "auto", "hailo-tappas", "hailo-tappas-core"
 tappas_postproc_path: "auto"  # Path to TAPPAS postprocess libs (auto from pkg-config)
 model_zoo_version: "auto"     # Options: "auto", "v2.17.0" (H8), "v5.1.1" (H10)
 host_arch: "auto"             # Options: "auto", "x86", "rpi", "arm"
 hailo_arch: "auto"            # Options: "auto", "hailo8", "hailo8l", "hailo10h"
+
+#-------------------------------------------------------------------------------
+# Version Validation
+#-------------------------------------------------------------------------------
+# Valid versions for installation validation. The installer will warn if
+# detected versions don't match these values.
+
+valid_versions:
+  hailort:
+    - "4.23.0"
+    - "5.1.1"
+  tappas:
+    - "5.1.0"
+  hailo_arch:
+    - "hailo8"
+    - "hailo8l"
+    - "hailo10h"
+  host_arch:
+    - "x86"
+    - "rpi"
+    - "arm"
+
+#-------------------------------------------------------------------------------
+# Model Zoo Version Mapping
+#-------------------------------------------------------------------------------
+# Maps Hailo architecture to the appropriate Model Zoo version for downloads.
+
+model_zoo_mapping:
+  hailo8: "v2.17.0"
+  hailo8l: "v2.17.0"
+  hailo10h: "v5.1.1"
+
+# Valid Model Zoo versions by architecture family
+valid_model_zoo_versions:
+  h8:   # Applies to hailo8 and hailo8l
+    - "v2.17.0"
+  h10:  # Applies to hailo10h
+    - "v5.1.1"
 
 #-------------------------------------------------------------------------------
 # Virtual Environment
@@ -62,4 +99,4 @@ system_packages:
 #-------------------------------------------------------------------------------
 # Logging
 #-------------------------------------------------------------------------------
-log_level: "warning"  # Options: "debug", "info", "warning", "error", "critical"
+log_level: "INFO"  # Options: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"

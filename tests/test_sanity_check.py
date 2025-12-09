@@ -40,7 +40,7 @@ try:
         detect_hailo_arch,
         detect_host_arch,
         detect_pkg_installed,
-        auto_detect_tappas_variant,
+        auto_detect_tappas_installed,
         auto_detect_hailort_python_bindings,
         auto_detect_installed_tappas_python_bindings,
     )
@@ -320,18 +320,18 @@ class TestEnvironmentConfiguration:
         )
         logger.info(f"Detected host architecture: {detected_host_arch}")
     
-    def test_tappas_variant_detection(self):
-        """Verify TAPPAS variant can be detected."""
+    def test_tappas_installed_detection(self):
+        """Verify TAPPAS core installation can be detected."""
         if not IMPORTS_AVAILABLE:
             pytest.skip("hailo_apps not importable")
         
-        variant = auto_detect_tappas_variant()
-        if variant:
-            logger.info(f"Detected TAPPAS variant: {variant}")
+        tappas_installed = auto_detect_tappas_installed()
+        if tappas_installed:
+            logger.info("Detected TAPPAS core installation")
         else:
             logger.warning(
-                "Could not detect TAPPAS variant. "
-                "Ensure hailo-tappas or hailo-tappas-core is installed."
+                "Could not detect TAPPAS installation. "
+                "Ensure hailo-tappas-core is installed."
             )
     
     def test_tappas_postproc_env_var(self):
@@ -349,11 +349,11 @@ class TestEnvironmentConfiguration:
                 logger.warning(f"TAPPAS postprocess path set but directory doesn't exist: {postproc_path}")
         else:
             # Check if TAPPAS is installed
-            variant = auto_detect_tappas_variant()
-            if variant:
+            tappas_installed = auto_detect_tappas_installed()
+            if tappas_installed:
                 logger.warning(
-                    f"TAPPAS ({variant}) is installed but postprocess path not set. "
-                    f"Run 'hailo-set-env' or 'hailo-post-install' to configure."
+                    "TAPPAS core is installed but postprocess path not set. "
+                    "Run 'hailo-set-env' or 'hailo-post-install' to configure."
                 )
 
 

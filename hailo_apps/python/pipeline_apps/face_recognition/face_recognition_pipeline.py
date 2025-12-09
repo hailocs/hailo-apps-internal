@@ -3,6 +3,7 @@
 import os
 import shutil
 import json
+import sys
 import time
 import threading
 import queue
@@ -117,7 +118,13 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         elif self.arch == HAILO8L_ARCH:
             self.detection_func = SCRFD_8L_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
         
         self.recognition_func = "filter"
         self.cropper_func = "face_recognition"

@@ -478,7 +478,16 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
     if arch is None:
         arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
         if not arch:
-            arch = HAILO8_ARCH
+            print(
+                "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+                "   Please ensure:\n"
+                "   - A Hailo device is connected\n"
+                "   - The HailoRT driver is installed and loaded\n"
+                "   - You have permissions to access the device\n"
+                "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+                file=sys.stderr
+            )
+            sys.exit(1)
     
     print(f"\n{'=' * 60}")
     print(f"Available models for: {app_name} ({arch})")
