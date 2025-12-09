@@ -48,7 +48,7 @@ from .defines import (
     CLIP_DETECTION_PIPELINE,
     CLIP_DETECTION_MODEL_NAME
 )
-from .hailo_logger import get_logger
+from .hailo_logger import add_logging_cli_args, get_logger
 from .installation_utils import detect_hailo_arch
 
 hailo_logger = get_logger(__name__)
@@ -104,6 +104,10 @@ def get_base_parser():
         description="Hailo Application Base Parser",
         add_help=False  # Allow parent parsers to control help display
     )
+
+    # Logging configuration group
+    log_group = parser.add_argument_group('logging options', 'Configure logging behavior')
+    add_logging_cli_args(log_group)
 
     # Core input/output flags
     parser.add_argument(

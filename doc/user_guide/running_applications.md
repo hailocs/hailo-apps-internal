@@ -94,8 +94,10 @@ All applications share a common set of arguments for controlling the input sourc
 | `--show-fps, -f`         | Displays a real-time Frames-Per-Second (FPS) counter on the output video window.                                                              |
 | `--frame-rate, -r <fps>` | Sets the target input frame rate for the video source. Defaults to 30.                                                                        |
 | `--disable-sync`         | Disables display synchronization to run the pipeline at maximum speed. This is ideal for benchmarking processing throughput.                  |
-| `--disable-callback`     | Disables the user-defined Python callback functions to measure the raw performance of the GStreamer pipeline itself.                          |
+| `--disable-callback`     | Disables user-defined Python callback functions. Frame counting for watchdog continues. Use for performance benchmarking.                     |
 | `--dump-dot`             | Generates a `pipeline.dot` file, which is a graph of the GStreamer pipeline that can be visualized with tools like Graphviz.                  |
 | `--labels-json <path>`   | Path to a custom JSON file containing the labels for the classes your model can detect or classify.                                           |
 | `--use-frame, -u`        | In applications with a Python callback, this flag indicates that the callback is responsible for providing the frame for display.             |
-| `--enable-watchdog`      | Monitors the pipeline for stalls (no frames processed for 5s) and automatically rebuilds it. **Requires enabled callback**.                   |
+| `--enable-watchdog`      | Monitors the pipeline for stalls (no frames processed for 5s) and automatically rebuilds it. Works with --disable-callback.                   |
+| `--log-level <level>`    | Set logging level: debug, info, warning, error, critical. Default: info. Can also use --debug for debug level.                                |
+| `--log-file <path>`      | Optional log file path for persistent logging. Also respects $HAILO_LOG_FILE environment variable.                                            |

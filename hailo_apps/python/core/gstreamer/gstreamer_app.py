@@ -53,7 +53,7 @@ from hailo_apps.python.core.common.defines import (
     TAPPAS_POSTPROC_PATH_KEY,
     USB_CAMERA,
 )
-from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 # python/core/gstreamer/gstreamer_app.py
 # Absolute import for your local helper
@@ -166,10 +166,14 @@ def dummy_callback(element, buffer, user_data):
     return
 
 
-def _internal_callback_wrapper(element, buffer, user_data, user_callback):
+def _internal_callback_wrapper(element, buffer, user_data, user_callback, disable_callback):
     """
     Internal wrapper that automatically increments frame count before calling user callback.
     This ensures watchdog monitoring works without requiring users to modify their callbacks.
+
+    This wrapper ALWAYS runs to maintain frame counting for watchdog monitoring,
+    even if --disable-callback is set. The user callback is skipped when disabled,
+    but frame counting continues.
 
     Debug Mode:
         When logger is at DEBUG level, this wrapper automatically tracks callback performance:
@@ -194,9 +198,14 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback):
         buffer: GStreamer buffer
         user_data: app_callback_class instance
         user_callback: User's actual callback function
+        disable_callback: If True, skip calling user callback (but still count frames)
     """
-    # Automatically increment frame count for watchdog monitoring
+    # Automatically increment frame count for watchdog monitoring (always runs)
     user_data.increment()
+
+    # Skip user callback if disabled, but continue frame counting
+    if disable_callback:
+        return
 
     # Debug mode: Track callback timing
     debug_mode = hailo_logger.isEnabledFor(10)  # 10 = DEBUG level
@@ -240,6 +249,14 @@ class GStreamerApp:
 
         self.options_menu = args.parse_args()
         hailo_logger.debug(f"Parsed CLI options: {self.options_menu}")
+
+        # Initialize logging from CLI args if provided
+        if hasattr(self.options_menu, 'log_level') or hasattr(self.options_menu, 'debug'):
+            init_logging(
+                level=level_from_args(self.options_menu),
+                log_file=getattr(self.options_menu, 'log_file', None),
+                force=True  # Override auto-config
+            )
 
         signal.signal(signal.SIGINT, self.shutdown)
 
@@ -444,7 +461,7 @@ class GStreamerApp:
         t = message.type
         hailo_logger.debug(f"Bus message received: {t}")
         if t == Gst.MessageType.EOS:
-            hailo_logger.info("End of Stream")
+            hailo_logger.debug("End of Stream")
             self.on_eos()
         elif t == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
@@ -461,6 +478,7 @@ class GStreamerApp:
             if self.qos_count % 100 == 0:
                 qos_element = message.src.get_name()
                 hailo_logger.warning(f"QoS messages: {self.qos_count} total (from {qos_element})")
+                print(f"\033[93mQoS messages: {self.qos_count} total\033[0m")
         return True
 
     def on_eos(self):
@@ -475,18 +493,26 @@ class GStreamerApp:
 
     def _connect_callback(self):
         """
-        Connects the user callback to the identity_callback element using the handoff signal.
-        The callback is automatically wrapped to update frame count for watchdog monitoring.
+        Connects the callback wrapper to the identity_callback element using the handoff signal.
+        The wrapper ALWAYS runs to maintain frame counting for watchdog monitoring.
+        The user callback is skipped if --disable-callback is set, but frame counting continues.
         """
-        if not self.options_menu.disable_callback:
-            identity = self.pipeline.get_by_name("identity_callback")
-            if identity is None:
-                hailo_logger.warning("identity_callback not found in pipeline")
+        identity = self.pipeline.get_by_name("identity_callback")
+        if identity is None:
+            hailo_logger.warning("identity_callback not found in pipeline")
+            print("Warning: identity_callback element not found...")
+        else:
+            disable_callback = self.options_menu.disable_callback
+            if disable_callback:
+                hailo_logger.debug("Connecting wrapper with user callback DISABLED (frame counting still active)")
             else:
-                hailo_logger.debug("Connecting handoff signal to identity_callback with automatic frame counting")
-                identity.set_property("signal-handoffs", True)
-                # Connect wrapper that automatically increments frame count before calling user callback
-                identity.connect("handoff", _internal_callback_wrapper, self.user_data, self.app_callback)
+                hailo_logger.debug("Connecting wrapper with user callback ENABLED")
+
+            identity.set_property("signal-handoffs", True)
+            # Always connect wrapper for frame counting (watchdog monitoring)
+            # The wrapper handles skipping user callback if disable_callback is True
+            identity.connect("handoff", _internal_callback_wrapper,
+                           self.user_data, self.app_callback, disable_callback)
 
     def _rebuild_pipeline(self):
         """
@@ -548,9 +574,7 @@ class GStreamerApp:
                 return False
 
             hailo_logger.debug("Pipeline rebuilt and restarted successfully")
-
-            # Resume watchdog monitoring
-            self.watchdog_paused = False
+            print("Pipeline rebuilt successfully.")
 
             # Resume watchdog monitoring
             self.watchdog_paused = False
@@ -595,7 +619,8 @@ class GStreamerApp:
 
         videorate = self.pipeline.get_by_name(videorate_name)
         if videorate is None:
-            hailo_logger.error(f"Element {videorate_name} not found in the pipeline")
+            hailo_logger.error(f"Element {videorate_name} not found")
+            print(f"Element {videorate_name} not found in the pipeline.")
             return
 
         current_max_rate = videorate.get_property("max-rate")
@@ -609,6 +634,7 @@ class GStreamerApp:
             new_caps_str = f"video/x-raw, framerate={new_fps}/1"
             hailo_logger.debug(f"Updating capsfilter to: {new_caps_str}")
             capsfilter.set_property("caps", Gst.Caps.from_string(new_caps_str))
+            print("Updated capsfilter caps to match new rate")
 
         self.frame_rate = new_fps
 
@@ -724,7 +750,6 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
             frame_data = picam2.capture_array("lores")
             if frame_data is None:
                 hailo_logger.error("Failed to capture frame")
-                print("Error: Failed to capture frame.", file=sys.stderr)
                 break
 
             frame = cv2.cvtColor(frame_data, cv2.COLOR_BGR2RGB)
