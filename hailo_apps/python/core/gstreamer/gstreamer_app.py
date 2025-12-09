@@ -4,6 +4,7 @@ import queue
 import signal
 import sys
 import threading
+import time
 from pathlib import Path
 
 # Fix for X11 threading issue
@@ -83,23 +84,23 @@ except ImportError:
 class app_callback_class:
     """
     Base class for user callback data in GStreamer pipeline applications.
-    
+
     This class provides frame counting and frame queue management. The frame counting
     is handled automatically by an internal framework wrapper - user callbacks do NOT
     need to call increment() manually.
-    
+
     Key Features:
     - Automatic frame counting: increment() is called by the framework before each callback
     - Thread-safe frame counter access via get_count()
     - Optional frame queue for passing frames between callback and main thread
     - Watchdog monitoring support (when enabled via --enable-watchdog flag)
     - Debug mode: Callback timing statistics (average, max) when logger is at DEBUG level
-    
+
     Note for Users:
         Do NOT call increment() in your callback functions. The framework automatically
         wraps your callback with _internal_callback_wrapper which handles frame counting.
         Simply use get_count() to read the current frame number.
-    
+
     Attributes:
         frame_count (int): Current frame number (auto-incremented by framework)
         use_frame (bool): Whether to extract frame data in callback
@@ -169,22 +170,22 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback):
     """
     Internal wrapper that automatically increments frame count before calling user callback.
     This ensures watchdog monitoring works without requiring users to modify their callbacks.
-    
-    Debug Mode: 
+
+    Debug Mode:
         When logger is at DEBUG level (set log_level: "debug" in config.yaml), this wrapper
         automatically tracks callback performance:
         - Measures execution time for each callback invocation
         - Tracks average time (rolling 100-frame window)
         - Records maximum time observed
         - Prints statistics every 100 frames
-        
+
         To enable: Edit hailo_apps/config/config.yaml and set:
             log_level: "debug"
-        
+
         Example output:
-            DEBUG | gstreamer_app | Callback Performance [100 frames]: 
+            DEBUG | gstreamer_app | Callback Performance [100 frames]:
                 avg=2.34ms, max=8.12ms, current=2.56ms
-    
+
     Args:
         element: GStreamer element
         buffer: GStreamer buffer
@@ -193,27 +194,26 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback):
     """
     # Automatically increment frame count for watchdog monitoring
     user_data.increment()
-    
+
     # Debug mode: Track callback timing
     debug_mode = hailo_logger.isEnabledFor(10)  # 10 = DEBUG level
     if debug_mode:
-        import time
         start_time = time.perf_counter()
-    
+
     # Call user's callback
     result = None
     if user_callback:
         result = user_callback(element, buffer, user_data)
-    
+
     # Debug mode: Calculate timing statistics
     if debug_mode:
         elapsed = (time.perf_counter() - start_time) * 1000  # Convert to milliseconds
         user_data.callback_times.append(elapsed)
-        
+
         # Update max time
         if elapsed > user_data.callback_max_time:
             user_data.callback_max_time = elapsed
-        
+
         # Print statistics every 100 frames
         if len(user_data.callback_times) >= 100:
             avg_time = sum(user_data.callback_times) / len(user_data.callback_times)
@@ -223,7 +223,7 @@ def _internal_callback_wrapper(element, buffer, user_data, user_callback):
             )
             # Keep only recent times for rolling average (last 100)
             user_data.callback_times = user_data.callback_times[-100:]
-    
+
     return result
 
 
@@ -376,8 +376,6 @@ class GStreamerApp:
         Optimization: Timestamp is only checked here (every WATCHDOG_INTERVAL), not on every frame,
         to minimize overhead in the callback hot path.
         """
-        import time
-
         hailo_logger.info("Watchdog monitor thread started")
         last_check_count = -1
         last_progress_time = time.time()
@@ -519,7 +517,6 @@ class GStreamerApp:
             hailo_logger.debug("Old pipeline destroyed")
 
             # Small delay to ensure all resources are released
-            import time
             time.sleep(0.2)
 
             # Step 2: Rebuild the pipeline from scratch
