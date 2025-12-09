@@ -193,9 +193,8 @@ FACE_RECON_LOCAL_SAMPLES_DIR_NAME = "faces"
 FACE_DETECTION_JSON_NAME = "scrfd.json"
 VMS_CROPPER_POSTPROCESS_FUNCTION = "face_recognition"
 ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION = "filter"
-SCRFD_8_POSTPROCESS_FUNCTION = "scrfd_10g_letterbox"
-SCRFD_10_POSTPROCESS_FUNCTION = "scrfd_10g_letterbox"
-SCRFD_8L_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"
+SCRFD_10G_POSTPROCESS_FUNCTION = "scrfd_10g_letterbox"  # Used for hailo8 and hailo10h
+SCRFD_2_5G_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"  # Used for hailo8l
 
 # Clip pipeline defaults
 CLIP_PIPELINE = "clip"
