@@ -1018,28 +1018,32 @@ install_python_packages() {
         if [[ -f "$install_script" ]]; then
             log_info "Installing Hailo Python packages..."
             local flags=""
-            
+
+            if [[ -z "${HAILO_ARCH:-}" || "${HAILO_ARCH}" == "unknown" ]]; then
+                log_error "HAILO_ARCH is required for Python package installation (hailo8 or hailo10)."
+                record_step_result "FAILED" "Missing HAILO_ARCH for Python install"
+                return 1
+            fi
+
+            case "${HAILO_ARCH}" in
+                hailo8|hailo8l) flags="${flags} --arch=hailo8" ;;
+                hailo10|hailo10h) flags="${flags} --arch=hailo10" ;;
+                *)
+                    log_error "Unsupported HAILO_ARCH value: ${HAILO_ARCH}. Expected hailo8/hailo8l/hailo10/hailo10h."
+                    record_step_result "FAILED" "Unsupported HAILO_ARCH"
+                    return 1
+                    ;;
+            esac
+
             if [[ "${INSTALL_HAILORT}" == true && -n "${HAILORT_VERSION}" && "${HAILORT_VERSION}" != "-1" ]]; then
                 flags="${flags} --hailort-version=${HAILORT_VERSION}"
                 log_debug "Installing HailoRT version: ${HAILORT_VERSION}"
             fi
-            
-            # Determine hardware architecture flag
-            if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
-                case "${HAILO_ARCH}" in
-                    hailo8|hailo8l) flags="${flags} --hw-arch=hailo8" ;;
-                    hailo10|hailo10h) flags="${flags} --hw-arch=hailo10" ;;
-                esac
-            fi
-            
-            if [[ -n "$flags" ]]; then
-                log_debug "Running: ${install_script} ${flags}"
-                if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${flags}"; then
-                    log_warning "Hailo Python package installation had issues"
-                    log_info "Continuing with installation - packages may be available from system"
-                fi
-            else
-                log_info "No Hailo Python packages to install"
+
+            log_debug "Running: ${install_script} ${flags}"
+            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${flags}"; then
+                log_warning "Hailo Python package installation had issues"
+                log_info "Continuing with installation - packages may be available from system"
             fi
         else
             log_warning "Hailo Python installation script not found: ${install_script}"
