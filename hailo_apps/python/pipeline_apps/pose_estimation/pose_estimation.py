@@ -39,12 +39,15 @@ class user_app_callback_class(app_callback_class):
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
 def app_callback(element, buffer, user_data):
+    hailo_logger.debug("Callback triggered. Current frame count=%d", user_data.get_count())
+
+    # Note: Frame counting is handled automatically by the framework wrapper
     # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer.")
         return
 
-    user_data.increment()
+    hailo_logger.debug("Processing frame %d", user_data.get_count())
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
     pad = element.get_static_pad("src")

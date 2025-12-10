@@ -56,12 +56,15 @@ COLORS = [
 # User-defined callback function
 # -----------------------------------------------------------------------------------------------
 def app_callback(element, buffer, user_data):
+    # Note: Frame counting is handled automatically by the framework wrapper
+    hailo_logger.debug("Callback triggered. Current frame count=%d", user_data.get_count())
+
     # buffer is passed directly
     if buffer is None:
         hailo_logger.warning("Received None buffer in callback.")
         return
 
-    user_data.increment()
+    hailo_logger.debug("Processing frame %d", user_data.get_count())
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
     if user_data.get_count() % user_data.frame_skip != 0:

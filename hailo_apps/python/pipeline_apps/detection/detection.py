@@ -50,8 +50,8 @@ def app_callback(element, buffer, user_data):
         hailo_logger.warning("Received None buffer.")
         return
 
-    # Using the user_data to count the number of frames
-    user_data.increment()
+    # Note: Frame counting is handled automatically by the framework wrapper
+    frame_idx = user_data.get_count()
     string_to_print = f"Frame count: {user_data.get_count()}\n"
 
     # Get the caps from the pad

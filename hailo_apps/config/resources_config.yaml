@@ -236,6 +236,8 @@ tiling:
       extra:
         - name: ssd_mobilenet_v1
           source: mz
+        - name: ssd_mobilenet_v1_visdrone
+          source: s3
 
 paddle_ocr:
   models:
