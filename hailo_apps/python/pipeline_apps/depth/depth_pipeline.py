@@ -26,10 +26,7 @@ from hailo_apps.python.core.common.defines import (
 
 # Logger
 # Logging (shared, one logger per run)
-from hailo_apps.python.core.common.hailo_logger import (
-    add_logging_cli_args,
-    get_logger,
-)
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
     app_callback_class,
@@ -53,7 +50,7 @@ class GStreamerDepthApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
-            add_logging_cli_args(parser)
+            # Note: logging args are already added by get_pipeline_parser() via get_base_parser()
         
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, DEPTH_PIPELINE)

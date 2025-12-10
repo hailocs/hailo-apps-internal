@@ -194,6 +194,12 @@ def run_pipeline_test(
         logger.error(f"Unknown run method: {run_method}")
         return b"", b"Unknown run method".encode(), False
     
+    # Set HAILO_ARCH environment variable for this test
+    # This ensures the subprocess uses the correct architecture (important for h8l_on_h8 tests)
+    original_hailo_arch = os.environ.get("HAILO_ARCH")
+    os.environ["HAILO_ARCH"] = architecture
+    logger.debug(f"Set HAILO_ARCH={architecture} for test")
+    
     try:
         kwargs = {}
         if run_time is not None:
@@ -223,10 +229,10 @@ def run_pipeline_test(
                 logger.warning(f"FPS flag enabled but FPS output not found in logs: {log_file}")
                 # Don't fail the test, just warn - FPS might not appear immediately
         
-        # Check for QOS messages (these are warnings that may appear during pipeline operation)
-        # QOS messages are normal during pipeline rebuild/startup, so we just log if they appear
-        if "qos" in combined_output or "qoS" in combined_output:
-            logger.warning(f"QOS messages detected in output (this is normal during pipeline operation)")
+        # Check for QOS messages only in stderr (error logs)
+        # QOS handling inside the pipeline is normal and expected - we only care about QOS errors
+        if "qos" in err_str:
+            logger.warning(f"QOS error messages detected in stderr")
         
         # but the pipeline still runs normally. Both enabled and disabled states result
         # in successful pipeline execution, so we cannot distinguish them from output.
@@ -240,6 +246,14 @@ def run_pipeline_test(
     except Exception as e:
         logger.error(f"Exception running pipeline test: {e}")
         return b"", str(e).encode(), False
+    
+    finally:
+        # Restore original HAILO_ARCH environment variable
+        if original_hailo_arch is not None:
+            os.environ["HAILO_ARCH"] = original_hailo_arch
+        elif "HAILO_ARCH" in os.environ:
+            del os.environ["HAILO_ARCH"]
+        logger.debug(f"Restored HAILO_ARCH to {original_hailo_arch}")
 
 
 def get_log_file_path(

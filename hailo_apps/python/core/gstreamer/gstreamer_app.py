@@ -448,9 +448,19 @@ class GStreamerApp:
 
         if self.show_fps:
             hailo_logger.debug("Connecting FPS measurement callback")
-            self.pipeline.get_by_name("hailo_display").connect(
-                "fps-measurements", self.on_fps_measurement
-            )
+            hailo_display = self.pipeline.get_by_name("hailo_display")
+            if hailo_display is not None:
+                hailo_display.connect("fps-measurements", self.on_fps_measurement)
+            else:
+                # For multi-source pipelines, try connecting to indexed displays (hailo_display_0, etc.)
+                for i in range(10):  # Check up to 10 displays
+                    display = self.pipeline.get_by_name(f"hailo_display_{i}")
+                    if display is not None:
+                        display.connect("fps-measurements", self.on_fps_measurement)
+                        hailo_logger.debug(f"Connected FPS measurement to hailo_display_{i}")
+                        break
+                else:
+                    hailo_logger.warning("hailo_display not found - FPS measurement disabled")
 
         self.loop = GLib.MainLoop()
 
@@ -558,7 +568,10 @@ class GStreamerApp:
             # Step 4: Reattach callback
             self._connect_callback()
 
-            # Step 5: Start the new pipeline
+            # Step 5: Disable QoS on all elements to prevent frame drops
+            disable_qos(self.pipeline)
+
+            # Step 6: Start the new pipeline
             hailo_logger.debug("Starting new pipeline")
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
