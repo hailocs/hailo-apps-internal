@@ -2,14 +2,13 @@
 Test Functions for All Pipeline Types
 
 This module provides a generic test runner that handles all pipeline types,
-dynamically loading available pipelines from test_definition_config.yaml.
+dynamically loading available pipelines from the unified config_manager.
 """
 
 import logging
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import yaml
+from hailo_apps.config import config_manager
 
 from test_utils import (
     build_test_args,
@@ -19,34 +18,18 @@ from test_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Configuration path
-DEFINITION_CONFIG_PATH = Path(__file__).parent.parent / "hailo_apps" / "config" / "test_definition_config.yaml"
-
 
 def _load_supported_pipelines() -> List[str]:
-    """
-    Load supported pipeline names from test_definition_config.yaml.
-    
+    """Load supported pipeline names from config_manager.
+
     Returns:
-        List of pipeline names from the 'apps' section of the config.
+        List of pipeline names from the test definitions.
         Falls back to an empty list if config cannot be loaded.
     """
-    if not DEFINITION_CONFIG_PATH.exists():
-        logger.warning(f"Config file not found: {DEFINITION_CONFIG_PATH}")
-        return []
-    
     try:
-        with open(DEFINITION_CONFIG_PATH, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        if not config or 'apps' not in config:
-            logger.warning("No 'apps' section found in test_definition_config.yaml")
-            return []
-        
-        pipelines = list(config['apps'].keys())
+        pipelines = config_manager.get_defined_apps()
         logger.debug(f"Loaded {len(pipelines)} pipelines from config: {pipelines}")
         return pipelines
-    
     except Exception as e:
         logger.error(f"Failed to load pipeline config: {e}")
         return []
@@ -104,19 +87,31 @@ def run_pipeline_test_generic(
 
     # Run test
     stdout, stderr, success = run_pipeline_test(
-        pipeline_config, model, architecture, run_method, args, log_file,
-        run_time=run_time, term_timeout=term_timeout
+        pipeline_config,
+        model,
+        architecture,
+        run_method,
+        args,
+        log_file,
+        run_time=run_time,
+        term_timeout=term_timeout,
     )
 
-    # Format pipeline name for display (replace underscores with spaces, title case)
+    # Format pipeline name for display
     display_name = pipeline_name.replace("_", " ").title()
 
     if success:
-        logger.info(f"✓ {display_name} test passed: {model} on {architecture} using {run_method}")
+        logger.info(
+            f"✓ {display_name} test passed: {model} on {architecture} using {run_method}"
+        )
     else:
-        logger.error(f"✗ {display_name} test failed: {model} on {architecture} using {run_method}")
+        logger.error(
+            f"✗ {display_name} test failed: {model} on {architecture} using {run_method}"
+        )
         if stderr:
-            logger.error(f"Error: {stderr.decode() if isinstance(stderr, bytes) else stderr}")
+            logger.error(
+                f"Error: {stderr.decode() if isinstance(stderr, bytes) else stderr}"
+            )
 
     return success, log_file
 
@@ -124,13 +119,14 @@ def run_pipeline_test_generic(
 def _create_pipeline_test_func(pipeline_name: str):
     """
     Factory function to create pipeline-specific test functions.
-    
+
     Args:
         pipeline_name: Name of the pipeline
-        
+
     Returns:
         A test function for the specific pipeline
     """
+
     def test_func(
         config: Dict,
         model: str,
@@ -142,11 +138,18 @@ def _create_pipeline_test_func(pipeline_name: str):
         term_timeout: Optional[int] = None,
     ) -> Tuple[bool, str]:
         return run_pipeline_test_generic(
-            config, pipeline_name, model, architecture, run_method,
-            test_suite, extra_args, run_time, term_timeout
+            config,
+            pipeline_name,
+            model,
+            architecture,
+            run_method,
+            test_suite,
+            extra_args,
+            run_time,
+            term_timeout,
         )
-    
-    # Set function metadata for better debugging/introspection
+
+    # Set function metadata
     test_func.__doc__ = f"Run {pipeline_name.replace('_', ' ')} pipeline test."
     test_func.__name__ = f"run_{pipeline_name}_test"
     return test_func
@@ -174,17 +177,30 @@ def get_pipeline_test_function(pipeline_name: str):
     # If the pipeline isn't in the pre-generated dict, create one dynamically
     if pipeline_name not in PIPELINE_TEST_FUNCTIONS:
         if pipeline_name in SUPPORTED_PIPELINES:
-            PIPELINE_TEST_FUNCTIONS[pipeline_name] = _create_pipeline_test_func(pipeline_name)
+            PIPELINE_TEST_FUNCTIONS[pipeline_name] = _create_pipeline_test_func(
+                pipeline_name
+            )
         else:
             # Pipeline not in config - create function anyway for flexibility
             logger.debug(f"Creating test function for unlisted pipeline: {pipeline_name}")
             return _create_pipeline_test_func(pipeline_name)
-    
+
     return PIPELINE_TEST_FUNCTIONS.get(pipeline_name)
 
 
+# Create module-level aliases for backward compatibility
+def _create_module_aliases():
+    """Create module-level function aliases for backward compatibility."""
+    aliases = {}
+    for pipeline_name in SUPPORTED_PIPELINES:
+        func_name = f"run_{pipeline_name}_test"
+        aliases[func_name] = PIPELINE_TEST_FUNCTIONS.get(pipeline_name)
+    return aliases
+
+
+_aliases = _create_module_aliases()
+
 # Expose common aliases at module level for backward compatibility
-# These are created dynamically but exposed as module attributes
 if "detection" in PIPELINE_TEST_FUNCTIONS:
     run_detection_test = PIPELINE_TEST_FUNCTIONS["detection"]
 if "pose_estimation" in PIPELINE_TEST_FUNCTIONS:

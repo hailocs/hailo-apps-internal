@@ -33,23 +33,7 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
 
-# Import config_utils with fallback mechanisms
-try:
-    from .config_utils import load_config
-except ImportError:
-    try:
-        from hailo_apps.installation.config_utils import load_config
-    except ImportError:
-        import importlib.util
-        current_file = Path(__file__).resolve()
-        config_utils_path = current_file.parent / "config_utils.py"
-        if config_utils_path.exists():
-            spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
-            config_utils_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(config_utils_module)
-            load_config = config_utils_module.load_config
-        else:
-            raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
+from hailo_apps.config.config_manager import get_resources_config, _load_yaml as load_config
 
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (

@@ -29,7 +29,7 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_PATH_DEFAULT,
     RESOURCES_PATH_KEY,
 )
-from hailo_apps.installation.config_utils import load_and_validate_config
+from hailo_apps.config.config_manager import get_main_config
 from hailo_apps.installation.compile_cpp import compile_postprocess
 from hailo_apps.installation.download_resources import download_resources
 from hailo_apps.installation.set_env import (
@@ -67,7 +67,7 @@ def post_install(
     hailo_logger.info("Setting up environment configuration...")
     
     handle_dot_env(dotenv_path)
-    config = load_and_validate_config(config_path)
+    config = get_main_config()
     set_environment_vars(config, dotenv_path)
     load_environment(dotenv_path)
     

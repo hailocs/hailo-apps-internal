@@ -463,14 +463,13 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
         arch: Hailo architecture. If None, auto-detects.
     """
     try:
-        from hailo_apps.installation.config_utils import (
-            get_default_models_for_app_and_arch,
-            get_extra_models_for_app_and_arch,
-            get_supported_architectures_for_app,
+        from hailo_apps.config.config_manager import (
+            get_model_names,
+            get_supported_architectures,
             is_gen_ai_app,
         )
     except ImportError:
-        print("Error: Could not import config_utils. Run 'pip install -e .' first.")
+        print("Error: Could not import config_manager. Run 'pip install -e .' first.")
         sys.exit(1)
     
     # Detect architecture if not provided
@@ -493,7 +492,7 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
     print(f"{'=' * 60}")
     
     # Check if architecture is supported
-    supported_archs = get_supported_architectures_for_app(app_name)
+    supported_archs = get_supported_architectures(app_name)
     if arch not in supported_archs:
         if is_gen_ai_app(app_name):
             print(f"\n⚠️  This is a Gen-AI app, only available on: {', '.join(supported_archs)}")
@@ -503,8 +502,8 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
         sys.exit(0)
     
     # Get models
-    default_models = get_default_models_for_app_and_arch(app_name, arch)
-    extra_models = get_extra_models_for_app_and_arch(app_name, arch)
+    default_models = get_model_names(app_name, arch, tier="default")
+    extra_models = get_model_names(app_name, arch, tier="extra")
     
     if default_models:
         print("\n📦 Default Models:")
@@ -549,12 +548,12 @@ def resolve_hef_path(
         Resolved Path to the HEF file, or None if not found
     """
     try:
-        from hailo_apps.installation.config_utils import (
-            get_all_models_for_app_and_arch,
-            get_default_model_for_app_and_arch,
+        from hailo_apps.config.config_manager import (
+            get_model_names,
+            get_default_model_name,
         )
     except ImportError:
-        hailo_logger.warning("Could not import config_utils, using legacy resolution")
+        hailo_logger.warning("Could not import config_manager, using legacy resolution")
         # Fallback to legacy resolution
         if hef_path is None:
             return get_resource_path(app_name, RESOURCES_MODELS_DIR_NAME, arch)
@@ -564,8 +563,8 @@ def resolve_hef_path(
     models_dir = resources_root / RESOURCES_MODELS_DIR_NAME / arch
     
     # Get available models for this app/arch
-    available_models = get_all_models_for_app_and_arch(app_name, arch)
-    default_model = get_default_model_for_app_and_arch(app_name, arch)
+    available_models = get_model_names(app_name, arch, tier="all")
+    default_model = get_default_model_name(app_name, arch)
     is_using_default = False
     
     # Case 1: No hef_path provided - use default model

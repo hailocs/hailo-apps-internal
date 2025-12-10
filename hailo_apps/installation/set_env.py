@@ -39,21 +39,7 @@ except ImportError:
             logger.setLevel(logging.INFO)
         return logger
 
-# Try to import from local installation folder first, then fallback to path
-try:
-    from .config_utils import load_and_validate_config
-except ImportError:
-    import importlib.util
-
-    current_file = Path(__file__).resolve()
-    config_utils_path = current_file.parent / "config_utils.py"
-    if config_utils_path.exists():
-        spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
-        config_utils_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config_utils_module)
-        load_and_validate_config = config_utils_module.load_and_validate_config
-    else:
-        raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
+from hailo_apps.config.config_manager import get_main_config
 
 # Try to import defines and installation utils from hailo_apps
 try:
@@ -323,8 +309,8 @@ Environment Variables Set:
 
     args = parser.parse_args()
 
-    # Load and validate config
-    config = load_and_validate_config(args.config)
+    # Load config
+    config = get_main_config()
 
     # Configure environment
     configure_environment(config, Path(args.env_path))
