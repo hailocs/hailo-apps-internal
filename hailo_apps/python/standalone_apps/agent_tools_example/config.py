@@ -4,17 +4,10 @@ Configuration constants for the chat agent.
 Users can modify these values to customize LLM behavior, context management, and model paths.
 """
 
-import logging
-import os
-import sys
+from hailo_apps.python.core.common.hailo_logger import get_logger
 
-from hailo_apps.python.core.common.core import get_resource_path, resolve_hef_path
-from hailo_apps.python.core.common.defines import (
-    AGENT_APP,
-    LLM_CODER_MODEL_NAME_H10,
-    RESOURCES_MODELS_DIR_NAME,
-    HAILO10H_ARCH,
-)
+# Logger - use standard hailo_logger
+LOGGER = get_logger(__name__)
 
 # LLM Generation Parameters
 TEMPERATURE: float = 0.1
@@ -23,17 +16,6 @@ MAX_GENERATED_TOKENS: int = 200
 
 # Context Management
 CONTEXT_THRESHOLD: float = 0.95  # Clear context when usage reaches this percentage
-
-# Model Configuration
-# NOTE: This tool calling API was built for Qwen 2.5 Coder. Not all LLMs support this tool API format.
-# To use a different model, change DEFAULT_LLM_MODEL_NAME or set HAILO_HEF_PATH environment variable.
-DEFAULT_LLM_MODEL_NAME: str = LLM_CODER_MODEL_NAME_H10
-
-# Logging Configuration
-# Default log level (DEBUG, INFO, WARNING, ERROR)
-# - DEBUG: Shows all data passed between agent and tools (prompts, responses, tool calls/results)
-# - INFO (default): Shows only tool call indications
-DEFAULT_LOG_LEVEL: str = "INFO"
 
 # Hardware Configuration
 HARDWARE_MODE: str = "simulator"  # "real" or "simulator"
@@ -52,14 +34,6 @@ ELEVATOR_SIMULATOR_PORT: int = 5002  # Port for elevator simulator web server
 # Voice Configuration
 ENABLE_VOICE: bool = True
 ENABLE_TTS: bool = True
-
-# Logger Setup
-LOGGER: logging.Logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
 
 
 def validate_config() -> None:
@@ -95,86 +69,3 @@ def validate_config() -> None:
     # Validate Context Threshold
     if not (0.1 <= CONTEXT_THRESHOLD <= 1.0):
         raise ValueError(f"Invalid CONTEXT_THRESHOLD {CONTEXT_THRESHOLD}. Must be between 0.1 and 1.0.")
-
-
-def setup_logging() -> None:
-    """
-    Set up logging level from configuration.
-
-    Creates a custom handler with a simple format for cleaner output,
-    while preserving the framework's detailed logging for other components.
-    """
-    log_level_str = DEFAULT_LOG_LEVEL.upper()
-    log_level = getattr(logging, log_level_str, logging.INFO)
-    LOGGER.setLevel(log_level)
-    # Also set root logger to ensure messages are shown
-    logging.root.setLevel(log_level)
-
-    # Add a custom handler with simple format for our logger
-    # This gives us clean output without interfering with framework logging
-    # agent_utils also uses this same logger, so it will get the same format
-
-    # Simple format: just level and message
-    simple_formatter = logging.Formatter("%(levelname)s: %(message)s")
-
-    if not any(isinstance(h, logging.StreamHandler) and getattr(h, '_chat_agent_handler', False)
-               for h in LOGGER.handlers):
-        simple_handler = logging.StreamHandler(sys.stdout)
-        simple_handler._chat_agent_handler = True  # type: ignore # Mark as our custom handler
-        simple_handler.setFormatter(simple_formatter)
-        simple_handler.setLevel(log_level)
-        LOGGER.addHandler(simple_handler)
-        # Prevent propagation to root logger to avoid duplicate messages
-        LOGGER.propagate = False
-
-    print(f"Logging level set to {log_level_str}")
-
-
-def get_hef_path(hef_path_arg: str | None = None) -> str:
-    """
-    Get HEF path from configuration with auto-download support.
-
-    Resolves the HEF path using resolve_hef_path() which will automatically
-    download the model if not found locally.
-
-    NOTE: This tool calling API was built for Qwen 2.5 Coder. Not all LLMs support this tool API format.
-
-    USER CONFIGURATION:
-    To use a custom HEF model:
-    1. Set the HAILO_HEF_PATH environment variable to the absolute path of your .hef file.
-       Example: export HAILO_HEF_PATH=/path/to/my/model.hef
-    2. OR use --hef-path argument
-    3. OR modify DEFAULT_LLM_MODEL_NAME in this config file to use a different model name.
-
-    Args:
-        hef_path_arg: Optional HEF path from command line argument
-
-    Returns:
-        str: Absolute path to the HEF file as a string
-
-    Raises:
-        ValueError: If HEF file cannot be found.
-    """
-    # Check if user provided a custom path via environment variable
-    custom_path = os.environ.get("HAILO_HEF_PATH")
-    if custom_path:
-        return custom_path
-    
-    # Check if user provided a path via argument
-    if hef_path_arg:
-        custom_path = hef_path_arg
-
-    # Use resolve_hef_path which handles auto-download
-    # Agent is Hailo-10H only
-    hef_path = resolve_hef_path(
-        custom_path,
-        app_name=AGENT_APP,
-        arch=HAILO10H_ARCH
-    )
-
-    if hef_path is None:
-        raise ValueError(
-            f"Could not find or download HEF file for agent model. "
-            f"Please run: hailo-download-resources --group agent"
-        )
-    return str(hef_path)
