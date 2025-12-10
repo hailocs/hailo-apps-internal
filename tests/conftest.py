@@ -7,7 +7,6 @@ This module provides:
 - Test markers for categorization
 """
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -215,42 +214,6 @@ def parse_meson_shared_libraries() -> List[str]:
     
     # Convert to .so filename format: libNAME.so
     return [f"lib{name}.so" for name in matches]
-
-
-def get_all_expected_models(arch: str) -> List[Tuple[str, str]]:
-    """Get all expected default models for an architecture.
-    
-    Args:
-        arch: Hailo architecture (hailo8, hailo8l, hailo10h)
-        
-    Returns:
-        List of tuples: (app_name, model_name)
-    """
-    resources = parse_resources_config()
-    models = []
-    
-    for app_name, app_info in resources['apps'].items():
-        if arch in app_info['models']:
-            for model_name in app_info['models'][arch].get('default', []):
-                models.append((app_name, model_name))
-    
-    return models
-
-
-def get_all_expected_json_files() -> List[Tuple[str, str]]:
-    """Get all expected JSON files from all apps.
-    
-    Returns:
-        List of tuples: (app_name, json_filename)
-    """
-    resources = parse_resources_config()
-    json_files = []
-    
-    for app_name, app_info in resources['apps'].items():
-        for json_name in app_info.get('json', []):
-            json_files.append((app_name, json_name))
-    
-    return json_files
 
 
 # ============================================================================

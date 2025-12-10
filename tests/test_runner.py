@@ -12,7 +12,7 @@ import logging
 import os
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import pytest
 
@@ -28,12 +28,7 @@ from hailo_apps.python.core.common.installation_utils import (
     detect_host_arch,
 )
 
-from all_tests import get_pipeline_test_function
-from test_utils import (
-    build_hef_path,
-    get_log_file_path,
-    run_pipeline_test,
-)
+from test_utils import build_hef_path, run_pipeline_test
 
 # Configure logging
 logging.basicConfig(
@@ -199,12 +194,18 @@ def resolve_test_suite_flags(definition_config: Dict, suite_name: str, resources
     resources_root = RESOURCES_ROOT_PATH_DEFAULT
     hef_path = build_hef_path(model, architecture, resources_root)
     
-    # Get video path for app
+    # Get video path for app (use app-specific video if defined, else default)
     video_name = "example.mp4"  # default
     if app_name in resources_config:
-        app_config = resources_config[app_name]
-        # Try to get app-specific video from definition config resources
-        # For now, use default
+        app_res = resources_config[app_name]
+        # Check if app has specific video defined
+        app_videos = app_res.get("videos", [])
+        if app_videos:
+            first_video = app_videos[0]
+            if isinstance(first_video, dict):
+                video_name = first_video.get("name", video_name)
+            elif isinstance(first_video, str):
+                video_name = first_video
     
     video_path = os.path.join(resources_root, "videos", video_name)
     
@@ -546,12 +547,7 @@ def test_pipeline(test_case: Dict):
     test_suite_mode = test_case.get("test_suite_mode", "default")
     model_selection = test_case.get("model_selection", "default")
     
-    # Get test function
-    test_func = get_pipeline_test_function(app_name)
-    if not test_func:
-        pytest.skip(f"No test function for app: {app_name}")
-    
-    # Build pipeline config for compatibility with existing test functions
+    # Build pipeline config for test execution
     pipeline_config = {
         "name": app_config.get("name", app_name),
         "module": app_config.get("module", ""),
@@ -559,32 +555,20 @@ def test_pipeline(test_case: Dict):
         "cli": app_config.get("cli", ""),
     }
     
-    # Create a compatible config structure
-    compatible_config = {
-        "pipelines": {
-            app_name: pipeline_config
-        },
-        "test_suites": {
-            test_suite: {
-                "args": flags
-            }
-        },
-        "resources": {
-            "root_path": RESOURCES_ROOT_PATH_DEFAULT
-        },
-        "execution": {
-            "default_run_time": run_time,
-            "term_timeout": term_timeout,
-        },
-        "logging": _control_config.get("logging", {}),
-    }
+    # Validate pipeline config has required fields for the run method
+    if run_method == "module" and not pipeline_config["module"]:
+        pytest.skip(f"App {app_name} has no module defined for module run method")
+    if run_method == "pythonpath" and not pipeline_config["script"]:
+        pytest.skip(f"App {app_name} has no script defined for pythonpath run method")
+    if run_method == "cli" and not pipeline_config["cli"]:
+        pytest.skip(f"App {app_name} has no cli defined for cli run method")
     
     # Get log file path
     log_file = get_log_file_path_new(
         _control_config, app_name, test_suite_mode, architecture, model, run_method, test_suite
     )
     
-    # Run test using existing framework
+    # Run test
     stdout, stderr, success = run_pipeline_test(
         pipeline_config, model, architecture, run_method, flags, log_file,
         run_time=run_time, term_timeout=term_timeout

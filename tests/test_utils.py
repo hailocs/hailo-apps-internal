@@ -10,7 +10,6 @@ import os
 import signal
 import subprocess
 import time
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pytest
@@ -31,19 +30,47 @@ logger = logging.getLogger(__name__)
 def run_pipeline_generic(
     cmd: list[str], log_file: str, run_time: int = TEST_RUN_TIME, term_timeout: int = TERM_TIMEOUT
 ):
-    """Run a command, terminate after run_time, capture logs."""
+    """Run a command, terminate after run_time, capture logs.
+    
+    Features early failure detection - if process exits before run_time,
+    we detect it immediately rather than waiting the full duration.
+    """
     with open(log_file, "w") as f:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        time.sleep(run_time)
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=term_timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            pytest.fail(f"Command didn't terminate: {' '.join(cmd)}")
+        
+        # Poll for early exit while waiting for run_time
+        # Check every 0.5 seconds if process is still running
+        poll_interval = 0.5
+        elapsed = 0.0
+        early_exit = False
+        
+        while elapsed < run_time:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            
+            # Check if process exited early (indicates crash/error)
+            if proc.poll() is not None:
+                early_exit = True
+                logger.warning(f"Process exited early after {elapsed:.1f}s (return code: {proc.returncode})")
+                break
+        
+        # If process still running after run_time, terminate gracefully
+        if not early_exit:
+            proc.send_signal(signal.SIGTERM)
+            try:
+                proc.wait(timeout=term_timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                pytest.fail(f"Command didn't terminate: {' '.join(cmd)}")
+        
         out, err = proc.communicate()
         f.write("stdout:\n" + out.decode() + "\n")
         f.write("stderr:\n" + err.decode() + "\n")
+        
+        # Log early exit information
+        if early_exit:
+            f.write(f"\n[EARLY EXIT] Process exited after {elapsed:.1f}s with code {proc.returncode}\n")
+        
         return out, err
 
 
@@ -53,10 +80,8 @@ def run_pipeline_module_with_args(module: str, args: list[str], log_file: str, *
 
 
 def run_pipeline_pythonpath_with_args(script: str, args: list[str], log_file: str, **kwargs):
-    """Run a pipeline script with PYTHONPATH set."""
-    env = os.environ.copy()
-    env["PYTHONPATH"] = "./hailo_apps_infra"
-    return run_pipeline_generic(["python", "-u", script, *args], log_file, **kwargs)
+    """Run a pipeline script using the current environment (setup_env sets PYTHONPATH)."""
+    return run_pipeline_generic(["python3", "-u", script, *args], log_file, **kwargs)
 
 
 def run_pipeline_cli_with_args(cli: str, args: list[str], log_file: str, **kwargs):
@@ -266,135 +291,4 @@ def get_log_file_path(
     
     filename = "_".join(parts) + ".log"
     return os.path.join(log_dir, filename)
-
-
-def validate_test_config(config: Dict) -> Tuple[bool, List[str]]:
-    """Validate test configuration.
-    
-    Args:
-        config: Test configuration dictionary
-    
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-    """
-    errors = []
-    
-    # Check required sections
-    required_sections = ["execution", "logging", "pipelines", "run_methods"]
-    for section in required_sections:
-        if section not in config:
-            errors.append(f"Missing required section: {section}")
-    
-    # Check execution settings
-    if "execution" in config:
-        exec_config = config["execution"]
-        if "default_run_time" not in exec_config:
-            errors.append("Missing execution.default_run_time")
-        if "term_timeout" not in exec_config:
-            errors.append("Missing execution.term_timeout")
-    
-    # Check pipelines
-    if "pipelines" in config:
-        for pipeline_name, pipeline_config in config["pipelines"].items():
-            required_keys = ["name", "module", "script", "cli", "models"]
-            for key in required_keys:
-                if key not in pipeline_config:
-                    errors.append(f"Pipeline {pipeline_name} missing required key: {key}")
-    
-    # Check run methods
-    if "run_methods" in config:
-        for rm in config["run_methods"]:
-            if "name" not in rm:
-                errors.append("Run method missing 'name' field")
-            if rm["name"] not in RUN_METHOD_FUNCTIONS:
-                errors.append(f"Unknown run method: {rm['name']}")
-    
-    return len(errors) == 0, errors
-
-
-def get_enabled_pipelines(config: Dict) -> Dict[str, Dict]:
-    """Get all enabled pipelines from configuration.
-    
-    Args:
-        config: Test configuration
-    
-    Returns:
-        Dictionary of enabled pipeline configurations
-    """
-    pipelines = config.get("pipelines", {})
-    return {
-        name: pipeline
-        for name, pipeline in pipelines.items()
-        if pipeline.get("enabled", True)
-    }
-
-
-def get_enabled_run_methods(config: Dict) -> List[str]:
-    """Get all enabled run methods from configuration.
-    
-    Args:
-        config: Test configuration
-    
-    Returns:
-        List of enabled run method names
-    """
-    run_methods = config.get("run_methods", [])
-    return [
-        rm["name"]
-        for rm in run_methods
-        if rm.get("enabled", True)
-    ]
-
-
-def get_models_for_architecture(pipeline_config: Dict, architecture: str) -> List[str]:
-    """Get models for a specific architecture from pipeline configuration.
-    
-    Models can be specified in two ways:
-    1. "default" key - models available for all architectures
-    2. Architecture-specific key (e.g., "hailo8", "hailo8l", "hailo10h") - models specific to that architecture
-    
-    The function combines default models with architecture-specific models.
-    
-    Args:
-        pipeline_config: Pipeline configuration
-        architecture: Architecture name
-    
-    Returns:
-        List of model names for the architecture (default + architecture-specific)
-    """
-    models_config = pipeline_config.get("models", {})
-    models = []
-    
-    # Add default models (available for all architectures)
-    if "default" in models_config:
-        models.extend(models_config["default"])
-    
-    # Add architecture-specific models
-    if architecture in models_config:
-        models.extend(models_config[architecture])
-    
-    return models
-
-
-def expand_test_suite_args(config: Dict, suite_name: str, **replacements) -> List[str]:
-    """Expand test suite arguments with replacements.
-    
-    Args:
-        config: Test configuration
-        suite_name: Test suite name
-        **replacements: Key-value pairs for placeholder replacement
-    
-    Returns:
-        List of expanded arguments
-    """
-    test_suites = config.get("test_suites", {})
-    suite_config = test_suites.get(suite_name, {})
-    args = suite_config.get("args", [])
-    
-    # Apply replacements
-    for key, value in replacements.items():
-        placeholder = f"${{{key}}}"
-        args = [arg.replace(placeholder, str(value)) for arg in args]
-    
-    return args
 

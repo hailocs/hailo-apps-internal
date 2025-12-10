@@ -23,7 +23,6 @@ Run only installation tests: pytest -m installation -v
 import json
 import logging
 import os
-import struct
 from pathlib import Path
 from typing import List, Tuple
 
@@ -396,7 +395,7 @@ class TestImageFiles:
         if not expected_images:
             pytest.skip("No images defined in resources_config.yaml")
         
-        images_dir = resources_root_path / "images"
+        images_dir = resources_root_path / RESOURCES_PHOTOS_DIR_NAME
         if not images_dir.exists():
             logger.warning(f"Images directory does not exist: {images_dir}")
             return
