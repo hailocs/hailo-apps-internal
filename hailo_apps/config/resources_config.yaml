@@ -247,29 +247,7 @@ paddle_ocr:
         - name: ocr
           source: s3
 
-clip:
-  models:
-    hailo8:
-      default:
-        name: clip_resnet_50x4_image_encoder
-        source: mz
-      extra:
-        - name: hailo_yolov8n_4_classes_vga
-          source: mz
-    hailo8l:
-      default:
-        name: clip_resnet_50x4_image_encoder
-        source: mz
-      extra:
-        - name: hailo_yolov8n_4_classes_vga
-          source: mz
-    hailo10h:
-      default:
-        name: clip_resnet_50x4_image_encoder
-        source: mz
-      extra:
-        - name: hailo_yolov8n_4_classes_vga
-          source: mz
+
 
 retrain:
   models:
@@ -381,3 +359,27 @@ agent:
         name: Qwen2.5-Coder-1.5B-Instruct
         url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef
         source: gen-ai-mz
+
+clip:
+  models:
+    hailo8:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
+      extra:
+        - name: hailo_yolov8n_4_classes_vga
+          source: mz
+    hailo8l:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
+      extra:
+        - name: hailo_yolov8n_4_classes_vga
+          source: mz
+    hailo10h:
+      default:
+        name: clip_resnet_50x4_image_encoder
+        source: mz
+      extra:
+        - name: hailo_yolov8n_4_classes_vga
+          source: mz
