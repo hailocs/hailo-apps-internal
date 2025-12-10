@@ -198,14 +198,19 @@ class VoiceAgentApp:
 
         def tts_callback(chunk: str):
             if self.tts:
+                logger.debug("[TTS] Received chunk: %r", chunk[:50])
                 state['sentence_buffer'] += chunk
                 # Chunk speech
+                old_buffer_len = len(state['sentence_buffer'])
                 state['sentence_buffer'] = self.tts.chunk_and_queue(
                     state['sentence_buffer'], current_gen_id, not state['first_chunk_sent']
                 )
+                if len(state['sentence_buffer']) < old_buffer_len:
+                    logger.debug("[TTS] Queued text, queue size: %d", self.tts.speech_queue.qsize())
 
                 if not state['first_chunk_sent'] and not self.tts.speech_queue.empty():
                     state['first_chunk_sent'] = True
+                    logger.debug("[TTS] First chunk queued for playback")
 
         try:
             # Use generate() for streaming output with on-the-fly filtering and TTS callback
@@ -226,7 +231,10 @@ class VoiceAgentApp:
 
         # Flush remaining speech
         if self.tts and state['sentence_buffer'].strip():
-            self.tts.queue_text(state['sentence_buffer'].strip(), current_gen_id)
+            remaining_text = state['sentence_buffer'].strip()
+            logger.debug("[TTS] Flushing remaining buffer: %s", remaining_text[:100])
+            self.tts.queue_text(remaining_text, current_gen_id)
+            logger.debug("[TTS] Final queue size: %d", self.tts.speech_queue.qsize())
 
         # Check for tool calls
         tool_call = tool_parsing.parse_function_call(raw_response)
@@ -241,9 +249,13 @@ class VoiceAgentApp:
         if self.tts:
             if result.get("ok"):
                 res_str = str(result.get("result", ""))
+                logger.debug("[TTS] Queuing tool result: %s", res_str[:100])
                 self.tts.queue_text(res_str)
+                logger.debug("[TTS] Queue size after queuing: %d", self.tts.speech_queue.qsize())
             else:
-                self.tts.queue_text("There was an error executing the tool.")
+                error_msg = "There was an error executing the tool."
+                logger.debug("[TTS] Queuing error message")
+                self.tts.queue_text(error_msg)
 
         agent_utils.update_context_with_tool_result(self.llm, result, logger)
 
@@ -280,17 +292,17 @@ def main():
     parser.add_argument('--arch', type=str, default='hailo10h', help='Hailo architecture')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
     parser.add_argument('--no-tts', action='store_true', help='Disable TTS')
-    
+
     # Handle --list-models flag before full initialization
     handle_list_models_flag(parser, AGENT_APP)
-    
+
     args = parser.parse_args()
 
     # Get HEF (with auto-download support)
     try:
         hef_path = config.get_hef_path(args.hef_path)
     except ValueError as e:
-        logger.error(f"{e}")
+        logger.error("%s", e)
         return
 
     # Tool Selection

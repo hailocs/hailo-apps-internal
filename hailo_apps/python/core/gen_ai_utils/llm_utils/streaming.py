@@ -31,6 +31,7 @@ class StreamingTextFilter:
         self.buffer = ""
         self.inside_text_tag = False
         self.inside_tool_call_tag = False
+        self.inside_tool_response_tag = False
         self.debug_mode = debug_mode
 
     def process_token(self, token: str) -> str:
@@ -101,11 +102,31 @@ class StreamingTextFilter:
                 changed = True
                 continue
 
-        # If we're inside <text> tag and not inside <tool_call>, output remaining buffer
-        if self.inside_text_tag and not self.inside_tool_call_tag and self.buffer:
+            # Check for <tool_response> tag start
+            tool_response_start = self.buffer.find("<tool_response>")
+            if tool_response_start != -1 and not self.inside_tool_response_tag:
+                # If we're inside <text>, output content before <tool_response>
+                if self.inside_text_tag and tool_response_start > 0:
+                    output += self.buffer[:tool_response_start]
+                self.buffer = self.buffer[tool_response_start + 15:]  # Remove "<tool_response>"
+                self.inside_tool_response_tag = True
+                changed = True
+                continue
+
+            # Check for </tool_response> tag end
+            tool_response_end = self.buffer.find("</tool_response>")
+            if tool_response_end != -1 and self.inside_tool_response_tag:
+                # Suppress everything inside <tool_response>
+                self.buffer = self.buffer[tool_response_end + 16:]  # Remove "</tool_response>"
+                self.inside_tool_response_tag = False
+                changed = True
+                continue
+
+        # If we're inside <text> tag and not inside <tool_call> or <tool_response>, output remaining buffer
+        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and self.buffer:
             output += self.buffer
             self.buffer = ""
-        elif not self.inside_text_tag and not self.inside_tool_call_tag:
+        elif not self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag:
             # If not inside any tag, the text is still valid for streaming.
             # To avoid printing partial tags, we find the last complete chunk of text.
             # A simple heuristic: find the start of the next potential tag.
@@ -132,7 +153,7 @@ class StreamingTextFilter:
         if self.debug_mode:
             return ""
         # Clean up any remaining partial tags or buffer content
-        if self.inside_text_tag and not self.inside_tool_call_tag:
+        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag:
             # If we're still inside text tag, return the buffer (might have partial closing tag)
             remaining = self.buffer
             # Remove any partial closing tags like "</text" or "text>"
@@ -140,6 +161,7 @@ class StreamingTextFilter:
             return remaining
         # Also clean up any partial tags that might remain in buffer
         cleaned = self.buffer.replace("</text", "").replace("text>", "").replace("<text", "")
+        cleaned = cleaned.replace("</tool_response", "").replace("tool_response>", "").replace("<tool_response", "")
 
         # Remove orphan '<' which might be left over from <<|im_end|> or incomplete tags
         if cleaned.strip() == "<":
@@ -262,6 +284,9 @@ def clean_response(response: str) -> str:
 
     # Remove <tool_call>...</tool_call> tags if present (we parse these separately)
     cleaned = re.sub(r"<tool_call>.*?</tool_call>", "", cleaned, flags=re.DOTALL)
+
+    # Remove <tool_response>...</tool_response> tags if present
+    cleaned = re.sub(r"<tool_response>.*?</tool_response>", "", cleaned, flags=re.DOTALL)
 
     # Clean up any remaining whitespace
     return cleaned.strip()

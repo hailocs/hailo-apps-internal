@@ -1,15 +1,18 @@
 """
 Audio Recorder module.
 
-Handles microphone recording and audio processing.
+Handles microphone recording and audio processing using sounddevice.
 """
 
 import logging
 from datetime import datetime
 import wave
 import numpy as np
-import pyaudio
+import sounddevice as sd
+from typing import Optional
+
 from hailo_apps.python.core.common.defines import TARGET_SR, CHUNK_SIZE
+from .audio_diagnostics import AudioDiagnostics
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -19,39 +22,58 @@ class AudioRecorder:
     """
     Handles recording from the microphone and processing the audio.
 
-    This class manages the PyAudio stream to capture audio from the default
-    input device. It converts the raw audio into a format suitable for the
-    speech-to-text model (float32 mono 16kHz little-endian).
+    This class manages the sounddevice stream to capture audio from the
+    specified or auto-detected input device. It converts the raw audio
+    into a format suitable for the speech-to-text model (float32 mono 16kHz little-endian).
     """
 
-    def __init__(self, debug: bool = False):
+    def __init__(self, device_id: Optional[int] = None, debug: bool = False):
         """
         Initialize the recorder.
 
         Args:
+            device_id (Optional[int]): Device ID to use. If None, auto-detects best device.
             debug (bool): If True, saves recorded audio to WAV files.
         """
-        self.p = pyaudio.PyAudio()
-        self.stream = None
         self.audio_frames = []
         self.is_recording = False
         self.debug = debug
         self.recording_counter = 0
+        self.stream = None
+
+        # Select device
+        if device_id is None:
+            self.device_id, _ = AudioDiagnostics.auto_detect_devices()
+            if self.device_id is None:
+                logger.warning("No input device found during auto-detection. Will use system default.")
+        else:
+            self.device_id = device_id
+
+        logger.info(f"Initialized AudioRecorder with device_id={self.device_id}")
 
     def start(self):
-        """Start recording from the default microphone."""
+        """Start recording from the microphone."""
         self.audio_frames = []
         self.is_recording = True
-        self.stream = self.p.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=TARGET_SR,
-            input=True,
-            frames_per_buffer=CHUNK_SIZE,
-            stream_callback=self._callback
-        )
-        self.stream.start_stream()
-        logger.debug("Recording started")
+
+        try:
+            self.stream = sd.InputStream(
+                samplerate=TARGET_SR,
+                blocksize=CHUNK_SIZE,
+                device=self.device_id,
+                channels=1,
+                dtype='float32',
+                callback=self._callback
+            )
+            self.stream.start()
+            logger.debug("Recording started")
+        except Exception as e:
+            logger.error(f"Failed to start recording stream: {e}")
+            self.is_recording = False
+            raise RuntimeError(
+                f"Could not start recording on device {self.device_id}. "
+                "Check if microphone is connected and not in use."
+            ) from e
 
     def stop(self) -> np.ndarray:
         """
@@ -65,7 +87,7 @@ class AudioRecorder:
             return np.array([], dtype=np.float32)
 
         if self.stream:
-            self.stream.stop_stream()
+            self.stream.stop()
             self.stream.close()
             self.stream = None
         self.is_recording = False
@@ -73,16 +95,17 @@ class AudioRecorder:
         if not self.audio_frames:
             return np.array([], dtype=np.float32)
 
-        # 1. Convert raw bytes to a NumPy array of 16-bit integers.
-        audio_s16 = np.frombuffer(b''.join(self.audio_frames), dtype=np.int16)
+        # Concatenate frames
+        audio_data = np.concatenate(self.audio_frames, axis=0)
 
-        # 2. Convert from 16-bit integers to float32, normalized between -1 and 1.
-        audio_f32 = audio_s16.astype(np.float32) / 32768.0
+        # Flatten if necessary (handle (N, 1) shape from sounddevice)
+        if audio_data.ndim > 1:
+            audio_data = audio_data.flatten()
 
-        # 4. Ensure the audio data is in little-endian format, as expected by the model.
-        audio_le = audio_f32.astype('<f4')
+        # Ensure the audio data is in little-endian format
+        audio_le = audio_data.astype('<f4')
 
-        # 5. Save a copy for debugging if enabled.
+        # Save a copy for debugging if enabled
         if self.debug:
             self._save_debug_audio(audio_le)
 
@@ -96,15 +119,15 @@ class AudioRecorder:
             audio_data (np.ndarray): Processed audio data to save.
         """
         try:
-            # Generate a unique filename with a timestamp.
+            # Generate a unique filename with a timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.recording_counter += 1
             filename = f"debug_audio_{timestamp}_{self.recording_counter:03d}.wav"
 
-            # Convert float32 audio back to int16 for WAV file compatibility.
+            # Convert float32 audio back to int16 for WAV file compatibility
             audio_int16 = (audio_data * 32767).astype(np.int16)
 
-            # Save as a WAV file.
+            # Save as a WAV file
             with wave.open(filename, 'wb') as wav_file:
                 wav_file.setnchannels(1)
                 wav_file.setsampwidth(2)  # 16-bit
@@ -117,17 +140,22 @@ class AudioRecorder:
             logger.warning("Failed to save debug audio: %s", e)
 
     def close(self):
-        """Release PyAudio resources."""
-        if self.p:
-            self.p.terminate()
-            self.p = None
-            logger.debug("Audio recorder closed")
+        """Release resources."""
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+        logger.debug("Audio recorder closed")
 
-    def _callback(self, in_data, frame_count, time_info, status):
+    def _callback(self, indata, frames, time, status):
         """
-        PyAudio stream callback. Appends incoming raw audio to the frames buffer.
+        Stream callback. Appends incoming audio to the frames buffer.
         """
+        if status:
+            logger.debug(f"Audio callback status: {status}")
+
         if self.is_recording:
-            self.audio_frames.append(in_data)
-        return (in_data, pyaudio.paContinue)
-
+            self.audio_frames.append(indata.copy())

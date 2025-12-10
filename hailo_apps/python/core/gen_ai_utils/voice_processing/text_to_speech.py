@@ -4,34 +4,33 @@ Text-to-Speech module for Hailo Voice Assistant.
 This module handles speech synthesis using Piper TTS.
 """
 
+import io
 import logging
 import os
 import queue
 import re
-import subprocess
-import tempfile
 import threading
 import time
 import wave
 from contextlib import redirect_stderr
 from io import StringIO
-from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from piper import PiperVoice
 from piper.voice import SynthesisConfig
 
 from hailo_apps.python.core.common.defines import (
-    TEMP_WAV_DIR,
     TTS_JSON_PATH,
     TTS_LENGTH_SCALE,
     TTS_MODEL_NAME,
-    TTS_MODELS_DIR,
     TTS_NOISE_SCALE,
     TTS_ONNX_PATH,
     TTS_VOLUME,
     TTS_W_SCALE,
 )
+from .audio_player import AudioPlayer
+from .audio_diagnostics import AudioDiagnostics
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -123,15 +122,16 @@ def clean_text_for_tts(text: str) -> str:
 
 class TextToSpeechProcessor:
     """
-    Handles text-to-speech synthesis and playback using Piper.
+    Handles text-to-speech synthesis and playback using Piper and AudioPlayer.
     """
 
-    def __init__(self, onnx_path: str = TTS_ONNX_PATH):
+    def __init__(self, onnx_path: str = TTS_ONNX_PATH, device_id: Optional[int] = None):
         """
         Initialize the TextToSpeechProcessor.
 
         Args:
             onnx_path (str): Path to the Piper TTS ONNX model.
+            device_id (Optional[int]): Audio device ID for playback.
 
         Raises:
             FileNotFoundError: If Piper model files are not found.
@@ -153,8 +153,9 @@ class TextToSpeechProcessor:
             )
         logger.debug("TTS initialized with volume=%.2f, length_scale=%.2f", TTS_VOLUME, TTS_LENGTH_SCALE)
 
+        self.audio_player = AudioPlayer(device_id=device_id)
+
         self.speech_queue = queue.Queue()
-        self.current_speech_process = None
         self._speech_lock = threading.Lock()
         self.generation_id = 0
         self._gen_id_lock = threading.Lock()
@@ -178,14 +179,7 @@ class TextToSpeechProcessor:
             self.generation_id += 1
 
         with self._speech_lock:
-            if self.current_speech_process:
-                try:
-                    # Terminate the 'aplay' process to stop audio instantly
-                    self.current_speech_process.kill()
-                    logger.debug("TTS playback process terminated")
-                except OSError as e:
-                    logger.debug("Error terminating playback process: %s", e)
-                self.current_speech_process = None
+            self.audio_player.stop()
 
         # Drain the queue of any stale audio chunks
         drained = 0
@@ -223,14 +217,25 @@ class TextToSpeechProcessor:
         Returns:
             str: The remaining buffer after queuing complete chunks.
         """
-        # Use a comma as a delimiter only for the first chunk for faster response.
-        delimiters = ['.', '?', '!']
+        # For first chunk, use more delimiters for faster start
+        # After first chunk, use only sentence-ending punctuation
         if is_first_chunk:
-            delimiters.append(',')
+            delimiters = ['.', '?', '!', ',', ':', ';', '-']
+            min_chars_before_force = 15  # ~3-4 words
+        else:
+            delimiters = ['.', '?', '!']
+            min_chars_before_force = 0  # Don't force split after first chunk
 
         while True:
-            # Find the first occurrence of any delimiter.
+            # Find the first occurrence of any delimiter
             positions = {buffer.find(d): d for d in delimiters if buffer.find(d) != -1}
+
+            # Latency optimization: Force split at word boundary if buffer is long enough
+            if is_first_chunk and not positions and len(buffer) >= min_chars_before_force:
+                last_space = buffer.rfind(' ')
+                if last_space > 5:  # At least a few characters
+                    positions[last_space] = ' '
+
             if not positions:
                 break  # No delimiters found
 
@@ -239,6 +244,9 @@ class TextToSpeechProcessor:
 
             if chunk.strip():
                 self.queue_text(chunk.strip(), gen_id)
+                # After sending first chunk, switch to sentence-based chunking
+                is_first_chunk = False
+                delimiters = ['.', '?', '!']
 
             buffer = buffer[first_pos + 1:]
 
@@ -260,6 +268,7 @@ class TextToSpeechProcessor:
         if self.speech_thread.is_alive():
             self.speech_thread.join(timeout=1.0)
         self.interrupt()
+        self.audio_player.stop()
 
     def _speech_worker(self):
         """
@@ -292,7 +301,7 @@ class TextToSpeechProcessor:
 
     def _synthesize_and_play(self, text: str):
         """
-        Synthesizes text to audio and plays it using aplay.
+        Synthesizes text to audio and plays it using AudioPlayer.
 
         Args:
             text (str): The text to be spoken.
@@ -304,45 +313,47 @@ class TextToSpeechProcessor:
             return
 
         logger.debug("Synthesizing text: %s", text[:50] + "..." if len(text) > 50 else text)
-        playback_process = None
+
         try:
-            with tempfile.NamedTemporaryFile(
-                suffix=".wav", delete=True, dir=TEMP_WAV_DIR
-            ) as temp_wav_file:
-                temp_wav_path = temp_wav_file.name
-                with wave.open(temp_wav_path, "wb") as wav_file:
-                    with redirect_stderr(StringIO()):
-                        self.piper_voice.synthesize_wav(
-                            text, wav_file, self.syn_config
-                        )
-
-                with self._speech_lock:
-                    # Check if we should still play (might have been interrupted during synthesis)
-                    if self._interrupted.is_set():
-                        logger.debug("Interrupted during synthesis, skipping playback")
-                        return
-
-                    self.current_speech_process = subprocess.Popen(
-                        ["aplay", temp_wav_path],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
+            # Synthesize to in-memory WAV buffer
+            wav_buffer = io.BytesIO()
+            with wave.open(wav_buffer, "wb") as wav_file:
+                with redirect_stderr(StringIO()):
+                    self.piper_voice.synthesize_wav(
+                        text, wav_file, self.syn_config
                     )
-                    playback_process = self.current_speech_process
-                    logger.debug("Playback started (PID: %d)", playback_process.pid)
 
-                # Wait for playback to finish
-                if playback_process:
-                    playback_process.wait()
-                    logger.debug("Playback completed")
+            # Convert WAV buffer to numpy array for playback
+            wav_buffer.seek(0)
+
+            # We can use soundfile or wave to read it back, or just use wave manually
+            # Since AudioPlayer has _read_wav logic, let's just re-implement simple parsing here or use a helper
+            # Actually, AudioPlayer.play supports reading from file path, but not bytes buffer directly yet.
+            # But wait, AudioPlayer supports numpy array.
+
+            # Parse WAV from buffer
+            with wave.open(wav_buffer, 'rb') as wf:
+                n_frames = wf.getnframes()
+                data = wf.readframes(n_frames)
+                width = wf.getsampwidth()
+                fs = wf.getframerate()
+
+                # Assume mono 16-bit based on Piper config
+                if width == 2:
+                    audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                else:
+                    # Fallback or error
+                    logger.error(f"Unexpected sample width from synthesis: {width}")
+                    return
+
+            with self._speech_lock:
+                # Check if we should still play (might have been interrupted during synthesis)
+                if self._interrupted.is_set():
+                    logger.debug("Interrupted during synthesis, skipping playback")
+                    return
+
+                # Play synchronously (blocking this worker thread)
+                self.audio_player.play(audio_data, block=True)
 
         except Exception as e:
             logger.error("TTS synthesis/playback failed: %s", e)
-            raise
-        finally:
-            with self._speech_lock:
-                if (
-                    self.current_speech_process
-                    and playback_process
-                    and self.current_speech_process.pid == playback_process.pid
-                ):
-                    self.current_speech_process = None

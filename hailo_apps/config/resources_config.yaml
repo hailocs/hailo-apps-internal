@@ -108,15 +108,15 @@ simple_detection:
   models:
     hailo8:
       default:
-        name: yolov6n
+      - name: yolov6n
         source: mz
     hailo8l:
       default:
-        name: yolov6n
+      - name: yolov6n
         source: mz
     hailo10h:
       default:
-        name: yolov6n
+      - name: yolov6n
         source: mz
 
 face_recognition:
@@ -147,15 +147,15 @@ instance_segmentation:
   models:
     hailo8:
       default:
-        name: yolov5m_seg
+      - name: yolov5m_seg
         source: mz
     hailo8l:
       default:
-        name: yolov5n_seg
+      - name: yolov5n_seg
         source: mz
     hailo10h:
       default:
-        name: yolov5m_seg
+      - name: yolov5m_seg
         source: mz
   json:
     - name: yolov5m_seg.json
@@ -167,18 +167,18 @@ pose_estimation:
   models:
     hailo8:
       default:
-        name: yolov8m_pose
+      - name: yolov8m_pose
         source: mz
       extra:
         - name: yolov8s_pose
           source: mz
     hailo8l:
       default:
-        name: yolov8s_pose
+      - name: yolov8s_pose
         source: mz
     hailo10h:
       default:
-        name: yolov8m_pose
+      - name: yolov8m_pose
         source: mz
       extra:
         - name: yolov8s_pose
@@ -188,31 +188,31 @@ depth:
   models:
     hailo8:
       default:
-        name: scdepthv3
+      - name: scdepthv3
         source: mz
     hailo8l:
       default:
-        name: scdepthv3
+      - name: scdepthv3
         source: mz
     hailo10h:
       default:
-        name: scdepthv3
+      - name: scdepthv3
         source: mz
 
 tiling:
   models:
     hailo8:
       default:
-        name: hailo_yolov8n_4_classes_vga
+      - name: hailo_yolov8n_4_classes_vga
         source: s3
       extra:
-        - name: ssd_mobilenet_v1
-          source: mz
-        - name: ssd_mobilenet_v1_visdrone
-          source: s3
+      - name: ssd_mobilenet_v1
+        source: mz
+      - name: ssd_mobilenet_v1_visdrone
+        source: s3
     hailo8l:
       default:
-        name: hailo_yolov8n_4_classes_vga
+      - name: hailo_yolov8n_4_classes_vga
         source: s3
       extra:
         - name: ssd_mobilenet_v1
@@ -382,4 +382,7 @@ agent:
       default:
         name: Qwen2.5-Coder-1.5B-Instruct
         url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef
+        source: gen-ai-mz
+        name: Whisper-Base
+        url: https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
         source: gen-ai-mz
