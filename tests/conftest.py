@@ -233,10 +233,10 @@ def expected_models_for_arch(detected_hailo_arch) -> List[Tuple[str, str]]:
 
 
 @pytest.fixture(scope="session")
-def expected_json_files() -> List[Tuple[str, str]]:
-    """Fixture providing expected JSON files from all apps.
+def expected_json_files() -> List[str]:
+    """Fixture providing expected JSON files from the shared json section.
 
-    Returns list of (app_name, json_filename) tuples.
+    Returns list of JSON filename strings.
     """
     if config_manager is None:
         return []

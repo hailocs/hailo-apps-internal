@@ -533,19 +533,18 @@ def get_images() -> list[str]:
     return images
 
 
-def get_json_files(app_name: str) -> list[str]:
-    """Get JSON config filenames for an app.
+def get_json_files(app_name: str = None) -> list[str]:
+    """Get JSON config filenames from the shared json section.
     
     Args:
-        app_name: Application name
+        app_name: Ignored (kept for backward compatibility). All JSON files are shared.
         
     Returns:
         List of JSON filename strings
     """
     config = get_resources_config()
-    app_config = config.get(app_name, {})
     json_files = []
-    for entry in app_config.get("json", []):
+    for entry in config.get("json", []):
         if isinstance(entry, dict) and entry.get("name"):
             json_files.append(entry["name"])
         elif isinstance(entry, str):
@@ -553,17 +552,13 @@ def get_json_files(app_name: str) -> list[str]:
     return json_files
 
 
-def get_all_json_files() -> list[tuple[str, str]]:
-    """Get all JSON files across all apps.
+def get_all_json_files() -> list[str]:
+    """Get all JSON files from the shared json section.
     
     Returns:
-        List of (app_name, json_filename) tuples
+        List of JSON filename strings
     """
-    result = []
-    for app_name in get_available_apps():
-        for json_file in get_json_files(app_name):
-            result.append((app_name, json_file))
-    return result
+    return get_json_files()
 
 
 def is_gen_ai_app(app_name: str) -> bool:

@@ -611,11 +611,9 @@ class ResourceDownloader:
                 self._add_image_task(image_entry)
     
     def collect_all_json_files(self):
-        """Collect all JSON download tasks from all apps."""
-        for app_name, app_config in self.config.items():
-            if not isinstance(app_config, dict) or "json" not in app_config:
-                continue
-            for json_entry in app_config["json"]:
+        """Collect all JSON download tasks from top-level json section."""
+        if "json" in self.config:
+            for json_entry in self.config["json"]:
                 self._add_json_task(json_entry)
     
     def collect_models_for_app(
@@ -759,14 +757,10 @@ class ResourceDownloader:
             is_gen_ai_allowed=is_gen_ai_app
         )
         
-        # Collect videos and images (shared across all apps)
+        # Collect videos, images, and JSON files (shared across all apps)
         self.collect_all_videos()
         self.collect_all_images()
-        
-        # Collect JSON files for this group
-        if "json" in group_config:
-            for json_entry in group_config["json"]:
-                self._add_json_task(json_entry)
+        self.collect_all_json_files()
     
     def _is_gen_ai_app(self, app_config: dict) -> bool:
         """Check if an app is a gen-ai app."""

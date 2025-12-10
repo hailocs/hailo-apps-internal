@@ -52,10 +52,6 @@ logging:
         default: "./logs/clip/default"
         extra: "./logs/clip/extra"
         all: "./logs/clip/all"
-      retrain:
-        default: "./logs/retrain/default"
-        extra: "./logs/retrain/extra"
-        all: "./logs/retrain/all"
       lane_detection:
         default: "./logs/lane_detection/default"
         extra: "./logs/lane_detection/extra"

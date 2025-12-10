@@ -105,8 +105,8 @@ model = config_manager.get_model_info("detection", "hailo8", "yolov8m")
 videos = config_manager.get_videos()    # ["example.mp4", ...]
 images = config_manager.get_images()    # ["dog_bicycle.jpg", ...]
 
-# Get app-specific JSON files
-json_files = config_manager.get_json_files("detection")  # ["hailo_4_classes.json"]
+# Get all shared JSON files
+json_files = config_manager.get_json_files()  # ["hailo_4_classes.json", "scrfd.json", ...]
 
 # Check if app is Gen-AI
 is_gen_ai = config_manager.is_gen_ai_app("vlm_chat")  # True
