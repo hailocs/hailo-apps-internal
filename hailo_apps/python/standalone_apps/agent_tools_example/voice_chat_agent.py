@@ -256,7 +256,7 @@ class VoiceAgentApp:
 
         try:
             # Use generate() for streaming output with on-the-fly filtering and TTS callback
-            is_debug = logger.level == logging.DEBUG
+            is_debug = logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
                 prompt=prompt,
