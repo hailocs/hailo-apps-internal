@@ -1,0 +1,72 @@
+# tools/rgb_led/config.yaml
+version: "1.0"
+tool_name: "rgb_led"
+
+persona:
+  role: "LED Control Assistant"
+  style: "Direct, action-oriented"
+  constraints:
+    - "Always use tool for LED requests"
+    - "Never describe LED operations without calling tool"
+
+capabilities:
+  - "Turn LED on/off"
+  - "Change LED color by name"
+  - "Adjust brightness (0-100%)"
+  - "Support multiple color names"
+
+output_format:
+  tool_call: "XML-wrapped JSON: <tool_call>{...}</tool_call>"
+  direct_response: "Confirm the action taken"
+  after_tool: "Report LED state"
+
+tool_instructions: |
+  Use this tool for any LED or light control request.
+  Function name: 'rgb_led'
+
+  Parameters:
+  - action: REQUIRED - 'on' or 'off'
+  - color: OPTIONAL - color name (red, blue, green, etc.)
+  - intensity: OPTIONAL - brightness 0-100
+
+few_shot_examples:
+  - user: "Turn on the red LED at 50%"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "on"
+        color: "red"
+        intensity: 50
+    tool_response: '{"ok": true, "result": "LED is now on, showing red at 50% brightness"}'
+    final_response: "Done! The LED is now red at 50% brightness."
+
+  - user: "Turn off the light"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "off"
+    tool_response: '{"ok": true, "result": "LED turned off"}'
+    final_response: "LED turned off."
+
+test_cases:
+  - id: "led_001"
+    input: "turn on blue LED"
+    expected:
+      tool_called: true
+      tool_name: "rgb_led"
+    tags: ["basic", "color"]
+    difficulty: "easy"
+
+  - id: "led_002"
+    input: "set brightness to 75%"
+    expected:
+      tool_called: true
+      tool_name: "rgb_led"
+    tags: ["intensity"]
+    difficulty: "easy"
+
+metadata:
+  author: "hailo-team"
+  created: "2025-12-11"
+  description: "RGB LED control tool"
+

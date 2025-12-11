@@ -1,5 +1,6 @@
 """
 Real weather tool using Open-Meteo API.
+
 Gets current temperature and weather data for any location worldwide.
 No API key required!
 """
@@ -8,16 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-# Make imports more robust
-try:
-    # Try relative import first
-    from .weather_api_utils import get_current_temperature, get_weather_forecast
-except ImportError:
-    # Fallback to absolute import if relative fails (e.g., when run directly)
-    from weather_api_utils import get_current_temperature, get_weather_forecast
+from .api import get_current_temperature, get_weather_forecast
 
 # Temperature unit configuration
-# Default to Celsius. Note: Can be changed to "fahrenheit" if needed.
 TEMPERATURE_UNIT: str = "celsius"
 
 name: str = "weather"
@@ -41,7 +35,7 @@ schema: dict[str, Any] = {
     "properties": {
         "location": {
             "type": "string",
-            "description": "Location in 'City' or 'City, Country' format."
+            "description": "Location in 'City' or 'City, Country' format.",
         },
         "future_days": {
             "type": "integer",
@@ -80,11 +74,16 @@ def _validate_input(payload: dict[str, Any]) -> dict[str, Any]:
 
         class WeatherInput(BaseModel):
             location: str = Field(description="Location name")
-            future_days: int = Field(default=0, description="Days in future for forecast (0=today, 1=tomorrow, 2=in 2 days)", ge=0)
-            include_rain: bool = Field(default=False, description="Include precipitation data")
+            future_days: int = Field(
+                default=0,
+                description="Days in future for forecast (0=today, 1=tomorrow)",
+                ge=0,
+            )
+            include_rain: bool = Field(
+                default=False, description="Include precipitation data"
+            )
 
         data = WeatherInput(**payload).model_dump()
-        # Ensure future_days is valid
         future_days = int(data.get("future_days", 0))
         if future_days < 0:
             future_days = 0
@@ -103,7 +102,14 @@ def _validate_input(payload: dict[str, Any]) -> dict[str, Any]:
         include_rain = bool(payload.get("include_rain", False))
         if not location:
             return {"ok": False, "error": "Missing required 'location'"}
-        return {"ok": True, "data": {"location": location, "future_days": future_days, "include_rain": include_rain}}
+        return {
+            "ok": True,
+            "data": {
+                "location": location,
+                "future_days": future_days,
+                "include_rain": include_rain,
+            },
+        }
 
 
 def run(input_data: dict[str, Any]) -> dict[str, Any]:
@@ -112,14 +118,13 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         input_data: Dictionary with keys:
-            - location: Location name (required) - e.g., "New York", "London, UK", "Tel Aviv"
-            - future_days: Optional number of days in future for forecast (0=today, 1=tomorrow, 2=in 2 days, default: 0)
-            - include_rain: If True, include precipitation and rain probability data (default: False)
+            - location: Location name (required)
+            - future_days: Days in future for forecast (default: 0)
+            - include_rain: Include precipitation data (default: False)
 
     Returns:
-        Dictionary with 'ok' and weather data (if successful) or 'error' (if failed).
+        Dictionary with 'ok' and weather data or 'error'.
     """
-    # Validate input
     validated = _validate_input(input_data)
     if not validated.get("ok"):
         return validated
@@ -129,9 +134,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
     future_days = data.get("future_days", 0)
     include_rain = data.get("include_rain", False)
 
-    # Call the weather API
     try:
-        # Use forecast function if future_days > 0 or if include_rain is True
         if future_days > 0 or include_rain:
             result = get_weather_forecast(
                 location=location,
@@ -140,23 +143,12 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
                 unit=TEMPERATURE_UNIT,
             )
         else:
-            # Use simple current temperature for basic queries (today, no rain)
             result = get_current_temperature(location, TEMPERATURE_UNIT)
 
-        # Check if result indicates an error
         if result.startswith("Error:"):
             return {"ok": False, "error": result}
 
-        # Success - return the formatted weather data
-        return {
-            "ok": True,
-            "result": result
-        }
+        return {"ok": True, "result": result}
     except Exception as e:
-        return {
-            "ok": False,
-            "error": f"Failed to fetch weather data: {str(e)}"
-        }
-
-
+        return {"ok": False, "error": f"Failed to fetch weather data: {str(e)}"}
 

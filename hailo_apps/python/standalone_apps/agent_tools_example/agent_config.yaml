@@ -1,0 +1,62 @@
+# Agent Configuration
+# Base configuration for the unified agent application
+version: "1.0"
+
+# ═══════════════════════════════════════════════════════════════
+# LLM Configuration
+# ═══════════════════════════════════════════════════════════════
+llm:
+  default_model: "Qwen2.5-Coder-1.5B-Instruct"
+  temperature: 0.1
+  max_tokens: 200
+  seed: 42
+
+# ═══════════════════════════════════════════════════════════════
+# Context Management
+# ═══════════════════════════════════════════════════════════════
+context:
+  # Clear context when usage reaches this percentage of max capacity
+  threshold: 0.95
+  # Default mode: "fresh" reloads state each query, "continue" keeps history
+  default_mode: "fresh"
+
+# ═══════════════════════════════════════════════════════════════
+# Voice Configuration
+# ═══════════════════════════════════════════════════════════════
+voice:
+  whisper_model: "Whisper-Base"
+  enable_tts: true
+  tts_model: "en_US-amy-low"
+
+# ═══════════════════════════════════════════════════════════════
+# Hardware Configuration
+# ═══════════════════════════════════════════════════════════════
+hardware:
+  # "real" for physical hardware, "simulator" for browser-based simulation
+  mode: "simulator"
+
+  # NeoPixel LED configuration (SPI-based for Raspberry Pi 5)
+  led:
+    spi_bus: 0
+    spi_device: 0
+    count: 1
+    simulator_port: 5000
+
+  # Servo configuration (Hardware PWM)
+  servo:
+    pwm_channel: 0
+    min_angle: -90.0
+    max_angle: 90.0
+    simulator_port: 5001
+
+  # Elevator simulator
+  elevator:
+    simulator_port: 5002
+
+# ═══════════════════════════════════════════════════════════════
+# Logging
+# ═══════════════════════════════════════════════════════════════
+logging:
+  # Default log level: DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
+
