@@ -233,6 +233,10 @@ class VoiceAgentApp:
         prompt = [message_formatter.messages_user(user_text)]
         logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
 
+        # Add user message to context before generation
+        # Reason: llm.generate() may not automatically add prompt to context in all cases
+        context_manager.add_to_context(self.llm, prompt, logger)
+
         # Prepare for streaming response
         current_gen_id = None
         # Using a mutable container to track state inside inner function
@@ -264,11 +268,14 @@ class VoiceAgentApp:
 
         try:
             # Use generate() for streaming output with on-the-fly filtering and TTS callback
+            # User message already in context, pass empty list
             is_debug = logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
-                prompt=prompt,
+                prompt=[],  # Empty - user message already added to context above
                 temperature=config.TEMPERATURE,
+                seed=config.SEED,
+                max_tokens=config.MAX_GENERATED_TOKENS,
                 prefix="Assistant: ",
                 debug_mode=is_debug,
                 token_callback=tts_callback
