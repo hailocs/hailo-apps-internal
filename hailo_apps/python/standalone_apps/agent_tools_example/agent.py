@@ -275,19 +275,46 @@ class AgentApp:
         logger.debug("System prompt: %d chars", len(self.system_text))
 
         # Try to load saved state
+        state_loaded = False
         if self.state_manager.load_state(state_name, self.llm):
             logger.info("Loaded state: %s", state_name)
-            return
+            # Verify context is valid (has some tokens)
+            try:
+                context_size = self.llm.get_context_usage_size()
+                if context_size == 0:
+                    logger.warning("Loaded state has empty context, re-initializing")
+                    state_loaded = False
+                else:
+                    logger.debug("Loaded state context size: %d tokens", context_size)
+                    state_loaded = True
+            except Exception as e:
+                logger.warning("Could not verify context size: %s", e)
+                state_loaded = True  # Assume it's okay
 
-        # Try legacy cache format
-        try:
-            if context_manager.load_context_from_cache(
-                self.llm, self.selected_tool_name, self.cache_dir, logger
-            ):
-                logger.info("Loaded legacy cache: %s", self.selected_tool_name)
-                return
-        except Exception as e:
-            logger.debug("Legacy cache load failed: %s", e)
+        if not state_loaded:
+            # Try legacy cache format
+            try:
+                if context_manager.load_context_from_cache(
+                    self.llm, self.selected_tool_name, self.cache_dir, logger
+                ):
+                    logger.info("Loaded legacy cache: %s", self.selected_tool_name)
+                    state_loaded = True
+            except Exception as e:
+                logger.debug("Legacy cache load failed: %s", e)
+
+        # If state was loaded successfully, ensure few-shot examples are present
+        # (states saved before few-shot examples feature won't have them)
+        if state_loaded:
+            # Always add few-shot examples if YAML config has them
+            # This ensures consistency even if state was saved without them
+            if self.yaml_config and self.yaml_config.few_shot_examples:
+                logger.debug("Ensuring few-shot examples are in context")
+                system_prompt.add_few_shot_examples_to_context(
+                    self.llm,
+                    self.yaml_config.few_shot_examples,
+                    logger,
+                )
+            return
 
         # Fresh initialization
         logger.info("Initializing fresh context")
@@ -499,6 +526,8 @@ class AgentApp:
                 token_callback=tts_callback,
             )
             logger.debug("Raw response length: %d, content: %s", len(raw_response), raw_response[:200])
+            if len(raw_response) == 0:
+                logger.warning("LLM generated empty response - check context initialization")
         except Exception as e:
             logger.error("LLM generation failed: %s", e)
             logger.debug("Traceback: %s", traceback.format_exc())
