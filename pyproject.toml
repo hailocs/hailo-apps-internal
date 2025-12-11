@@ -43,7 +43,7 @@ dev = [
 # Gen-AI dependencies (voice assistant, LLM, embeddings) - install with: pip install -e ".[gen-ai]"
 gen-ai = [
     "lancedb",
-    "PyAudio",
+    "sounddevice",
     "piper-tts",
 ]
 
@@ -80,6 +80,7 @@ hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multiso
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
 hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip:main"
 hailo-ocr  =                "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main"
+hailo-audio-troubleshoot =  "hailo_apps.python.core.gen_ai_utils.voice_processing.audio_troubleshoot:main"
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*"]

@@ -19,6 +19,11 @@ local_resources/piper_models/*.onnx.json
 *.tmp
 *.dot
 
+# Audio files (debug recordings, test files, etc.)
+*.wav
+*.mp3
+*.ogg
+
 # Packages and dependencies
 *.egg-info/
 
