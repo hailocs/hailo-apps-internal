@@ -1,5 +1,6 @@
 """
 Math tool with safe expression evaluation.
+
 Supports complex mathematical expressions with parentheses and operator precedence.
 """
 
@@ -12,19 +13,21 @@ name: str = "math"
 
 # User-facing description (shown in CLI tool list)
 display_description: str = (
-    "Evaluate mathematical expressions with support for complex operations, parentheses, and operator precedence."
+    "Evaluate mathematical expressions with support for complex operations, "
+    "parentheses, and operator precedence."
 )
 
 # LLM instruction description (includes warnings for model)
 description: str = (
-    "CRITICAL RULE - YOU MUST FOLLOW THIS: You MUST use this tool for ALL arithmetic operations, "
-    "NO EXCEPTIONS. NEVER calculate math directly in your response - ALWAYS call this tool first. "
-    "Even for simple calculations like '2 + 2' or '5 * 3', you MUST call this tool. "
-    "DO NOT output the answer directly - you MUST call this tool using the <tool_call> format.\n\n"
+    "CRITICAL RULE - YOU MUST FOLLOW THIS: You MUST use this tool for ALL arithmetic "
+    "operations, NO EXCEPTIONS. NEVER calculate math directly in your response - ALWAYS "
+    "call this tool first. Even for simple calculations like '2 + 2' or '5 * 3', you MUST "
+    "call this tool. DO NOT output the answer directly - you MUST call this tool using "
+    "the <tool_call> format.\n\n"
     "The function name is 'math' (use this exact name in tool calls).\n\n"
     "TOOL CALL FORMAT - This is the ONLY format allowed:\n"
     "<tool_call>\n"
-    "{{\"name\": \"math\", \"arguments\": {{\"expression\": \"YOUR_EXPRESSION_HERE\"}}}}\n"
+    '{"name": "math", "arguments": {"expression": "YOUR_EXPRESSION_HERE"}}\n'
     "</tool_call>\n\n"
     "DO NOT use any other format. This XML-wrapped format is the ONLY way to call tools.\n\n"
     "Pass any mathematical expression as a string in the 'expression' parameter. "
@@ -75,6 +78,7 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
     """
 
     def __init__(self):
+        """Initialize with safe operation mappings."""
         self.safe_ops = {
             ast.Add: lambda a, b: a + b,
             ast.Sub: lambda a, b: a - b,
@@ -82,7 +86,7 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
             ast.Div: lambda a, b: a / b,
             ast.FloorDiv: lambda a, b: a // b,
             ast.Mod: lambda a, b: a % b,
-            ast.Pow: lambda a, b: a ** b,
+            ast.Pow: lambda a, b: a**b,
         }
         self.safe_unary_ops = {
             ast.UAdd: lambda a: +a,
@@ -94,13 +98,13 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         Visit a constant (number) node.
 
         Args:
-            node: AST constant node
+            node: AST constant node.
 
         Returns:
-            The numeric value
+            The numeric value.
 
         Raises:
-            ValueError: If constant is not a number
+            ValueError: If constant is not a number.
         """
         if isinstance(node.value, (int, float)):
             return float(node.value)
@@ -111,14 +115,14 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         Visit a binary operation node.
 
         Args:
-            node: AST binary operation node
+            node: AST binary operation node.
 
         Returns:
-            Result of the binary operation
+            Result of the binary operation.
 
         Raises:
-            ValueError: If operator is not allowed
-            ZeroDivisionError: If division by zero occurs
+            ValueError: If operator is not allowed.
+            ZeroDivisionError: If division by zero occurs.
         """
         if type(node.op) not in self.safe_ops:
             raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
@@ -137,13 +141,13 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         Visit a unary operation node.
 
         Args:
-            node: AST unary operation node
+            node: AST unary operation node.
 
         Returns:
-            Result of the unary operation
+            Result of the unary operation.
 
         Raises:
-            ValueError: If operator is not allowed
+            ValueError: If operator is not allowed.
         """
         if type(node.op) not in self.safe_unary_ops:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
@@ -156,10 +160,10 @@ class SafeExpressionEvaluator(ast.NodeVisitor):
         Visit any node type not explicitly handled.
 
         Args:
-            node: AST node
+            node: AST node.
 
         Raises:
-            ValueError: For any unsupported node type
+            ValueError: For any unsupported node type.
         """
         raise ValueError(f"Unsupported expression component: {type(node).__name__}")
 
@@ -175,11 +179,11 @@ def _safe_evaluate_expression(expression: str) -> float:
         expression: Mathematical expression as a string (e.g., "2 - 3 * (2 + 3) / 2")
 
     Returns:
-        The evaluated result as a float
+        The evaluated result as a float.
 
     Raises:
-        ValueError: If expression contains invalid syntax or unsupported operations
-        ZeroDivisionError: If division by zero occurs
+        ValueError: If expression contains invalid syntax or unsupported operations.
+        ZeroDivisionError: If division by zero occurs.
     """
     try:
         # Parse expression into AST
@@ -198,30 +202,35 @@ def _safe_evaluate_expression(expression: str) -> float:
         raise ValueError(f"Error evaluating expression: {str(e)}") from e
 
 
-def _validate_with_pydantic(payload: dict[str, Any]) -> dict[str, Any]:
+def _validate_input(payload: dict[str, Any]) -> dict[str, Any]:
     """
     Validate input payload.
 
     Args:
-        payload: Dictionary with 'expression' key
+        payload: Dictionary with 'expression' key.
 
     Returns:
-        Dictionary with 'ok' and 'data' (if successful) or 'error' (if failed)
+        Dictionary with 'ok' and 'data' (if successful) or 'error' (if failed).
     """
     try:
         from pydantic import BaseModel, Field
 
         class MathInput(BaseModel):
-            expression: str = Field(description="Mathematical expression to evaluate", min_length=1)
+            expression: str = Field(
+                description="Mathematical expression to evaluate", min_length=1
+            )
 
         data = MathInput(**payload).model_dump()
         return {"ok": True, "data": data}
-    except Exception:  # pydantic not installed or validation error
+    except Exception:
+        # Fallback without pydantic
         try:
-            # Best-effort fallback without pydantic
             expression = str(payload.get("expression", "")).strip()
             if not expression:
-                return {"ok": False, "error": "'expression' is required and must be a non-empty string"}
+                return {
+                    "ok": False,
+                    "error": "'expression' is required and must be a non-empty string",
+                }
             return {"ok": True, "data": {"expression": expression}}
         except Exception as inner_exc:
             return {"ok": False, "error": f"Validation failed: {inner_exc}"}
@@ -233,12 +242,12 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
 
     Args:
         input_data: Dictionary with key:
-            - expression: Mathematical expression string to evaluate
+            - expression: Mathematical expression string to evaluate.
 
     Returns:
         Dictionary with 'ok' and 'result' (if successful) or 'error' (if failed).
     """
-    validated = _validate_with_pydantic(input_data)
+    validated = _validate_input(input_data)
     if not validated.get("ok"):
         return validated
 
@@ -253,7 +262,7 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
             result_str = str(int(result))
         else:
             # Format with appropriate precision (remove trailing zeros)
-            result_str = f"{result:.10g}"  # Up to 10 significant digits, no trailing zeros
+            result_str = f"{result:.10g}"
 
         formatted_result = f"{expression} = {result_str}"
         return {"ok": True, "result": formatted_result}
@@ -263,3 +272,4 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(e)}
     except Exception as e:
         return {"ok": False, "error": f"Unexpected error: {str(e)}"}
+

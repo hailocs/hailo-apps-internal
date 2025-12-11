@@ -1,0 +1,74 @@
+# tools/elevator/config.yaml
+version: "1.0"
+tool_name: "elevator"
+
+persona:
+  role: "Wonkavator Elevator Operator"
+  style: "Whimsical, themed, helpful"
+  constraints:
+    - "Always use tool for floor navigation"
+    - "Map natural language to floor numbers"
+    - "Support floor names, character names, keywords"
+
+capabilities:
+  - "Navigate between 6 floors (0-5)"
+  - "Understand room names and keywords"
+  - "Map character names to their floors"
+  - "Support natural language floor descriptions"
+
+output_format:
+  tool_call: "XML-wrapped JSON: <tool_call>{...}</tool_call>"
+  direct_response: "Confirm destination"
+  after_tool: "Announce arrival at floor"
+
+tool_instructions: |
+  Use this tool to navigate the Wonkavator elevator.
+  Function name: 'elevator'
+
+  Floor mapping:
+  - Floor 0: Staff & Utilities (basement)
+  - Floor 1: Chocolate Room (Augustus Gloop)
+  - Floor 2: Inventing Room (Violet, blueberry)
+  - Floor 3: Fizzy Lifting Drinks
+  - Floor 4: Nut Room (squirrels, Veruca)
+  - Floor 5: Television Room (Mike Teavee)
+
+few_shot_examples:
+  - user: "Take me to the chocolate room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 1
+    tool_response: '{"ok": true, "result": "Moved to Floor 1: The Chocolate Room."}'
+    final_response: "Welcome to Floor 1: The Chocolate Room!"
+
+  - user: "Go to where Violet turned into a blueberry"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 2
+    tool_response: '{"ok": true, "result": "Moved to Floor 2: The Inventing Room."}'
+    final_response: "We're at Floor 2: The Inventing Room, where Violet became a blueberry!"
+
+test_cases:
+  - id: "elevator_001"
+    input: "go to the chocolate room"
+    expected:
+      tool_called: true
+      tool_name: "elevator"
+    tags: ["basic", "room-name"]
+    difficulty: "easy"
+
+  - id: "elevator_002"
+    input: "take me to the squirrels"
+    expected:
+      tool_called: true
+      tool_name: "elevator"
+    tags: ["keyword", "nut-room"]
+    difficulty: "medium"
+
+metadata:
+  author: "hailo-team"
+  created: "2025-12-11"
+  description: "Wonkavator elevator control"
+

@@ -2,11 +2,14 @@
 Tool discovery module.
 
 Handles automatic discovery and collection of tool modules.
+Tools are expected to be packages in tools/<name>/ with either:
+- __init__.py that exports the tool interface, or
+- tool.py with the tool implementation
 """
 
 import importlib
+import importlib.util
 import logging
-import pkgutil
 import sys
 import traceback
 from pathlib import Path
@@ -19,18 +22,21 @@ logger = logging.getLogger(__name__)
 
 def discover_tool_modules(tool_dir: Optional[Path] = None) -> List[ModuleType]:
     """
-    Discover tool modules from files named 'tool_*.py' in the tools directory.
+    Discover tool packages from the tools/ subdirectory.
+
+    Each tool is expected to be a package (folder) in tools/<tool_name>/
+    with either __init__.py or tool.py that exports the tool interface.
 
     Args:
-        tool_dir: Directory to search for tools. If None, searches the current directory.
+        tool_dir: Directory containing the tools/ subdirectory.
+                  If None, searches the current directory.
 
     Returns:
-        List of imported tool modules
+        List of imported tool modules.
     """
     modules: List[ModuleType] = []
 
     if tool_dir is None:
-        # Fallback to current directory if not provided (legacy behavior support)
         target_dir = Path(__file__).parent
     else:
         target_dir = tool_dir
@@ -39,29 +45,86 @@ def discover_tool_modules(tool_dir: Optional[Path] = None) -> List[ModuleType]:
     if str(target_dir) not in sys.path:
         sys.path.insert(0, str(target_dir))
 
-    # Build module name: use package prefix if available, otherwise just module name
-    # Note: When importing from a dynamic path added to sys.path, we might not have a package prefix
-    # or we might need to rely on the file name being importable directly.
-    package_prefix = ""
-    # If we are scanning a directory added to sys.path, we can import modules by name directly.
-    # The original code used __package__ because it was inside the package.
-    # When scanning an external dir, we don't prepend the current package name.
+    logger.debug("Scanning for tools in: %s", target_dir)
 
-    logger.debug("Scanning: %s", target_dir)
+    # Scan for tool packages in tools/ subdirectory
+    tools_subdir = target_dir / "tools"
+    if tools_subdir.is_dir():
+        modules.extend(_discover_tool_packages(tools_subdir))
+    else:
+        logger.warning("No tools/ directory found in: %s", target_dir)
 
-    for module_info in pkgutil.iter_modules([str(target_dir)]):
-        if not module_info.name.startswith("tool_"):
+    return modules
+
+
+def _discover_tool_packages(tools_dir: Path) -> List[ModuleType]:
+    """
+    Discover tool packages from subdirectories in tools/.
+
+    Each tool package should have either:
+    - __init__.py that exports the tool interface
+    - tool.py with the tool implementation
+
+    Args:
+        tools_dir: The tools/ directory path.
+
+    Returns:
+        List of imported tool modules.
+    """
+    modules: List[ModuleType] = []
+
+    # Ensure tools_dir is in sys.path for imports
+    if str(tools_dir) not in sys.path:
+        sys.path.insert(0, str(tools_dir))
+
+    # Also ensure parent is in path for package imports
+    parent_dir = tools_dir.parent
+    if str(parent_dir) not in sys.path:
+        sys.path.insert(0, str(parent_dir))
+
+    for item in sorted(tools_dir.iterdir()):
+        # Skip non-directories, hidden dirs, and special dirs
+        if not item.is_dir():
+            continue
+        if item.name.startswith("_") or item.name.startswith("."):
+            continue
+        if item.name == "__pycache__":
             continue
 
-        module_name = module_info.name
+        # Check for valid tool package
+        init_file = item / "__init__.py"
+        tool_file = item / "tool.py"
+
+        if not init_file.exists() and not tool_file.exists():
+            logger.debug("Skipping non-package: %s", item.name)
+            continue
+
         try:
-            logger.debug("Importing: %s", module_name)
-            modules.append(importlib.import_module(module_name))
+            # Try importing as a subpackage of tools
+            module_name = f"tools.{item.name}"
+            module = importlib.import_module(module_name)
+            logger.debug("Imported tool package: %s", module_name)
+            modules.append(module)
+        except ImportError:
+            # Fallback: try direct import if tools isn't a proper package
+            try:
+                if init_file.exists():
+                    spec = importlib.util.spec_from_file_location(item.name, init_file)
+                else:
+                    spec = importlib.util.spec_from_file_location(item.name, tool_file)
+
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[item.name] = module
+                    spec.loader.exec_module(module)
+                    logger.debug("Imported tool package (direct): %s", item.name)
+                    modules.append(module)
+            except Exception as e:
+                logger.error("Import failed for package %s: %s", item.name, e)
+                logger.debug("Traceback: %s", traceback.format_exc())
         except Exception as e:
-            # Reason: Log detailed error but don't crash app if one tool is broken
-            logger.error("Import failed: %s - %s", module_name, e)
+            logger.error("Import failed for package %s: %s", item.name, e)
             logger.debug("Traceback: %s", traceback.format_exc())
-            continue
 
     return modules
 
@@ -71,7 +134,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
     Collect tool metadata and schemas from tool modules.
 
     Args:
-        modules: List of tool modules to process
+        modules: List of tool modules to process.
 
     Returns:
         List of dictionaries with keys:
@@ -81,6 +144,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
             - tool_def: Full tool definition dict following the TOOL_SCHEMA format
             - runner: Callable that executes the tool (usually module.run)
             - module: The originating module (for debugging/logging)
+            - config_path: Optional path to YAML config file
     """
     tools: List[Dict[str, Any]] = []
     seen_names: set[str] = set()
@@ -104,6 +168,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
         tool_schemas = getattr(m, "TOOLS_SCHEMA", None)
         display_description = getattr(m, "display_description", None)
         llm_description_attr = getattr(m, "description", None)
+        config_path = getattr(m, "CONFIG_PATH", None)
 
         # Parse TOOLS_SCHEMA
         if tool_schemas and isinstance(tool_schemas, list):
@@ -138,6 +203,7 @@ def collect_tools(modules: List[ModuleType]) -> List[Dict[str, Any]]:
                         "tool_def": entry,
                         "runner": run_fn,
                         "module": m,
+                        "config_path": config_path,
                     }
                 )
         else:

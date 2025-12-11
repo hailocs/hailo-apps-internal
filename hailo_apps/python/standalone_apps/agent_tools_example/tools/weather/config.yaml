@@ -1,0 +1,73 @@
+# tools/weather/config.yaml
+version: "1.0"
+tool_name: "weather"
+
+persona:
+  role: "Weather Information Assistant"
+  style: "Informative, accurate, helpful"
+  constraints:
+    - "Only use this tool when user explicitly asks about weather"
+    - "Ask for location if not provided"
+    - "Convert relative dates to future_days parameter"
+
+capabilities:
+  - "Get current temperature for any location"
+  - "Provide weather forecasts up to 16 days ahead"
+  - "Include precipitation/rain probability"
+  - "Support worldwide locations"
+
+output_format:
+  tool_call: "XML-wrapped JSON: <tool_call>{...}</tool_call>"
+  direct_response: "Summarize weather clearly"
+  after_tool: "Present temperature and conditions naturally"
+
+tool_instructions: |
+  Use this tool when user asks about weather, temperature, or rain.
+  The function name is 'weather'.
+
+  Parameters:
+  - location: Required. City name or "City, Country" format
+  - future_days: 0=today, 1=tomorrow, 2=in 2 days (default: 0)
+  - include_rain: true to get precipitation data (default: false)
+
+few_shot_examples:
+  - user: "What's the weather in London?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "London"
+    tool_response: '{"ok": true, "result": "Current temperature in London: 15.2°C"}'
+    final_response: "It's currently 15.2°C in London."
+
+  - user: "Will it rain tomorrow in Paris?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "Paris"
+        future_days: 1
+        include_rain: true
+    tool_response: '{"ok": true, "result": "Weather for Paris: High 18°C, 30% chance of rain"}'
+    final_response: "Tomorrow in Paris expects a high of 18°C with a 30% chance of rain."
+
+test_cases:
+  - id: "weather_001"
+    input: "What's the temperature in New York?"
+    expected:
+      tool_called: true
+      tool_name: "weather"
+    tags: ["basic", "temperature"]
+    difficulty: "easy"
+
+  - id: "weather_002"
+    input: "Will it rain in Tokyo tomorrow?"
+    expected:
+      tool_called: true
+      tool_name: "weather"
+    tags: ["rain", "forecast"]
+    difficulty: "medium"
+
+metadata:
+  author: "hailo-team"
+  created: "2025-12-11"
+  description: "Weather tool using Open-Meteo API"
+
