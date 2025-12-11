@@ -22,6 +22,8 @@ from hailo_apps.python.core.common.defines import (
     DEFAULT_DOTENV_PATH,
     HAILO8_ARCH,
     HAILO8L_ARCH,
+    HAILO_ARCH_KEY,
+    HOST_ARCH_KEY,
     RESOURCES_ROOT_PATH_DEFAULT,
 )
 from hailo_apps.python.core.common.core import load_environment
@@ -69,10 +71,10 @@ def detect_and_set_environment():
     logger.info(f"Detected host architecture: {host_arch}")
     logger.info(f"Detected Hailo architecture: {hailo_arch or 'None (no device detected)'}")
 
-    # Set in current process environment
-    os.environ["HOST_ARCH"] = host_arch
+    # Set in current process environment using the same keys the apps read
+    os.environ[HOST_ARCH_KEY] = host_arch
     if hailo_arch:
-        os.environ["HAILO_ARCH"] = hailo_arch
+        os.environ[HAILO_ARCH_KEY] = hailo_arch
 
     logger.info("=" * 80)
     return host_arch, hailo_arch

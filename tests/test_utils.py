@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 
 from hailo_apps.python.core.common.defines import (
+    HAILO_ARCH_KEY,
     RESOURCES_ROOT_PATH_DEFAULT,
     TERM_TIMEOUT,
     TEST_RUN_TIME,
@@ -194,11 +195,12 @@ def run_pipeline_test(
         logger.error(f"Unknown run method: {run_method}")
         return b"", b"Unknown run method".encode(), False
     
-    # Set HAILO_ARCH environment variable for this test
+    # Set hailo_arch environment variable for this test
     # This ensures the subprocess uses the correct architecture (important for h8l_on_h8 tests)
-    original_hailo_arch = os.environ.get("HAILO_ARCH")
-    os.environ["HAILO_ARCH"] = architecture
-    logger.debug(f"Set HAILO_ARCH={architecture} for test")
+    # Note: Must use HAILO_ARCH_KEY ("hailo_arch") to match what apps read via os.getenv(HAILO_ARCH_KEY)
+    original_hailo_arch = os.environ.get(HAILO_ARCH_KEY)
+    os.environ[HAILO_ARCH_KEY] = architecture
+    logger.debug(f"Set {HAILO_ARCH_KEY}={architecture} for test")
     
     try:
         kwargs = {}
@@ -248,12 +250,12 @@ def run_pipeline_test(
         return b"", str(e).encode(), False
     
     finally:
-        # Restore original HAILO_ARCH environment variable
+        # Restore original hailo_arch environment variable
         if original_hailo_arch is not None:
-            os.environ["HAILO_ARCH"] = original_hailo_arch
-        elif "HAILO_ARCH" in os.environ:
-            del os.environ["HAILO_ARCH"]
-        logger.debug(f"Restored HAILO_ARCH to {original_hailo_arch}")
+            os.environ[HAILO_ARCH_KEY] = original_hailo_arch
+        elif HAILO_ARCH_KEY in os.environ:
+            del os.environ[HAILO_ARCH_KEY]
+        logger.debug(f"Restored {HAILO_ARCH_KEY} to {original_hailo_arch}")
 
 
 def get_log_file_path(

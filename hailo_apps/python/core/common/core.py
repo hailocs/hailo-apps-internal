@@ -596,10 +596,10 @@ def resolve_hef_path(
             hailo_logger.error(f"No default model found for {app_name}/{arch}")
             return None
     
-    # Normalize model name (remove .hef if present)
-    model_name = hef_path
-    if model_name.endswith(HAILO_FILE_EXTENSION):
-        model_name = model_name[:-len(HAILO_FILE_EXTENSION)]
+    # Normalize model name (extract basename and remove .hef if present)
+    # This handles both full paths like "/path/to/yolov8s.hef" and just "yolov8s"
+    model_name = Path(hef_path).stem  # Gets filename without extension
+    # stem handles both "yolov8s.hef" -> "yolov8s" and "yolov8s" -> "yolov8s"
     
     # Case 2: Check if it's a full path that exists
     hef_full_path = Path(hef_path)
