@@ -54,6 +54,23 @@ class AudioPlayer:
             _, self.device_id = AudioDiagnostics.auto_detect_devices()
             if self.device_id is None:
                 logger.warning("No output device found during auto-detection. Will use system default.")
+            else:
+                # Verify device supports output
+                try:
+                    devices = sd.query_devices()
+                    if self.device_id < len(devices):
+                        device_info = devices[self.device_id]
+                        if device_info['max_output_channels'] == 0:
+                            logger.warning("Auto-detected device %d (%s) does not support output channels. "
+                                         "Falling back to system default.",
+                                         self.device_id, device_info.get('name', 'unknown'))
+                            self.device_id = None
+                        else:
+                            logger.info("Verified output device %d (%s) supports %d output channels",
+                                      self.device_id, device_info.get('name', 'unknown'),
+                                      device_info['max_output_channels'])
+                except Exception as e:
+                    logger.warning("Failed to verify output device: %s", e)
         else:
             self.device_id = device_id
 
@@ -90,6 +107,7 @@ class AudioPlayer:
             data = data.astype(np.float32)
 
         # Enqueue for playback
+        logger.debug("Queuing audio data for playback: %d samples", len(data))
         self.queue.put(data)
 
     def stop(self):
@@ -165,16 +183,22 @@ class AudioPlayer:
 
     def _create_stream(self):
         """Create a new output stream."""
-        stream = sd.OutputStream(
-            samplerate=TARGET_SR,
-            device=self.device_id,
-            channels=1,
-            dtype='float32',
-            blocksize=WRITE_CHUNK_SIZE,
-            latency=0.3  # 300ms buffer to prevent underruns
-        )
-        stream.start()
-        return stream
+        try:
+            stream = sd.OutputStream(
+                samplerate=TARGET_SR,
+                device=self.device_id,
+                channels=1,
+                dtype='float32',
+                blocksize=WRITE_CHUNK_SIZE,
+                latency=0.3  # 300ms buffer to prevent underruns
+            )
+            stream.start()
+            logger.info("Audio output stream created successfully (device_id=%s, active=%s)",
+                       self.device_id, stream.active)
+            return stream
+        except Exception as e:
+            logger.error("Failed to create audio output stream (device_id=%s): %s", self.device_id, e)
+            raise
 
     def _playback_worker(self):
         """Worker thread that writes to the OutputStream."""
@@ -194,10 +218,11 @@ class AudioPlayer:
                         self.stream = self._create_stream()
                         self._reinit_event.clear()
 
-                    logger.debug("Audio stream initialized")
+                    logger.info("Audio stream initialized successfully (device_id=%s)", self.device_id)
 
                 except Exception as e:
-                    logger.error("Failed to initialize audio stream: %s", e)
+                    logger.error("Failed to initialize audio stream (device_id=%s): %s", self.device_id, e)
+                    logger.debug("Stream initialization error traceback:", exc_info=True)
                     time.sleep(0.5)
                     continue
 
@@ -213,6 +238,9 @@ class AudioPlayer:
 
                         # Write in chunks for responsiveness
                         offset = 0
+                        data_len = len(data)
+                        logger.debug("Playing audio chunk: %d samples", data_len)
+
                         while offset < len(data):
                             if self._reinit_event.is_set() or self._stop_event.is_set():
                                 break
@@ -221,14 +249,24 @@ class AudioPlayer:
                             offset += WRITE_CHUNK_SIZE
 
                             if self.stream and self.stream.active:
-                                self.stream.write(chunk)
+                                try:
+                                    self.stream.write(chunk)
+                                except Exception as write_error:
+                                    logger.error("Error writing to audio stream: %s", write_error)
+                                    raise
+                            else:
+                                logger.warning("Audio stream not active (stream=%s, active=%s)",
+                                              self.stream is not None,
+                                              self.stream.active if self.stream else False)
 
                             time.sleep(0)  # Yield GIL
 
+                        logger.debug("Finished playing audio chunk: %d samples", data_len)
                         self.queue.task_done()
 
                     except Exception as e:
-                        logger.debug("Playback error (will reinit): %s", e)
+                        logger.error("Playback error (will reinit): %s", e)
+                        logger.debug("Playback error traceback:", exc_info=True)
                         break
 
             # Cleanup

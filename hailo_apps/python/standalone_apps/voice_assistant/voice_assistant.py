@@ -10,7 +10,10 @@ from hailo_apps.python.core.common.defines import LLM_PROMPT_PREFIX, SHARED_VDEV
 from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 from hailo_apps.python.core.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
-from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
+from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import (
+    TextToSpeechProcessor,
+    PiperModelNotFoundError,
+)
 from hailo_apps.python.core.gen_ai_utils.llm_utils import streaming
 
 
@@ -164,7 +167,13 @@ def main():
         print("TTS disabled: Running in low-resource mode.")
 
     # Initialize the app
-    app = VoiceAssistantApp(debug=args.debug, no_tts=args.no_tts)
+    try:
+        app = VoiceAssistantApp(debug=args.debug, no_tts=args.no_tts)
+    except PiperModelNotFoundError as e:
+        # Piper model not found - exit with error message
+        print("ERROR: TTS model not found. Use --no-tts to run without TTS, or install the Piper model.")
+        print(str(e))
+        return 1
 
     # Initialize the interaction manager
     interaction = VoiceInteractionManager(

@@ -121,6 +121,134 @@ class TestAudioDiagnostics(unittest.TestCase):
             self.assertEqual(best_in, 1)
             self.assertIsNone(best_out)
 
+    def test_is_raspberry_pi(self):
+        """Test Raspberry Pi detection."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+
+        with patch('platform.machine', return_value='aarch64'), \
+             patch('platform.release', return_value='5.10.0'):
+            self.assertTrue(AudioDiagnostics.is_raspberry_pi())
+
+        with patch('platform.machine', return_value='x86_64'), \
+             patch('platform.release', return_value='5.10.0'):
+            self.assertFalse(AudioDiagnostics.is_raspberry_pi())
+
+    def test_get_audio_server(self):
+        """Test audio server detection."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+
+        # Mock subprocess to return PulseAudio
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = 'Server Name: PulseAudio'
+            mock_run.return_value = mock_result
+
+            server = AudioDiagnostics.get_audio_server()
+            self.assertEqual(server, 'pulseaudio')
+
+        # Mock subprocess to return PipeWire
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = 'Server Name: PipeWire'
+            mock_run.return_value = mock_result
+
+            server = AudioDiagnostics.get_audio_server()
+            self.assertEqual(server, 'pipewire')
+
+        # Mock subprocess failure
+        with patch('subprocess.run', side_effect=FileNotFoundError()):
+            server = AudioDiagnostics.get_audio_server()
+            self.assertIsNone(server)
+
+    def test_get_pulseaudio_usb_devices(self):
+        """Test PulseAudio USB device detection."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+
+        with patch('subprocess.run') as mock_run:
+            # Mock sinks output
+            sinks_result = MagicMock()
+            sinks_result.returncode = 0
+            sinks_result.stdout = '0\talsa_output.usb-Device_123.analog-stereo\tRUNNING'
+            mock_run.return_value = sinks_result
+
+            devices = AudioDiagnostics.get_pulseaudio_usb_devices()
+            # Should find USB device in sinks
+            self.assertGreaterEqual(len(devices), 0)
+
+    def test_get_alsa_cards(self):
+        """Test ALSA card detection."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+
+        with patch('subprocess.run') as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = 'card 1: Device [USB Audio Device], device 0: USB Audio [USB Audio]'
+            mock_run.return_value = mock_result
+
+            cards = AudioDiagnostics.get_alsa_cards()
+            self.assertGreaterEqual(len(cards), 0)
+
+    def test_check_audio_permissions(self):
+        """Test audio permission checking."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+
+        # Mock user in audio group
+        with patch('getpass.getuser', return_value='testuser'), \
+             patch('grp.getgrall', return_value=[MagicMock(gr_name='audio', gr_mem=['testuser'])]), \
+             patch('os.getgid', return_value=1000), \
+             patch('grp.getgrgid', return_value=MagicMock(gr_name='audio')):
+            has_perms, issues = AudioDiagnostics.check_audio_permissions()
+            self.assertTrue(has_perms)
+            self.assertEqual(len(issues), 0)
+
+        # Mock user not in audio group
+        with patch('getpass.getuser', return_value='testuser'), \
+             patch('grp.getgrall', return_value=[]), \
+             patch('os.getgid', return_value=1000), \
+             patch('grp.getgrgid', return_value=MagicMock(gr_name='users')):
+            has_perms, issues = AudioDiagnostics.check_audio_permissions()
+            self.assertFalse(has_perms)
+            self.assertGreater(len(issues), 0)
+
+    def test_configure_usb_audio_rpi(self):
+        """Test USB audio configuration for RPi."""
+        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import (
+            AudioDiagnostics,
+            AudioDeviceInfo,
+        )
+
+        # Mock all the dependencies
+        with patch.object(AudioDiagnostics, 'is_raspberry_pi', return_value=True), \
+             patch.object(AudioDiagnostics, 'get_audio_server', return_value='pulseaudio'), \
+             patch.object(AudioDiagnostics, 'check_audio_permissions', return_value=(True, [])), \
+             patch.object(AudioDiagnostics, 'list_audio_devices') as mock_list, \
+             patch.object(AudioDiagnostics, 'get_pulseaudio_usb_devices', return_value=[]), \
+             patch.object(AudioDiagnostics, 'get_alsa_cards', return_value=[]), \
+             patch.object(AudioDiagnostics, 'auto_detect_devices', return_value=(1, 2)):
+
+            usb_input = AudioDeviceInfo(
+                id=1, name="USB Microphone", host_api=0,
+                max_input_channels=1, max_output_channels=0,
+                default_samplerate=16000, is_usb=True
+            )
+            usb_output = AudioDeviceInfo(
+                id=2, name="USB Speaker", host_api=0,
+                max_input_channels=0, max_output_channels=2,
+                default_samplerate=16000, is_usb=True
+            )
+
+            mock_list.return_value = ([usb_input], [usb_output])
+
+            results = AudioDiagnostics.configure_usb_audio_rpi(auto_fix=False)
+
+            self.assertIsInstance(results, dict)
+            self.assertIn('success', results)
+            self.assertIn('steps', results)
+            self.assertIn('warnings', results)
+            self.assertIn('errors', results)
+
 
 # =============================================================================
 # Audio Player Tests

@@ -21,6 +21,7 @@ from piper import PiperVoice
 from piper.voice import SynthesisConfig
 
 from hailo_apps.python.core.common.defines import (
+    TARGET_SR,
     TTS_JSON_PATH,
     TTS_LENGTH_SCALE,
     TTS_MODEL_NAME,
@@ -36,6 +37,16 @@ from .audio_diagnostics import AudioDiagnostics
 logger = logging.getLogger(__name__)
 
 
+class PiperModelNotFoundError(FileNotFoundError):
+    """
+    Exception raised when Piper TTS model files are not found.
+
+    This exception should cause the application to exit, as TTS is a required
+    component unless explicitly disabled with --no-tts flag.
+    """
+    pass
+
+
 def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str = TTS_JSON_PATH) -> bool:
     """
     Check if Piper TTS model files are installed.
@@ -48,7 +59,7 @@ def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str =
         bool: True if both model files exist, False otherwise.
 
     Raises:
-        FileNotFoundError: If model files are not found, with reference to documentation.
+        PiperModelNotFoundError: If model files are not found, with reference to documentation.
     """
     onnx_exists = os.path.exists(onnx_path)
     json_exists = os.path.exists(json_path)
@@ -67,8 +78,11 @@ def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str =
 Please install the Piper TTS model before running this application.
 For detailed installation instructions, see:
   hailo_apps/python/core/gen_ai_utils/voice_processing/README.md
+
+Missing files:
+{chr(10).join(f'  - {f}' for f in missing_files)}
 """
-        raise FileNotFoundError(error_msg)
+        raise PiperModelNotFoundError(error_msg)
 
     return True
 
@@ -134,7 +148,7 @@ class TextToSpeechProcessor:
             device_id (Optional[int]): Audio device ID for playback.
 
         Raises:
-            FileNotFoundError: If Piper model files are not found.
+            PiperModelNotFoundError: If Piper model files are not found.
         """
         # Check if Piper model is installed
         json_path = onnx_path + ".json"
@@ -353,7 +367,10 @@ class TextToSpeechProcessor:
                     return
 
                 # Play synchronously (blocking this worker thread)
+                logger.info("Playing synthesized audio: %d samples (%.2f seconds)",
+                           len(audio_data), len(audio_data) / TARGET_SR)
                 self.audio_player.play(audio_data, block=True)
+                logger.debug("Audio playback completed")
 
         except Exception as e:
             logger.error("TTS synthesis/playback failed: %s", e)

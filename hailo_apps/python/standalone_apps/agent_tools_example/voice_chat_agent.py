@@ -21,7 +21,11 @@ from hailo_platform.genai import LLM
 
 from hailo_apps.python.core.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 from hailo_apps.python.core.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
-from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
+from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import (
+    TextToSpeechProcessor,
+    PiperModelNotFoundError,
+)
+from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     agent_utils,
     context_manager,
@@ -115,14 +119,18 @@ class VoiceAgentApp:
             self.vdevice.release()
             raise
 
-        # TTS
+        # TTS - detect output device first to ensure proper device selection
         self.tts = None
         if not no_tts:
-            try:
-                self.tts = TextToSpeechProcessor()
-            except Exception as e:
-                logger.warning("Failed to initialize TTS: %s", e)
-                print("Continuing without TTS support.")
+            # Auto-detect output device (same logic as AudioPlayer uses)
+            _, output_device_id = AudioDiagnostics.auto_detect_devices()
+            if output_device_id is not None:
+                logger.info("Using output device %d for TTS", output_device_id)
+            else:
+                logger.warning("No output device detected, TTS will use system default")
+            # Initialize TTS - if model is missing, this will raise PiperModelNotFoundError
+            # which should cause the app to exit
+            self.tts = TextToSpeechProcessor(device_id=output_device_id)
 
         # Initialize Context
         self._init_context()
@@ -344,7 +352,7 @@ def main():
         config.validate_config()
     except ValueError as e:
         logger.error("Configuration Error: %s", e)
-        return
+        sys.exit(1)
 
     # Resolve LLM HEF path (Qwen2.5-Coder-1.5B-Instruct) with auto-download
     llm_hef_path = resolve_hef_path(
@@ -354,7 +362,7 @@ def main():
     )
     if llm_hef_path is None:
         logger.error("Failed to resolve HEF path for LLM model. Exiting.")
-        return
+        sys.exit(1)
 
     # Resolve Whisper HEF path (Whisper-Base) with auto-download
     whisper_hef_path = resolve_hef_path(
@@ -364,7 +372,7 @@ def main():
     )
     if whisper_hef_path is None:
         logger.error("Failed to resolve HEF path for Whisper model. Exiting.")
-        return
+        sys.exit(1)
 
     logger.info("Using LLM HEF: %s", llm_hef_path)
     logger.info("Using Whisper HEF: %s", whisper_hef_path)
@@ -376,17 +384,17 @@ def main():
     except Exception as e:
         logger.error("Failed to discover tools: %s", e)
         logger.debug(traceback.format_exc())
-        return
+        sys.exit(1)
 
     if not all_tools:
         logger.error("No tools found.")
-        return
+        sys.exit(1)
 
     tool_thread, tool_result = tool_selection.start_tool_selection_thread(all_tools)
     selected_tool = tool_selection.get_tool_selection_result(tool_thread, tool_result)
 
     if not selected_tool:
-        return
+        sys.exit(0)
 
     tool_execution.initialize_tool_if_needed(selected_tool)
 
@@ -399,9 +407,14 @@ def main():
             debug=args.debug,
             no_tts=args.no_tts
         )
+    except PiperModelNotFoundError as e:
+        # Piper model not found - exit with error message
+        logger.error("TTS model not found. Use --no-tts to run without TTS, or install the Piper model.")
+        print(str(e))
+        sys.exit(1)
     except Exception:
         # Error already logged in __init__
-        return
+        sys.exit(1)
 
     interaction = VoiceInteractionManager(
         title="Voice-Enabled Tool Agent",
