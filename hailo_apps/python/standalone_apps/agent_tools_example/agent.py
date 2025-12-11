@@ -503,6 +503,11 @@ class AgentApp:
         prompt = [message_formatter.messages_user(user_text)]
         logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
 
+        # Add user message to context before generation
+        # Reason: llm.generate() may not automatically add prompt to context in all cases
+        # This ensures the user message is in context before we generate
+        context_manager.add_to_context(self.llm, prompt, logger)
+
         # Setup TTS callback if needed
         tts_callback = None
         tts_state = {"sentence_buffer": "", "gen_id": None}
@@ -512,12 +517,13 @@ class AgentApp:
             tts_state["gen_id"] = self.tts.get_current_gen_id()
             tts_callback = self._create_tts_callback(tts_state)
 
-        # Generate response
+        # Generate response (user message already in context, pass empty list)
+        # Reason: When prompt is empty, llm.generate() continues from current context
         try:
             is_debug = logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
-                prompt=prompt,
+                prompt=[],  # Empty - user message already added to context above
                 temperature=config.TEMPERATURE,
                 seed=config.SEED,
                 max_tokens=config.MAX_GENERATED_TOKENS,
