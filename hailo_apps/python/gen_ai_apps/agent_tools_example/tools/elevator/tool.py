@@ -36,29 +36,14 @@ def _get_display_description() -> str:
 display_description: str = _get_display_description()
 
 
-def _build_floor_directory() -> str:
-    """Build floor directory from FLOORS data with all keywords."""
-    lines = ["FLOOR DIRECTORY - Complete floor information:"]
-    for floor_num in sorted(FLOORS.keys()):
-        floor_data = FLOORS[floor_num]
-        keywords_str = ", ".join(floor_data["keywords"])
-        lines.append(f"\nFloor {floor_num}: {floor_data['name']}")
-        lines.append(f"  Keywords: {keywords_str}")
-    return "\n".join(lines)
-
-
 # LLM instruction description
 def _get_description() -> str:
-    """Build tool description dynamically with floor directory."""
+    """Build tool description dynamically."""
     floor_range = f"{min(FLOORS.keys()) if FLOORS else 0}-{max(FLOORS.keys()) if FLOORS else 5}"
 
     return (
         "CRITICAL: You MUST use this tool when the user asks to navigate, move, or go to any floor or room in Willy Wonka's factory. "
         "ALWAYS call this tool for elevator/floor requests. The function name is 'elevator'.\n\n"
-        f"{_build_floor_directory()}\n\n"
-        "YOUR TASK: Interpret the user's request and call this tool with the integer floor number. "
-        "Match room names, character names, keywords, or location descriptions to the correct floor. "
-        "Use the floor directory above to find the correct floor number.\n\n"
         f"DEFAULT OPTION: If the user requests a floor number outside the available range ({floor_range}), "
         "or if you cannot determine which floor the user wants (ambiguous request), set 'default' to true. "
         "Use this when you cannot confidently map the user's request to a valid floor number. "

@@ -96,7 +96,7 @@ def init_logging(
     datefmt = "%H:%M:%S"
 
     # Console handler with custom formatter
-    ch = logging.StreamHandler(sys.stderr)
+    ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(_ShortNameFormatter(debug_fmt=debug_fmt, normal_fmt=normal_fmt, datefmt=datefmt))
     ch.addFilter(_RunContextFilter(_RUN_ID))
     root.addHandler(ch)
