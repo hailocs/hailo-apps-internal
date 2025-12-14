@@ -5,6 +5,8 @@ Handles microphone recording and audio processing using sounddevice.
 """
 
 import logging
+from datetime import datetime
+import wave
 import numpy as np
 import sounddevice as sd
 from typing import Optional
@@ -31,11 +33,12 @@ class AudioRecorder:
 
         Args:
             device_id (Optional[int]): Device ID to use. If None, auto-detects best device.
-            debug (bool): Enable debug logging (no longer saves audio files).
+            debug (bool): If True, saves recorded audio to WAV files.
         """
         self.audio_frames = []
         self.is_recording = False
         self.debug = debug
+        self.recording_counter = 0
         self.stream = None
 
         # Select device
@@ -102,7 +105,39 @@ class AudioRecorder:
         # Ensure the audio data is in little-endian format
         audio_le = audio_data.astype('<f4')
 
+        # Save a copy for debugging if enabled
+        if self.debug:
+            self._save_debug_audio(audio_le)
+
         return audio_le
+
+    def _save_debug_audio(self, audio_data: np.ndarray):
+        """
+        Save the recorded audio to a WAV file for debugging purposes.
+
+        Args:
+            audio_data (np.ndarray): Processed audio data to save.
+        """
+        try:
+            # Generate a unique filename with a timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.recording_counter += 1
+            filename = f"debug_audio_{timestamp}_{self.recording_counter:03d}.wav"
+
+            # Convert float32 audio back to int16 for WAV file compatibility
+            audio_int16 = (audio_data * 32767).astype(np.int16)
+
+            # Save as a WAV file
+            with wave.open(filename, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(TARGET_SR)
+                wav_file.writeframes(audio_int16.tobytes())
+
+            logger.info("Audio saved to %s", filename)
+
+        except Exception as e:
+            logger.warning("Failed to save debug audio: %s", e)
 
     def close(self):
         """Release resources."""
