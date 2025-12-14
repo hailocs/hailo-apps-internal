@@ -6,12 +6,11 @@ This document provides comprehensive technical documentation for the Hailo LLM f
 
 ## Overview
 
-The tools application provides an interactive CLI chat agent (`chat_agent.py`) that uses Hailo LLM models with function calling capabilities. The system automatically discovers tools from modules named `tool_*.py` and allows the LLM to call them during conversations.
+The tools application provides an interactive CLI chat agent (`agent.py`) that uses Hailo LLM models with function calling capabilities. The system automatically discovers tools from modules named `tool_*.py` and allows the LLM to call them during conversations.
 
 ### Key Components
 
-- **`chat_agent.py`** - Main interactive CLI agent (text-based entry point)
-- **`voice_chat_agent.py`** - Voice-enabled interactive agent (combines voice I/O with tool calling)
+- **`agent.py`** - Unified interactive CLI agent (supports both text and voice modes)
 - **`tool_*.py`** - Individual tool modules (discovered automatically)
 
 ---
@@ -188,42 +187,34 @@ cp tool_TEMPLATE.py tool_mytool.py
 
 ### Step 3: Test
 
-The tool will be automatically discovered when you run `chat_agent.py`. No code changes needed in the agent!
+The tool will be automatically discovered when you run `agent.py`. No code changes needed in the agent!
 
 ---
 
 ## Usage
 
-### Running the Chat Agent (Text-Based)
+### Running the Unified Agent
+
+The unified agent (`agent.py`) supports both text and voice modes:
 
 ```bash
-# Basic usage
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.chat_agent
+# Text mode (default)
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent
 
-# With debug logging (edit config.py: DEFAULT_LOG_LEVEL = "DEBUG")
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.chat_agent
+# Voice mode
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent --voice
 
-# With custom model
-HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.gen_ai_apps.agent_tools_example.chat_agent
-```
-
-### Running the Voice Chat Agent
-
-**Prerequisites**: The voice chat agent requires Piper TTS model installation. See [Voice Processing Module Documentation](../../core/gen_ai_utils/voice_processing/README.md) for installation instructions.
-
-```bash
-# Basic usage
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.voice_chat_agent
+# Voice mode without TTS (voice input only)
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent --voice --no-tts
 
 # With debug logging
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.voice_chat_agent --debug
-
-# Without TTS (voice input only)
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.voice_chat_agent --no-tts
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent --debug
 
 # With custom model
-HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.gen_ai_apps.agent_tools_example.voice_chat_agent
+HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent
 ```
+
+**Prerequisites for Voice Mode**: The voice mode requires Piper TTS model installation. See [Voice Processing Module Documentation](../../core/gen_ai_utils/voice_processing/README.md) for installation instructions.
 
 **Voice Controls:**
 
@@ -233,13 +224,13 @@ HAILO_HEF_PATH=/path/to/model.hef python -m hailo_apps.python.gen_ai_apps.agent_
 | `Q`     | Quit the application       |
 | `C`     | Clear conversation context |
 
-The voice chat agent:
-- Uses Hailo's Whisper model for speech-to-text
+The agent:
+- Uses Hailo's Whisper model for speech-to-text (voice mode)
 - Processes queries through the LLM with tool calling
-- Synthesizes responses using Piper TTS
-- Supports all the same tools as the text-based agent
+- Synthesizes responses using Piper TTS (voice mode, optional)
+- Supports all available tools in both text and voice modes
 
-### Interactive Commands (Text Agent)
+### Interactive Commands (Text Mode)
 
 | Command    | Description                |
 | ---------- | -------------------------- |

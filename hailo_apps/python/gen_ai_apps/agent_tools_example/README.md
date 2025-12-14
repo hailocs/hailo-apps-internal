@@ -19,7 +19,11 @@ The system follows a simple tool discovery and execution pattern:
 ### Basic Usage
 
 ```bash
-python -m hailo_apps.python.gen_ai_apps.agent_tools_example.chat_agent
+# Text mode (default)
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent
+
+# Voice mode
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent --voice
 ```
 
 ### With Debug Logging

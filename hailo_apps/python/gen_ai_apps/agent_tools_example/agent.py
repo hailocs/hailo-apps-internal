@@ -109,8 +109,8 @@ class AgentApp:
     """
     Unified agent supporting text and voice modes.
 
-    Combines the functionality of chat_agent and voice_chat_agent
-    into a single application with mode switching.
+    Provides a single application that supports both text-based and voice-based
+    interactions with tool calling capabilities.
     """
 
     def __init__(

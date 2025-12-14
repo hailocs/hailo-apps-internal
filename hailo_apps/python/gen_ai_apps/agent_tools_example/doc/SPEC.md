@@ -10,7 +10,7 @@
 
 This specification describes a comprehensive update to the agent tools infrastructure:
 
-- **Unified Agent**: Merge `chat_agent.py` and `voice_chat_agent.py` into single `agent.py`
+- **Unified Agent**: Single `agent.py` supporting both text and voice modes (replaces `chat_agent.py` and `voice_chat_agent.py`)
 - **YAML Configuration**: Per-tool YAML configs for prompts, few-shot examples, test cases
 - **Context State Management**: Save/load LLM context states with YAML snapshots for reproducibility
 - **Testing Framework**: Benchmarks, accuracy metrics, interaction collection
@@ -87,22 +87,21 @@ This specification describes a comprehensive update to the agent tools infrastru
 | [`audio_player.py`](../../gen_ai_utils/voice_processing/audio_player.py)           | `AudioPlayer`             | Cross-platform audio playback                                         |
 | [`audio_diagnostics.py`](../../gen_ai_utils/voice_processing/audio_diagnostics.py) | `AudioDiagnostics`        | Device enumeration and troubleshooting                                |
 
-### 3.3 Current Agent Files (to be refactored)
+### 3.3 Agent Files
 
-| File                                                | Purpose               | Target                             |
-| --------------------------------------------------- | --------------------- | ---------------------------------- |
-| [`chat_agent.py`](../chat_agent.py)                 | Text-only agent       | → `agent.py`                       |
-| [`voice_chat_agent.py`](../voice_chat_agent.py)     | Voice-enabled agent   | → `agent.py`                       |
-| [`config.py`](../config.py)                         | Python configuration  | → `agent_config.yaml`              |
-| [`system_prompt.py`](../system_prompt.py)           | System prompt builder | → Updated to use YAML              |
-| [`tool_math.py`](../tool_math.py)                   | Math tool             | → `tools/math/tool.py`             |
-| [`tool_weather.py`](../tool_weather.py)             | Weather tool          | → `tools/weather/tool.py`          |
-| [`tool_rgb_led.py`](../tool_rgb_led.py)             | LED tool              | → `tools/rgb_led/tool.py`          |
-| [`tool_servo.py`](../tool_servo.py)                 | Servo tool            | → `tools/servo/tool.py`            |
-| [`tool_elevator.py`](../tool_elevator.py)           | Elevator tool         | → `tools/elevator/tool.py`         |
-| [`hardware_interface.py`](../hardware_interface.py) | LED/Servo hardware    | → Split into `tools/*/hardware.py` |
-| [`elevator_interface.py`](../elevator_interface.py) | Elevator interface    | → `tools/elevator/interface.py`    |
-| [`weather_api_utils.py`](../weather_api_utils.py)   | Weather API client    | → `tools/weather/api.py`           |
+| File                                                | Purpose                      | Status                             |
+| --------------------------------------------------- | ---------------------------- | ---------------------------------- |
+| [`agent.py`](../agent.py)                           | Unified agent (text + voice) | ✅ Implemented                      |
+| [`config.py`](../config.py)                         | Python configuration         | → `agent_config.yaml`              |
+| [`system_prompt.py`](../system_prompt.py)           | System prompt builder        | → Updated to use YAML              |
+| [`tool_math.py`](../tool_math.py)                   | Math tool                    | → `tools/math/tool.py`             |
+| [`tool_weather.py`](../tool_weather.py)             | Weather tool                 | → `tools/weather/tool.py`          |
+| [`tool_rgb_led.py`](../tool_rgb_led.py)             | LED tool                     | → `tools/rgb_led/tool.py`          |
+| [`tool_servo.py`](../tool_servo.py)                 | Servo tool                   | → `tools/servo/tool.py`            |
+| [`tool_elevator.py`](../tool_elevator.py)           | Elevator tool                | → `tools/elevator/tool.py`         |
+| [`hardware_interface.py`](../hardware_interface.py) | LED/Servo hardware           | → Split into `tools/*/hardware.py` |
+| [`elevator_interface.py`](../elevator_interface.py) | Elevator interface           | → `tools/elevator/interface.py`    |
+| [`weather_api_utils.py`](../weather_api_utils.py)   | Weather API client           | → `tools/weather/api.py`           |
 
 ---
 
