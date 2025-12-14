@@ -590,6 +590,8 @@ class AgentApp:
 
         # TTS for tool result (only tool results are sent to TTS)
         if self.tts:
+            # Clear any previous interruption before queuing new text
+            self.tts.clear_interruption()
             if result.get("ok"):
                 self.tts.queue_text(str(result.get("result", "")))
             else:
