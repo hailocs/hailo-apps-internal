@@ -50,7 +50,7 @@ class SpeechToTextProcessor:
                     "Please run: hailo-download-resources --group whisper_chat"
                 )
 
-        logger.info("Initializing Speech2Text with model: %s", hef_path)
+        logger.debug("Initializing Speech2Text with model: %s", hef_path)
         self.speech2text = Speech2Text(vdevice, str(hef_path))
 
     def transcribe(

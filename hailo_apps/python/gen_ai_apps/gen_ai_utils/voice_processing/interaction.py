@@ -69,7 +69,7 @@ class VoiceInteractionManager:
     def run(self):
         """Starts the main interaction loop."""
         TerminalUI.show_banner(title=self.title, controls=self.controls)
-        logger.info("Voice interaction started")
+        logger.debug("Voice interaction started")
 
         try:
             while True:
@@ -158,7 +158,7 @@ class VoiceInteractionManager:
             TerminalUI.show_banner(title=self.title, controls=self.controls)
 
     def close(self):
-        logger.info("Shutting down voice interaction")
+        logger.debug("Shutting down voice interaction")
         if self.is_recording:
             try:
                 self.recorder.stop()

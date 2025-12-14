@@ -66,7 +66,7 @@ class AudioPlayer:
                                          self.device_id, device_info.get('name', 'unknown'))
                             self.device_id = None
                         else:
-                            logger.info("Verified output device %d (%s) supports %d output channels",
+                            logger.debug("Verified output device %d (%s) supports %d output channels",
                                       self.device_id, device_info.get('name', 'unknown'),
                                       device_info['max_output_channels'])
                 except Exception as e:
@@ -74,7 +74,7 @@ class AudioPlayer:
         else:
             self.device_id = device_id
 
-        logger.info("Initialized AudioPlayer with device_id=%s", self.device_id)
+        logger.debug("Initialized AudioPlayer with device_id=%s", self.device_id)
 
         # Start persistent playback worker
         self._playback_thread = threading.Thread(target=self._playback_worker, daemon=True)
