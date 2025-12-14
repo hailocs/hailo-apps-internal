@@ -232,8 +232,8 @@ Here is a simplified example based on `detection_simple_pipeline.py` that illust
 
 ```python
 # Import necessary classes and pipeline helpers
-from hailo_apps.hailo_gstreamer.gstreamer_app import GStreamerApp
-from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
 )
 

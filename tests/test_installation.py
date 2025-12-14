@@ -23,7 +23,6 @@ Run only installation tests: pytest -m installation -v
 import json
 import logging
 import os
-import struct
 from pathlib import Path
 from typing import List, Tuple
 
@@ -396,7 +395,7 @@ class TestImageFiles:
         if not expected_images:
             pytest.skip("No images defined in resources_config.yaml")
         
-        images_dir = resources_root_path / "images"
+        images_dir = resources_root_path / RESOURCES_PHOTOS_DIR_NAME
         if not images_dir.exists():
             logger.warning(f"Images directory does not exist: {images_dir}")
             return
@@ -436,13 +435,10 @@ class TestJsonConfigFiles:
         if not json_dir.exists():
             pytest.fail(f"JSON directory does not exist: {json_dir}")
         
-        # Deduplicate JSON files (same file may be used by multiple apps)
-        unique_json_files = list(set(json_name for _, json_name in expected_json_files))
-        
         missing_json = []
         found_json = []
         
-        for json_name in unique_json_files:
+        for json_name in expected_json_files:
             json_path = json_dir / json_name
             if json_path.exists():
                 found_json.append(json_name)
@@ -450,7 +446,7 @@ class TestJsonConfigFiles:
                 missing_json.append(json_name)
         
         if found_json:
-            logger.info(f"Found {len(found_json)}/{len(unique_json_files)} expected JSON files")
+            logger.info(f"Found {len(found_json)}/{len(expected_json_files)} expected JSON files")
         
         if missing_json:
             logger.warning(f"Missing JSON files: {missing_json}")
@@ -464,10 +460,9 @@ class TestJsonConfigFiles:
         if not json_dir.exists():
             pytest.skip(f"JSON directory does not exist: {json_dir}")
         
-        unique_json_files = list(set(json_name for _, json_name in expected_json_files))
         invalid_json = []
         
-        for json_name in unique_json_files:
+        for json_name in expected_json_files:
             json_path = json_dir / json_name
             if json_path.exists() and not is_valid_json_file(json_path):
                 invalid_json.append(json_name)

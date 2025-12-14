@@ -1,6 +1,7 @@
 # region imports
 # Standard library imports
 import os
+import sys
 import time
 import uuid
 import setproctitle
@@ -40,9 +41,8 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
-    SCRFD_8L_POSTPROCESS_FUNCTION,
-    SCRFD_8_POSTPROCESS_FUNCTION,
-    SCRFD_10_POSTPROCESS_FUNCTION,
+    SCRFD_10G_POSTPROCESS_FUNCTION,
+    SCRFD_2_5G_POSTPROCESS_FUNCTION,
     TAPPAS_POSTPROC_PATH_KEY,
     TAPPAS_STREAM_ID_TOOL_SO_FILENAME,
     VMS_CROPPER_POSTPROCESS_FUNCTION,
@@ -101,14 +101,18 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         self.post_process_so_face_align = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_ALIGN_POSTPROCESS_SO_FILENAME)
         self.post_process_so_vms_cropper = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_CROP_POSTPROCESS_SO_FILENAME)
         # functions
-        if self.arch == HAILO8_ARCH:
-            self.post_function_scrfd_detection = SCRFD_8_POSTPROCESS_FUNCTION
-        elif self.arch == HAILO10H_ARCH:
-            self.post_function_scrfd_detection = SCRFD_10_POSTPROCESS_FUNCTION
+        if self.arch in (HAILO8_ARCH, HAILO10H_ARCH):
+            self.post_function_scrfd_detection = SCRFD_10G_POSTPROCESS_FUNCTION
         elif self.arch == HAILO8L_ARCH:
-            self.post_function_scrfd_detection = SCRFD_8L_POSTPROCESS_FUNCTION
+            self.post_function_scrfd_detection = SCRFD_2_5G_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
 
         self.post_function_arcface_mobilefacenet_recognition = ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION
         self.post_function_vms_cropper = VMS_CROPPER_POSTPROCESS_FUNCTION

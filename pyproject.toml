@@ -23,6 +23,7 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "Pillow",
+    "lancedb",
     # Dependencies from hace-internal (tracker, etc.)
     "loguru",
     "scipy>=1.9.3",
@@ -42,8 +43,7 @@ dev = [
 
 # Gen-AI dependencies (voice assistant, LLM, embeddings) - install with: pip install -e ".[gen-ai]"
 gen-ai = [
-    "lancedb",
-    "sounddevice",
+    "PyAudio",
     "piper-tts",
 ]
 

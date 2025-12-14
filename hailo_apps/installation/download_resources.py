@@ -17,6 +17,7 @@ Features:
 
 import argparse
 import os
+import sys
 import tempfile
 import time
 import urllib.error
@@ -32,23 +33,7 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
 
-# Import config_utils with fallback mechanisms
-try:
-    from .config_utils import load_config
-except ImportError:
-    try:
-        from hailo_apps.installation.config_utils import load_config
-    except ImportError:
-        import importlib.util
-        current_file = Path(__file__).resolve()
-        config_utils_path = current_file.parent / "config_utils.py"
-        if config_utils_path.exists():
-            spec = importlib.util.spec_from_file_location("config_utils", config_utils_path)
-            config_utils_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(config_utils_module)
-            load_config = config_utils_module.load_config
-        else:
-            raise ImportError(f"Could not find config_utils.py at {config_utils_path}")
+from hailo_apps.config.config_manager import get_resources_config, _load_yaml as load_config
 
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (
@@ -626,11 +611,9 @@ class ResourceDownloader:
                 self._add_image_task(image_entry)
     
     def collect_all_json_files(self):
-        """Collect all JSON download tasks from all apps."""
-        for app_name, app_config in self.config.items():
-            if not isinstance(app_config, dict) or "json" not in app_config:
-                continue
-            for json_entry in app_config["json"]:
+        """Collect all JSON download tasks from top-level json section."""
+        if "json" in self.config:
+            for json_entry in self.config["json"]:
                 self._add_json_task(json_entry)
     
     def collect_models_for_app(
@@ -774,14 +757,10 @@ class ResourceDownloader:
             is_gen_ai_allowed=is_gen_ai_app
         )
         
-        # Collect videos and images (shared across all apps)
+        # Collect videos, images, and JSON files (shared across all apps)
         self.collect_all_videos()
         self.collect_all_images()
-        
-        # Collect JSON files for this group
-        if "json" in group_config:
-            for json_entry in group_config["json"]:
-                self._add_json_task(json_entry)
+        self.collect_all_json_files()
     
     def _is_gen_ai_app(self, app_config: dict) -> bool:
         """Check if an app is a gen-ai app."""
@@ -974,8 +953,17 @@ def download_group_resources(
     
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
     
@@ -1037,8 +1025,17 @@ def download_resources(
     # Detect architecture
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
     
     resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
@@ -1103,8 +1100,17 @@ def list_models_for_arch(
     
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
-        hailo_logger.warning("Hailo architecture could not be detected. Defaulting to hailo8")
-        hailo_arch = HAILO8_ARCH
+        hailo_logger.error("Could not detect Hailo architecture.")
+        print(
+            "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+            "   Please ensure:\n"
+            "   - A Hailo device is connected\n"
+            "   - The HailoRT driver is installed and loaded\n"
+            "   - You have permissions to access the device\n"
+            "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
     
     print(f"\nAvailable models for architecture: {hailo_arch}\n")
     print("=" * 80)

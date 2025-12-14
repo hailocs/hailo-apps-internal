@@ -2,7 +2,7 @@
 Interactive CLI chat agent that uses Hailo LLM with tool/function calling.
 
 Usage:
-  python -m hailo_apps.hailo_app_python.tools.chat_agent
+  python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
 Behavior:
 - Discovers tools from modules named 'tool_*.py' in this folder

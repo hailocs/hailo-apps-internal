@@ -320,7 +320,9 @@ After running any of the installation methods, you can verify that everything is
 
 1.  **Activate your environment**
     ```bash
-    source hailo_infra_venv/bin/activate
+    source venv_hailo_apps/bin/activate
+    # or simply run the helper each session
+    source setup_env.sh
     ```
 2.  **Check installed Hailo packages**
     ```bash

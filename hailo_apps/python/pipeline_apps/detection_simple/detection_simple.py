@@ -36,7 +36,7 @@ def app_callback(element, buffer, user_data):
     string_to_print = f"Frame count: {user_data.get_count()}\n"
     # buffer is passed directly
     if buffer is None:  # Check if the buffer is valid
-        hailo_logger.warning("Received None buffer | frame=%s", frame_idx)
+        hailo_logger.warning("Received None buffer at frame=%s", user_data.get_count())
         return
     for detection in hailo.get_roi_from_buffer(buffer).get_objects_typed(
         hailo.HAILO_DETECTION
@@ -44,14 +44,13 @@ def app_callback(element, buffer, user_data):
         string_to_print += (
             f"Detection: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n"
         )
-        hailo_logger.info(string_to_print)  # Log the detections
     print(string_to_print)
     return
 
 
 def main():
-    hailo_logger.info("Starting GStreamer Detection Simple App...")
-    user_data = user_app_callback_class()  # Create an instance of the user app callback class
+    hailo_logger.info("Starting Detection Simple App.")
+    user_data = user_app_callback_class()
     app = GStreamerDetectionSimpleApp(app_callback, user_data)
     app.run()
 

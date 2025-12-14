@@ -58,7 +58,7 @@ def app_callback(element, buffer, user_data):
     # Note: Frame counting is handled automatically by the framework wrapper
     # buffer is passed directly
     if buffer is None:
-        hailo_logger.warning("Received None buffer | frame=%s", user_data.get_count())
+        hailo_logger.warning("Received None buffer.")
         return
 
     # Get video format and dimensions from pad caps
@@ -109,28 +109,7 @@ def app_callback(element, buffer, user_data):
                 string_to_print += (
                     f"OCR Detection: Text: '{text_result}' Confidence: {confidence:.2f}\n"
                 )
-                hailo_logger.debug(
-                    "Frame=%s | OCR text='%s' conf=%.2f bbox=(x=%.1f,y=%.1f,w=%.1f,h=%.1f)",
-                    frame_idx,
-                    text_result,
-                    confidence,
-                    bbox.xmin(),
-                    bbox.ymin(),
-                    bbox.width(),
-                    bbox.height(),
-                )
                 text_count += 1
-            else:
-                # Log skipped detections with empty text for debugging
-                hailo_logger.debug(
-                    "Frame=%s | Skipped detection with empty text | conf=%.2f bbox=(x=%.1f,y=%.1f,w=%.1f,h=%.1f)",
-                    frame_idx,
-                    confidence,
-                    bbox.xmin(),
-                    bbox.ymin(),
-                    bbox.width(),
-                    bbox.height(),
-                )
 
     # Extract frame from buffer right before drawing to ensure we have the latest frame
     # Note: This drawing is for the separate window when use_frame=True
@@ -140,13 +119,10 @@ def app_callback(element, buffer, user_data):
         frame = get_numpy_from_buffer(buffer, format, width, height)
 
         if frame is not None:
-            hailo_logger.debug("Frame extracted: shape=%s, dtype=%s", frame.shape, frame.dtype)
-
             # Draw OCR results on frame
             ocr_results = user_data.get_ocr_results()
-            hailo_logger.debug("Drawing %d OCR results on frame", len(ocr_results))
 
-            for idx, ocr_result in enumerate(ocr_results):
+            for ocr_result in ocr_results:
                 bbox = ocr_result['bbox']
                 text = ocr_result['text']
                 confidence = ocr_result['confidence']
@@ -162,9 +138,6 @@ def app_callback(element, buffer, user_data):
                 y1 = max(0, min(y1, height - 1))
                 x2 = max(0, min(x2, width - 1))
                 y2 = max(0, min(y2, height - 1))
-
-                hailo_logger.debug("Drawing box %d: text='%s' at (%d,%d)-(%d,%d)",
-                                 idx, text, x1, y1, x2, y2)
 
                 # Draw bounding box (BGR color: green)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -196,18 +169,15 @@ def app_callback(element, buffer, user_data):
             # Convert the frame to BGR for OpenCV display (frame is RGB from buffer)
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             user_data.set_frame(frame)
-            hailo_logger.debug("Frame set in user_data with %d OCR results drawn", len(ocr_results))
         else:
-            hailo_logger.warning("Failed to extract frame from buffer")
+            hailo_logger.warning("Failed to extract frame from buffer.")
 
     print(string_to_print)
-    hailo_logger.info(string_to_print.strip())
     return
 
 
 def main():
-    # Create an instance of the user app callback class
-    hailo_logger.info("Starting Hailo OCR App...")
+    hailo_logger.info("Starting OCR App.")
     user_data = user_app_callback_class()
     app = GStreamerPaddleOCRApp(app_callback, user_data)
     app.run()
@@ -215,4 +185,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

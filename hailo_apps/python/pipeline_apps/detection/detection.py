@@ -45,11 +45,9 @@ class user_app_callback_class(app_callback_class):
 
 # This is the callback function that will be called when data is available from the pipeline
 def app_callback(element, buffer, user_data):
-    # Get the GstBuffer from the probe info
-    # buffer = info.get_buffer() # handoff callback passes the buffer directly
     # Check if the buffer is valid
     if buffer is None:
-        hailo_logger.warning("Received None buffer | frame=%s", user_data.get_count())
+        hailo_logger.warning("Received None buffer.")
         return
 
     # Note: Frame counting is handled automatically by the framework wrapper
@@ -59,7 +57,6 @@ def app_callback(element, buffer, user_data):
     # Get the caps from the pad
     pad = element.get_static_pad("src")
     format, width, height = get_caps_from_pad(pad)
-    hailo_logger.debug("Frame=%s | caps fmt=%s %sx%s", frame_idx, format, width, height)
 
     # If the user_data.use_frame is set to True, we can get the video frame from the buffer
     frame = None
@@ -75,7 +72,6 @@ def app_callback(element, buffer, user_data):
     detection_count = 0
     for detection in detections:
         label = detection.get_label()
-        bbox = detection.get_bbox()
         confidence = detection.get_confidence()
         if label == "person":
             # Get track ID
@@ -85,16 +81,6 @@ def app_callback(element, buffer, user_data):
                 track_id = track[0].get_id()
             string_to_print += (
                 f"Detection: ID: {track_id} Label: {label} Confidence: {confidence:.2f}\n"
-            )
-            hailo_logger.debug(
-                "Frame=%s | Detection person | id=%s conf=%.2f bbox=(x=%.1f,y=%.1f,w=%.1f,h=%.1f)",
-                frame_idx,
-                track_id,
-                confidence,
-                bbox.xmin(),
-                bbox.ymin(),
-                bbox.width(),
-                bbox.height(),
             )
             detection_count += 1
     if user_data.use_frame:
@@ -125,13 +111,11 @@ def app_callback(element, buffer, user_data):
         user_data.set_frame(frame)
 
     print(string_to_print)
-    hailo_logger.info(string_to_print.strip())
     return
 
 
 def main():
-    # Create an instance of the user app callback class
-    hailo_logger.info("Starting Hailo Detection App...")
+    hailo_logger.info("Starting Detection App.")
     user_data = user_app_callback_class()
     app = GStreamerDetectionApp(app_callback, user_data)
     app.run()

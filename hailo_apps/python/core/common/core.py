@@ -155,17 +155,6 @@ def get_base_parser():
     )
 
     parser.add_argument(
-        "--labels", "-l",
-        type=str,
-        default=None,
-        help=(
-            "Path to a text file containing class labels, one per line. "
-            "Used for mapping model output indices to human-readable class names. "
-            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
-        )
-    )
-
-    parser.add_argument(
         "--width", "-W",
         type=int,
         default=None,
@@ -207,16 +196,6 @@ def get_base_parser():
             "Enable FPS (frames per second) counter display. "
             "When enabled, the application will display real-time performance metrics "
             "showing the current processing rate. Useful for performance monitoring and optimization."
-        )
-    )
-
-    parser.add_argument(
-        "--save-output", "-s",
-        action="store_true",
-        help=(
-            "Enable output file saving. When enabled, processed images or videos will be saved to disk. "
-            "The output location is determined by the --output-dir flag (for standalone apps) "
-            "or application-specific defaults. Without this flag, output is only displayed (if applicable)."
         )
     )
 
@@ -353,6 +332,17 @@ def get_standalone_parser():
     )
 
     parser.add_argument(
+        "--labels", "-l",
+        type=str,
+        default=None,
+        help=(
+            "Path to a text file containing class labels, one per line. "
+            "Used for mapping model output indices to human-readable class names. "
+            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
+        )
+    )
+
+    parser.add_argument(
         "--output-dir", "-o",
         type=str,
         default=None,
@@ -361,6 +351,15 @@ def get_standalone_parser():
             "When --save-output is enabled, processed images, videos, or result files will be "
             "written to this directory. If not specified, outputs are saved to a default location "
             "or the current working directory. The directory will be created if it does not exist."
+        )
+    )
+
+    parser.add_argument(
+        "--save-output", "-s",
+        action="store_true",
+        help=(
+            "Enable output file saving. When enabled, processed images or videos will be saved to disk. "
+            "The output location is determined by the --output-dir flag. Without this flag, output is only displayed (if applicable)."
         )
     )
 
@@ -479,28 +478,36 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
         arch: Hailo architecture. If None, auto-detects.
     """
     try:
-        from hailo_apps.installation.config_utils import (
-            get_default_models_for_app_and_arch,
-            get_extra_models_for_app_and_arch,
-            get_supported_architectures_for_app,
+        from hailo_apps.config.config_manager import (
+            get_model_names,
+            get_supported_architectures,
             is_gen_ai_app,
         )
     except ImportError:
-        print("Error: Could not import config_utils. Run 'pip install -e .' first.")
+        print("Error: Could not import config_manager. Run 'pip install -e .' first.")
         sys.exit(1)
     
     # Detect architecture if not provided
     if arch is None:
         arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
         if not arch:
-            arch = HAILO8_ARCH
+            print(
+                "\n❌ ERROR: Could not detect Hailo device architecture.\n"
+                "   Please ensure:\n"
+                "   - A Hailo device is connected\n"
+                "   - The HailoRT driver is installed and loaded\n"
+                "   - You have permissions to access the device\n"
+                "\n   Alternatively, specify the architecture manually with --arch (e.g., --arch hailo8)\n",
+                file=sys.stderr
+            )
+            sys.exit(1)
     
     print(f"\n{'=' * 60}")
     print(f"Available models for: {app_name} ({arch})")
     print(f"{'=' * 60}")
     
     # Check if architecture is supported
-    supported_archs = get_supported_architectures_for_app(app_name)
+    supported_archs = get_supported_architectures(app_name)
     if arch not in supported_archs:
         if is_gen_ai_app(app_name):
             print(f"\n⚠️  This is a Gen-AI app, only available on: {', '.join(supported_archs)}")
@@ -510,8 +517,8 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
         sys.exit(0)
     
     # Get models
-    default_models = get_default_models_for_app_and_arch(app_name, arch)
-    extra_models = get_extra_models_for_app_and_arch(app_name, arch)
+    default_models = get_model_names(app_name, arch, tier="default")
+    extra_models = get_model_names(app_name, arch, tier="extra")
     
     if default_models:
         print("\n📦 Default Models:")
@@ -556,12 +563,12 @@ def resolve_hef_path(
         Resolved Path to the HEF file, or None if not found
     """
     try:
-        from hailo_apps.installation.config_utils import (
-            get_all_models_for_app_and_arch,
-            get_default_model_for_app_and_arch,
+        from hailo_apps.config.config_manager import (
+            get_model_names,
+            get_default_model_name,
         )
     except ImportError:
-        hailo_logger.warning("Could not import config_utils, using legacy resolution")
+        hailo_logger.warning("Could not import config_manager, using legacy resolution")
         # Fallback to legacy resolution
         if hef_path is None:
             return get_resource_path(app_name, RESOURCES_MODELS_DIR_NAME, arch)
@@ -571,8 +578,8 @@ def resolve_hef_path(
     models_dir = resources_root / RESOURCES_MODELS_DIR_NAME / arch
     
     # Get available models for this app/arch
-    available_models = get_all_models_for_app_and_arch(app_name, arch)
-    default_model = get_default_model_for_app_and_arch(app_name, arch)
+    available_models = get_model_names(app_name, arch, tier="all")
+    default_model = get_default_model_name(app_name, arch)
     is_using_default = False
     
     # Case 1: No hef_path provided - use default model
@@ -589,10 +596,10 @@ def resolve_hef_path(
             hailo_logger.error(f"No default model found for {app_name}/{arch}")
             return None
     
-    # Normalize model name (remove .hef if present)
-    model_name = hef_path
-    if model_name.endswith(HAILO_FILE_EXTENSION):
-        model_name = model_name[:-len(HAILO_FILE_EXTENSION)]
+    # Normalize model name (extract basename and remove .hef if present)
+    # This handles both full paths like "/path/to/yolov8s.hef" and just "yolov8s"
+    model_name = Path(hef_path).stem  # Gets filename without extension
+    # stem handles both "yolov8s.hef" -> "yolov8s" and "yolov8s" -> "yolov8s"
     
     # Case 2: Check if it's a full path that exists
     hef_full_path = Path(hef_path)

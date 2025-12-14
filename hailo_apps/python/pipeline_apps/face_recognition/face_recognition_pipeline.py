@@ -3,6 +3,7 @@
 import os
 import shutil
 import json
+import sys
 import time
 import threading
 import queue
@@ -44,9 +45,8 @@ from hailo_apps.python.core.common.defines import (
     FACE_RECON_DATABASE_DIR_NAME,
     FACE_RECON_LOCAL_SAMPLES_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
-    SCRFD_8_POSTPROCESS_FUNCTION,
-    SCRFD_8L_POSTPROCESS_FUNCTION,
-    SCRFD_10_POSTPROCESS_FUNCTION,
+    SCRFD_10G_POSTPROCESS_FUNCTION,
+    SCRFD_2_5G_POSTPROCESS_FUNCTION,
     HAILO8_ARCH,
     HAILO10H_ARCH,
     HAILO8L_ARCH
@@ -110,14 +110,18 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         self.hef_path_detection = get_resource_path(pipeline_name=FACE_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
         self.hef_path_recognition = get_resource_path(pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
     
-        if self.arch == HAILO8_ARCH:
-            self.detection_func = SCRFD_8_POSTPROCESS_FUNCTION
-        elif self.arch == HAILO10H_ARCH:
-            self.detection_func = SCRFD_10_POSTPROCESS_FUNCTION
+        if self.arch in (HAILO8_ARCH, HAILO10H_ARCH):
+            self.detection_func = SCRFD_10G_POSTPROCESS_FUNCTION
         elif self.arch == HAILO8L_ARCH:
-            self.detection_func = SCRFD_8L_POSTPROCESS_FUNCTION
+            self.detection_func = SCRFD_2_5G_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
         
         self.recognition_func = "filter"
         self.cropper_func = "face_recognition"

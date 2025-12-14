@@ -15,10 +15,12 @@ from hailo_apps.python.pipeline_apps.tiling.tiling_pipeline import GStreamerTili
 hailo_logger = get_logger(__name__)
 # endregion imports
 
+
 # User-defined class to be used in the callback function: Inheritance from the app_callback_class
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
+
 
 # User-defined callback function: This is the callback function that will be called when data is available from the pipeline
 def app_callback(element, buffer, user_data):
@@ -26,17 +28,21 @@ def app_callback(element, buffer, user_data):
     string_to_print = f"Frame count: {user_data.get_count()}\n"
     # buffer is passed directly
     if buffer is None:  # Check if the buffer is valid
+        hailo_logger.warning("Received None buffer at frame=%s", user_data.get_count())
         return
     for detection in hailo.get_roi_from_buffer(buffer).get_objects_typed(hailo.HAILO_DETECTION):  # Get the detections from the buffer & Parse the detections
         string_to_print += (f"Detection: {detection.get_label()} Confidence: {detection.get_confidence():.2f}\n")
     print(string_to_print)
     return
 
+
 def main():
     """Main function for CLI entry point."""
-    user_data = user_app_callback_class()  # Create an instance of the user app callback class
+    hailo_logger.info("Starting Tiling App.")
+    user_data = user_app_callback_class()
     app = GStreamerTilingApp(app_callback, user_data)
     app.run()
+
 
 if __name__ == "__main__":
     main()

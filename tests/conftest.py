@@ -2,34 +2,30 @@
 Pytest Configuration and Shared Fixtures for Hailo Apps Tests.
 
 This module provides:
-- Configuration parsing utilities
 - Shared fixtures for resources, models, videos, etc.
 - Test markers for categorization
+
+All configuration loading is handled by the unified config_manager.
 """
 
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pytest
-import yaml
 
 # Add repo root to path for imports
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 # ============================================================================
-# CONFIGURATION PATHS
+# IMPORTS - Using Unified Config Manager
 # ============================================================================
 
-CONFIG_DIR = REPO_ROOT / "hailo_apps" / "config"
-RESOURCES_CONFIG_PATH = CONFIG_DIR / "resources_config.yaml"
-POSTPROCESS_MESON_PATH = REPO_ROOT / "hailo_apps" / "postprocess" / "cpp" / "meson.build"
-
-# Import defines after path setup
 try:
+    from hailo_apps.config import config_manager
+    from hailo_apps.config.config_manager import ConfigPaths
     from hailo_apps.python.core.common.defines import (
         HAILO8_ARCH,
         HAILO8L_ARCH,
@@ -46,8 +42,11 @@ try:
         detect_hailo_arch,
         detect_host_arch,
     )
+    IMPORTS_AVAILABLE = True
 except ImportError:
     # Fallback defaults if imports fail
+    config_manager = None
+    ConfigPaths = None
     HAILO8_ARCH = "hailo8"
     HAILO8L_ARCH = "hailo8l"
     HAILO10H_ARCH = "hailo10h"
@@ -60,6 +59,16 @@ except ImportError:
     DEFAULT_DOTENV_PATH = "/usr/local/hailo/resources/.env"
     detect_hailo_arch = None
     detect_host_arch = None
+    IMPORTS_AVAILABLE = False
+
+
+# ============================================================================
+# CONFIGURATION PATHS (using unified ConfigPaths when available)
+# ============================================================================
+
+CONFIG_DIR = REPO_ROOT / "hailo_apps" / "config"
+RESOURCES_CONFIG_PATH = CONFIG_DIR / "resources_config.yaml"
+POSTPROCESS_MESON_PATH = REPO_ROOT / "hailo_apps" / "postprocess" / "cpp" / "meson.build"
 
 
 # ============================================================================
@@ -76,181 +85,27 @@ def pytest_configure(config):
 
 
 # ============================================================================
-# CONFIGURATION PARSING UTILITIES
+# UTILITY FUNCTIONS
 # ============================================================================
-
-def load_yaml_config(config_path: Path) -> Dict:
-    """Load a YAML configuration file.
-    
-    Args:
-        config_path: Path to the YAML file
-        
-    Returns:
-        Parsed YAML as dictionary, or empty dict if file doesn't exist
-    """
-    if not config_path.exists():
-        return {}
-    
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f) or {}
-
-
-def parse_resources_config() -> Dict:
-    """Parse resources_config.yaml and return structured resource information.
-    
-    Returns:
-        Dictionary with keys: 'videos', 'images', 'apps', where 'apps' contains
-        per-app model and json configurations.
-    """
-    config = load_yaml_config(RESOURCES_CONFIG_PATH)
-    if not config:
-        return {'videos': [], 'images': [], 'apps': {}}
-    
-    result = {
-        'videos': [],
-        'images': [],
-        'apps': {}
-    }
-    
-    # Parse videos
-    for video in config.get('videos', []):
-        if isinstance(video, dict) and video.get('name'):
-            result['videos'].append(video['name'])
-        elif isinstance(video, str):
-            result['videos'].append(video)
-    
-    # Parse images
-    for image in config.get('images', []):
-        if isinstance(image, dict) and image.get('name'):
-            result['images'].append(image['name'])
-        elif isinstance(image, str):
-            result['images'].append(image)
-    
-    # Parse apps (anything that's not videos/images is an app)
-    for key, value in config.items():
-        if key in ('videos', 'images'):
-            continue
-        if not isinstance(value, dict):
-            continue
-        
-        app_info = {
-            'models': {},  # arch -> {'default': [], 'extra': []}
-            'json': []
-        }
-        
-        # Parse models per architecture
-        if 'models' in value:
-            for arch in [HAILO8_ARCH, HAILO8L_ARCH, HAILO10H_ARCH]:
-                if arch not in value['models']:
-                    continue
-                
-                arch_models = value['models'][arch]
-                app_info['models'][arch] = {'default': [], 'extra': []}
-                
-                # Parse default model(s)
-                if 'default' in arch_models:
-                    default = arch_models['default']
-                    if default is None or (isinstance(default, str) and default.lower() == 'none'):
-                        pass  # No default model
-                    elif isinstance(default, list):
-                        for model in default:
-                            model_name = _extract_model_name(model)
-                            if model_name:
-                                app_info['models'][arch]['default'].append(model_name)
-                    else:
-                        model_name = _extract_model_name(default)
-                        if model_name:
-                            app_info['models'][arch]['default'].append(model_name)
-                
-                # Parse extra models
-                if 'extra' in arch_models:
-                    for model in arch_models.get('extra', []):
-                        model_name = _extract_model_name(model)
-                        if model_name:
-                            app_info['models'][arch]['extra'].append(model_name)
-        
-        # Parse JSON files
-        for json_entry in value.get('json', []):
-            if isinstance(json_entry, dict) and json_entry.get('name'):
-                app_info['json'].append(json_entry['name'])
-            elif isinstance(json_entry, str):
-                app_info['json'].append(json_entry)
-        
-        result['apps'][key] = app_info
-    
-    return result
-
-
-def _extract_model_name(model_entry) -> Optional[str]:
-    """Extract model name from a model entry (dict or string)."""
-    if model_entry is None:
-        return None
-    if isinstance(model_entry, str):
-        if model_entry.lower() == 'none':
-            return None
-        return model_entry
-    if isinstance(model_entry, dict):
-        name = model_entry.get('name')
-        if name and (not isinstance(name, str) or name.lower() != 'none'):
-            return name
-    return None
-
 
 def parse_meson_shared_libraries() -> List[str]:
     """Parse meson.build to extract shared library names.
-    
+
     Returns:
         List of shared library filenames (e.g., ['libyolo_hailortpp_postprocess.so', ...])
     """
     if not POSTPROCESS_MESON_PATH.exists():
         return []
-    
-    with open(POSTPROCESS_MESON_PATH, 'r') as f:
+
+    with open(POSTPROCESS_MESON_PATH, "r") as f:
         content = f.read()
-    
+
     # Match shared_library('name', ...) pattern
-    # The pattern captures the library name in the first argument
     pattern = r"shared_library\s*\(\s*['\"]([^'\"]+)['\"]"
     matches = re.findall(pattern, content)
-    
+
     # Convert to .so filename format: libNAME.so
     return [f"lib{name}.so" for name in matches]
-
-
-def get_all_expected_models(arch: str) -> List[Tuple[str, str]]:
-    """Get all expected default models for an architecture.
-    
-    Args:
-        arch: Hailo architecture (hailo8, hailo8l, hailo10h)
-        
-    Returns:
-        List of tuples: (app_name, model_name)
-    """
-    resources = parse_resources_config()
-    models = []
-    
-    for app_name, app_info in resources['apps'].items():
-        if arch in app_info['models']:
-            for model_name in app_info['models'][arch].get('default', []):
-                models.append((app_name, model_name))
-    
-    return models
-
-
-def get_all_expected_json_files() -> List[Tuple[str, str]]:
-    """Get all expected JSON files from all apps.
-    
-    Returns:
-        List of tuples: (app_name, json_filename)
-    """
-    resources = parse_resources_config()
-    json_files = []
-    
-    for app_name, app_info in resources['apps'].items():
-        for json_name in app_info.get('json', []):
-            json_files.append((app_name, json_name))
-    
-    return json_files
 
 
 # ============================================================================
@@ -259,20 +114,57 @@ def get_all_expected_json_files() -> List[Tuple[str, str]]:
 
 @pytest.fixture(scope="session")
 def resources_config() -> Dict:
-    """Fixture providing parsed resources configuration."""
-    return parse_resources_config()
+    """Fixture providing parsed resources configuration.
+    
+    Returns a dictionary with 'videos', 'images', 'apps' structure
+    for backward compatibility with existing tests.
+    """
+    if config_manager is None:
+        return {"videos": [], "images": [], "apps": {}}
+    
+    result = {
+        "videos": config_manager.get_videos(),
+        "images": config_manager.get_images(),
+        "apps": {},
+    }
+    
+    # Build apps structure for backward compatibility
+    for app_name in config_manager.get_available_apps():
+        app_info = {
+            "models": {},
+            "json": config_manager.get_json_files(app_name),
+        }
+        
+        # Get models per architecture
+        for arch in [HAILO8_ARCH, HAILO8L_ARCH, HAILO10H_ARCH]:
+            default_models = config_manager.get_model_names(app_name, arch, tier="default")
+            extra_models = config_manager.get_model_names(app_name, arch, tier="extra")
+            
+            if default_models or extra_models:
+                app_info["models"][arch] = {
+                    "default": default_models,
+                    "extra": extra_models,
+                }
+        
+        result["apps"][app_name] = app_info
+    
+    return result
 
 
 @pytest.fixture(scope="session")
-def expected_videos(resources_config) -> List[str]:
+def expected_videos() -> List[str]:
     """Fixture providing list of expected video filenames."""
-    return resources_config.get('videos', [])
+    if config_manager is None:
+        return []
+    return config_manager.get_videos()
 
 
 @pytest.fixture(scope="session")
-def expected_images(resources_config) -> List[str]:
+def expected_images() -> List[str]:
     """Fixture providing list of expected image filenames."""
-    return resources_config.get('images', [])
+    if config_manager is None:
+        return []
+    return config_manager.get_images()
 
 
 @pytest.fixture(scope="session")
@@ -322,32 +214,30 @@ def dotenv_path() -> Path:
 
 
 @pytest.fixture(scope="session")
-def expected_models_for_arch(detected_hailo_arch, resources_config) -> List[Tuple[str, str]]:
+def expected_models_for_arch(detected_hailo_arch) -> List[Tuple[str, str]]:
     """Fixture providing expected models for the detected architecture.
-    
+
     Returns list of (app_name, model_name) tuples.
     """
-    if not detected_hailo_arch:
+    if not detected_hailo_arch or config_manager is None:
         return []
-    
+
     models = []
-    for app_name, app_info in resources_config['apps'].items():
-        if detected_hailo_arch in app_info['models']:
-            for model_name in app_info['models'][detected_hailo_arch].get('default', []):
-                models.append((app_name, model_name))
-    
+    for app_name in config_manager.get_available_apps():
+        for model_name in config_manager.get_model_names(
+            app_name, detected_hailo_arch, tier="default"
+        ):
+            models.append((app_name, model_name))
+
     return models
 
 
 @pytest.fixture(scope="session")
-def expected_json_files(resources_config) -> List[Tuple[str, str]]:
-    """Fixture providing expected JSON files from all apps.
-    
-    Returns list of (app_name, json_filename) tuples.
-    """
-    json_files = []
-    for app_name, app_info in resources_config['apps'].items():
-        for json_name in app_info.get('json', []):
-            json_files.append((app_name, json_name))
-    return json_files
+def expected_json_files() -> List[str]:
+    """Fixture providing expected JSON files from the shared json section.
 
+    Returns list of JSON filename strings.
+    """
+    if config_manager is None:
+        return []
+    return config_manager.get_all_json_files()
