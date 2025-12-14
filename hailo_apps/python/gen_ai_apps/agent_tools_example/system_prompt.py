@@ -42,13 +42,14 @@ def create_system_prompt(
     Returns:
         System prompt string for the LLM
     """
-    # Each tool already supplies a full function definition via TOOLS_SCHEMA
+    # Extract tool definitions and names
     tool_defs = [t["tool_def"] for t in tools]
-    tools_json = json.dumps(tool_defs, separators=(",", ":"))
-
-    # Extract tool names for explicit listing
     tool_names = [t["name"] for t in tools]
     tool_names_list = ", ".join(f'"{name}"' for name in tool_names)
+    tools_json = json.dumps(tool_defs, separators=(",", ":"))
+
+    # Build introduction section
+    introduction = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
 
     # Build persona section from YAML if available
     persona_section = ""
@@ -57,12 +58,29 @@ def create_system_prompt(
         if components["persona"]:
             persona_section = f"\n# Persona\n{components['persona']}\n"
 
+    # Build available tools section
+    available_tools_section = f"""# Available Tools
+<tools>
+{tools_json}
+</tools>
+
+Available tools: {tool_names_list}"""
+
     # Build capabilities section
     capabilities_section = ""
     if yaml_config and yaml_config.capabilities:
         components = yaml_config.get_system_prompt_components()
         if components["capabilities"]:
             capabilities_section = f"\n# Capabilities\n{components['capabilities']}\n"
+
+    # Build role vs tool role section
+    role_section = """# CRITICAL: Your Role vs Tool Role
+- YOU are the ASSISTANT - you CALL tools, you do NOT respond as tools
+- YOU output <tool_call> tags to REQUEST tool execution
+- The SYSTEM executes the tool and sends you <tool_response> tags
+- YOU then respond to the user based on the tool result
+- NEVER output <tool_response> tags yourself - that's what the system sends TO you
+- ONLY output <tool_call> tags when you want to use a tool"""
 
     # Build tool instructions section (from YAML or tool description)
     tool_instructions_section = ""
@@ -74,30 +92,15 @@ def create_system_prompt(
         if tools and tools[0].get("description"):
             tool_instructions_section = f"\n# Tool Instructions\n{tools[0]['description']}\n"
 
-    return f"""You are Qwen, created by Alibaba Cloud. You are a helpful assistant.{persona_section}
-
-# Available Tools
-<tools>
-{tools_json}
-</tools>
-
-Available tools: {tool_names_list}{capabilities_section}
-
-# CRITICAL: Your Role vs Tool Role
-- YOU are the ASSISTANT - you CALL tools, you do NOT respond as tools
-- YOU output <tool_call> tags to REQUEST tool execution
-- The SYSTEM executes the tool and sends you <tool_response> tags
-- YOU then respond to the user based on the tool result
-- NEVER output <tool_response> tags yourself - that's what the system sends TO you
-- ONLY output <tool_call> tags when you want to use a tool{tool_instructions_section}
-
-# Tool Usage Rules
+    # Build tool usage rules section
+    tool_usage_rules_section = f"""# Tool Usage Rules
 - DEFAULT: If a tool can handle the request, CALL IT using <tool_call>
 - ONLY these tools exist: {tool_names_list}. NEVER invent or call tools with different names
 - When unsure, CALL THE TOOL (better to use it than skip it)
-- Skip tools ONLY for: greetings, small talk, meta questions about capabilities, or clearly conversational requests with no tool match
+- Skip tools ONLY for: greetings, small talk, meta questions about capabilities, or clearly conversational requests with no tool match"""
 
-# How to Call a Tool
+    # Build how to call a tool section
+    how_to_call_section = f"""# How to Call a Tool
 When you need to use a tool, output ONLY this format:
 <tool_call>
 {{"name": "<function-name>", "arguments": <args-json-object>}}
@@ -108,21 +111,40 @@ Rules:
 - Arguments must be a JSON object, not a string
 - Wrap JSON in <tool_call></tool_call> tags
 - Use only these tool names: {tool_names_list}
-- After calling, wait for the system to send you <tool_response>
+- After calling, wait for the system to send you <tool_response>"""
 
-# Tool Results
+    # Build tool results section
+    tool_results_section = """# Tool Results
 - The system will present tool results directly to the user
 - Tool results are already formatted and ready for display
-- Your role is to use tools when appropriate, the system handles showing results
+- Your role is to use tools when appropriate, the system handles showing results"""
 
-# Decision Process - Think Before Responding
+    # Build decision process section
+    decision_process_section = f"""# Decision Process - Think Before Responding
 BEFORE each response, think about whether to use a tool:
 1. Analyze the user's request carefully
 2. Check if any available tool ({tool_names_list}) can handle it
 3. Determine if tool execution is needed or you can answer directly
-4. If no tool needed: respond directly with text
+4. If no tool needed: respond directly with text"""
 
-"""
+    # Combine all sections
+    prompt_parts = [
+        introduction,
+        persona_section,
+        available_tools_section,
+        capabilities_section,
+        role_section,
+        tool_instructions_section,
+        tool_usage_rules_section,
+        how_to_call_section,
+        tool_results_section,
+        decision_process_section,
+    ]
+
+    # Join all parts with double newlines for readability, then add final newline
+    system_prompt = "\n\n".join(part for part in prompt_parts if part) + "\n"
+
+    return system_prompt
 
 
 def prepare_few_shot_examples_messages(
@@ -166,14 +188,6 @@ def prepare_few_shot_examples_messages(
             )
             tool_call_xml = f"<tool_call>\n{tool_call_json}\n</tool_call>"
             messages.append(message_formatter.messages_assistant(tool_call_xml))
-
-            # Tool response (if present)
-            if example.tool_response:
-                messages.append(message_formatter.messages_tool(example.tool_response))
-
-        # Final assistant response
-        if example.final_response:
-            messages.append(message_formatter.messages_assistant(example.final_response))
 
     return messages
 

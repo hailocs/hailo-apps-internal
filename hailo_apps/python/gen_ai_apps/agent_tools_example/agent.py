@@ -27,6 +27,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 from dataclasses import dataclass
@@ -122,7 +123,6 @@ class AgentApp:
         whisper_hef_path: Optional[Path] = None,
         debug: bool = False,
         no_cache: bool = False,
-        continue_mode: bool = False,
     ):
         """
         Initialize the agent application.
@@ -136,13 +136,11 @@ class AgentApp:
             whisper_hef_path: Path to Whisper HEF (voice mode only).
             debug: Enable debug mode.
             no_cache: If True, skip loading cached states and rebuild context.
-            continue_mode: If True, don't reload state each query (keep conversation history).
         """
         self.debug = debug
         self.voice_enabled = voice_enabled
         self.no_tts = no_tts
         self.no_cache = no_cache
-        self.continue_mode = continue_mode
         self.selected_tool = selected_tool
         self.selected_tool_name = selected_tool.get("name", "")
 
@@ -310,6 +308,31 @@ class AgentApp:
                 yaml_config=self.yaml_config,
             )
             logger.debug("System prompt: %d chars", len(self.system_text))
+            # Log system prompt in readable format (with newlines)
+            # Format JSON in tools section nicely
+            system_text_formatted = self.system_text
+            # Find and format the JSON in <tools> section
+            tools_match = re.search(r'<tools>\s*(\[.*?\])\s*</tools>', system_text_formatted, re.DOTALL)
+            if tools_match:
+                try:
+                    tools_json = json.loads(tools_match.group(1))
+                    # Format description fields - show summary instead of full long description
+                    for tool_def in tools_json:
+                        if "function" in tool_def and "description" in tool_def["function"]:
+                            desc = tool_def["function"]["description"]
+                            # For display, show first line + summary if description is very long
+                            if len(desc) > 300:
+                                first_line = desc.split("\\n")[0] if "\\n" in desc else desc[:100]
+                                tool_def["function"]["description"] = f"{first_line}... [Full description: {len(desc)} chars]"
+                    tools_json_formatted = json.dumps(tools_json, indent=2, ensure_ascii=False)
+                    system_text_formatted = system_text_formatted.replace(
+                        tools_match.group(1),
+                        tools_json_formatted
+                    )
+                except json.JSONDecodeError:
+                    pass  # Keep original if JSON parsing fails
+
+            logger.debug("System prompt content:\n%s", system_text_formatted)
 
             # Prepare all messages: system prompt + few-shot examples
             messages = [message_formatter.messages_system(self.system_text)]
@@ -322,7 +345,20 @@ class AgentApp:
                 )
                 messages.extend(few_shot_messages)
 
-            logger.debug("Messages to add to context: %s", json.dumps(messages, indent=2))
+                # Pretty print few-shot examples if debug is enabled
+                if logger.isEnabledFor(logging.DEBUG):
+                    print("\n" + "=" * 80)
+                    print(f"Few-Shot Examples ({len(self.yaml_config.few_shot_examples)} total):")
+                    print("=" * 80)
+                    for i, example in enumerate(self.yaml_config.few_shot_examples, 1):
+                        print(f"\nExample {i}:")
+                        print(f"  User: {example.user}")
+                        if example.tool_call:
+                            tool_name = example.tool_call.get("name", "unknown")
+                            args = example.tool_call.get("arguments", {})
+                            print(f"  Tool Call: {tool_name}")
+                            print(f"  Arguments: {json.dumps(args, indent=4)}")
+                    print("=" * 80 + "\n")
             # Add all messages to context in a single call
             context_manager.add_to_context(self.llm, messages, logger)
 
@@ -482,8 +518,8 @@ class AgentApp:
         """
         Process a user query.
 
-        By default, reloads the tool context state before each query (fresh start).
-        Use --continue flag to maintain conversation history.
+        Reloads the tool context state before each query (fresh start).
+        All transactions load from the saved context state.
 
         Args:
             user_text: The user's query text.
@@ -491,31 +527,16 @@ class AgentApp:
         Returns:
             AgentResponse with results.
         """
-        # Reload state at start of each query (unless continue_mode is enabled)
-        if not self.continue_mode:
-            logger.debug("Reloading state for fresh context")
-            if not self.state_manager.reload_state(self.llm):
-                state_name = self.state_manager.current_state or "default"
-                error_msg = (
-                    f"Failed to reload state '{state_name}'. "
-                    f"Ensure the state exists in {self.state_manager.contexts_dir}"
-                )
-                logger.error(error_msg)
-                assert False, error_msg
-        else:
-            # In continue mode, check if context is full and reload if needed
-            if context_manager.is_context_full(
-                self.llm, context_threshold=config.CONTEXT_THRESHOLD, logger_instance=logger
-            ):
-                logger.info("Context full, reloading state...")
-                if not self.state_manager.reload_state(self.llm):
-                    state_name = self.state_manager.current_state or "default"
-                    error_msg = (
-                        f"Failed to reload state '{state_name}'. "
-                        f"Ensure the state exists in {self.state_manager.contexts_dir}"
-                    )
-                    logger.error(error_msg)
-                    assert False, error_msg
+        # Reload state at start of each query (fresh context for each query)
+        logger.debug("Reloading state for fresh context")
+        if not self.state_manager.reload_state(self.llm):
+            state_name = self.state_manager.current_state or "default"
+            error_msg = (
+                f"Failed to reload state '{state_name}'. "
+                f"Ensure the state exists in {self.state_manager.contexts_dir}"
+            )
+            logger.error(error_msg)
+            assert False, error_msg
 
         prompt = [message_formatter.messages_user(user_text)]
         logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
@@ -572,8 +593,13 @@ class AgentApp:
             result = tool_execution.execute_tool_call(tool_call, self.tools_lookup)
             tool_execution.print_tool_result(result)
 
+            # Distinguish between agent errors and user errors (default option)
             if not result.get("ok"):
-                logger.error("Tool execution failed: %s", result.get("error", "Unknown error"))
+                # Agent error: tool was used incorrectly (validation failure, etc.)
+                logger.error("Tool execution failed (agent error): %s", result.get("error", "Unknown error"))
+            elif result.get("error") and not result.get("result"):
+                # User error: agent correctly used default option
+                logger.debug("Default option used (user error): %s", result.get("error"))
 
             if self.debug:
                 logger.debug("Tool execution result: %s", json.dumps(result, indent=2))
@@ -587,16 +613,16 @@ class AgentApp:
             # Clear any previous interruption before queuing new text
             self.tts.clear_interruption()
             if result.get("ok"):
-                self.tts.queue_text(str(result.get("result", "")))
+                # Success or user error (default option) - both have ok=True
+                if result.get("error") and not result.get("result"):
+                    # User error: default option was used, speak the error message
+                    self.tts.queue_text(str(result.get("error", "")))
+                else:
+                    # Success: speak the result
+                    self.tts.queue_text(str(result.get("result", "")))
             else:
-                self.tts.queue_text("There was an error executing the tool.")
-
-        # Update context with tool result only if continue_mode is enabled
-        # In fresh mode (default), we don't add responses to context
-        if self.continue_mode:
-            agent_utils.update_context_with_tool_result(self.llm, result, logger)
-        else:
-            logger.debug("Skipping context update (not in continue mode)")
+                # Agent error: use standard message (don't expose internal errors)
+                self.tts.queue_text("There was an error executing the tool. Please try rephrasing your request.")
 
         return AgentResponse(
             tool_called=True,
@@ -696,12 +722,6 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip loading cached context states and rebuild from scratch",
     )
-    parser.add_argument(
-        "--continue",
-        action="store_true",
-        dest="continue_mode",
-        help="Continue conversation (don't reload state each query, keep context history)",
-    )
 
     return parser
 
@@ -800,7 +820,6 @@ def main() -> None:
             whisper_hef_path=whisper_hef_path,
             debug=args.debug,
             no_cache=args.no_cache,
-            continue_mode=getattr(args, "continue_mode", False),
         )
         app.run()
     except Exception as e:
