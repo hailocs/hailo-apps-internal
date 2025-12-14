@@ -45,6 +45,11 @@ tool_instructions: |
   - With negatives: '-5 + 3 * -2'
   - Powers: '2 ** 10'
 
+  DEFAULT OPTION: If the user requests an unknown or unsupported operation (e.g., trigonometric functions,
+  logarithms, or operations not supported by this tool), set 'default' to true.
+  Use this when you cannot translate the user's request into a valid expression.
+  The tool will automatically generate an appropriate error message.
+
 # ═══════════════════════════════════════════════════════════════
 # FEW-SHOT EXAMPLES - Added to context for priming
 # ═══════════════════════════════════════════════════════════════
@@ -54,19 +59,54 @@ few_shot_examples:
       name: "math"
       arguments:
         expression: "5 + 3"
-    tool_response: '{"ok": true, "result": "5 + 3 = 8"}'
-    final_response: "8"
 
   - user: "Calculate 2 times 3 plus 4"
     tool_call:
       name: "math"
       arguments:
         expression: "2 * 3 + 4"
-    tool_response: '{"ok": true, "result": "2 * 3 + 4 = 10"}'
-    final_response: "10"
 
-  - user: "Hello, how are you?"
-    final_response: "Hello! I'm here to help with calculations. What would you like me to compute?"
+  - user: "What is 10 divided by 2?"
+    tool_call:
+      name: "math"
+      arguments:
+        expression: "10 / 2"
+
+  - user: "What is the sine of 30 degrees?"
+    tool_call:
+      name: "math"
+      arguments:
+        default: true
+
+  - user: "What's 2 to the power of 10?"
+    tool_call:
+      name: "math"
+      arguments:
+        expression: "2 ** 10"
+
+  - user: "What's -5 plus 3 times -2?"
+    tool_call:
+      name: "math"
+      arguments:
+        expression: "-5 + 3 * -2"
+
+  - user: "Calculate the logarithm of 100"
+    tool_call:
+      name: "math"
+      arguments:
+        default: true
+
+  - user: "Compute (10 + 5) * 2 - 8 / 4"
+    tool_call:
+      name: "math"
+      arguments:
+        expression: "(10 + 5) * 2 - 8 / 4"
+
+  - user: "What is 100 minus 25?"
+    tool_call:
+      name: "math"
+      arguments:
+        expression: "100 - 25"
 
 # ═══════════════════════════════════════════════════════════════
 # TEST CASES - For benchmarking (not added to context)

@@ -30,14 +30,15 @@ tool_instructions: |
   - future_days: 0=today, 1=tomorrow, 2=in 2 days (default: 0)
   - include_rain: true to get precipitation data (default: false)
 
+  DEFAULT OPTION: If the user's request is not related to weather, or if you cannot determine the location,
+  set 'default' to true. The tool will automatically generate an appropriate error message.
+
 few_shot_examples:
   - user: "What's the weather in London?"
     tool_call:
       name: "weather"
       arguments:
         location: "London"
-    tool_response: '{"ok": true, "result": "Current temperature in London: 15.2°C"}'
-    final_response: "It's currently 15.2°C in London."
 
   - user: "Will it rain tomorrow in Paris?"
     tool_call:
@@ -46,8 +47,52 @@ few_shot_examples:
         location: "Paris"
         future_days: 1
         include_rain: true
-    tool_response: '{"ok": true, "result": "Weather for Paris: High 18°C, 30% chance of rain"}'
-    final_response: "Tomorrow in Paris expects a high of 18°C with a 30% chance of rain."
+
+  - user: "What's the temperature in New York?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "New York"
+
+  - user: "What's the capital of France?"
+    tool_call:
+      name: "weather"
+      arguments:
+        default: true
+
+  - user: "Will it rain in Tokyo tomorrow?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "Tokyo"
+        future_days: 1
+        include_rain: true
+
+  - user: "What's the weather in Berlin, Germany?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "Berlin, Germany"
+
+  - user: "What's the weather like?"
+    tool_call:
+      name: "weather"
+      arguments:
+        default: true
+
+  - user: "Tell me the forecast for Madrid in 2 days"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "Madrid"
+        future_days: 2
+
+  - user: "What's the weather like in Sydney today?"
+    tool_call:
+      name: "weather"
+      arguments:
+        location: "Sydney"
+        future_days: 0
 
 test_cases:
   - id: "weather_001"
