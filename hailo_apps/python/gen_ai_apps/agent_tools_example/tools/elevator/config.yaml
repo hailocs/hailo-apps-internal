@@ -109,17 +109,38 @@ tool_instructions: |
   Use this tool to navigate the Wonkavator elevator.
   Function name: 'elevator'
 
-  The complete floor directory with all keywords is provided in the tool description above.
-  Use it to match user requests to the correct floor number.
+  FLOOR DIRECTORY - Complete floor information:
 
-  YOUR TASK: Match user requests to floors using:
+  Floor 0: Staff & Utilities (Basement)
+    Keywords: maintenance, boiler room, staff quarters, utilities, basement, underground, oompa loompas, oompa loompa, lowest floor
+
+  Floor 1: The Chocolate Room
+    Keywords: chocolate river, waterfall, edible grass, augustus gloop, fudge room, first floor, ground floor, chocolate room
+
+  Floor 2: The Inventing Room
+    Keywords: inventing, everlasting gobstopper, gobstopper, three-course gum, violet, blueberry, blue berry, swelling, chewing gum, innovation, inventing room, laboratory, lab, second floor
+
+  Floor 3: The Fizzy Lifting Drinks Room
+    Keywords: floating, fizzy lifting drinks, burping, ceiling fan, soda, beverages, float, fly
+
+  Floor 4: The Nut Room
+    Keywords: squirrels, squirrel, veruca salt, bad egg, rubbish chute, nuts, quality control, i want it now, nutrom, walnuts
+
+  Floor 5: The Television-Chocolate Room
+    Keywords: tv, television, wonkavision, teleporter, shrinking, top floor, highest floor, television room, tv room
+
+  YOUR TASK: Interpret the user's request and call this tool with the integer floor number.
+  Match room names, character names, keywords, or location descriptions to the correct floor.
+  Use the floor directory above to find the correct floor number.
+
+  Match user requests to floors using:
   - Floor names (exact or partial matches)
-  - Keywords from the floor directory in the tool description
+  - Keywords from the floor directory above
   - Character names mentioned in keywords
   - Room descriptions
   - Natural language descriptions (e.g., "top floor" → Floor 5, "basement" → Floor 0)
 
-  DEFAULT OPTION: If the user requests a floor number outside the available range, or if you cannot determine which floor
+  DEFAULT OPTION: If the user requests a floor number outside the available range (0-5), or if you cannot determine which floor
   the user wants (ambiguous request), set 'default' to true.
   Use this when you cannot confidently map the user's request to a valid floor number.
   The tool will automatically generate an appropriate error message.
