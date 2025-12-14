@@ -49,7 +49,7 @@ class AudioRecorder:
         else:
             self.device_id = device_id
 
-        logger.info(f"Initialized AudioRecorder with device_id={self.device_id}")
+        logger.debug(f"Initialized AudioRecorder with device_id={self.device_id}")
 
     def start(self):
         """Start recording from the microphone."""
@@ -134,7 +134,7 @@ class AudioRecorder:
                 wav_file.setframerate(TARGET_SR)
                 wav_file.writeframes(audio_int16.tobytes())
 
-            logger.info("Audio saved to %s", filename)
+            logger.debug("Audio saved to %s", filename)
 
         except Exception as e:
             logger.warning("Failed to save debug audio: %s", e)

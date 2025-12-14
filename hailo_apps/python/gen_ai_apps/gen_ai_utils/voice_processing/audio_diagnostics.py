@@ -223,7 +223,7 @@ class AudioDiagnostics:
                 best_output_score = score
                 best_output = dev.id
 
-        logger.info(f"Auto-detected devices - Input: {best_input}, Output: {best_output}")
+        logger.debug(f"Auto-detected devices - Input: {best_input}, Output: {best_output}")
         return best_input, best_output
 
     @staticmethod
@@ -523,7 +523,7 @@ ctl.!default {{
             if asoundrc_path.exists():
                 backup_path = Path.home() / '.asoundrc.backup'
                 shutil.copy2(asoundrc_path, backup_path)
-                logger.info(f"Backed up existing .asoundrc to {backup_path}")
+                logger.debug(f"Backed up existing .asoundrc to {backup_path}")
 
             # Write new config
             asoundrc_path.write_text(config_content)

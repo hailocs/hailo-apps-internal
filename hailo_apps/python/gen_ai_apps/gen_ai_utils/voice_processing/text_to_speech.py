@@ -154,7 +154,7 @@ class TextToSpeechProcessor:
         json_path = onnx_path + ".json"
         check_piper_model_installed(onnx_path, json_path)
 
-        logger.info("Loading Piper TTS model: %s", onnx_path)
+        logger.debug("Loading Piper TTS model: %s", onnx_path)
         # Suppress Piper warning messages
         with redirect_stderr(StringIO()):
             self.piper_voice = PiperVoice.load(onnx_path)
@@ -277,7 +277,7 @@ class TextToSpeechProcessor:
 
     def stop(self):
         """Stop the worker thread and cleanup."""
-        logger.info("Stopping TTS processor")
+        logger.debug("Stopping TTS processor")
         self._running = False
         if self.speech_thread.is_alive():
             self.speech_thread.join(timeout=1.0)
@@ -367,7 +367,7 @@ class TextToSpeechProcessor:
                     return
 
                 # Play synchronously (blocking this worker thread)
-                logger.info("Playing synthesized audio: %d samples (%.2f seconds)",
+                logger.debug("Playing synthesized audio: %d samples (%.2f seconds)",
                            len(audio_data), len(audio_data) / TARGET_SR)
                 self.audio_player.play(audio_data, block=True)
                 logger.debug("Audio playback completed")
