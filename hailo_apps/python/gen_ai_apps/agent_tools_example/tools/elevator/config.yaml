@@ -11,10 +11,94 @@ persona:
     - "Support floor names, character names, keywords"
 
 capabilities:
-  - "Navigate between 6 floors (0-5)"
+  - "Navigate between floors 0 to 5"
   - "Understand room names and keywords"
-  - "Map character names to their floors"
+  - "Map keywords to their floors"
   - "Support natural language floor descriptions"
+
+floors:
+  0:
+    name: "Staff & Utilities (Basement)"
+    description: "The infrastructural and unseen level containing the boiler room, Oompa Loompa staff quarters, and other utilities necessary for maintenance and operation."
+    keywords:
+      - "maintenance"
+      - "boiler room"
+      - "staff quarters"
+      - "utilities"
+      - "basement"
+      - "underground"
+      - "oompa loompas"
+      - "oompa loompa"
+      - "lowest floor"
+  1:
+    name: "The Chocolate Room"
+    description: "The vast, edible garden floor. Features the Chocolate River and Waterfall. The starting point of the tour, famous for the elimination of Augustus Gloop, who fell into the river and was sucked up the pipe toward the Fudge Room."
+    keywords:
+      - "chocolate river"
+      - "waterfall"
+      - "edible grass"
+      - "augustus gloop"
+      - "fudge room"
+      - "first floor"
+      - "ground floor"
+      - "chocolate room"
+  2:
+    name: "The Inventing Room"
+    description: "A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry."
+    keywords:
+      - "inventing"
+      - "everlasting gobstopper"
+      - "gobstopper"
+      - "three-course gum"
+      - "violet"
+      - "blueberry"
+      - "blue berry"
+      - "swelling"
+      - "chewing gum"
+      - "innovation"
+      - "inventing room"
+      - "laboratory"
+      - "lab"
+      - "second floor"
+  3:
+    name: "The Fizzy Lifting Drinks Room"
+    description: "The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating."
+    keywords:
+      - "floating"
+      - "fizzy lifting drinks"
+      - "burping"
+      - "ceiling fan"
+      - "soda"
+      - "beverages"
+      - "float"
+      - "fly"
+  4:
+    name: "The Nut Room"
+    description: "Dedicated to quality control where hundreds of trained Squirrels shell walnuts to find 'good' and 'bad' nuts. Veruca Salt was eliminated here, judged a 'bad nut' by the squirrels and sent down the Rubbish Chute."
+    keywords:
+      - "squirrels"
+      - "squirrel"
+      - "veruca salt"
+      - "bad egg"
+      - "rubbish chute"
+      - "nuts"
+      - "quality control"
+      - "i want it now"
+      - "nutrom"
+      - "walnuts"
+  5:
+    name: "The Television-Chocolate Room"
+    description: "A sterile, white room containing the powerful Wonkavision camera/teleporter. It develops a way to send chocolate bars through television waves. Mike Teavee was eliminated here after shrinking himself down to a tiny size."
+    keywords:
+      - "tv"
+      - "television"
+      - "wonkavision"
+      - "teleporter"
+      - "shrinking"
+      - "top floor"
+      - "highest floor"
+      - "television room"
+      - "tv room"
 
 output_format:
   tool_call: "XML-wrapped JSON: <tool_call>{...}</tool_call>"
@@ -25,20 +109,23 @@ tool_instructions: |
   Use this tool to navigate the Wonkavator elevator.
   Function name: 'elevator'
 
-  Floor mapping:
-  - Floor 0: Staff & Utilities (basement)
-  - Floor 1: Chocolate Room (Augustus Gloop)
-  - Floor 2: Inventing Room (Violet, blueberry)
-  - Floor 3: Fizzy Lifting Drinks
-  - Floor 4: Nut Room (squirrels, Veruca)
-  - Floor 5: Television Room (Mike Teavee)
+  The complete floor directory with all keywords is provided in the tool description above.
+  Use it to match user requests to the correct floor number.
 
-  DEFAULT OPTION: If the user requests a floor number outside 0-5, or if you cannot determine which floor
+  YOUR TASK: Match user requests to floors using:
+  - Floor names (exact or partial matches)
+  - Keywords from the floor directory in the tool description
+  - Character names mentioned in keywords
+  - Room descriptions
+  - Natural language descriptions (e.g., "top floor" → Floor 5, "basement" → Floor 0)
+
+  DEFAULT OPTION: If the user requests a floor number outside the available range, or if you cannot determine which floor
   the user wants (ambiguous request), set 'default' to true.
   Use this when you cannot confidently map the user's request to a valid floor number.
   The tool will automatically generate an appropriate error message.
 
 few_shot_examples:
+  # Valid floor requests using keywords
   - user: "Take me to the chocolate room"
     tool_call:
       name: "elevator"
@@ -51,47 +138,97 @@ few_shot_examples:
       arguments:
         floor: 2
 
-  - user: "Take me to floor 0"
+  - user: "I want to float"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 3
+
+  - user: "Take me to the squirrels"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 4
+
+  - user: "I want to go to nutrom"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 4
+
+  - user: "Take me to the top floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 5
+
+  - user: "Go to the television room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 5
+
+  - user: "Take me to the basement"
     tool_call:
       name: "elevator"
       arguments:
         floor: 0
 
+  - user: "Go to floor 0"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 0
+
+  - user: "Take me to floor 3"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 3
+
+  # Default option examples - invalid floor numbers
   - user: "Take me to the 7th floor"
     tool_call:
       name: "elevator"
       arguments:
         default: true
 
-  - user: "Go to the fizzy lifting drinks room"
+  - user: "Take me to floor -1"
     tool_call:
       name: "elevator"
       arguments:
-        floor: 3
+        default: true
 
-  - user: "Take me to where Mike Teavee is"
-    tool_call:
-      name: "elevator"
-      arguments:
-        floor: 5
-
+  # Default option examples - ambiguous or unclear requests
   - user: "Take me to the turn floor"
     tool_call:
       name: "elevator"
       arguments:
         default: true
 
-  - user: "I want to visit the nut room"
+  - user: "I want to go somewhere fun"
     tool_call:
       name: "elevator"
       arguments:
-        floor: 4
+        default: true
 
-  - user: "Go to floor 3"
+  - user: "Take me to the candy shop"
     tool_call:
       name: "elevator"
       arguments:
-        floor: 3
+        default: true
+
+  - user: "Where is the exit?"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+  - user: "Go to the room with the golden ticket"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
 
 test_cases:
   - id: "elevator_001"

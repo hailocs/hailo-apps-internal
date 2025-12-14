@@ -8,6 +8,7 @@ Flask-based web simulator for visualization.
 import logging
 import threading
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 # Import config from parent package
@@ -16,45 +17,85 @@ try:
 except ImportError:
     # Fallback for direct execution
     import sys
-    from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
     from hailo_apps.python.gen_ai_apps.agent_tools_example import config
 
 logger = logging.getLogger(__name__)
 
-# Floor data (single source of truth) - defined here to avoid circular imports
-FLOORS: dict[int, dict[str, Any]] = {
-    0: {
-        "name": "Staff & Utilities (Basement)",
-        "description": "The infrastructural and unseen level containing the boiler room, Oompa Loompa staff quarters, and other utilities necessary for maintenance and operation.",
-        "keywords": ["maintenance", "boiler room", "staff quarters", "utilities", "basement", "underground", "oompa loompas", "oompa loompa", "lowest floor"]
-    },
-    1: {
-        "name": "The Chocolate Room",
-        "description": "The vast, edible garden floor. Features the Chocolate River and Waterfall. The starting point of the tour, famous for the elimination of Augustus Gloop, who fell into the river and was sucked up the pipe toward the Fudge Room.",
-        "keywords": ["chocolate river", "waterfall", "edible grass", "augustus gloop", "fudge room", "garden", "simple sweets", "first floor", "ground floor", "chocolate room"]
-    },
-    2: {
-        "name": "The Inventing Room",
-        "description": "A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry.",
-        "keywords": ["inventing", "everlasting gobstopper", "gobstopper", "three-course gum", "violet beauregarde", "violet", "blueberry", "blue berry", "swelling", "chewing gum", "new candy", "experimental", "innovation", "inventing room", "laboratory", "lab", "second floor"]
-    },
-    3: {
-        "name": "The Fizzy Lifting Drinks Room",
-        "description": "The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating.",
-        "keywords": ["floating", "lifting drinks", "fizzy lifting drinks", "burping", "ceiling fan", "gravity", "soda", "beverages", "charlie", "grandpa joe", "float", "fly"]
-    },
-    4: {
-        "name": "The Nut Room",
-        "description": "Dedicated to quality control where hundreds of trained Squirrels shell walnuts to find 'good' and 'bad' nuts. Veruca Salt was eliminated here, judged a 'bad nut' by the squirrels and sent down the Rubbish Chute.",
-        "keywords": ["squirrels", "squirrel", "veruca salt", "bad egg", "rubbish chute", "nuts", "quality control", "i want it now", "nut room", "walnuts"]
-    },
-    5: {
-        "name": "The Television-Chocolate Room",
-        "description": "A sterile, white room containing the powerful Wonkavision camera/teleporter. It develops a way to send chocolate bars through television waves. Mike Teavee was eliminated here after shrinking himself down to a tiny size.",
-        "keywords": ["tv", "television", "wonkavision", "teleporter", "shrinking", "mike teavee", "media", "broadcasting", "transmission", "top floor", "highest floor", "television room", "tv room"]
-    }
-}
+
+def _load_floors_from_config(config_path: Path | None = None) -> dict[int, dict[str, Any]]:
+    """
+    Load floors configuration from config.yaml.
+
+    Args:
+        config_path: Optional path to config.yaml. If None, uses default location.
+
+    Returns:
+        Dictionary mapping floor numbers to floor data (name, description, keywords).
+
+    Raises:
+        FileNotFoundError: If config.yaml is not found.
+        ValueError: If floors section is missing or invalid.
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent / "config.yaml"
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    try:
+        import yaml
+    except ImportError:
+        logger.error("PyYAML not installed. Cannot load floors from config.")
+        raise ImportError("PyYAML is required to load floors from config.yaml")
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw_config = yaml.safe_load(f)
+    except Exception as e:
+        logger.error("Failed to parse YAML config %s: %s", config_path, e)
+        raise ValueError(f"Failed to parse config.yaml: {e}") from e
+
+    if not isinstance(raw_config, dict):
+        raise ValueError("Invalid YAML config format (expected dict)")
+
+    floors_config = raw_config.get("floors")
+    if not floors_config:
+        raise ValueError("'floors' section not found in config.yaml")
+
+    # Convert YAML floors to internal format
+    floors: dict[int, dict[str, Any]] = {}
+    for floor_str, floor_data in floors_config.items():
+        try:
+            floor_num = int(floor_str)
+        except (ValueError, TypeError):
+            logger.warning("Invalid floor number '%s', skipping", floor_str)
+            continue
+
+        if not isinstance(floor_data, dict):
+            logger.warning("Invalid floor data for floor %d, skipping", floor_num)
+            continue
+
+        floors[floor_num] = {
+            "name": floor_data.get("name", f"Floor {floor_num}"),
+            "description": floor_data.get("description", ""),
+            "keywords": floor_data.get("keywords", []),
+        }
+
+    if not floors:
+        raise ValueError("No valid floors found in config.yaml")
+
+    return floors
+
+
+# Floor data loaded from config.yaml (single source of truth)
+# Initialize FLOORS at module load time
+try:
+    FLOORS = _load_floors_from_config()
+except Exception as e:
+    logger.error("Failed to load floors from config.yaml: %s", e)
+    logger.error("Falling back to empty floors dictionary. Tool may not work correctly.")
+    FLOORS = {}
 
 
 class ElevatorInterface(ABC):
@@ -85,7 +126,7 @@ class SimulatedElevator(ElevatorInterface):
 
         Args:
             port: Port for Flask web server (default: 5002)
-            floors_data: Dictionary of floor data (if None, will use module-level FLOORS)
+            floors_data: Dictionary of floor data (if None, will use module-level FLOORS from config.yaml)
         """
         try:
             from flask import Flask, jsonify, render_template_string  # noqa: F401
@@ -93,7 +134,7 @@ class SimulatedElevator(ElevatorInterface):
             logger.error("Flask not available. Install with: pip install flask")
             raise ImportError("Flask is required for simulator mode") from e
 
-        # Use provided floors_data or default to module-level FLOORS
+        # Use provided floors_data or default to module-level FLOORS (loaded from config.yaml)
         self.FLOORS = floors_data if floors_data is not None else FLOORS
 
         self.port = port
@@ -299,10 +340,10 @@ class SimulatedElevator(ElevatorInterface):
                     // Clear and rebuild floors
                     building.innerHTML = '';
 
-                    // Create floors 0-5 in DOM order (0 first, 5 last)
+                    // Create floors dynamically based on available floors
                     // With column-reverse CSS, first DOM child appears at bottom, last at top
-                    // So floor 0 will be at bottom, floor 5 at top
-                    for (let i = 0; i <= 5; i++) {
+                    const floorNumbers = Object.keys(data.floors).map(Number).sort((a, b) => a - b);
+                    for (const i of floorNumbers) {
                         const floorDiv = document.createElement('div');
                         floorDiv.className = 'floor';
                         if (i === data.current_floor) {
@@ -327,15 +368,14 @@ class SimulatedElevator(ElevatorInterface):
                     floorDescription.textContent = data.current_floor_info.description;
 
                     // Update elevator position (visual indicator)
-                    // Calculate position based on floor (0 at bottom, 5 at top)
-                    // DOM order is [0,1,2,3,4,5], but column-reverse displays them visually reversed
-                    // So floor i is at DOM index i, but positioned visually in reverse
+                    // Calculate position based on current floor
                     // Need to wait for DOM to update to get accurate floor heights
                     setTimeout(() => {
                         const floors = building.querySelectorAll('.floor');
-                        if (floors.length > 0 && data.current_floor >= 0 && data.current_floor <= 5) {
-                            // DOM order matches floor number: floor i is at index i
-                            const targetFloor = floors[data.current_floor];
+                        const floorNumbers = Object.keys(data.floors).map(Number).sort((a, b) => a - b);
+                        const floorIndex = floorNumbers.indexOf(data.current_floor);
+                        if (floors.length > 0 && floorIndex >= 0 && floorIndex < floors.length) {
+                            const targetFloor = floors[floorIndex];
                             const buildingRect = building.getBoundingClientRect();
                             const floorRect = targetFloor.getBoundingClientRect();
                             const relativeTop = floorRect.top - buildingRect.top;
@@ -397,7 +437,7 @@ class SimulatedElevator(ElevatorInterface):
         time.sleep(0.1)
 
     def move_to_floor(self, floor: int) -> None:
-        """Move elevator to specified floor (0-5)."""
+        """Move elevator to specified floor."""
         if floor in self.FLOORS:
             self._current_floor = floor
 

@@ -138,6 +138,7 @@ def main() -> None:
         # Only load the selected tool to save context
         system_text = system_prompt.create_system_prompt([selected_tool])
         logger.debug("System prompt: %d chars", len(system_text))
+        logger.debug("System prompt content:\n%s", system_text)
 
         # Try to load cached context for this tool
         # If cache exists, we don't need to send system prompt on first message
