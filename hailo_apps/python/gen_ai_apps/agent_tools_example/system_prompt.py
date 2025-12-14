@@ -4,6 +4,13 @@ System prompt generation module.
 Generates the system prompt for the LLM with tool definitions and usage instructions.
 Supports YAML-based configuration for persona, capabilities, and tool instructions.
 Also provides functions to add few-shot examples to context for priming.
+
+Message Format:
+    Messages follow the Hailo LLM API format where content is a string:
+        [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
+
+    This format is used by message_formatter functions and is compatible with
+    LLM.generate() which expects a list of message dictionaries.
 """
 
 import json
@@ -118,35 +125,29 @@ BEFORE each response, think about whether to use a tool:
 """
 
 
-def add_few_shot_examples_to_context(
-    llm: "LLM",
+def prepare_few_shot_examples_messages(
     examples: List[FewShotExample],
-    logger: Optional[Any] = None,
-) -> None:
+) -> List[Dict[str, Any]]:
     """
-    Add few-shot examples to LLM context for priming.
+    Prepare few-shot example messages for context.
 
-    Converts YAML few-shot examples into message sequences and adds them to context.
+    Converts YAML few-shot examples into message sequences.
     This helps the model learn the expected interaction pattern.
 
     Args:
-        llm: LLM instance to add context to.
         examples: List of FewShotExample objects from YAML config.
-        logger: Optional logger instance.
+
+    Returns:
+        List of formatted message dictionaries ready to be added to context.
     """
     if not examples:
-        return
+        return []
 
     try:
-        from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import (
-            context_manager,
-            message_formatter,
-        )
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import message_formatter
     except ImportError:
         # Fallback if imports fail
-        if logger:
-            logger.warning("Could not import context_manager, skipping few-shot examples")
-        return
+        return []
 
     messages = []
 
@@ -173,6 +174,38 @@ def add_few_shot_examples_to_context(
         # Final assistant response
         if example.final_response:
             messages.append(message_formatter.messages_assistant(example.final_response))
+
+    return messages
+
+
+def add_few_shot_examples_to_context(
+    llm: "LLM",
+    examples: List[FewShotExample],
+    logger: Optional[Any] = None,
+) -> None:
+    """
+    Add few-shot examples to LLM context for priming.
+
+    Converts YAML few-shot examples into message sequences and adds them to context.
+    This helps the model learn the expected interaction pattern.
+
+    Args:
+        llm: LLM instance to add context to.
+        examples: List of FewShotExample objects from YAML config.
+        logger: Optional logger instance.
+    """
+    if not examples:
+        return
+
+    try:
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import context_manager
+    except ImportError:
+        # Fallback if imports fail
+        if logger:
+            logger.warning("Could not import context_manager, skipping few-shot examples")
+        return
+
+    messages = prepare_few_shot_examples_messages(examples)
 
     # Add all messages to context
     if messages:

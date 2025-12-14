@@ -274,13 +274,6 @@ class AgentApp:
             state_name: Name of state to load.
             no_cache: If True, skip loading cached states and rebuild context.
         """
-        # Build system prompt (with YAML config if available)
-        self.system_text = system_prompt.create_system_prompt(
-            [self.selected_tool],
-            yaml_config=self.yaml_config,
-        )
-        logger.debug("System prompt: %d chars", len(self.system_text))
-
         # Skip loading cached state if --no-cache flag is set
         if no_cache:
             logger.info("--no-cache flag set, skipping cached states and rebuilding context")
@@ -303,34 +296,35 @@ class AgentApp:
                     logger.warning("Could not verify context size: %s", e)
                     state_loaded = True  # Assume it's okay
 
-        # If state was loaded successfully, ensure few-shot examples are present
-        # (states saved before few-shot examples feature won't have them)
+        # If state was loaded successfully, we're done (state already contains system prompt and examples)
         if state_loaded:
-            # Always add few-shot examples if YAML config has them
-            # This ensures consistency even if state was saved without them
-            if self.yaml_config and self.yaml_config.few_shot_examples:
-                logger.debug("Ensuring few-shot examples are in context")
-                system_prompt.add_few_shot_examples_to_context(
-                    self.llm,
-                    self.yaml_config.few_shot_examples,
-                    logger,
-                )
             return
 
         # Fresh initialization (when --no-cache is used or state doesn't exist)
+        # Generate system prompt only when needed for building context
         logger.info("Initializing fresh context")
         try:
-            prompt = [message_formatter.messages_system(self.system_text)]
-            context_manager.add_to_context(self.llm, prompt, logger)
+            # Build system prompt (with YAML config if available)
+            self.system_text = system_prompt.create_system_prompt(
+                [self.selected_tool],
+                yaml_config=self.yaml_config,
+            )
+            logger.debug("System prompt: %d chars", len(self.system_text))
+
+            # Prepare all messages: system prompt + few-shot examples
+            messages = [message_formatter.messages_system(self.system_text)]
 
             # Add few-shot examples if available
             if self.yaml_config and self.yaml_config.few_shot_examples:
                 logger.info("Adding %d few-shot examples to context", len(self.yaml_config.few_shot_examples))
-                system_prompt.add_few_shot_examples_to_context(
-                    self.llm,
-                    self.yaml_config.few_shot_examples,
-                    logger,
+                few_shot_messages = system_prompt.prepare_few_shot_examples_messages(
+                    self.yaml_config.few_shot_examples
                 )
+                messages.extend(few_shot_messages)
+
+            logger.debug("Messages to add to context: %s", json.dumps(messages, indent=2))
+            # Add all messages to context in a single call
+            context_manager.add_to_context(self.llm, messages, logger)
 
             # Save initial state
             yaml_dict = self.yaml_config.raw_config if self.yaml_config else {}
