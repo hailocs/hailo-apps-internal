@@ -19,6 +19,7 @@ class StreamingTextFilter:
     Filter streaming tokens on-the-fly to remove XML tags and special tokens.
 
     Maintains state to handle partial tags that arrive across token boundaries.
+    Also handles raw JSON tool calls with > delimiters (LLM format inconsistency).
     """
 
     def __init__(self, debug_mode: bool = False):
@@ -31,6 +32,8 @@ class StreamingTextFilter:
         self.buffer = ""
         self.inside_text_tag = False
         self.inside_tool_call_tag = False
+        self.inside_tool_response_tag = False
+        self.inside_raw_json_tool_call = False  # For >...> format
         self.debug_mode = debug_mode
 
     def process_token(self, token: str) -> str:
@@ -101,11 +104,58 @@ class StreamingTextFilter:
                 changed = True
                 continue
 
-        # If we're inside <text> tag and not inside <tool_call>, output remaining buffer
-        if self.inside_text_tag and not self.inside_tool_call_tag and self.buffer:
+            # Check for <tool_response> tag start
+            tool_response_start = self.buffer.find("<tool_response>")
+            if tool_response_start != -1 and not self.inside_tool_response_tag:
+                # If we're inside <text>, output content before <tool_response>
+                if self.inside_text_tag and tool_response_start > 0:
+                    output += self.buffer[:tool_response_start]
+                self.buffer = self.buffer[tool_response_start + 15:]  # Remove "<tool_response>"
+                self.inside_tool_response_tag = True
+                changed = True
+                continue
+
+            # Check for </tool_response> tag end
+            tool_response_end = self.buffer.find("</tool_response>")
+            if tool_response_end != -1 and self.inside_tool_response_tag:
+                # Suppress everything inside <tool_response>
+                self.buffer = self.buffer[tool_response_end + 16:]  # Remove "</tool_response>"
+                self.inside_tool_response_tag = False
+                changed = True
+                continue
+
+            # Check for raw JSON tool call format: >\n{...}\n>
+            # This handles LLM inconsistency where it outputs > delimited JSON instead of <tool_call>
+            if not self.inside_raw_json_tool_call:
+                # Look for pattern: > followed by whitespace and { with "name"
+                raw_start_match = re.search(r'>\s*\{\s*"name"\s*:', self.buffer)
+                if raw_start_match:
+                    # Output anything before the >
+                    start_pos = raw_start_match.start()
+                    if start_pos > 0:
+                        output += self.buffer[:start_pos]
+                    self.buffer = self.buffer[start_pos:]  # Keep from > onwards for now
+                    self.inside_raw_json_tool_call = True
+                    changed = True
+                    continue
+
+            # Check for end of raw JSON tool call (closing >)
+            if self.inside_raw_json_tool_call:
+                # Look for closing pattern: }\n> or }\s*>
+                raw_end_match = re.search(r'\}\s*>', self.buffer)
+                if raw_end_match:
+                    # Suppress everything up to and including the closing >
+                    end_pos = raw_end_match.end()
+                    self.buffer = self.buffer[end_pos:]
+                    self.inside_raw_json_tool_call = False
+                    changed = True
+                    continue
+
+        # If we're inside <text> tag and not inside any suppressed section, output remaining buffer
+        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call and self.buffer:
             output += self.buffer
             self.buffer = ""
-        elif not self.inside_text_tag and not self.inside_tool_call_tag:
+        elif not self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call:
             # If not inside any tag, the text is still valid for streaming.
             # To avoid printing partial tags, we find the last complete chunk of text.
             # A simple heuristic: find the start of the next potential tag.
@@ -131,8 +181,13 @@ class StreamingTextFilter:
         # In debug mode, return empty (everything was printed already)
         if self.debug_mode:
             return ""
+
+        # If we're inside a raw JSON tool call, suppress the remaining buffer
+        if self.inside_raw_json_tool_call:
+            return ""
+
         # Clean up any remaining partial tags or buffer content
-        if self.inside_text_tag and not self.inside_tool_call_tag:
+        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag:
             # If we're still inside text tag, return the buffer (might have partial closing tag)
             remaining = self.buffer
             # Remove any partial closing tags like "</text" or "text>"
@@ -140,9 +195,13 @@ class StreamingTextFilter:
             return remaining
         # Also clean up any partial tags that might remain in buffer
         cleaned = self.buffer.replace("</text", "").replace("text>", "").replace("<text", "")
+        cleaned = cleaned.replace("</tool_response", "").replace("tool_response>", "").replace("<tool_response", "")
 
-        # Remove orphan '<' which might be left over from <<|im_end|> or incomplete tags
-        if cleaned.strip() == "<":
+        # Remove raw JSON tool call patterns (>{"name":...}>)
+        cleaned = re.sub(r'>\s*\{[^}]*"name"[^}]*\}\s*>', '', cleaned)
+
+        # Remove orphan '<' or '>' which might be left over from incomplete tags
+        if cleaned.strip() in ("<", ">"):
             return ""
 
         return cleaned
@@ -262,6 +321,9 @@ def clean_response(response: str) -> str:
 
     # Remove <tool_call>...</tool_call> tags if present (we parse these separately)
     cleaned = re.sub(r"<tool_call>.*?</tool_call>", "", cleaned, flags=re.DOTALL)
+
+    # Remove <tool_response>...</tool_response> tags if present
+    cleaned = re.sub(r"<tool_response>.*?</tool_response>", "", cleaned, flags=re.DOTALL)
 
     # Clean up any remaining whitespace
     return cleaned.strip()

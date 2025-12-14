@@ -216,10 +216,10 @@ tiling:
         - name: hailo_yolov8n_4_classes_vga
           source: s3
       extra:
-        - name: ssd_mobilenet_v1
-          source: mz
-        - name: ssd_mobilenet_v1_visdrone
-          source: s3
+      - name: ssd_mobilenet_v1
+        source: mz
+      - name: ssd_mobilenet_v1_visdrone
+        source: s3
     hailo8l:
       default:
         - name: hailo_yolov8n_4_classes_vga

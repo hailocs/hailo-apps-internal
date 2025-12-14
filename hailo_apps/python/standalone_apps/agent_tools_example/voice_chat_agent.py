@@ -9,7 +9,6 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
@@ -22,7 +21,11 @@ from hailo_platform.genai import LLM
 
 from hailo_apps.python.core.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 from hailo_apps.python.core.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
-from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
+from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import (
+    TextToSpeechProcessor,
+    PiperModelNotFoundError,
+)
+from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     agent_utils,
     context_manager,
@@ -33,8 +36,18 @@ from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     tool_parsing,
     tool_selection,
 )
-from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID, AGENT_APP
-from hailo_apps.python.core.common.core import handle_list_models_flag
+from hailo_apps.python.core.common.defines import (
+    SHARED_VDEVICE_GROUP_ID,
+    AGENT_APP,
+    WHISPER_CHAT_APP,
+    HAILO10H_ARCH,
+)
+from hailo_apps.python.core.common.core import (
+    get_standalone_parser,
+    handle_list_models_flag,
+    resolve_hef_path,
+)
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 try:
     from . import config, system_prompt
@@ -47,11 +60,29 @@ except ImportError:
     import system_prompt
 
 
-logger = config.LOGGER
+logger = get_logger(__name__)
 
 
 class VoiceAgentApp:
-    def __init__(self, hef_path, selected_tool, debug=False, no_tts=False):
+    """
+    Voice-enabled chat agent application.
+
+    Combines speech-to-text, LLM inference, and text-to-speech
+    for interactive voice-based tool calling.
+    """
+
+    def __init__(self, llm_hef_path, selected_tool, whisper_hef_path=None, debug=False, no_tts=False):
+        """
+        Initialize the voice agent application.
+
+        Args:
+            llm_hef_path: Path to the LLM HEF model file (Qwen2.5-Coder).
+            selected_tool: The selected tool configuration dict.
+            whisper_hef_path: Optional path to the Whisper HEF model file.
+                             If None, uses the default from whisper_chat app.
+            debug: Enable debug mode.
+            no_tts: Disable text-to-speech.
+        """
         self.debug = debug
         self.no_tts = no_tts
         self.selected_tool = selected_tool
@@ -65,37 +96,41 @@ class VoiceAgentApp:
         # Initialize Hailo VDevice and Models
         try:
             params = VDevice.create_params()
-            params.group_id = SHARED_VDEVICE_GROUP_ID # Support multiple processes using the same VDevice
+            params.group_id = SHARED_VDEVICE_GROUP_ID  # Support multiple processes using the same VDevice
             self.vdevice = VDevice(params)
         except Exception as e:
-            print(f"[Error] Failed to create VDevice: {e}")
+            logger.error("Failed to create VDevice: %s", e)
             raise
 
-        # LLM
+        # LLM (Qwen2.5-Coder-1.5B-Instruct)
         try:
-            self.llm = LLM(self.vdevice, hef_path)
+            self.llm = LLM(self.vdevice, str(llm_hef_path))
         except Exception as e:
-            print(f"[Error] Failed to initialize LLM: {e}")
+            logger.error("Failed to initialize LLM: %s", e)
             self.vdevice.release()
             raise
 
-        # S2T
+        # S2T (Whisper-Base)
         try:
-            self.s2t = SpeechToTextProcessor(self.vdevice)
+            self.s2t = SpeechToTextProcessor(self.vdevice, hef_path=whisper_hef_path)
         except Exception as e:
-            print(f"[Error] Failed to initialize Speech-to-Text: {e}")
+            logger.error("Failed to initialize Speech-to-Text: %s", e)
             self.llm.release()
             self.vdevice.release()
             raise
 
-        # TTS
+        # TTS - detect output device first to ensure proper device selection
         self.tts = None
         if not no_tts:
-            try:
-                self.tts = TextToSpeechProcessor()
-            except Exception as e:
-                print(f"[Warning] Failed to initialize TTS: {e}")
-                print("Continuing without TTS support.")
+            # Auto-detect output device (same logic as AudioPlayer uses)
+            _, output_device_id = AudioDiagnostics.auto_detect_devices()
+            if output_device_id is not None:
+                logger.info("Using output device %d for TTS", output_device_id)
+            else:
+                logger.warning("No output device detected, TTS will use system default")
+            # Initialize TTS - if model is missing, this will raise PiperModelNotFoundError
+            # which should cause the app to exit
+            self.tts = TextToSpeechProcessor(device_id=output_device_id)
 
         # Initialize Context
         self._init_context()
@@ -103,6 +138,7 @@ class VoiceAgentApp:
         print("✅ AI components ready!")
 
     def _init_context(self):
+        """Initialize the LLM context with system prompt."""
         system_text = system_prompt.create_system_prompt([self.selected_tool])
         logger.debug("System prompt: %d chars", len(system_text))
 
@@ -127,6 +163,7 @@ class VoiceAgentApp:
         self.system_text = system_text
 
     def on_processing_start(self):
+        """Callback when processing starts - interrupt any ongoing TTS."""
         if self.tts:
             try:
                 self.tts.interrupt()
@@ -134,11 +171,17 @@ class VoiceAgentApp:
                 logger.debug("TTS interrupt failed: %s", e)
 
     def on_audio_ready(self, audio):
+        """
+        Callback when audio recording is ready.
+
+        Args:
+            audio: The recorded audio data.
+        """
         # 1. Transcribe
         try:
             user_text = self.s2t.transcribe(audio)
         except Exception as e:
-            print(f"[Error] Transcription failed: {e}")
+            logger.error("Transcription failed: %s", e)
             return
 
         if not user_text:
@@ -151,6 +194,7 @@ class VoiceAgentApp:
         self.process_interaction(user_text)
 
     def on_clear_context(self):
+        """Callback to clear the LLM context."""
         if self.llm:
             try:
                 self.llm.clear_context()
@@ -166,9 +210,15 @@ class VoiceAgentApp:
                 else:
                     logger.debug("No cache, will reinit")
             except Exception as e:
-                print(f"[Error] Failed to clear context: {e}")
+                logger.error("Failed to clear context: %s", e)
 
     def process_interaction(self, user_text):
+        """
+        Process a user interaction with the LLM.
+
+        Args:
+            user_text: The transcribed user text.
+        """
         # Check if we need to trim context based on actual token usage
         if context_manager.is_context_full(self.llm, context_threshold=config.CONTEXT_THRESHOLD, logger_instance=logger):
             logger.info("Context full, clearing...")
@@ -198,18 +248,23 @@ class VoiceAgentApp:
 
         def tts_callback(chunk: str):
             if self.tts:
+                logger.debug("[TTS] Received chunk: %r", chunk[:50])
                 state['sentence_buffer'] += chunk
                 # Chunk speech
+                old_buffer_len = len(state['sentence_buffer'])
                 state['sentence_buffer'] = self.tts.chunk_and_queue(
                     state['sentence_buffer'], current_gen_id, not state['first_chunk_sent']
                 )
+                if len(state['sentence_buffer']) < old_buffer_len:
+                    logger.debug("[TTS] Queued text, queue size: %d", self.tts.speech_queue.qsize())
 
                 if not state['first_chunk_sent'] and not self.tts.speech_queue.empty():
                     state['first_chunk_sent'] = True
+                    logger.debug("[TTS] First chunk queued for playback")
 
         try:
             # Use generate() for streaming output with on-the-fly filtering and TTS callback
-            is_debug = logger.level == logging.DEBUG
+            is_debug = logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
                 prompt=prompt,
@@ -219,14 +274,16 @@ class VoiceAgentApp:
                 token_callback=tts_callback
             )
         except Exception as e:
-            print(f"\n[Error] LLM generation failed: {e}")
             logger.error("LLM generation failed: %s", e)
             logger.debug("Traceback: %s", traceback.format_exc())
             return
 
         # Flush remaining speech
         if self.tts and state['sentence_buffer'].strip():
-            self.tts.queue_text(state['sentence_buffer'].strip(), current_gen_id)
+            remaining_text = state['sentence_buffer'].strip()
+            logger.debug("[TTS] Flushing remaining buffer: %s", remaining_text[:100])
+            self.tts.queue_text(remaining_text, current_gen_id)
+            logger.debug("[TTS] Final queue size: %d", self.tts.speech_queue.qsize())
 
         # Check for tool calls
         tool_call = tool_parsing.parse_function_call(raw_response)
@@ -234,6 +291,12 @@ class VoiceAgentApp:
             self.handle_tool_call(tool_call)
 
     def handle_tool_call(self, tool_call):
+        """
+        Handle a tool call from the LLM.
+
+        Args:
+            tool_call: The parsed tool call dict.
+        """
         # Execute tool
         result = tool_execution.execute_tool_call(tool_call, self.tools_lookup)
         tool_execution.print_tool_result(result)
@@ -241,13 +304,18 @@ class VoiceAgentApp:
         if self.tts:
             if result.get("ok"):
                 res_str = str(result.get("result", ""))
+                logger.debug("[TTS] Queuing tool result: %s", res_str[:100])
                 self.tts.queue_text(res_str)
+                logger.debug("[TTS] Queue size after queuing: %d", self.tts.speech_queue.qsize())
             else:
-                self.tts.queue_text("There was an error executing the tool.")
+                error_msg = "There was an error executing the tool."
+                logger.debug("[TTS] Queuing error message")
+                self.tts.queue_text(error_msg)
 
         agent_utils.update_context_with_tool_result(self.llm, result, logger)
 
     def close(self):
+        """Clean up resources."""
         if self.tts:
             try:
                 self.tts.stop()
@@ -265,61 +333,88 @@ class VoiceAgentApp:
 
 
 def main():
-    config.setup_logging()
+    """Main entry point for the voice chat agent."""
+    # Parse arguments first to get log level
+    parser = get_standalone_parser()
+    parser.description = 'Voice-enabled AI Tool Agent'
+    parser.add_argument('--no-tts', action='store_true', help='Disable TTS')
+
+    # Handle --list-models flag before full initialization
+    handle_list_models_flag(parser, AGENT_APP)
+
+    args = parser.parse_args()
+
+    # Initialize logging from CLI args
+    init_logging(level=level_from_args(args))
 
     # Validate configuration
     try:
         config.validate_config()
     except ValueError as e:
-        print(f"[Configuration Error] {e}")
-        return
+        logger.error("Configuration Error: %s", e)
+        sys.exit(1)
 
-    parser = argparse.ArgumentParser(description='Voice-enabled AI Tool Agent')
-    parser.add_argument('--hef-path', type=str, default=None, help='Path to HEF model file')
-    parser.add_argument('--list-models', action='store_true', help='List available models')
-    parser.add_argument('--arch', type=str, default='hailo10h', help='Hailo architecture')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--no-tts', action='store_true', help='Disable TTS')
-    
-    # Handle --list-models flag before full initialization
-    handle_list_models_flag(parser, AGENT_APP)
-    
-    args = parser.parse_args()
+    # Resolve LLM HEF path (Qwen2.5-Coder-1.5B-Instruct) with auto-download
+    llm_hef_path = resolve_hef_path(
+        hef_path=args.hef_path if args.hef_path is not None else "Qwen2.5-Coder-1.5B-Instruct",
+        app_name=AGENT_APP,
+        arch=HAILO10H_ARCH
+    )
+    if llm_hef_path is None:
+        logger.error("Failed to resolve HEF path for LLM model. Exiting.")
+        sys.exit(1)
 
-    # Get HEF (with auto-download support)
-    try:
-        hef_path = config.get_hef_path(args.hef_path)
-    except ValueError as e:
-        logger.error(f"{e}")
-        return
+    # Resolve Whisper HEF path (Whisper-Base) with auto-download
+    whisper_hef_path = resolve_hef_path(
+        hef_path="Whisper-Base",
+        app_name=WHISPER_CHAT_APP,
+        arch=HAILO10H_ARCH
+    )
+    if whisper_hef_path is None:
+        logger.error("Failed to resolve HEF path for Whisper model. Exiting.")
+        sys.exit(1)
+
+    logger.info("Using LLM HEF: %s", llm_hef_path)
+    logger.info("Using Whisper HEF: %s", whisper_hef_path)
 
     # Tool Selection
     try:
         modules = tool_discovery.discover_tool_modules(tool_dir=Path(__file__).parent)
         all_tools = tool_discovery.collect_tools(modules)
     except Exception as e:
-        print(f"[Error] Failed to discover tools: {e}")
+        logger.error("Failed to discover tools: %s", e)
         logger.debug(traceback.format_exc())
-        return
+        sys.exit(1)
 
     if not all_tools:
-        print("No tools found.")
-        return
+        logger.error("No tools found.")
+        sys.exit(1)
 
     tool_thread, tool_result = tool_selection.start_tool_selection_thread(all_tools)
     selected_tool = tool_selection.get_tool_selection_result(tool_thread, tool_result)
 
     if not selected_tool:
-        return
+        sys.exit(0)
 
     tool_execution.initialize_tool_if_needed(selected_tool)
 
     # Start App
     try:
-        app = VoiceAgentApp(hef_path, selected_tool, debug=args.debug, no_tts=args.no_tts)
+        app = VoiceAgentApp(
+            llm_hef_path=llm_hef_path,
+            selected_tool=selected_tool,
+            whisper_hef_path=whisper_hef_path,
+            debug=args.debug,
+            no_tts=args.no_tts
+        )
+    except PiperModelNotFoundError as e:
+        # Piper model not found - exit with error message
+        logger.error("TTS model not found. Use --no-tts to run without TTS, or install the Piper model.")
+        print(str(e))
+        sys.exit(1)
     except Exception:
-        # Error already printed in __init__
-        return
+        # Error already logged in __init__
+        sys.exit(1)
 
     interaction = VoiceInteractionManager(
         title="Voice-Enabled Tool Agent",

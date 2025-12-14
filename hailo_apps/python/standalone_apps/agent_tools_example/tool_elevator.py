@@ -12,11 +12,11 @@ from typing import Any
 # Make imports more robust
 try:
     # Try relative import first
-    from .elevator_interface import create_elevator_controller
+    from .elevator_interface import create_elevator_controller, FLOORS
     from . import config
 except ImportError:
     # Fallback to absolute import if relative fails
-    from elevator_interface import create_elevator_controller
+    from elevator_interface import create_elevator_controller, FLOORS
     import config
 
 name: str = "elevator"
@@ -25,40 +25,6 @@ name: str = "elevator"
 display_description: str = (
     "Control the Wonkavator elevator: navigate between floors 0-5 in Willy Wonka's factory."
 )
-
-# Floor data (single source of truth)
-FLOORS = {
-    0: {
-        "name": "Staff & Utilities (Basement)",
-        "description": "The infrastructural and unseen level containing the boiler room, Oompa Loompa staff quarters, and other utilities necessary for maintenance and operation.",
-        "keywords": ["maintenance", "boiler room", "staff quarters", "utilities", "basement", "underground", "oompa loompas", "oompa loompa", "lowest floor"]
-    },
-    1: {
-        "name": "The Chocolate Room",
-        "description": "The vast, edible garden floor. Features the Chocolate River and Waterfall. The starting point of the tour, famous for the elimination of Augustus Gloop, who fell into the river and was sucked up the pipe toward the Fudge Room.",
-        "keywords": ["chocolate river", "waterfall", "edible grass", "augustus gloop", "fudge room", "garden", "simple sweets", "first floor", "ground floor", "chocolate room"]
-    },
-    2: {
-        "name": "The Inventing Room",
-        "description": "A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry.",
-        "keywords": ["inventing", "everlasting gobstopper", "gobstopper", "three-course gum", "violet beauregarde", "violet", "blueberry", "blue berry", "swelling", "chewing gum", "new candy", "experimental", "innovation", "inventing room", "laboratory", "lab", "second floor"]
-    },
-    3: {
-        "name": "The Fizzy Lifting Drinks Room",
-        "description": "The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating.",
-        "keywords": ["floating", "lifting drinks", "fizzy lifting drinks", "burping", "ceiling fan", "gravity", "soda", "beverages", "charlie", "grandpa joe", "float", "fly"]
-    },
-    4: {
-        "name": "The Nut Room",
-        "description": "Dedicated to quality control where hundreds of trained Squirrels shell walnuts to find 'good' and 'bad' nuts. Veruca Salt was eliminated here, judged a 'bad nut' by the squirrels and sent down the Rubbish Chute.",
-        "keywords": ["squirrels", "squirrel", "veruca salt", "bad egg", "rubbish chute", "nuts", "quality control", "i want it now", "nut room", "walnuts"]
-    },
-    5: {
-        "name": "The Television-Chocolate Room",
-        "description": "A sterile, white room containing the powerful Wonkavision camera/teleporter. It develops a way to send chocolate bars through television waves. Mike Teavee was eliminated here after shrinking himself down to a tiny size.",
-        "keywords": ["tv", "television", "wonkavision", "teleporter", "shrinking", "mike teavee", "media", "broadcasting", "transmission", "top floor", "highest floor", "television room", "tv room"]
-    }
-}
 
 
 def _build_floor_directory() -> str:

@@ -4,22 +4,20 @@ Speech-to-Text module for Hailo Voice Assistant.
 This module handles the transcription of audio using Hailo's Speech2Text model.
 """
 
-import logging
-import time
-from typing import List, Optional
+from pathlib import Path
 
 import numpy as np
 from hailo_platform import VDevice
 from hailo_platform.genai import Speech2Text, Speech2TextTask
 
-from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.defines import (
-    RESOURCES_MODELS_DIR_NAME,
-    WHISPER_MODEL_NAME_H10,
+    HAILO10H_ARCH,
+    WHISPER_CHAT_APP,
 )
+from hailo_apps.python.core.common.hailo_logger import get_logger
 
-# Setup logger
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SpeechToTextProcessor:
@@ -30,23 +28,30 @@ class SpeechToTextProcessor:
     interface for transcribing audio data.
     """
 
-    def __init__(self, vdevice: VDevice, model_name: str = WHISPER_MODEL_NAME_H10):
+    def __init__(self, vdevice: VDevice, hef_path: str | Path | None = None):
         """
         Initialize the SpeechToTextProcessor.
 
         Args:
-            vdevice (VDevice): The Hailo VDevice instance to use.
-            model_name (str): Name of the Whisper model to load. Defaults to WHISPER_MODEL_NAME_H10.
+            vdevice: The Hailo VDevice instance to use.
+            hef_path: Optional path to the Whisper HEF model. If not provided,
+                     resolves the default Whisper-Base model from whisper_chat app.
         """
-        model_path = str(
-            get_resource_path(
-                pipeline_name=None,
-                resource_type=RESOURCES_MODELS_DIR_NAME,
-                model=model_name,
+        if hef_path is None:
+            # Resolve default Whisper model using whisper_chat app config
+            hef_path = resolve_hef_path(
+                hef_path=None,
+                app_name=WHISPER_CHAT_APP,
+                arch=HAILO10H_ARCH
             )
-        )
-        logger.info("Initializing Speech2Text with model: %s", model_name)
-        self.speech2text = Speech2Text(vdevice, model_path)
+            if hef_path is None:
+                raise ValueError(
+                    "Could not resolve Whisper HEF path. "
+                    "Please run: hailo-download-resources --group whisper_chat"
+                )
+
+        logger.info("Initializing Speech2Text with model: %s", hef_path)
+        self.speech2text = Speech2Text(vdevice, str(hef_path))
 
     def transcribe(
         self,
@@ -58,12 +63,12 @@ class SpeechToTextProcessor:
         Transcribe audio data to text.
 
         Args:
-            audio_data (np.ndarray): The raw audio data to transcribe.
-            language (str): The language of the audio. Defaults to "en".
-            timeout_ms (int): Timeout in milliseconds for the transcription. Defaults to 15000.
+            audio_data: The raw audio data to transcribe.
+            language: The language of the audio. Defaults to "en".
+            timeout_ms: Timeout in milliseconds for the transcription. Defaults to 15000.
 
         Returns:
-            str: The transcribed text.
+            The transcribed text.
         """
         segments = self.speech2text.generate_all_segments(
             audio_data=audio_data,
@@ -82,4 +87,3 @@ class SpeechToTextProcessor:
         full_text = "".join([seg.text for seg in segments])
         logger.debug("Full transcription: %d segments, %d chars", len(segments), len(full_text))
         return full_text
-

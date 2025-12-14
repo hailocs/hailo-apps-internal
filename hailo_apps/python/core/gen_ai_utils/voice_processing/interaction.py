@@ -61,6 +61,11 @@ class VoiceInteractionManager:
             "X": "abort generation",
         }
 
+        # Check if we have a valid input device
+        if self.recorder.device_id is None:
+            print("\n⚠️  WARNING: No audio input device detected!")
+            print("Run 'hailo-audio-troubleshoot' to diagnose audio issues.")
+
     def run(self):
         """Starts the main interaction loop."""
         TerminalUI.show_banner(title=self.title, controls=self.controls)
@@ -115,6 +120,9 @@ class VoiceInteractionManager:
             print("\n🔴 Recording started. Press SPACE to stop.")
         except Exception as e:
             logger.error("Failed to start recording: %s", e)
+            print("\n❌ Error starting recording!")
+            print(f"Error: {e}")
+            print("Tip: Run 'hailo-audio-troubleshoot' to check your microphone.")
             self.is_recording = False
 
     def stop_recording(self):
@@ -146,6 +154,7 @@ class VoiceInteractionManager:
                 threading.Thread(target=processing_wrapper, daemon=True).start()
         else:
             logger.warning("No audio recorded")
+            print("⚠️  No audio recorded.")
             TerminalUI.show_banner(title=self.title, controls=self.controls)
 
     def close(self):
@@ -166,4 +175,3 @@ class VoiceInteractionManager:
                 self.on_shutdown()
             except Exception as e:
                 logger.error("Failed during shutdown callback: %s", e)
-
