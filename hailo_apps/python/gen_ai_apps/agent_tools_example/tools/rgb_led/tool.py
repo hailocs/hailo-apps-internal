@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# Import from parent package (agent_tools_example)
-from hailo_apps.python.gen_ai_apps.agent_tools_example.hardware_interface import (
+# Import from local interface module
+from .interface import (
     create_led_controller,
 )
 from hailo_apps.python.gen_ai_apps.agent_tools_example import config
@@ -36,7 +36,9 @@ description: str = (
     "- color: OPTIONAL - only include if user specifies a color name\n"
     "- intensity: OPTIONAL - only include if user specifies brightness (0-100)\n"
     "\n"
-    "Color names: red, blue, green, yellow, purple, cyan, white, orange, pink, magenta, lime, teal, navy"
+    "Color names: red, blue, green, yellow, purple, cyan, white, orange, pink, magenta, lime, teal, navy\n\n"
+    "DEFAULT OPTION: If the user requests an unsupported color or operation, or if you cannot understand the LED control request, "
+    "set 'default' to true. The tool will automatically generate an appropriate error message."
 )
 
 # Color name to RGB mapping
@@ -109,7 +111,7 @@ schema: dict[str, Any] = {
         "action": {
             "type": "string",
             "enum": ["on", "off"],
-            "description": "Action: 'on' or 'off'. REQUIRED.",
+            "description": "Action: 'on' or 'off'. Required unless 'default' is used.",
         },
         "color": {
             "type": "string",
@@ -119,8 +121,15 @@ schema: dict[str, Any] = {
             "type": "number",
             "description": "Brightness 0-100. OPTIONAL.",
         },
+        "default": {
+            "type": "boolean",
+            "description": (
+                "Set to true when the user requests an unsupported color or operation, or if you cannot understand "
+                "the LED control request. The tool will automatically generate an appropriate error message."
+            ),
+        },
     },
-    "required": ["action"],
+    "required": [],
 }
 
 TOOLS_SCHEMA: list[dict[str, Any]] = [
@@ -142,9 +151,13 @@ def _color_name_to_rgb(color_name: str) -> tuple[int, int, int] | None:
 
 def _validate_input(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate input parameters."""
+    # If default is provided, action is not required
+    if payload.get("default") is True:
+        return {"ok": True, "data": {"action": None, "color": None, "intensity": None}}
+
     action = str(payload.get("action", "")).strip().lower()
     if action not in {"on", "off"}:
-        return {"ok": False, "error": "Invalid action. Use 'on' or 'off'."}
+        return {"ok": False, "error": "Either 'action' or 'default' must be provided. Action must be 'on' or 'off'."}
 
     color = payload.get("color")
     if color is not None:
@@ -171,11 +184,18 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     Execute RGB LED control operation.
 
     Args:
-        input_dict: Dictionary with action, color (optional), intensity (optional).
+        input_dict: Dictionary with action, color (optional), intensity (optional), or default.
 
     Returns:
         Dictionary with 'ok' and 'result' or 'error'.
     """
+    # Check for default option first (user error - agent correctly used default)
+    if input_dict.get("default") is True:
+        return {
+            "ok": True,  # Agent used tool correctly (default option)
+            "error": "I couldn't understand your request.",
+        }
+
     validated = _validate_input(input_dict)
     if not validated.get("ok"):
         return validated

@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# Import from parent package
-from hailo_apps.python.gen_ai_apps.agent_tools_example.elevator_interface import (
+# Import from local interface module
+from .interface import (
     create_elevator_controller,
     FLOORS,
 )
@@ -44,7 +44,11 @@ description: str = (
     "\n\n"
     "YOUR TASK: Interpret the user's request and call this tool with the integer floor number (0-5). "
     "Match room names, character names, keywords, or location descriptions to the correct floor. "
-    "Examples: 'Chocolate Room' → floor=1, 'squirrels' → floor=4, 'top floor' → floor=5, 'blueberry' → floor=2."
+    "Examples: 'Chocolate Room' → floor=1, 'squirrels' → floor=4, 'top floor' → floor=5, 'blueberry' → floor=2.\n\n"
+    "DEFAULT OPTION: If the user requests a floor number outside 0-5, or if you cannot determine which floor "
+    "the user wants (ambiguous request), set 'default' to true. "
+    "Use this when you cannot confidently map the user's request to a valid floor number. "
+    "The tool will automatically generate an appropriate error message."
 )
 
 # Initialize elevator controller only when tool is selected
@@ -92,10 +96,18 @@ schema: dict[str, Any] = {
     "properties": {
         "floor": {
             "type": "integer",
-            "description": "Floor number (0-5). Interpret user's request to determine floor.",
+            "description": "Floor number (0-5). Interpret user's request to determine floor. Required unless 'default' is used.",
+        },
+        "default": {
+            "type": "boolean",
+            "description": (
+                "Set to true when the user requests an invalid floor number or when you cannot determine "
+                "which floor the user wants. The tool will automatically generate an appropriate error message "
+                "with available floors (0-5)."
+            ),
         },
     },
-    "required": ["floor"],
+    "required": [],
 }
 
 TOOLS_SCHEMA: list[dict[str, Any]] = [
@@ -115,14 +127,21 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     Execute elevator navigation operation.
 
     Args:
-        input_dict: Dictionary with floor number.
+        input_dict: Dictionary with floor number or default message.
 
     Returns:
         Dictionary with 'ok' and 'result' or 'error'.
     """
+    # Check for default option first (user error - agent correctly used default)
+    if input_dict.get("default") is True:
+        return {
+            "ok": True,  # Agent used tool correctly (default option)
+            "error": f"I couldn't translate your question to the available floors.",
+        }
+
     floor_param = input_dict.get("floor")
     if floor_param is None:
-        return {"ok": False, "error": "Missing required 'floor' parameter"}
+        return {"ok": False, "error": "Either 'floor' or 'default' must be provided"}
 
     try:
         target_floor = int(floor_param)
