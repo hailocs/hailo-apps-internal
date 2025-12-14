@@ -29,6 +29,9 @@ tool_instructions: |
   - color: OPTIONAL - color name (red, blue, green, etc.)
   - intensity: OPTIONAL - brightness 0-100
 
+  DEFAULT OPTION: If the user requests an unsupported color or operation, or if you cannot understand
+  the LED control request, set 'default' to true. The tool will automatically generate an appropriate error message.
+
 few_shot_examples:
   - user: "Turn on the red LED at 50%"
     tool_call:
@@ -37,16 +40,60 @@ few_shot_examples:
         action: "on"
         color: "red"
         intensity: 50
-    tool_response: '{"ok": true, "result": "LED is now on, showing red at 50% brightness"}'
-    final_response: "Done! The LED is now red at 50% brightness."
 
   - user: "Turn off the light"
     tool_call:
       name: "rgb_led"
       arguments:
         action: "off"
-    tool_response: '{"ok": true, "result": "LED turned off"}'
-    final_response: "LED turned off."
+
+  - user: "Turn on the blue LED"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "on"
+        color: "blue"
+
+  - user: "Turn on the LED to color mauve"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        default: true
+
+  - user: "Set LED to green at 75% brightness"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "on"
+        color: "green"
+        intensity: 75
+
+  - user: "Turn on yellow LED"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "on"
+        color: "yellow"
+
+  - user: "Change the display brightness"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        default: true
+
+  - user: "Turn off the LED"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "off"
+
+  - user: "Set the LED to white at full brightness"
+    tool_call:
+      name: "rgb_led"
+      arguments:
+        action: "on"
+        color: "white"
+        intensity: 100
 
 test_cases:
   - id: "led_001"

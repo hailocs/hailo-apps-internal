@@ -28,6 +28,9 @@ tool_instructions: |
   - mode: REQUIRED - 'absolute' or 'relative'
   - angle: REQUIRED - angle in degrees
 
+  DEFAULT OPTION: If the user requests an angle outside -90 to 90 degrees, or if you cannot understand
+  the servo control request, set 'default' to true. The tool will automatically generate an appropriate error message.
+
 few_shot_examples:
   - user: "Move servo to 45 degrees"
     tool_call:
@@ -35,8 +38,6 @@ few_shot_examples:
       arguments:
         mode: "absolute"
         angle: 45
-    tool_response: '{"ok": true, "result": "Servo moved to 45.0°"}'
-    final_response: "Servo moved to 45°."
 
   - user: "Rotate servo left 30 degrees"
     tool_call:
@@ -44,8 +45,53 @@ few_shot_examples:
       arguments:
         mode: "relative"
         angle: -30
-    tool_response: '{"ok": true, "result": "Servo moved by -30.0° to 15.0°"}'
-    final_response: "Servo rotated left by 30°, now at 15°."
+
+  - user: "Move servo to 0 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        mode: "absolute"
+        angle: 0
+
+  - user: "Move servo to 120 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        default: true
+
+  - user: "Rotate servo right 15 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        mode: "relative"
+        angle: 15
+
+  - user: "Set servo to -45 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        mode: "absolute"
+        angle: -45
+
+  - user: "Adjust the motor"
+    tool_call:
+      name: "servo"
+      arguments:
+        default: true
+
+  - user: "Turn servo left 20 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        mode: "relative"
+        angle: -20
+
+  - user: "Move servo to 90 degrees"
+    tool_call:
+      name: "servo"
+      arguments:
+        mode: "absolute"
+        angle: 90
 
 test_cases:
   - id: "servo_001"

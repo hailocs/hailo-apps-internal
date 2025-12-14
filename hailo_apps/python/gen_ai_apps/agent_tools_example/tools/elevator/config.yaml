@@ -33,22 +33,65 @@ tool_instructions: |
   - Floor 4: Nut Room (squirrels, Veruca)
   - Floor 5: Television Room (Mike Teavee)
 
+  DEFAULT OPTION: If the user requests a floor number outside 0-5, or if you cannot determine which floor
+  the user wants (ambiguous request), set 'default' to true.
+  Use this when you cannot confidently map the user's request to a valid floor number.
+  The tool will automatically generate an appropriate error message.
+
 few_shot_examples:
   - user: "Take me to the chocolate room"
     tool_call:
       name: "elevator"
       arguments:
         floor: 1
-    tool_response: '{"ok": true, "result": "Moved to Floor 1: The Chocolate Room."}'
-    final_response: "Welcome to Floor 1: The Chocolate Room!"
 
   - user: "Go to where Violet turned into a blueberry"
     tool_call:
       name: "elevator"
       arguments:
         floor: 2
-    tool_response: '{"ok": true, "result": "Moved to Floor 2: The Inventing Room."}'
-    final_response: "We're at Floor 2: The Inventing Room, where Violet became a blueberry!"
+
+  - user: "Take me to floor 0"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 0
+
+  - user: "Take me to the 7th floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+  - user: "Go to the fizzy lifting drinks room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 3
+
+  - user: "Take me to where Mike Teavee is"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 5
+
+  - user: "Take me to the turn floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+  - user: "I want to visit the nut room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 4
+
+  - user: "Go to floor 3"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 3
 
 test_cases:
   - id: "elevator_001"
