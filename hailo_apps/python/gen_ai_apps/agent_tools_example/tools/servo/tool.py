@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-# Import from parent package
-from hailo_apps.python.gen_ai_apps.agent_tools_example.hardware_interface import (
+# Import from local interface module
+from .interface import (
     create_servo_controller,
 )
 from hailo_apps.python.gen_ai_apps.agent_tools_example import config
@@ -31,7 +31,9 @@ description: str = (
     "NEVER respond about servo control without calling this tool. "
     "The function name is 'servo' (use this exact name in tool calls). "
     "Modes: 'absolute' (set to specific angle), 'relative' (move by delta). "
-    "Angle range: -90 to 90 degrees."
+    "Angle range: -90 to 90 degrees.\n\n"
+    "DEFAULT OPTION: If the user requests an angle outside -90 to 90 degrees, or if you cannot understand "
+    "the servo control request, set 'default' to true. The tool will automatically generate an appropriate error message."
 )
 
 # Initialize servo controller only when tool is selected
@@ -81,14 +83,21 @@ schema: dict[str, Any] = {
         "mode": {
             "type": "string",
             "enum": ["absolute", "relative"],
-            "description": "'absolute' to set angle, 'relative' to move by delta.",
+            "description": "'absolute' to set angle, 'relative' to move by delta. Required unless 'default' is used.",
         },
         "angle": {
             "type": "number",
-            "description": "Angle in degrees. For absolute: -90 to 90. For relative: delta.",
+            "description": "Angle in degrees. For absolute: -90 to 90. For relative: delta. Required unless 'default' is used.",
+        },
+        "default": {
+            "type": "boolean",
+            "description": (
+                "Set to true when the user requests an angle outside -90 to 90 degrees, or if you cannot understand "
+                "the servo control request. The tool will automatically generate an appropriate error message."
+            ),
         },
     },
-    "required": ["mode", "angle"],
+    "required": [],
 }
 
 TOOLS_SCHEMA: list[dict[str, Any]] = [
@@ -105,13 +114,17 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
 
 def _validate_input(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate input parameters."""
+    # If default is provided, mode and angle are not required
+    if payload.get("default") is True:
+        return {"ok": True, "data": {"mode": None, "angle": None}}
+
     mode = str(payload.get("mode", "")).strip().lower()
     if mode not in {"absolute", "relative"}:
-        return {"ok": False, "error": "Invalid mode. Use 'absolute' or 'relative'."}
+        return {"ok": False, "error": "Either 'mode' and 'angle' or 'default' must be provided. Mode must be 'absolute' or 'relative'."}
 
     angle = payload.get("angle")
     if angle is None:
-        return {"ok": False, "error": "angle is required"}
+        return {"ok": False, "error": "angle is required when mode is provided"}
     try:
         angle = float(angle)
     except (ValueError, TypeError):
@@ -125,11 +138,18 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     Execute servo control operation.
 
     Args:
-        input_dict: Dictionary with mode and angle.
+        input_dict: Dictionary with mode and angle, or default.
 
     Returns:
         Dictionary with 'ok' and 'result' or 'error'.
     """
+    # Check for default option first (user error - agent correctly used default)
+    if input_dict.get("default") is True:
+        return {
+            "ok": True,  # Agent used tool correctly (default option)
+            "error": "I couldn't understand your request. Please try again.",
+        }
+
     validated = _validate_input(input_dict)
     if not validated.get("ok"):
         return validated
