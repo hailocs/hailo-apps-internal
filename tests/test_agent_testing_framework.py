@@ -54,7 +54,7 @@ class TestCalculateMetrics:
 
     def test_empty_results(self):
         """Empty results returns empty dict."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             calculate_metrics,
         )
 
@@ -63,7 +63,7 @@ class TestCalculateMetrics:
 
     def test_all_passing(self):
         """All passing tests should have 100% accuracy."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             calculate_metrics,
         )
 
@@ -95,7 +95,7 @@ class TestCalculateMetrics:
 
     def test_mixed_results(self):
         """Mixed results calculates correct percentages."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             calculate_metrics,
         )
 
@@ -125,7 +125,7 @@ class TestCalculateMetrics:
 
     def test_latency_calculations(self):
         """Latency metrics are calculated correctly."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             calculate_metrics,
         )
 
@@ -167,7 +167,7 @@ class TestEvaluateResponse:
 
     def test_tool_called_check(self):
         """Check tool_called expectation."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             evaluate_response,
         )
 
@@ -181,7 +181,7 @@ class TestEvaluateResponse:
 
     def test_tool_name_check(self):
         """Check tool_name expectation."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             evaluate_response,
         )
 
@@ -198,7 +198,7 @@ class TestScoreState:
 
     def test_perfect_score(self):
         """Perfect metrics should give high score."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             score_state,
         )
 
@@ -214,7 +214,7 @@ class TestScoreState:
 
     def test_empty_metrics(self):
         """Empty metrics returns 0."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.metrics import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.metrics import (
             score_state,
         )
 
@@ -228,7 +228,7 @@ class TestBenchmarkResult:
 
     def test_pass_rate_calculation(self):
         """Pass rate is calculated correctly."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.benchmark import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.benchmark import (
             BenchmarkResult,
         )
 
@@ -244,7 +244,7 @@ class TestBenchmarkResult:
 
     def test_pass_rate_zero_tests(self):
         """Zero tests returns 0% pass rate."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.benchmark import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.benchmark import (
             BenchmarkResult,
         )
 
@@ -258,7 +258,7 @@ class TestBenchmarkResult:
 
     def test_to_dict(self):
         """to_dict returns serializable dict."""
-        from hailo_apps.python.standalone_apps.agent_tools_example.testing.benchmark import (
+        from hailo_apps.python.gen_ai_apps.agent_tools_example.testing.benchmark import (
             BenchmarkResult,
         )
 
