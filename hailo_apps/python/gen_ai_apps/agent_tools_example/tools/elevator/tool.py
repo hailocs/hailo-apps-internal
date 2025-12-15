@@ -44,6 +44,9 @@ def _get_description() -> str:
     return (
         "CRITICAL: You MUST use this tool when the user asks to navigate, move, or go to any floor or room in Willy Wonka's factory. "
         "ALWAYS call this tool for elevator/floor requests. The function name is 'elevator'.\n\n"
+        "RELATIVE MOVES: When the user requests to move up or down a certain number of floors (e.g., 'go up 2 floors', 'move down 1 floor'), "
+        "use the 'relative_floor' parameter with a positive integer for moving up or negative integer for moving down. "
+        "For example: 'go up 2 floors' → relative_floor: 2, 'move down 1 floor' → relative_floor: -1.\n\n"
         f"DEFAULT OPTION: If the user requests a floor number outside the available range ({floor_range}), "
         "or if you cannot determine which floor the user wants (ambiguous request), set 'default' to true. "
         "Use this when you cannot confidently map the user's request to a valid floor number. "
@@ -105,7 +108,15 @@ def _get_schema() -> dict[str, Any]:
         "properties": {
             "floor": {
                 "type": "integer",
-                "description": f"Floor number ({floor_range_str}). Interpret user's request to determine floor. Required unless 'default' is used.",
+                "description": f"Floor number ({floor_range_str}). Interpret user's request to determine floor. Use this for absolute floor numbers. Mutually exclusive with 'relative_floor'.",
+            },
+            "relative_floor": {
+                "type": "integer",
+                "description": (
+                    f"Relative floor movement. Positive integer to move up (e.g., 2 = go up 2 floors), "
+                    f"negative integer to move down (e.g., -1 = go down 1 floor). "
+                    f"Mutually exclusive with 'floor'. The tool will calculate the target floor based on current position."
+                ),
             },
             "default": {
                 "type": "boolean",
@@ -139,7 +150,7 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
     Execute elevator navigation operation.
 
     Args:
-        input_dict: Dictionary with floor number or default message.
+        input_dict: Dictionary with floor number, relative_floor, or default message.
 
     Returns:
         Dictionary with 'ok' and 'result' or 'error'.
@@ -152,9 +163,55 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
         }
 
     floor_param = input_dict.get("floor")
-    if floor_param is None:
-        return {"ok": False, "error": "Either 'floor' or 'default' must be provided"}
+    relative_floor_param = input_dict.get("relative_floor")
 
+    # Validate that only one navigation method is provided
+    if floor_param is not None and relative_floor_param is not None:
+        return {"ok": False, "error": "Cannot specify both 'floor' and 'relative_floor' parameters. Use only one."}
+
+    if floor_param is None and relative_floor_param is None:
+        return {"ok": False, "error": "Either 'floor', 'relative_floor', or 'default' must be provided"}
+
+    try:
+        elevator = _get_elevator_controller()
+    except Exception as e:
+        return {"ok": False, "error": f"Elevator controller unavailable: {e}"}
+
+    current_state = elevator.get_state()
+    current_floor = current_state["current_floor"]
+
+    # Handle relative floor movement
+    if relative_floor_param is not None:
+        try:
+            relative_floors = int(relative_floor_param)
+        except (ValueError, TypeError):
+            return {"ok": False, "error": f"Invalid relative_floor '{relative_floor_param}'. Must be an integer."}
+
+        if relative_floors == 0:
+            return {"ok": True, "result": f"You are already on Floor {current_floor}: {FLOORS[current_floor]['name']}."}
+
+        target_floor = current_floor + relative_floors
+
+        if not FLOORS or target_floor not in FLOORS:
+            floor_range = f"{min(FLOORS.keys()) if FLOORS else 0}-{max(FLOORS.keys()) if FLOORS else 5}"
+            direction = "up" if relative_floors > 0 else "down"
+            return {
+                "ok": False,
+                "error": (
+                    f"Cannot move {abs(relative_floors)} floor(s) {direction} from Floor {current_floor}. "
+                    f"Target floor {target_floor} is outside the available range ({floor_range})."
+                ),
+            }
+
+        floor_info = FLOORS[target_floor]
+        elevator.move_to_floor(target_floor)
+        direction_str = "up" if relative_floors > 0 else "down"
+        return {
+            "ok": True,
+            "result": f"Moved {direction_str} {abs(relative_floors)} floor(s) to Floor {target_floor}: {floor_info['name']}.",
+        }
+
+    # Handle absolute floor movement
     try:
         target_floor = int(floor_param)
     except (ValueError, TypeError):
@@ -165,14 +222,6 @@ def run(input_dict: dict[str, Any]) -> dict[str, Any]:
         floor_range = f"{min(FLOORS.keys()) if FLOORS else 0}-{max(FLOORS.keys()) if FLOORS else 5}"
         return {"ok": False, "error": f"Invalid floor {target_floor}. Must be {floor_range}."}
 
-
-    try:
-        elevator = _get_elevator_controller()
-    except Exception as e:
-        return {"ok": False, "error": f"Elevator controller unavailable: {e}"}
-
-    current_state = elevator.get_state()
-    current_floor = current_state["current_floor"]
     floor_info = FLOORS[target_floor]
 
     if current_floor == target_floor:
