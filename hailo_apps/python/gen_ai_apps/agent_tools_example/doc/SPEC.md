@@ -92,7 +92,7 @@ This specification describes a comprehensive update to the agent tools infrastru
 | File                                                | Purpose                      | Status                             |
 | --------------------------------------------------- | ---------------------------- | ---------------------------------- |
 | [`agent.py`](../agent.py)                           | Unified agent (text + voice) | ✅ Implemented                      |
-| [`config.py`](../config.py)                         | Python configuration         | → `agent_config.yaml`              |
+| [`config.py`](../config.py)                         | Python configuration         | ✅ Implemented                      |
 | [`system_prompt.py`](../system_prompt.py)           | System prompt builder        | → Updated to use YAML              |
 | [`tool_math.py`](../tool_math.py)                   | Math tool                    | → `tools/math/tool.py`             |
 | [`tool_weather.py`](../tool_weather.py)             | Weather tool                 | → `tools/weather/tool.py`          |
@@ -365,32 +365,15 @@ metadata:
   description: "Math tool configuration with optimized prompts"
 ```
 
-### 6.2 Base Agent Configuration (`agent_config.yaml`)
+### 6.2 Base Agent Configuration
 
-```yaml
-# agent_config.yaml
-version: "1.0"
+Agent configuration is managed through Python constants in [`config.py`](../config.py), including:
+- LLM parameters: `TEMPERATURE`, `SEED`, `MAX_GENERATED_TOKENS`
+- Context management: `CONTEXT_THRESHOLD`
+- Hardware settings: `HARDWARE_MODE`, `NEOPIXEL_SPI_BUS`, `SERVO_PWM_CHANNEL`, etc.
+- Voice settings: `ENABLE_VOICE`, `ENABLE_TTS`
 
-llm:
-  default_model: "Qwen2.5-Coder-1.5B-Instruct"
-  temperature: 0.1
-  max_tokens: 200
-  seed: 42
-
-context:
-  threshold: 0.95           # Clear at 95% capacity
-  # Note: Currently all queries reload state (fresh mode). Continue mode not yet implemented.
-
-voice:
-  whisper_model: "Whisper-Base"
-  enable_tts: true
-  tts_model: "en_US-amy-low"
-
-hardware:
-  mode: "simulator"         # "real" or "simulator"
-  led_spi_bus: 0
-  servo_pwm_channel: 0
-```
+See [`config.py`](../config.py) for all available configuration options.
 
 ---
 
@@ -748,7 +731,7 @@ class InteractionCollector:
 agent_tools_example/
 │
 ├── agent.py                        # Unified agent (text + voice)
-├── agent_config.yaml               # Base configuration
+├── config.py                       # Python configuration constants
 ├── state_manager.py                # State save/load management
 │
 ├── tools/
