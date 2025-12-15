@@ -20,37 +20,42 @@ For full GenAI applications, please see: [VLM full application](../vlm_chat) and
 Demonstrates text-based conversation with an AI assistant.
 
 ```bash
-python llm_chat.py
+python -m hailo_apps.python.gen_ai_apps.examples.llm_chat
 ```
 
 **Features:**
 - Simple text prompt processing
 - Configurable temperature and token limits
 - System message for assistant behavior definition
+- Auto-downloads model on first run
 
 ### VLM Chat (`vlm_chat.py`)
 Analyzes and describes images using vision-language models.
 
 ```bash
-python vlm_chat.py
+python -m hailo_apps.python.gen_ai_apps.examples.vlm_chat
 ```
 
 **Features:**
 - Image loading and preprocessing
 - Visual question answering
 - Image description generation
+- Uses example image from doc/images/ directory
+- Auto-downloads model on first run
 
 ### Whisper Chat (`whisper_chat.py`)
 Transcribes audio files to text using Whisper models.
 
 ```bash
-python whisper_chat.py
+python -m hailo_apps.python.gen_ai_apps.examples.whisper_chat --audio audio.wav
 ```
 
 **Features:**
 - Audio file loading and processing
 - Speech-to-text transcription
 - Segment-based output
+- Default audio file: `audio.wav` (in examples directory)
+- Auto-downloads model on first run
 
 ## Prerequisites
 
@@ -58,18 +63,20 @@ python whisper_chat.py
 - Hailo AI accelerator device (H10 or compatible)
 
 ### Software Requirements
-- Python 3.8+
+- Python 3.10+
 - Hailo Platform SDK
-- Required Python packages:
-  ```bash
-  pip install opencv-python open-webui
-  ```
+- Required Python packages (installed with main package):
+  - OpenCV (opencv-python)
+  - NumPy
 
 ### Model Requirements
-All examples use models that should be available in your Hailo resources directory:
-- LLM/VLM: Uses `VLM_MODEL_NAME_H10` model
-- Whisper: Uses `WHISPER_MODEL_NAME_H10` model
-- Open WebUI: Uses models from Hailo GenAI Model Zoo
+All examples use models that are automatically downloaded on first run:
+- **LLM**: Uses `LLM_MODEL_NAME_H10` model (auto-downloaded)
+- **VLM**: Uses `VLM_MODEL_NAME_H10` model (auto-downloaded)
+- **Whisper**: Uses `WHISPER_MODEL_NAME_H10` model (auto-downloaded)
+- **Open WebUI**: Uses models from Hailo GenAI Model Zoo
+
+**Note:** Models are downloaded automatically when you run each example for the first time. No manual download required.
 
 ## Troubleshooting
 

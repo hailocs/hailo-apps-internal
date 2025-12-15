@@ -16,7 +16,7 @@ The package is organized into the following modules:
 Provides components for building voice-enabled applications.
 
 - **`VoiceInteractionManager`**: Manages the interaction loop, recording, and UI.
-- **`AudioRecorder`**: Handles microphone recording using PyAudio.
+- **`AudioRecorder`**: Handles microphone recording using sounddevice.
 - **`SpeechToTextProcessor`**: Wraps Hailo's Speech2Text API (Whisper).
 - **`TextToSpeechProcessor`**: Handles speech synthesis using Piper TTS.
 

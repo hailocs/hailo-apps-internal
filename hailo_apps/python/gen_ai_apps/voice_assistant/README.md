@@ -9,11 +9,11 @@ An interactive voice-controlled AI assistant using Hailo's Speech-to-Text and La
 Before running the voice assistant, you must install the Piper TTS voice model.
 
 **For installation instructions, see:**
-- [Voice Processing Module Documentation](../../core/gen_ai_utils/voice_processing/README.md)
+- [Voice Processing Module Documentation](../gen_ai_utils/voice_processing/README.md)
 
 The application will check for the model on startup and display an error with instructions if it's missing.
 
-The voice assistant uses the shared voice processing module from `hailo_apps.python.core.gen_ai_utils.voice_processing`.
+The voice assistant uses the shared voice processing module from `hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing`.
 
 ## Microphone quality
 
@@ -92,14 +92,14 @@ ctl.!default {
 - **Interactive voice mode** - press Space to start/stop recording
 - **Streaming text-to-speech** - responsive audio playback with interruption support
 - **Context management** - maintains conversation history with clear option
-- **Debug mode** - saves recorded audio for analysis
+- **Debug logging** - detailed logging for troubleshooting (use `--debug` or `--log-level DEBUG`)
 - **Low-resource mode** - optional TTS disable for reduced system load
 
 ## Requirements
 
 - Hailo AI processor and SDK
-- Python 3.8+
-- PyAudio
+- Python 3.10+
+- sounddevice (for audio I/O)
 - NumPy
 - Piper TTS (for voice synthesis)
 - Hailo Platform libraries
@@ -112,13 +112,14 @@ ctl.!default {
 
 1. Run the application:
    ```bash
-   python voice_assistant.py
+   python -m hailo_apps.python.gen_ai_apps.voice_assistant.voice_assistant
    ```
 
 2. Optional flags:
    ```bash
-   python voice_assistant.py --debug      # Enable audio file saving
-   python voice_assistant.py --no-tts     # Disable text-to-speech
+   python -m hailo_apps.python.gen_ai_apps.voice_assistant.voice_assistant --debug      # Enable debug logging
+   python -m hailo_apps.python.gen_ai_apps.voice_assistant.voice_assistant --no-tts     # Disable text-to-speech
+   python -m hailo_apps.python.gen_ai_apps.voice_assistant.voice_assistant --log-level DEBUG  # Set log level
    ```
 
 3. **Interactive controls**:

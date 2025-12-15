@@ -45,6 +45,7 @@ dev = [
 gen-ai = [
     "PyAudio",
     "piper-tts",
+    "sounddevice==0.5.1",
 ]
 
 # OCR dependencies - install with: pip install -e ".[ocr]"

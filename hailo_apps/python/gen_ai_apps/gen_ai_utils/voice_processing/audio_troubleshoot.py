@@ -6,12 +6,10 @@ Diagnoses microphone and speaker issues, tests hardware, and recommends fixes.
 """
 
 import argparse
-import importlib
 import logging
 import platform
 import re
 import sys
-import time
 
 try:
     from .audio_diagnostics import AudioDiagnostics
@@ -28,14 +26,25 @@ except ImportError as e:
         missing_deps.append("numpy")
 
     if missing_deps:
-        print("❌ Missing required dependencies!")
-        print(f"   Missing: {', '.join(missing_deps)}")
-        print("\n   To install dependencies:")
-        print("   1. Navigate to the repository root directory")
-        print("   2. Run: pip install -e \".[gen-ai]\"")
-        print("\n   Or install individually:")
-        for dep in missing_deps:
-            print(f"   pip install {dep}")
+        print("\n" + "="*70)
+        print("❌ MISSING REQUIRED DEPENDENCIES")
+        print("="*70)
+        print("\nThe following dependencies are required but not installed:")
+        for missing_dep in missing_deps:
+            print(f"  • {missing_dep}")
+        print("\n" + "-"*70)
+        print("INSTALLATION INSTRUCTIONS:")
+        print("-"*70)
+        print("\nTo install all GenAI dependencies (recommended):")
+        print("  1. Navigate to the repository root directory")
+        print("  2. Run: pip install -e \".[gen-ai]\"")
+        print("\nThis will install:")
+        print("  • sounddevice (for audio I/O)")
+        print("  • piper-tts (for text-to-speech)")
+        print("  • All other GenAI dependencies")
+        print("\nFor detailed installation instructions, see:")
+        print("  hailo_apps/python/gen_ai_apps/README.md")
+        print("\n" + "="*70)
         sys.exit(1)
     else:
         raise
@@ -129,46 +138,11 @@ def print_device_table(devices, title):
         print(f"{dev.id:<4} {dev.name[:38]:<40} {dev.max_input_channels if 'Input' in title else dev.max_output_channels:<5} {int(dev.default_samplerate):<8} {is_def:<5} {dev.score:<5}")
 
 
-def check_dependencies():
-    """
-    Check if required dependencies are available.
-
-    Returns:
-        Tuple[bool, List[str]]: (All dependencies available, List of missing dependencies)
-    """
-    missing = []
-    required = {
-        'sounddevice': 'sounddevice',
-        'numpy': 'numpy',
-    }
-
-    for package_name, import_name in required.items():
-        try:
-            importlib.import_module(import_name)
-        except ImportError:
-            missing.append(package_name)
-
-    return len(missing) == 0, missing
-
-
 def run_diagnostics(args):
     print_header("Hailo Audio Troubleshooter")
 
     print(f"System: {platform.system()} {platform.release()} ({platform.machine()})")
     print(f"Python: {sys.version.split()[0]}")
-
-    # Check dependencies first
-    deps_ok, missing_deps = check_dependencies()
-    if not deps_ok:
-        print("\n❌ Missing required dependencies!")
-        print(f"   Missing: {', '.join(missing_deps)}")
-        print("\n   To install dependencies:")
-        print("   1. Navigate to the repository root directory")
-        print("   2. Run: pip install -e \".[gen-ai]\"")
-        print("\n   Or install individually:")
-        for dep in missing_deps:
-            print(f"   pip install {dep}")
-        sys.exit(1)
 
     # 1. Enumerate Devices
     print_header("1. Device Enumeration")
@@ -428,13 +402,17 @@ def run_auto_configure(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Hailo Audio Troubleshooting Tool")
+    parser = argparse.ArgumentParser(
+        description="Hailo Audio Troubleshooting Tool",
+        epilog="For installation instructions, see: hailo_apps/python/gen_ai_apps/README.md"
+    )
     parser.add_argument("--no-interactive", action="store_true", help="Skip interactive tests")
     parser.add_argument("--configure", action="store_true", help="Run USB audio auto-configuration for RPi")
     parser.add_argument("--auto-fix", action="store_true", help="Automatically fix issues (requires sudo)")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompts")
     args = parser.parse_args()
 
+    # Dependencies are checked at import time - if we got here, they're available
     try:
         if args.configure:
             run_auto_configure(args)
@@ -442,6 +420,19 @@ def main():
             run_diagnostics(args)
     except KeyboardInterrupt:
         print("\nInterrupted.")
+    except ImportError as e:
+        # Catch any other import errors that might occur
+        print("\n" + "="*70)
+        print("❌ IMPORT ERROR")
+        print("="*70)
+        print(f"\nFailed to import required module: {e}")
+        print("\nThis usually means dependencies are missing.")
+        print("\nPlease install GenAI dependencies:")
+        print("  pip install -e \".[gen-ai]\"")
+        print("\nFor detailed installation instructions, see:")
+        print("  hailo_apps/python/gen_ai_apps/README.md")
+        print("\n" + "="*70)
+        sys.exit(1)
     except Exception as e:
         logger.exception(f"Unexpected error: {e}")
 
