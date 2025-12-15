@@ -211,15 +211,18 @@ class SimulatedElevator(ElevatorInterface):
             background: #222;
             position: relative;
             margin-left: 80px;
+            min-width: 500px;
         }
         .floor {
             display: flex;
+            flex-direction: row;
             align-items: center;
             padding: 15px 20px;
             border-top: 2px solid #333;
-            min-height: 60px;
+            min-height: 80px;
             transition: all 0.3s ease;
             background: #2a2a2a;
+            position: relative;
         }
         .floor:first-child {
             border-top: none;
@@ -230,25 +233,43 @@ class SimulatedElevator(ElevatorInterface):
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
         }
         .floor-number {
-            font-size: 24px;
+            font-size: 36px;
             font-weight: bold;
-            width: 50px;
+            width: 60px;
             text-align: center;
             color: #ffd700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
         }
         .floor.current .floor-number {
             color: #fff;
         }
-        .floor-name {
-            font-size: 16px;
-            text-align: left;
-            color: #ccc;
+        .floor-content {
+            display: flex;
+            flex-direction: column;
             flex: 1;
             padding-left: 20px;
+        }
+        .floor-name {
+            font-size: 20px;
+            text-align: left;
+            color: #ccc;
+            margin-bottom: 4px;
         }
         .floor.current .floor-name {
             color: #fff;
             font-weight: bold;
+        }
+        .floor-description {
+            font-size: 14px;
+            color: #aaa;
+            text-align: left;
+            line-height: 1.4;
+        }
+        .floor.current .floor-description {
+            color: #ddd;
         }
         .content-wrapper {
             display: flex;
@@ -257,26 +278,6 @@ class SimulatedElevator(ElevatorInterface):
             gap: 40px;
             width: 100%;
             justify-content: center;
-        }
-        .info-panel {
-            margin-top: 0;
-            padding: 20px;
-            background: #2a2a2a;
-            border: 2px solid #444;
-            border-radius: 10px;
-            text-align: left;
-            width: 400px;
-            flex-shrink: 0;
-        }
-        .info-title {
-            font-size: 24px;
-            color: #ffd700;
-            margin-bottom: 10px;
-        }
-        .info-description {
-            font-size: 16px;
-            color: #ccc;
-            line-height: 1.6;
         }
         .elevator-indicator {
             position: absolute;
@@ -309,11 +310,6 @@ class SimulatedElevator(ElevatorInterface):
                 </div>
                 <div class="elevator-indicator" id="elevator">🛗</div>
             </div>
-
-            <div class="info-panel">
-                <div class="info-title" id="floor-title">The Chocolate Room</div>
-                <div class="info-description" id="floor-description">Loading...</div>
-            </div>
         </div>
     </div>
     <script>
@@ -333,8 +329,6 @@ class SimulatedElevator(ElevatorInterface):
                 })
                 .then(data => {
                     const building = document.getElementById('building');
-                    const floorTitle = document.getElementById('floor-title');
-                    const floorDescription = document.getElementById('floor-description');
                     const elevator = document.getElementById('elevator');
 
                     // Clear and rebuild floors
@@ -350,22 +344,29 @@ class SimulatedElevator(ElevatorInterface):
                             floorDiv.className += ' current';
                         }
 
+                        // Add floor number (vertically centered)
                         const floorNumber = document.createElement('div');
                         floorNumber.className = 'floor-number';
                         floorNumber.textContent = i;
+                        floorDiv.appendChild(floorNumber);
+
+                        // Create floor content container (name + description)
+                        const floorContent = document.createElement('div');
+                        floorContent.className = 'floor-content';
 
                         const floorName = document.createElement('div');
                         floorName.className = 'floor-name';
                         floorName.textContent = data.floors[i].name;
+                        floorContent.appendChild(floorName);
 
-                        floorDiv.appendChild(floorNumber);
-                        floorDiv.appendChild(floorName);
+                        const floorDescription = document.createElement('div');
+                        floorDescription.className = 'floor-description';
+                        floorDescription.textContent = data.floors[i].description || '';
+                        floorContent.appendChild(floorDescription);
+
+                        floorDiv.appendChild(floorContent);
                         building.appendChild(floorDiv);
                     }
-
-                    // Update info panel
-                    floorTitle.textContent = data.current_floor_info.name;
-                    floorDescription.textContent = data.current_floor_info.description;
 
                     // Update elevator position (visual indicator)
                     // Calculate position based on current floor

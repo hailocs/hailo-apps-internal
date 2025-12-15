@@ -53,7 +53,7 @@ def execute_tool_call(
     if not isinstance(args, dict):
         return {"ok": False, "error": f"Invalid arguments format for tool '{tool_name}': expected dictionary, got {type(args).__name__}"}
 
-    logger.info("Tool call: %s", tool_name)
+    logger.debug("Tool call: %s", tool_name)
     logger.debug("Args: %s", json.dumps(args, ensure_ascii=False))
 
     selected = tools_lookup.get(tool_name)

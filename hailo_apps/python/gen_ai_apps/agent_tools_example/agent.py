@@ -584,7 +584,7 @@ class AgentApp:
             )
 
         # Log tool call for debugging
-        logger.info("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
+        logger.debug("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
         if self.debug:
             logger.debug("Parsed tool call: %s", json.dumps(tool_call, indent=2))
 
@@ -747,7 +747,7 @@ def main() -> None:
 
     # Resolve LLM HEF path
     llm_hef_path = resolve_hef_path(
-        hef_path=args.hef_path if args.hef_path else "Qwen2.5-Coder-1.5B-Instruct",
+        hef_path=args.hef_path,
         app_name=AGENT_APP,
         arch=HAILO10H_ARCH,
     )
