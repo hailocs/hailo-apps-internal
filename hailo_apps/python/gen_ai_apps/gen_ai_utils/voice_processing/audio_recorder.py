@@ -7,9 +7,14 @@ Handles microphone recording and audio processing using sounddevice.
 import logging
 from datetime import datetime
 import wave
+from typing import Optional
+
+# Check dependencies before importing them
+from .audio_diagnostics import check_voice_dependencies
+check_voice_dependencies()
+
 import numpy as np
 import sounddevice as sd
-from typing import Optional
 
 from hailo_apps.python.core.common.defines import TARGET_SR, CHUNK_SIZE
 from .audio_diagnostics import AudioDiagnostics

@@ -5,10 +5,65 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+
+# Default required dependencies for voice processing modules
+_VOICE_DEPENDENCIES = ['sounddevice', 'numpy']
+
+
+def check_voice_dependencies(required_deps: List[str] = None) -> None:
+    """
+    Check for required voice processing dependencies and exit with helpful error if missing.
+
+    Args:
+        required_deps: List of dependency names to check. Defaults to _VOICE_DEPENDENCIES.
+
+    This function will:
+    - Check if each dependency can be imported
+    - Display a formatted error message if any are missing
+    - Exit with code 1 if dependencies are missing
+    - Return normally if all dependencies are available
+    """
+    if required_deps is None:
+        required_deps = _VOICE_DEPENDENCIES
+
+    missing_deps = []
+    for dep_name in required_deps:
+        try:
+            __import__(dep_name)
+        except ImportError:
+            missing_deps.append(dep_name)
+
+    if missing_deps:
+        print("\n" + "="*70)
+        print("❌ MISSING REQUIRED DEPENDENCIES")
+        print("="*70)
+        print("\nThe following dependencies are required but not installed:")
+        for dep in missing_deps:
+            print(f"  • {dep}")
+        print("\n" + "-"*70)
+        print("INSTALLATION INSTRUCTIONS:")
+        print("-"*70)
+        print("\nTo install all GenAI dependencies (recommended):")
+        print("  1. Navigate to the repository root directory")
+        print("  2. Run: pip install -e \".[gen-ai]\"")
+        print("\nThis will install:")
+        print("  • sounddevice (for audio I/O)")
+        print("  • piper-tts (for text-to-speech)")
+        print("  • All other GenAI dependencies")
+        print("\nFor detailed installation instructions, see:")
+        print("  hailo_apps/python/gen_ai_apps/README.md")
+        print("\n" + "="*70)
+        sys.exit(1)
+
+
+# Check for required dependencies and provide helpful error messages if missing
+check_voice_dependencies()
 
 import numpy as np
 import sounddevice as sd

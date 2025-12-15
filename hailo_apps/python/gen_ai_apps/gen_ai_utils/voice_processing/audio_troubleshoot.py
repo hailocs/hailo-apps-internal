@@ -11,43 +11,8 @@ import platform
 import re
 import sys
 
-try:
-    from .audio_diagnostics import AudioDiagnostics
-except ImportError as e:
-    # Check if it's a missing dependency issue
-    missing_deps = []
-    try:
-        import sounddevice
-    except ImportError:
-        missing_deps.append("sounddevice")
-    try:
-        import numpy
-    except ImportError:
-        missing_deps.append("numpy")
-
-    if missing_deps:
-        print("\n" + "="*70)
-        print("❌ MISSING REQUIRED DEPENDENCIES")
-        print("="*70)
-        print("\nThe following dependencies are required but not installed:")
-        for missing_dep in missing_deps:
-            print(f"  • {missing_dep}")
-        print("\n" + "-"*70)
-        print("INSTALLATION INSTRUCTIONS:")
-        print("-"*70)
-        print("\nTo install all GenAI dependencies (recommended):")
-        print("  1. Navigate to the repository root directory")
-        print("  2. Run: pip install -e \".[gen-ai]\"")
-        print("\nThis will install:")
-        print("  • sounddevice (for audio I/O)")
-        print("  • piper-tts (for text-to-speech)")
-        print("  • All other GenAI dependencies")
-        print("\nFor detailed installation instructions, see:")
-        print("  hailo_apps/python/gen_ai_apps/README.md")
-        print("\n" + "="*70)
-        sys.exit(1)
-    else:
-        raise
+# Dependencies are checked in audio_diagnostics.py when it's imported
+from .audio_diagnostics import AudioDiagnostics
 
 # Configure logging
 logging.basicConfig(

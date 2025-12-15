@@ -12,6 +12,10 @@ import time
 import wave
 from typing import Optional, Union
 
+# Check dependencies before importing them
+from .audio_diagnostics import check_voice_dependencies
+check_voice_dependencies()
+
 import numpy as np
 import sounddevice as sd
 
