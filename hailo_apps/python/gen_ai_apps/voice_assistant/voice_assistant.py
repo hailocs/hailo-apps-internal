@@ -122,7 +122,7 @@ class VoiceAssistantApp:
             llm=self.llm,
             prompt=formatted_prompt,
             prefix="", # No prefix for this app
-            debug_mode=self.debug,
+            show_raw_stream=self.debug,  # Show raw stream in debug mode
             token_callback=tts_callback,
             abort_callback=self.abort_event.is_set
         )

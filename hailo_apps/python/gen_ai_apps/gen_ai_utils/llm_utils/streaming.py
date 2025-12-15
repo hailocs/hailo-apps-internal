@@ -27,7 +27,8 @@ class StreamingTextFilter:
         Initialize the streaming text filter.
 
         Args:
-            debug_mode (bool): If True, pass through all tokens without filtering.
+            debug_mode (bool): If True, disables all filtering logic and returns
+                tokens unchanged. Used for debugging the filter itself.
         """
         self.buffer = ""
         self.inside_text_tag = False
@@ -45,6 +46,7 @@ class StreamingTextFilter:
 
         Returns:
             str: Cleaned text to print (may be empty if token should be suppressed).
+                In debug_mode, returns token unchanged (no filtering).
         """
         # In debug mode, don't filter anything - show raw output
         if self.debug_mode:
@@ -214,9 +216,9 @@ def generate_and_stream_response(
     seed: int = 42,
     max_tokens: int = 200,
     prefix: str = "Assistant: ",
-    debug_mode: bool = False,
     token_callback: Optional[Callable[[str], None]] = None,
     abort_callback: Optional[Callable[[], bool]] = None,
+    show_raw_stream: bool = True,
 ) -> str:
     """
     Generate response from LLM and stream it to stdout with filtering.
@@ -230,18 +232,21 @@ def generate_and_stream_response(
         seed (int): Random seed. Defaults to 42.
         max_tokens (int): Maximum tokens to generate. Defaults to 200.
         prefix (str): Prefix to print before streaming. Defaults to "Assistant: ".
-        debug_mode (bool): If True, don't filter tokens (show raw output).
         token_callback (Optional[Callable[[str], None]]): Optional callback function
             called with each cleaned token/chunk. Useful for TTS integration.
+            Callbacks always receive filtered output (tool calls are filtered out).
         abort_callback (Optional[Callable[[], bool]]): Optional callback function
             that returns True if generation should be aborted.
+        show_raw_stream (bool): If True (default), prints raw tokens in real-time
+            including tool calls for visibility. Filtering still runs for callbacks.
+            If False, prints only filtered/cleaned tokens.
 
     Returns:
         str: Raw response string (before filtering, for tool call parsing).
     """
     print(prefix, end="", flush=True)
     response_parts: List[str] = []
-    token_filter = StreamingTextFilter(debug_mode=debug_mode)
+    token_filter = StreamingTextFilter()  # Always filter for callbacks
 
     # Get recovery sequence to filter it out
     recovery_seq = None
@@ -269,25 +274,33 @@ def generate_and_stream_response(
                 continue
 
             response_parts.append(token)
-            # Filter and print clean tokens on the fly
-            cleaned_chunk = token_filter.process_token(token)
-            if cleaned_chunk:
-                print(cleaned_chunk, end="", flush=True)
-                if token_callback:
-                    token_callback(cleaned_chunk)
 
-    # Print any remaining content after streaming
-    remaining = token_filter.get_remaining()
-    if remaining:
-        # Final cleanup: remove any remaining XML tags and partial tags
-        if not debug_mode:
-            # Remove complete tags and partial tags (handles cases like </text>, </text, text>, etc.)
+            # Filter token to get cleaned chunk (for callbacks)
+            cleaned_chunk = token_filter.process_token(token)
+
+            # Print output: raw tokens if show_raw_stream, otherwise filtered tokens
+            if show_raw_stream:
+                print(token, end="", flush=True)
+            else:
+                if cleaned_chunk:
+                    print(cleaned_chunk, end="", flush=True)
+
+            # Callbacks always receive filtered output (ensures TTS doesn't speak tool calls)
+            if cleaned_chunk and token_callback:
+                token_callback(cleaned_chunk)
+
+    # Print any remaining filtered content after streaming completes
+    # Skip if showing raw stream (already printed as raw tokens)
+    if not show_raw_stream:
+        remaining = token_filter.get_remaining()
+        if remaining:
+            # Final cleanup: remove any remaining XML tags and partial tags
             remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
             remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
             remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
-        print(remaining, end="", flush=True)
-        if token_callback:
-            token_callback(remaining)
+            print(remaining, end="", flush=True)
+            if token_callback:
+                token_callback(remaining)
 
     print()  # New line after streaming completes
 

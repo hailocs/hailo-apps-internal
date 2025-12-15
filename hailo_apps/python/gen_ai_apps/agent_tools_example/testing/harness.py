@@ -222,7 +222,7 @@ class AgentTestHarness:
                     seed=config.SEED,
                     max_tokens=config.MAX_GENERATED_TOKENS,
                     prefix="",  # No prefix in headless mode
-                    debug_mode=False,  # No debug output in headless mode
+                    show_raw_stream=True,  # Show raw stream for debugging (output redirected anyway)
                     token_callback=None,  # No TTS callback in headless mode
                 )
         except Exception as e:
