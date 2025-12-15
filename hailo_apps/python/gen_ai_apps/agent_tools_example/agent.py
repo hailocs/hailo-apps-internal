@@ -234,9 +234,6 @@ class AgentApp:
                 TextToSpeechProcessor,
                 PiperModelNotFoundError,
             )
-            from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import (
-                AudioDiagnostics,
-            )
         except ImportError as e:
             logger.error("Voice processing modules not available: %s", e)
             raise
@@ -253,8 +250,8 @@ class AgentApp:
         # Text-to-Speech
         if not self.no_tts:
             try:
-                _, output_device_id = AudioDiagnostics.auto_detect_devices()
-                self.tts = TextToSpeechProcessor(device_id=output_device_id)
+                # TextToSpeechProcessor handles device selection internally
+                self.tts = TextToSpeechProcessor()
             except PiperModelNotFoundError:
                 logger.warning("Piper TTS model not found, continuing without TTS")
                 self.tts = None

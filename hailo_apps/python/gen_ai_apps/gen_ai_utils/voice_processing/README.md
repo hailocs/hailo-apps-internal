@@ -82,28 +82,33 @@ Piper supports many voice models in different languages and styles. To use a dif
 
 ## Audio Configuration & Troubleshooting
 
-### Audio Troubleshooting Tool
+### Device Selection
 
-If you experience issues with recording or playback, use the built-in troubleshooting tool:
+The module automatically selects the best available input and output devices. On systems with multiple audio devices (especially Raspberry Pi), you can manually select and save your preferred devices:
+
+```bash
+# Interactive device selection
+hailo-audio-troubleshoot --select-devices
+
+# Command-line selection
+hailo-audio-troubleshoot --select-devices --input-device 2 --output-device 3
+```
+
+**How it works:**
+- Preferences are saved to `local_resources/audio_device_preferences.json`
+- `AudioRecorder`, `AudioPlayer`, and `TextToSpeechProcessor` automatically use saved preferences when `device_id=None`
+- Falls back to auto-detection if saved devices are unavailable
+- Preferences persist across reboots and sessions
+
+### Troubleshooting
+
+For audio issues, use the built-in troubleshooting tool:
 
 ```bash
 hailo-audio-troubleshoot
 ```
 
-This tool will:
-1. List all available audio input/output devices.
-2. Auto-detect the best devices for voice interaction.
-3. Allow you to interactively test your microphone and speakers.
-4. Provide platform-specific troubleshooting tips (Raspberry Pi, etc.).
-
-### Auto-Detection
-
-The module automatically selects the best available input and output devices based on:
-- Capability (supports 16kHz sample rate).
-- System default status.
-- Device name (prefers physical hardware over virtual sinks).
-
-You can override this by passing specific `device_id`s to the components, but auto-detection works best for most users.
+This tool lists devices, tests hardware, and provides platform-specific troubleshooting tips.
 
 ## Usage
 
@@ -148,17 +153,10 @@ print(f"Transcribed: {text}")
 ```python
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
 
-# Initialize (auto-detects output device)
-tts = TextToSpeechProcessor()
-
-# Queue text for speech
+tts = TextToSpeechProcessor()  # Uses saved preferences or auto-detects
 tts.queue_text("Hello, this is a test.")
-
-# Interrupt ongoing speech
-tts.interrupt()
-
-# Cleanup
-tts.stop()
+tts.interrupt()  # Stop current speech
+tts.stop()  # Cleanup
 ```
 
 #### Audio Recording
@@ -166,18 +164,10 @@ tts.stop()
 ```python
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_recorder import AudioRecorder
 
-# Initialize (auto-detects input device)
-recorder = AudioRecorder(debug=True)
-
-# Start recording
+recorder = AudioRecorder(debug=True)  # Uses saved preferences or auto-detects
 recorder.start()
-
 # ... user speaks ...
-
-# Stop and get audio
 audio_data = recorder.stop()
-
-# Cleanup
 recorder.close()
 ```
 
@@ -185,30 +175,14 @@ recorder.close()
 
 ### Raspberry Pi
 
-- **USB Audio**: Strongly recommended over built-in audio.
-- **PulseAudio/PipeWire**: The module works with both.
-- **Pro Audio Profile**: If using a USB headset, ensure the "Pro Audio" or "Duplex" profile is selected in your system's Volume Control settings to allow simultaneous recording and playback.
+- **USB Audio**: Strongly recommended over built-in audio
+- **Device Profiles**: Use `hailo-audio-troubleshoot --configure` to set USB device profiles (Pro Audio or Duplex)
+- See troubleshooting tool for Raspberry Pi-specific setup instructions
 
 ### x86 / Desktop
 
-- Works out-of-the-box with standard ALSA/PulseAudio setups.
-- Ensure your microphone is not muted in the system settings.
-
-## Troubleshooting
-
-### "No audio input device detected"
-
-Run `hailo-audio-troubleshoot` to see if your microphone is recognized. Check connections and permissions.
-
-### "PIPER TTS MODEL NOT FOUND"
-
-Follow the installation instructions to download the Piper voice model.
-
-### Poor Audio Quality
-
-1. Run `hailo-audio-troubleshoot` and test the microphone.
-2. Ensure you are using a USB microphone or headset.
-3. Check background noise levels.
+- Works out-of-the-box with standard ALSA/PulseAudio setups
+- Ensure microphone is not muted in system settings
 
 ## API Reference
 

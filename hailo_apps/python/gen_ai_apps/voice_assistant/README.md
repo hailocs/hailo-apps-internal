@@ -15,76 +15,29 @@ The application will check for the model on startup and display an error with in
 
 The voice assistant uses the shared voice processing module from `hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing`.
 
-## Microphone quality
+## Audio Setup
 
-**High-quality microphone input is crucial for optimal speech recognition performance.** Poor audio quality, background noise, or incorrect microphone configuration can significantly impact transcription accuracy. Before using the voice assistant, ensure your microphone is properly configured and functioning.
+**High-quality microphone input is crucial for optimal speech recognition performance.**
 
-### Troubleshooting Microphone on Raspberry Pi
+For audio device configuration and troubleshooting, use the built-in tool:
 
-Testing your microphone is essential, particularly on Raspberry Pi systems. If your microphone is not recording, follow these steps to configure the audio profile:
-
-**Common Fix for USB Headsets:**
-
-1. Connect your USB microphone to the Raspberry Pi
-2. Locate the **Volume Control** icon on the upper Task Bar (system tray)
-3. Right-click the Volume Control icon
-4. Select **"Device Profiles"** from the menu
-5. Choose the **"Pro Audio"** profile for your USB device
-
-**Why "Pro Audio"?**
-The Pro Audio profile provides direct, low-level access to your audio device's capabilities, bypassing potential compatibility issues with the audio server (PipeWire or PulseAudio). This often resolves recording problems with USB headsets on Raspberry Pi OS.
-
-After applying this profile, verify your microphone is working using the testing commands below.
-
-### Testing Microphone
-
-**1. List available audio devices:**
 ```bash
-arecord -l
+hailo-audio-troubleshoot
 ```
 
-**2. Test microphone recording:**
-```bash
-# Record 5 seconds of audio
-arecord -d 5 -f cd -t wav test.wav
+This tool will:
+- List all available audio devices
+- Test your microphone and speakers
+- Help select and save preferred devices
+- Provide platform-specific setup instructions (Raspberry Pi, etc.)
 
-# Play back the recording
-aplay test.wav
-```
-
-**3. Adjust microphone volume (if needed):**
-```bash
-# Open audio mixer
-alsamixer
-
-# Press F4 to select capture devices
-# Use arrow keys to adjust microphone gain
-# Press Esc to exit
-```
-
-**4. Set default microphone (if multiple devices exist):**
-```bash
-# Create or edit ~/.asoundrc
-nano ~/.asoundrc
-
-# Add the following (replace X with your card number from arecord -l):
-pcm.!default {
-    type asoundrc
-    card X
-}
-
-ctl.!default {
-    type asoundrc
-    card X
-}
-```
+**For detailed audio setup instructions, see:** [Voice Processing Module Documentation](../gen_ai_utils/voice_processing/README.md)
 
 **Tips for best results:**
 - Use a USB microphone for better quality than built-in mics
 - Position microphone 15-30cm from your mouth
 - Minimize background noise during recording
 - Speak clearly at a normal volume
-- Test in the same environment where you will use the assistant
 
 ## Features
 

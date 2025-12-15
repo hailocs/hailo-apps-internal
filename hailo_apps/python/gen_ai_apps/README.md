@@ -120,24 +120,9 @@ sudo apt-get install portaudio19-dev
 
 ### Step 2: Install Piper TTS Model (Optional)
 
-If you plan to use voice features (text-to-speech), you must install the Piper TTS model:
+If you plan to use voice features (text-to-speech), install the Piper TTS model.
 
-```bash
-# Navigate to the repository root directory
-cd /path/to/hailo-apps-infra
-
-# Navigate to the piper_models directory
-cd local_resources/piper_models
-
-# Download the default voice model (en_US-amy-low)
-python3 -m piper.download_voices en_US-amy-low
-```
-
-This downloads two files (~65MB total):
-- `en_US-amy-low.onnx` - The neural network model
-- `en_US-amy-low.onnx.json` - Model configuration
-
-For more voice options and detailed instructions, see [gen_ai_utils/voice_processing/README.md](gen_ai_utils/voice_processing/README.md).
+**See [Voice Processing Module Documentation](gen_ai_utils/voice_processing/README.md) for installation instructions.**
 
 ### Step 3: Model Download
 
@@ -256,9 +241,9 @@ If an application reports a missing model:
 
 ### Audio Issues
 
-For microphone or audio playback problems:
-- Run the audio troubleshooting tool: `hailo-audio-troubleshoot`
-- See [gen_ai_utils/voice_processing/README.md](gen_ai_utils/voice_processing/README.md) for detailed troubleshooting
+For microphone or audio playback problems, run: `hailo-audio-troubleshoot`
+
+See [Voice Processing Module Documentation](gen_ai_utils/voice_processing/README.md) for detailed troubleshooting.
 
 ### Hardware Compatibility
 

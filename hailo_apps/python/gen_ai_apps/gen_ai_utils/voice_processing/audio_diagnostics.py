@@ -1,5 +1,6 @@
 import getpass
 import grp
+import json
 import logging
 import os
 import platform
@@ -68,7 +69,7 @@ check_voice_dependencies()
 import numpy as np
 import sounddevice as sd
 
-from hailo_apps.python.core.common.defines import TARGET_SR
+from hailo_apps.python.core.common.defines import REPO_ROOT, TARGET_SR
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -280,6 +281,136 @@ class AudioDiagnostics:
 
         logger.debug(f"Auto-detected devices - Input: {best_input}, Output: {best_output}")
         return best_input, best_output
+
+    @staticmethod
+    def _get_preferences_path() -> Path:
+        """
+        Get the path to the device preferences file.
+
+        Returns:
+            Path: Path to the preferences JSON file in local_resources directory.
+        """
+        # Store preferences in local_resources directory (same location as TTS models)
+        # This ensures path resolution works from anywhere (package -m or direct Python)
+        prefs_path = REPO_ROOT / "local_resources" / "audio_device_preferences.json"
+        # Ensure directory exists
+        prefs_path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        return prefs_path
+
+    @classmethod
+    def save_device_preferences(cls, input_device_id: Optional[int], output_device_id: Optional[int]) -> Tuple[bool, str]:
+        """
+        Save device preferences to a persistent configuration file.
+
+        Args:
+            input_device_id (Optional[int]): Preferred input device ID, or None to clear.
+            output_device_id (Optional[int]): Preferred output device ID, or None to clear.
+
+        Returns:
+            Tuple[bool, str]: (Success, Message)
+        """
+        try:
+            prefs_path = cls._get_preferences_path()
+
+            # Get device names for reference
+            input_name = None
+            output_name = None
+            if input_device_id is not None:
+                input_devices, _ = cls.list_audio_devices()
+                input_dev = next((d for d in input_devices if d.id == input_device_id), None)
+                if input_dev:
+                    input_name = input_dev.name
+
+            if output_device_id is not None:
+                _, output_devices = cls.list_audio_devices()
+                output_dev = next((d for d in output_devices if d.id == output_device_id), None)
+                if output_dev:
+                    output_name = output_dev.name
+
+            preferences = {
+                "input_device_id": input_device_id,
+                "input_device_name": input_name,
+                "output_device_id": output_device_id,
+                "output_device_name": output_name,
+                "timestamp": time.time()
+            }
+
+            with open(prefs_path, 'w') as f:
+                json.dump(preferences, f, indent=2)
+
+            logger.info(f"Saved device preferences to {prefs_path}")
+            return True, f"Device preferences saved to {prefs_path}"
+
+        except Exception as e:
+            msg = f"Failed to save device preferences: {str(e)}"
+            logger.error(msg)
+            return False, msg
+
+    @classmethod
+    def load_device_preferences(cls) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Load device preferences from the configuration file.
+
+        Returns:
+            Tuple[Optional[int], Optional[int]]: (Input Device ID, Output Device ID)
+        """
+        try:
+            prefs_path = cls._get_preferences_path()
+
+            if not prefs_path.exists():
+                logger.debug("No device preferences file found")
+                return None, None
+
+            with open(prefs_path, 'r') as f:
+                preferences = json.load(f)
+
+            input_id = preferences.get("input_device_id")
+            output_id = preferences.get("output_device_id")
+
+            # Validate that devices still exist
+            input_devices, output_devices = cls.list_audio_devices()
+
+            if input_id is not None:
+                if not any(d.id == input_id for d in input_devices):
+                    logger.warning(f"Saved input device {input_id} no longer exists")
+                    input_id = None
+
+            if output_id is not None:
+                if not any(d.id == output_id for d in output_devices):
+                    logger.warning(f"Saved output device {output_id} no longer exists")
+                    output_id = None
+
+            if input_id is not None or output_id is not None:
+                logger.debug(f"Loaded device preferences - Input: {input_id}, Output: {output_id}")
+
+            return input_id, output_id
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid preferences file format: {e}")
+            return None, None
+        except Exception as e:
+            logger.warning(f"Failed to load device preferences: {e}")
+            return None, None
+
+    @classmethod
+    def get_preferred_devices(cls) -> Tuple[Optional[int], Optional[int]]:
+        """
+        Get preferred devices, falling back to auto-detection if no preferences exist.
+
+        Returns:
+            Tuple[Optional[int], Optional[int]]: (Input Device ID, Output Device ID)
+        """
+        input_id, output_id = cls.load_device_preferences()
+
+        # Fall back to auto-detection for any missing preferences
+        if input_id is None or output_id is None:
+            auto_input, auto_output = cls.auto_detect_devices()
+            if input_id is None:
+                input_id = auto_input
+            if output_id is None:
+                output_id = auto_output
+
+        return input_id, output_id
 
     @staticmethod
     def is_raspberry_pi() -> bool:

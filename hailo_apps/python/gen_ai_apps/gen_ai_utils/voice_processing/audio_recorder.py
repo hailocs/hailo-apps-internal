@@ -37,7 +37,8 @@ class AudioRecorder:
         Initialize the recorder.
 
         Args:
-            device_id (Optional[int]): Device ID to use. If None, auto-detects best device.
+            device_id (Optional[int]): Device ID to use. If None, uses saved preferences
+                                     or auto-detects best device.
             debug (bool): If True, saves recorded audio to WAV files.
         """
         self.audio_frames = []
@@ -48,9 +49,9 @@ class AudioRecorder:
 
         # Select device
         if device_id is None:
-            self.device_id, _ = AudioDiagnostics.auto_detect_devices()
+            self.device_id, _ = AudioDiagnostics.get_preferred_devices()
             if self.device_id is None:
-                logger.warning("No input device found during auto-detection. Will use system default.")
+                logger.warning("No input device found. Will use system default.")
         else:
             self.device_id = device_id
 

@@ -40,7 +40,8 @@ class AudioPlayer:
         Initialize the player.
 
         Args:
-            device_id (Optional[int]): Device ID to use. If None, auto-detects best device.
+            device_id (Optional[int]): Device ID to use. If None, uses saved preferences
+                                     or auto-detects best device.
         """
         self.stream = None
         self.queue = queue.Queue()
@@ -55,26 +56,9 @@ class AudioPlayer:
 
         # Select device
         if device_id is None:
-            _, self.device_id = AudioDiagnostics.auto_detect_devices()
+            _, self.device_id = AudioDiagnostics.get_preferred_devices()
             if self.device_id is None:
-                logger.warning("No output device found during auto-detection. Will use system default.")
-            else:
-                # Verify device supports output
-                try:
-                    devices = sd.query_devices()
-                    if self.device_id < len(devices):
-                        device_info = devices[self.device_id]
-                        if device_info['max_output_channels'] == 0:
-                            logger.warning("Auto-detected device %d (%s) does not support output channels. "
-                                         "Falling back to system default.",
-                                         self.device_id, device_info.get('name', 'unknown'))
-                            self.device_id = None
-                        else:
-                            logger.debug("Verified output device %d (%s) supports %d output channels",
-                                      self.device_id, device_info.get('name', 'unknown'),
-                                      device_info['max_output_channels'])
-                except Exception as e:
-                    logger.warning("Failed to verify output device: %s", e)
+                logger.warning("No output device found. Will use system default.")
         else:
             self.device_id = device_id
 

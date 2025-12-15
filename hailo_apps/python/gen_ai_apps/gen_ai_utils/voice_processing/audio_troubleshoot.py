@@ -10,6 +10,7 @@ import logging
 import platform
 import re
 import sys
+from typing import Optional
 
 # Dependencies are checked in audio_diagnostics.py when it's imported
 from .audio_diagnostics import AudioDiagnostics
@@ -90,17 +91,116 @@ def filter_real_hardware_devices(devices):
     return [d for d in devices if is_real_hardware_device(d.name)]
 
 
-def print_device_table(devices, title):
+def print_device_table(devices, title, show_preferred=False, preferred_input_id=None, preferred_output_id=None):
     print(f"\n--- {title} ---")
     if not devices:
         print("No devices found.")
         return
 
+    print(f"{'ID':<4} {'Name':<40} {'Ch':<5} {'Rate':<8} {'Def':<5} {'Score':<5} {'Pref':<5}")
+    print("-" * 85)
+    for dev in devices:
+        is_def = "*" if dev.is_default else ""
+        is_pref = ""
+        if show_preferred:
+            if 'Input' in title and preferred_input_id == dev.id:
+                is_pref = "✓"
+            elif 'Output' in title and preferred_output_id == dev.id:
+                is_pref = "✓"
+        print(f"{dev.id:<4} {dev.name[:38]:<40} {dev.max_input_channels if 'Input' in title else dev.max_output_channels:<5} {int(dev.default_samplerate):<8} {is_def:<5} {dev.score:<5} {is_pref:<5}")
+
+
+def select_device_interactive(devices, device_type: str, current_preferred_id: Optional[int] = None) -> Optional[int]:
+    """
+    Interactively select a device from a list.
+
+    Args:
+        devices: List of AudioDeviceInfo objects.
+        device_type: Type of device ("Input" or "Output").
+        current_preferred_id: Currently preferred device ID, if any.
+
+    Returns:
+        Optional[int]: Selected device ID, or None if cancelled.
+    """
+    if not devices:
+        print(f"\n⚠️  No {device_type.lower()} devices available.")
+        return None
+
+    print(f"\n--- Select {device_type} Device ---")
     print(f"{'ID':<4} {'Name':<40} {'Ch':<5} {'Rate':<8} {'Def':<5} {'Score':<5}")
     print("-" * 75)
     for dev in devices:
         is_def = "*" if dev.is_default else ""
-        print(f"{dev.id:<4} {dev.name[:38]:<40} {dev.max_input_channels if 'Input' in title else dev.max_output_channels:<5} {int(dev.default_samplerate):<8} {is_def:<5} {dev.score:<5}")
+        is_pref = " [CURRENT]" if current_preferred_id == dev.id else ""
+        print(f"{dev.id:<4} {dev.name[:38]:<40} {dev.max_input_channels if device_type == 'Input' else dev.max_output_channels:<5} {int(dev.default_samplerate):<8} {is_def:<5} {dev.score:<5}{is_pref}")
+
+    print("\nOptions:")
+    print("  - Enter device ID to select")
+    print("  - Enter 't' to test a device")
+    print("  - Enter 'a' to use auto-detected device")
+    print("  - Enter 'c' to cancel (keep current preference)")
+
+    while True:
+        try:
+            choice = input(f"\nSelect {device_type.lower()} device: ").strip().lower()
+
+            if choice == 'c':
+                return current_preferred_id  # Keep current
+
+            if choice == 'a':
+                # Auto-detect
+                if device_type == "Input":
+                    best_in, _ = AudioDiagnostics.auto_detect_devices()
+                    return best_in
+                else:
+                    _, best_out = AudioDiagnostics.auto_detect_devices()
+                    return best_out
+
+            if choice == 't':
+                # Test mode - let user pick device to test
+                test_id_str = input("Enter device ID to test: ").strip()
+                try:
+                    test_id = int(test_id_str)
+                    test_dev = next((d for d in devices if d.id == test_id), None)
+                    if test_dev is None:
+                        print(f"❌ Device ID {test_id} not found.")
+                        continue
+
+                    print(f"\nTesting device [{test_id}] {test_dev.name}...")
+                    if device_type == "Input":
+                        success, msg, max_amp, _ = AudioDiagnostics.test_microphone(test_id, duration=2.0)
+                        if success:
+                            print(f"✅ Test passed! Max amplitude: {max_amp:.4f}")
+                            if input(f"Use this device? [Y/n]: ").lower() != 'n':
+                                return test_id
+                        else:
+                            print(f"❌ Test failed: {msg}")
+                    else:
+                        success, msg = AudioDiagnostics.test_speaker(test_id, duration=1.0)
+                        if success:
+                            print("✅ Test tone played.")
+                            if input("Did you hear the tone? Use this device? [y/N]: ").lower() == 'y':
+                                return test_id
+                        else:
+                            print(f"❌ Test failed: {msg}")
+                except ValueError:
+                    print("❌ Invalid device ID.")
+                continue
+
+            # Try to parse as device ID
+            device_id = int(choice)
+            selected_dev = next((d for d in devices if d.id == device_id), None)
+            if selected_dev is None:
+                print(f"❌ Device ID {device_id} not found. Please try again.")
+                continue
+
+            return device_id
+
+        except ValueError:
+            print("❌ Invalid input. Please enter a device ID, 't', 'a', or 'c'.")
+        except KeyboardInterrupt:
+            print("\n\nCancelled.")
+            return current_preferred_id
 
 
 def run_diagnostics(args):
@@ -163,25 +263,71 @@ def run_diagnostics(args):
         print("   - Using a 3.5mm audio jack if available")
         print("   - Checking your display's audio settings")
 
-    # 2. Auto-detection
-    print_header("2. Auto-Detection")
-    best_in, best_out = AudioDiagnostics.auto_detect_devices()
+    # 2. Auto-detection & Current Preferences
+    print_header("2. Auto-Detection & Current Preferences")
 
+    # Show saved preferences
+    saved_input_id, saved_output_id = AudioDiagnostics.load_device_preferences()
+    if saved_input_id is not None or saved_output_id is not None:
+        print("\n📋 Saved Preferences:")
+        if saved_input_id is not None:
+            in_dev = next((d for d in input_devs if d.id == saved_input_id), None)
+            if in_dev:
+                is_real = is_real_hardware_device(in_dev.name)
+                marker = " (virtual)" if not is_real else ""
+                print(f"  Input:  [{saved_input_id}] {in_dev.name}{marker}")
+            else:
+                print(f"  Input:  [{saved_input_id}] (device no longer exists)")
+        if saved_output_id is not None:
+            out_dev = next((d for d in output_devs if d.id == saved_output_id), None)
+            if out_dev:
+                is_real = is_real_hardware_device(out_dev.name)
+                marker = " (virtual)" if not is_real else ""
+                print(f"  Output: [{saved_output_id}] {out_dev.name}{marker}")
+            else:
+                print(f"  Output: [{saved_output_id}] (device no longer exists)")
+
+    # Show auto-detected devices
+    best_in, best_out = AudioDiagnostics.auto_detect_devices()
+    print("\n🔍 Auto-Detected (if no preferences):")
     if best_in is not None:
         in_dev = next((d for d in input_devs if d.id == best_in), None)
         is_real = in_dev and is_real_hardware_device(in_dev.name) if in_dev else False
         marker = " (virtual)" if not is_real else ""
-        print(f"✅ Best Input Device: [{best_in}] {in_dev.name if in_dev else 'Unknown'}{marker}")
+        print(f"  Input:  [{best_in}] {in_dev.name if in_dev else 'Unknown'}{marker}")
     else:
-        print("❌ No suitable input device found!")
+        print("  Input:  ❌ No suitable input device found!")
 
     if best_out is not None:
         out_dev = next((d for d in output_devs if d.id == best_out), None)
         is_real = out_dev and is_real_hardware_device(out_dev.name) if out_dev else False
         marker = " (virtual)" if not is_real else ""
-        print(f"✅ Best Output Device: [{best_out}] {out_dev.name if out_dev else 'Unknown'}{marker}")
+        print(f"  Output: [{best_out}] {out_dev.name if out_dev else 'Unknown'}{marker}")
     else:
-        print("❌ No suitable output device found!")
+        print("  Output: ❌ No suitable output device found!")
+
+    # Show what will actually be used
+    preferred_input, preferred_output = AudioDiagnostics.get_preferred_devices()
+    print("\n✅ Will Use (preferences + auto-detection fallback):")
+    if preferred_input is not None:
+        in_dev = next((d for d in input_devs if d.id == preferred_input), None)
+        source = "saved preference" if preferred_input == saved_input_id else "auto-detected"
+        print(f"  Input:  [{preferred_input}] {in_dev.name if in_dev else 'Unknown'} ({source})")
+    else:
+        print("  Input:  ❌ None available")
+
+    if preferred_output is not None:
+        out_dev = next((d for d in output_devs if d.id == preferred_output), None)
+        source = "saved preference" if preferred_output == saved_output_id else "auto-detected"
+        print(f"  Output: [{preferred_output}] {out_dev.name if out_dev else 'Unknown'} ({source})")
+    else:
+        print("  Output: ❌ None available")
+
+    # Update best_in/best_out to use preferred devices for testing
+    if preferred_input is not None:
+        best_in = preferred_input
+    if preferred_output is not None:
+        best_out = preferred_output
 
     # 3. Interactive Testing
     if not args.no_interactive:
@@ -307,6 +453,122 @@ def run_diagnostics(args):
     print("\n" + "="*60)
 
 
+def run_device_selection(args):
+    """Run interactive device selection and save preferences."""
+    print_header("Device Selection & Configuration")
+
+    print(f"System: {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"Python: {sys.version.split()[0]}")
+
+    # Load current preferences
+    current_input_id, current_output_id = AudioDiagnostics.load_device_preferences()
+    if current_input_id is not None or current_output_id is not None:
+        print("\n📋 Current Preferences:")
+        if current_input_id is not None:
+            input_devs, _ = AudioDiagnostics.list_audio_devices()
+            input_dev = next((d for d in input_devs if d.id == current_input_id), None)
+            if input_dev:
+                print(f"  Input:  [{current_input_id}] {input_dev.name}")
+            else:
+                print(f"  Input:  [{current_input_id}] (device no longer exists)")
+        if current_output_id is not None:
+            _, output_devs = AudioDiagnostics.list_audio_devices()
+            output_dev = next((d for d in output_devs if d.id == current_output_id), None)
+            if output_dev:
+                print(f"  Output: [{current_output_id}] {output_dev.name}")
+            else:
+                print(f"  Output: [{current_output_id}] (device no longer exists)")
+    else:
+        print("\n📋 No saved preferences. Using auto-detection.")
+
+    # Enumerate devices
+    print_header("Available Devices")
+    input_devs, output_devs = AudioDiagnostics.list_audio_devices()
+
+    # Score devices
+    for d in input_devs:
+        d.score = AudioDiagnostics.score_device(d, is_input=True)
+    for d in output_devs:
+        d.score = AudioDiagnostics.score_device(d, is_input=False)
+
+    # Show current preferences in table
+    print_device_table(input_devs, "Input Devices", show_preferred=True,
+                      preferred_input_id=current_input_id, preferred_output_id=None)
+    print_device_table(output_devs, "Output Devices", show_preferred=True,
+                      preferred_input_id=None, preferred_output_id=current_output_id)
+
+    # Device selection
+    selected_input_id = None
+    selected_output_id = None
+
+    # Handle command-line arguments first
+    if args.input_device is not None:
+        try:
+            selected_input_id = int(args.input_device)
+            # Validate
+            if not any(d.id == selected_input_id for d in input_devs):
+                print(f"⚠️  Warning: Input device {selected_input_id} not found.")
+                selected_input_id = None
+            else:
+                input_dev = next((d for d in input_devs if d.id == selected_input_id), None)
+                print(f"\n✅ Input device set to: [{selected_input_id}] {input_dev.name if input_dev else 'Unknown'}")
+        except ValueError:
+            print(f"⚠️  Warning: Invalid input device ID: {args.input_device}")
+
+    if args.output_device is not None:
+        try:
+            selected_output_id = int(args.output_device)
+            # Validate
+            if not any(d.id == selected_output_id for d in output_devs):
+                print(f"⚠️  Warning: Output device {selected_output_id} not found.")
+                selected_output_id = None
+            else:
+                output_dev = next((d for d in output_devs if d.id == selected_output_id), None)
+                print(f"\n✅ Output device set to: [{selected_output_id}] {output_dev.name if output_dev else 'Unknown'}")
+        except ValueError:
+            print(f"⚠️  Warning: Invalid output device ID: {args.output_device}")
+
+    # Interactive selection (if not using command-line args and interactive mode enabled)
+    if not args.no_interactive:
+        print_header("Device Selection")
+
+        # Select input device interactively if not set via command line
+        if args.input_device is None:
+            if input("\nSelect input device? [Y/n]: ").lower() != 'n':
+                selected_input_id = select_device_interactive(input_devs, "Input", current_input_id)
+
+        # Select output device interactively if not set via command line
+        if args.output_device is None:
+            if input("\nSelect output device? [Y/n]: ").lower() != 'n':
+                selected_output_id = select_device_interactive(output_devs, "Output", current_output_id)
+
+    # Save preferences
+    # Use current preferences if not changed
+    final_input_id = selected_input_id if selected_input_id is not None else current_input_id
+    final_output_id = selected_output_id if selected_output_id is not None else current_output_id
+
+    # Only save if something changed or if explicitly set via command line
+    if (selected_input_id is not None or selected_output_id is not None) or \
+       (args.input_device is not None or args.output_device is not None):
+        success, msg = AudioDiagnostics.save_device_preferences(final_input_id, final_output_id)
+        if success:
+            print_header("Preferences Saved")
+            print("✅ Device preferences saved successfully!")
+            if final_input_id is not None:
+                input_dev = next((d for d in input_devs if d.id == final_input_id), None)
+                print(f"  Input:  [{final_input_id}] {input_dev.name if input_dev else 'Unknown'}")
+            if final_output_id is not None:
+                output_dev = next((d for d in output_devs if d.id == final_output_id), None)
+                print(f"  Output: [{final_output_id}] {output_dev.name if output_dev else 'Unknown'}")
+            print(f"\nThese preferences will be used by AudioRecorder and AudioPlayer.")
+        else:
+            print(f"\n❌ Failed to save preferences: {msg}")
+    else:
+        print("\n⚠️  No changes made to device preferences.")
+
+    print("\n" + "="*60)
+
+
 def run_auto_configure(args):
     """Run automatic USB audio configuration for Raspberry Pi."""
     print_header("USB Audio Auto-Configuration (Raspberry Pi)")
@@ -373,6 +635,9 @@ def main():
     )
     parser.add_argument("--no-interactive", action="store_true", help="Skip interactive tests")
     parser.add_argument("--configure", action="store_true", help="Run USB audio auto-configuration for RPi")
+    parser.add_argument("--select-devices", action="store_true", help="Interactively select and save audio devices")
+    parser.add_argument("--input-device", type=int, metavar="ID", help="Set input device ID (use with --select-devices)")
+    parser.add_argument("--output-device", type=int, metavar="ID", help="Set output device ID (use with --select-devices)")
     parser.add_argument("--auto-fix", action="store_true", help="Automatically fix issues (requires sudo)")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompts")
     args = parser.parse_args()
@@ -381,6 +646,8 @@ def main():
     try:
         if args.configure:
             run_auto_configure(args)
+        elif args.select_devices or args.input_device is not None or args.output_device is not None:
+            run_device_selection(args)
         else:
             run_diagnostics(args)
     except KeyboardInterrupt:

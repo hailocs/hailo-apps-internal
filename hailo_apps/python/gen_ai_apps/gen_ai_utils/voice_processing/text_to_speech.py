@@ -145,7 +145,8 @@ class TextToSpeechProcessor:
 
         Args:
             onnx_path (str): Path to the Piper TTS ONNX model.
-            device_id (Optional[int]): Audio device ID for playback.
+            device_id (Optional[int]): Audio device ID for playback. If None, uses
+                                     saved preferences or auto-detects best device.
 
         Raises:
             PiperModelNotFoundError: If Piper model files are not found.
@@ -166,6 +167,12 @@ class TextToSpeechProcessor:
                 normalize_audio=True,
             )
         logger.debug("TTS initialized with volume=%.2f, length_scale=%.2f", TTS_VOLUME, TTS_LENGTH_SCALE)
+
+        # Use preferred device if not explicitly provided
+        if device_id is None:
+            _, device_id = AudioDiagnostics.get_preferred_devices()
+            if device_id is not None:
+                logger.debug("Using preferred output device: %d", device_id)
 
         self.audio_player = AudioPlayer(device_id=device_id)
 
