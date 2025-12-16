@@ -1,6 +1,7 @@
 # region imports
 # Standard library imports
 import os
+import sys
 import time
 import uuid
 import setproctitle
@@ -15,7 +16,7 @@ import numpy as np
 # Local application-specific imports
 import hailo
 from hailo import HailoTracker
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
 from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
@@ -40,16 +41,16 @@ from hailo_apps.python.core.common.defines import (
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
-    SCRFD_8L_POSTPROCESS_FUNCTION,
-    SCRFD_8_POSTPROCESS_FUNCTION,
-    SCRFD_10_POSTPROCESS_FUNCTION,
+    SCRFD_10G_POSTPROCESS_FUNCTION,
+    SCRFD_2_5G_POSTPROCESS_FUNCTION,
     TAPPAS_POSTPROC_PATH_KEY,
     TAPPAS_STREAM_ID_TOOL_SO_FILENAME,
     VMS_CROPPER_POSTPROCESS_FUNCTION,
     RPI_NAME_I,
     HAILO8_ARCH,
     HAILO10H_ARCH,
-    HAILO8L_ARCH
+    HAILO8L_ARCH,
+    REID_MULTISOURCE_PIPELINE,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
@@ -63,17 +64,23 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     get_source_type
 )
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
 # endregion imports
 
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
 class GStreamerREIDMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
 
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
         # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
         parser.set_defaults(width=640, height=640)
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, REID_MULTISOURCE_PIPELINE)
 
         super().__init__(parser, user_data)  # Call the parent class constructor
 
@@ -94,14 +101,18 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         self.post_process_so_face_align = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_ALIGN_POSTPROCESS_SO_FILENAME)
         self.post_process_so_vms_cropper = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=FACE_CROP_POSTPROCESS_SO_FILENAME)
         # functions
-        if self.arch == HAILO8_ARCH:
-            self.post_function_scrfd_detection = SCRFD_8_POSTPROCESS_FUNCTION
-        elif self.arch == HAILO10H_ARCH:
-            self.post_function_scrfd_detection = SCRFD_10_POSTPROCESS_FUNCTION
+        if self.arch in (HAILO8_ARCH, HAILO10H_ARCH):
+            self.post_function_scrfd_detection = SCRFD_10G_POSTPROCESS_FUNCTION
         elif self.arch == HAILO8L_ARCH:
-            self.post_function_scrfd_detection = SCRFD_8L_POSTPROCESS_FUNCTION
+            self.post_function_scrfd_detection = SCRFD_2_5G_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
 
         self.post_function_arcface_mobilefacenet_recognition = ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION
         self.post_function_vms_cropper = VMS_CROPPER_POSTPROCESS_FUNCTION

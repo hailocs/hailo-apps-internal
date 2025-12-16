@@ -3,6 +3,7 @@
 import os
 import shutil
 import json
+import sys
 import time
 import threading
 import queue
@@ -21,13 +22,14 @@ from PIL import Image
 import hailo
 from hailo import HailoTracker
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
 from hailo_apps.python.core.common.buffer_utils import get_numpy_from_buffer_efficient, get_caps_from_pad
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 from hailo_apps.python.core.common.defines import (
     RESOURCES_SO_DIR_NAME, 
     FACE_DETECTION_PIPELINE, 
-    FACE_RECOGNITION_PIPELINE, 
+    FACE_RECOGNITION_PIPELINE,
+    FACE_RECOGNITION_APP_TITLE,
     RESOURCES_MODELS_DIR_NAME, 
     FACE_DETECTION_POSTPROCESS_SO_FILENAME, 
     FACE_RECOGNITION_POSTPROCESS_SO_FILENAME, 
@@ -43,23 +45,29 @@ from hailo_apps.python.core.common.defines import (
     FACE_RECON_DATABASE_DIR_NAME,
     FACE_RECON_LOCAL_SAMPLES_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
-    SCRFD_8_POSTPROCESS_FUNCTION,
-    SCRFD_8L_POSTPROCESS_FUNCTION,
-    SCRFD_10_POSTPROCESS_FUNCTION,
+    SCRFD_10G_POSTPROCESS_FUNCTION,
+    SCRFD_2_5G_POSTPROCESS_FUNCTION,
     HAILO8_ARCH,
     HAILO10H_ARCH,
     HAILO8L_ARCH
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, INFERENCE_PIPELINE_WRAPPER, TRACKER_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, CROPPER_PIPELINE
-# endregion
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
+# endregion imports
 
 class GStreamerFaceRecognitionApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
-        setproctitle.setproctitle("Hailo Face Recognition App")
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--mode", default='run', help="The mode of the application: run, train, delete")
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, FACE_RECOGNITION_PIPELINE)
+        
         super().__init__(parser, user_data)
+        setproctitle.setproctitle(FACE_RECOGNITION_APP_TITLE)
 
         # Criteria for when a candidate frame is good enough to try recognize a person from it (e.g., skip the first few frames since in them person only entered the frame and usually is blurry)
         json_file_path = os.path.join(os.path.dirname(__file__), "face_recon_algo_params.json")
@@ -102,14 +110,18 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         self.hef_path_detection = get_resource_path(pipeline_name=FACE_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
         self.hef_path_recognition = get_resource_path(pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
     
-        if self.arch == HAILO8_ARCH:
-            self.detection_func = SCRFD_8_POSTPROCESS_FUNCTION
-        elif self.arch == HAILO10H_ARCH:
-            self.detection_func = SCRFD_10_POSTPROCESS_FUNCTION
+        if self.arch in (HAILO8_ARCH, HAILO10H_ARCH):
+            self.detection_func = SCRFD_10G_POSTPROCESS_FUNCTION
         elif self.arch == HAILO8L_ARCH:
-            self.detection_func = SCRFD_8L_POSTPROCESS_FUNCTION
+            self.detection_func = SCRFD_2_5G_POSTPROCESS_FUNCTION
         else:
-            raise ValueError(f"Unsupported Hailo architecture: {self.arch}")
+            hailo_logger.error("Unsupported Hailo architecture: %s", self.arch)
+            print(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "Supported architectures are: hailo8, hailo8l, hailo10h.",
+                file=sys.stderr
+            )
+            sys.exit(1)
         
         self.recognition_func = "filter"
         self.cropper_func = "face_recognition"

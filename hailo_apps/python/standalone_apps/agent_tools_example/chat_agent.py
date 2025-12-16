@@ -2,7 +2,7 @@
 Interactive CLI chat agent that uses Hailo LLM with tool/function calling.
 
 Usage:
-  python -m hailo_apps.hailo_app_python.tools.chat_agent
+  python -m hailo_apps.python.standalone_apps.agent_tools_example.chat_agent
 
 Behavior:
 - Discovers tools from modules named 'tool_*.py' in this folder
@@ -26,6 +26,14 @@ from pathlib import Path
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 
+from hailo_apps.python.core.common.core import (
+    get_standalone_parser,
+    handle_list_models_flag,
+    resolve_hef_path,
+)
+from hailo_apps.python.core.common.defines import AGENT_APP, HAILO10H_ARCH
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+
 from hailo_apps.python.core.gen_ai_utils.llm_utils import (
     agent_utils,
     context_manager,
@@ -47,34 +55,46 @@ except ImportError:
     import config
     import system_prompt
 
-logger = config.LOGGER
+logger = get_logger(__name__)
 
 
 def main() -> None:
-    # Set up logging level from environment variable
-    config.setup_logging()
+    """
+    Main entry point for the chat agent.
+
+    Parses arguments, initializes the Hailo LLM, discovers tools,
+    and runs the interactive chat loop.
+    """
+    # Parse arguments
+    parser = get_standalone_parser()
+    parser.description = "Chat Agent with Tool Calling"
+
+    # Handle --list-models flag before full initialization
+    handle_list_models_flag(parser, AGENT_APP)
+
+    args = parser.parse_args()
+
+    # Initialize logging from CLI args
+    init_logging(level=level_from_args(args))
 
     # Validate configuration
     try:
         config.validate_config()
     except ValueError as e:
-        print(f"[Configuration Error] {e}")
+        logger.error("Configuration Error: %s", e)
         return
 
-    # Get HEF path from config
-    try:
-        HEF_PATH = config.get_hef_path()
-    except ValueError as e:
-        print(f"[Error] {e}")
+    # Resolve HEF path with auto-download (Agent is Hailo-10H only)
+    hef_path = resolve_hef_path(
+        hef_path=args.hef_path if args.hef_path is not None else "Qwen2.5-Coder-1.5B-Instruct",
+        app_name=AGENT_APP,
+        arch=HAILO10H_ARCH
+    )
+    if hef_path is None:
+        logger.error("Failed to resolve HEF path for agent model. Exiting.")
         return
 
-    print(f"Using HEF: {HEF_PATH}")
-    if not os.path.exists(HEF_PATH):
-        print(
-            "[Error] HEF file not found. "
-            "Set HAILO_HEF_PATH environment variable to a valid .hef path."
-        )
-        return
+    logger.info("Using HEF: %s", hef_path)
 
     # Discover and collect tools
     try:
@@ -82,12 +102,12 @@ def main() -> None:
         modules = tool_discovery.discover_tool_modules(tool_dir=Path(__file__).parent)
         all_tools = tool_discovery.collect_tools(modules)
     except Exception as e:
-        print(f"[Error] Failed to discover tools: {e}")
+        logger.error("Failed to discover tools: %s", e)
         logger.debug(traceback.format_exc())
         return
 
     if not all_tools:
-        print("No tools found. Add 'tool_*.py' modules that define TOOLS_SCHEMA and a run() function.")
+        logger.error("No tools found. Add 'tool_*.py' modules that define TOOLS_SCHEMA and a run() function.")
         return
 
     # Start tool selection in background thread (runs in parallel with LLM initialization)
@@ -96,9 +116,9 @@ def main() -> None:
     # Initialize Hailo in main thread (runs in parallel with tool selection)
     try:
         vdevice = VDevice()
-        llm = LLM(vdevice, HEF_PATH)
+        llm = LLM(vdevice, str(hef_path))
     except Exception as e:
-        print(f"[Error] Failed to initialize Hailo LLM: {e}")
+        logger.error("Failed to initialize Hailo LLM: %s", e)
         # Wait for thread to avoid orphan threads
         tool_thread.join()
         return
@@ -194,7 +214,7 @@ def main() -> None:
 
             try:
                 # Use generate() for streaming output with on-the-fly filtering
-                is_debug = logger.level == logging.DEBUG
+                is_debug = logger.isEnabledFor(logging.DEBUG)
                 raw_response = streaming.generate_and_stream_response(
                     llm=llm,
                     prompt=prompt,

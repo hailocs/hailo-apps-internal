@@ -1,7 +1,27 @@
+import argparse
+import sys
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
-from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME, SHARED_VDEVICE_GROUP_ID
+from hailo_apps.python.core.common.core import get_resource_path, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.defines import LLM_CHAT_APP, LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME, SHARED_VDEVICE_GROUP_ID, HAILO10H_ARCH
+
+# Parse arguments
+parser = argparse.ArgumentParser(description="LLM Chat Example")
+parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
+parser.add_argument("--list-models", action="store_true", help="List available models")
+
+# Handle --list-models flag before full initialization
+handle_list_models_flag(parser, LLM_CHAT_APP)
+
+args = parser.parse_args()
+
+# Resolve HEF path with auto-download (LLM is Hailo-10H only)
+hef_path = resolve_hef_path(args.hef_path, app_name=LLM_CHAT_APP, arch=HAILO10H_ARCH)
+if hef_path is None:
+    print("Error: Failed to resolve HEF path for LLM model.")
+    sys.exit(1)
+
+print(f"Using HEF: {hef_path}")
 
 vdevice = None
 llm = None
@@ -10,8 +30,7 @@ try:
     params = VDevice.create_params()
     params.group_id = SHARED_VDEVICE_GROUP_ID
     vdevice = VDevice(params)
-    print(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10))
-    llm = LLM(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=LLM_MODEL_NAME_H10)))
+    llm = LLM(vdevice, str(hef_path))
     
     prompt = [
         {"role": "system", "content": [{"type": "text", "text": 'You are a helpful assistant.'}]},

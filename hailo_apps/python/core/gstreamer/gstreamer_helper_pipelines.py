@@ -510,28 +510,6 @@ def TILE_CROPPER_PIPELINE(
         f'{name}_agg. ! {QUEUE(name=f"{name}_output_q")} '
     )
 
-def VIDEO_STREAM_PIPELINE(port=5004, host='127.0.0.1', bitrate=2048):
-     """
-     Creates a GStreamer pipeline string portion for encoding and streaming video over UDP.
-     Args:
-         port (int): UDP port number.
-         host (str): Destination IP address.
-         bitrate (int): Target bitrate for x264enc in kbps.
-     Returns:
-         str: GStreamer pipeline string fragment.
-     """
-     # Using x264enc with zerolatency tune. Adjust encoder/params as needed.
-     # Hardware encoders (e.g., omxh264enc, v4l2h264enc, vaapih264enc) are preferable on embedded systems.
-     # Example using omxh264enc (Raspberry Pi):
-     # encoder = f'omxh264enc target-bitrate={bitrate*1000} control-rate=variable'
-     # Example using vaapih264enc (Intel):
-     # encoder = f'vaapih264enc rate-control=cbr bitrate={bitrate}' # May need caps negotiation
-     encoder = f'x264enc tune=zerolatency bitrate={bitrate} speed-preset=ultrafast'
-     return (f"videoconvert ! video/x-raw,format=I420 ! " # x264enc often prefers I420
-             f"{encoder} ! video/x-h264,profile=baseline ! " # Add profile for better compatibility potentially
-             f"rtph264pay config-interval=1 pt=96 ! "
-             f"udpsink host={host} port={port} sync=false async=false")
-
 def VIDEO_STREAM_PIPELINE(port=5004, host="127.0.0.1", bitrate=2048):
     """Creates a GStreamer pipeline string portion for encoding and streaming video over UDP.
 

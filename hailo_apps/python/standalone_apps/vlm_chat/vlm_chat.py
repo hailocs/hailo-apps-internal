@@ -10,12 +10,14 @@ from typing import Optional, Callable, Any
 
 os.environ["QT_QPA_PLATFORM"] = 'xcb'
 from backend import Backend
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path, get_logger
+from hailo_apps.python.core.common.core import get_default_parser, get_resource_path, get_logger, handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type
 from hailo_apps.python.core.common.defines import (
+    VLM_CHAT_APP,
     VLM_MODEL_NAME_H10,
     RESOURCES_MODELS_DIR_NAME,
+    HAILO10H_ARCH,
     RPI_NAME_I,
     USB_CAMERA
 )
@@ -145,9 +147,9 @@ class VLMChatApp:
 
         # Initialize Backend
         try:
-            hef_path = str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=VLM_MODEL_NAME_H10))
+            # Use globally resolved hef_path
             self.backend = Backend(
-                hef_path=hef_path,
+                hef_path=str(hef_path),
                 max_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
                 seed=SEED,
@@ -278,8 +280,22 @@ class VLMChatApp:
 
 if __name__ == "__main__":
     parser = get_default_parser()
+    
+    # Handle --list-models flag before full initialization
+    handle_list_models_flag(parser, VLM_CHAT_APP)
+    
     options_menu = parser.parse_args()
 
+    # Resolve HEF path with auto-download (VLM is Hailo-10H only)
+    hef_path = resolve_hef_path(
+        options_menu.hef_path if hasattr(options_menu, 'hef_path') else None,
+        app_name=VLM_CHAT_APP,
+        arch=HAILO10H_ARCH
+    )
+    if hef_path is None:
+        logger.error("Failed to resolve HEF path for VLM model. Exiting.")
+        sys.exit(1)
+    
     video_source = options_menu.input
     if video_source == USB_CAMERA:
         logger.debug("USB_CAMERA detected; scanning USB devices...")

@@ -8,8 +8,8 @@ apps:
   detection:
     name: "Object Detection Pipeline"
     description: "Object Detection Pipeline"
-    module: "hailo_apps.python.pipeline_apps.detection.detection_pipeline"
-    script: "hailo_apps/python/pipeline_apps/detection/detection_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.detection.detection"
+    script: "hailo_apps/python/pipeline_apps/detection/detection.py"
     cli: "hailo-detect"
     default_test_suites:
       - "basic_show_fps"
@@ -26,8 +26,8 @@ apps:
   simple_detection:
     name: "Simple Detection Pipeline"
     description: "Simple Detection Pipeline"
-    module: "hailo_apps.python.pipeline_apps.detection_simple.detection_pipeline_simple"
-    script: "hailo_apps/python/pipeline_apps/detection_simple/detection_pipeline_simple.py"
+    module: "hailo_apps.python.pipeline_apps.detection_simple.detection_simple"
+    script: "hailo_apps/python/pipeline_apps/detection_simple/detection_simple.py"
     cli: "hailo-detect-simple"
     default_test_suites:
       - "basic_show_fps"
@@ -57,8 +57,8 @@ apps:
   instance_segmentation:
     name: "Instance Segmentation Pipeline"
     description: "Instance Segmentation Pipeline"
-    module: "hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation_pipeline"
-    script: "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation"
+    script: "hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation.py"
     cli: "hailo-seg"
     default_test_suites:
       - "basic_show_fps"
@@ -73,8 +73,8 @@ apps:
   pose_estimation:
     name: "Pose Estimation Pipeline"
     description: "Pose Estimation Pipeline"
-    module: "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_pipeline"
-    script: "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation"
+    script: "hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation.py"
     cli: "hailo-pose"
     default_test_suites:
       - "basic_show_fps"
@@ -88,8 +88,8 @@ apps:
   depth:
     name: "Depth Estimation Pipeline"
     description: "Depth Estimation Pipeline"
-    module: "hailo_apps.python.pipeline_apps.depth.depth_pipeline"
-    script: "hailo_apps/python/pipeline_apps/depth/depth_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.depth.depth"
+    script: "hailo_apps/python/pipeline_apps/depth/depth.py"
     cli: "hailo-depth"
     default_test_suites:
       - "basic_show_fps"
@@ -102,8 +102,8 @@ apps:
   tiling:
     name: "Tiling Pipeline"
     description: "Tiling Pipeline"
-    module: "hailo_apps.python.pipeline_apps.tiling.tiling_pipeline"
-    script: "hailo_apps/python/pipeline_apps/tiling/tiling_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.tiling.tiling"
+    script: "hailo_apps/python/pipeline_apps/tiling/tiling.py"
     cli: "hailo-tiling"
     default_test_suites:
       - "basic_show_fps"
@@ -119,8 +119,8 @@ apps:
   paddle_ocr:
     name: "Paddle OCR Pipeline"
     description: "Paddle OCR Pipeline"
-    module: "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr_pipeline"
-    script: "hailo_apps/python/pipeline_apps/paddle_ocr/paddle_ocr_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr"
+    script: "hailo_apps/python/pipeline_apps/paddle_ocr/paddle_ocr.py"
     cli: "hailo-ocr"
     default_test_suites:
       - "basic_show_fps"
@@ -133,8 +133,8 @@ apps:
   clip:
     name: "CLIP Pipeline"
     description: "CLIP Pipeline"
-    module: "hailo_apps.python.pipeline_apps.clip.clip_pipeline"
-    script: "hailo_apps/python/pipeline_apps/clip/clip_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.clip.clip"
+    script: "hailo_apps/python/pipeline_apps/clip/clip.py"
     cli: "hailo-clip"
     default_test_suites:
       - "basic_show_fps"
@@ -145,50 +145,14 @@ apps:
       - "clip_detector_person"
       - "clip_detector_face"
   
-  retrain:
-    name: "Retraining Pipeline"
-    description: "Retraining Pipeline"
-    module: "hailo_apps.python.pipeline_apps.retrain.retrain_pipeline"
-    script: "hailo_apps/python/pipeline_apps/retrain/retrain_pipeline.py"
-    cli: "hailo-retrain"
-    default_test_suites:
-      - "basic_show_fps"
-      - "basic_input_video"
-    extra_test_suites: []
   
-  lane_detection:
-    name: "Lane Detection Pipeline"
-    description: "Lane Detection Pipeline"
-    module: "hailo_apps.python.pipeline_apps.lane_detection.lane_detection_pipeline"
-    script: "hailo_apps/python/pipeline_apps/lane_detection/lane_detection_pipeline.py"
-    cli: "hailo-lane"
-    default_test_suites:
-      - "basic_show_fps"
-      - "basic_input_video"
-      - "basic_input_usb"
-      - "input_video_with_hef"
-    extra_test_suites:
-      - "pipeline_disable_sync"
-  
-  super_resolution:
-    name: "Super Resolution Pipeline"
-    description: "Super Resolution Pipeline"
-    module: "hailo_apps.python.pipeline_apps.super_resolution.super_resolution_pipeline"
-    script: "hailo_apps/python/pipeline_apps/super_resolution/super_resolution_pipeline.py"
-    cli: "hailo-super-res"
-    default_test_suites:
-      - "basic_show_fps"
-      - "basic_input_video"
-      - "basic_input_usb"
-      - "input_video_with_hef"
-    extra_test_suites:
-      - "pipeline_disable_sync"
+
   
   reid_multisource:
     name: "REID Multisource Pipeline"
     description: "REID Multisource Pipeline"
-    module: "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource_pipeline"
-    script: "hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource_pipeline.py"
+    module: "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource"
+    script: "hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource.py"
     cli: "hailo-reid"
     default_test_suites:
       - "basic_show_fps"

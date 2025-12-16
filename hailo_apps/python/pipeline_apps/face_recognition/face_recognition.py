@@ -10,16 +10,20 @@ from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 from hailo_apps.python.pipeline_apps.face_recognition.face_recognition_pipeline import GStreamerFaceRecognitionApp
 from hailo_apps.python.core.common.telegram_handler import TelegramHandler
-# endregion
+
+hailo_logger = get_logger(__name__)
+# endregion imports
 
 # region Constants
 TELEGRAM_ENABLED = False  # Enable Telegram notifications
 TELEGRAM_TOKEN = ''  # Telegram bot token
 TELEGRAM_CHAT_ID = ''  # Telegram chat ID
 # endregion
+
 
 class user_callbacks_class(app_callback_class):
     def __init__(self):
@@ -50,10 +54,12 @@ class user_callbacks_class(app_callback_class):
             self.telegram_handler.send_notification(name, global_id, confidence, frame)
     # endregion
 
+
 def app_callback(element, buffer, user_data):
+    # Note: Frame counting is handled automatically by the framework wrapper
     if buffer is None:
+        hailo_logger.warning("Received None buffer.")
         return
-    user_data.increment()
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     for detection in detections:
@@ -77,7 +83,9 @@ def app_callback(element, buffer, user_data):
                         print(string_to_print)
     return
 
+
 def main():
+    hailo_logger.info("Starting Face Recognition App.")
     user_data = user_callbacks_class()
     pipeline = GStreamerFaceRecognitionApp(app_callback, user_data)  # appsink_callback argument provided anyway although in non UI interface where eventually not used - since here we don't have access to requested UI/CLI mode
     if pipeline.options_menu.mode == 'delete':
@@ -88,6 +96,7 @@ def main():
         exit(0)
     else:  # 'run' mode
         pipeline.run()
+
 
 if __name__ == "__main__":
     main()

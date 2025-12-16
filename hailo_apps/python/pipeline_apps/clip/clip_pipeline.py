@@ -36,8 +36,11 @@ from hailo_apps.python.core.common.defines import (
     CLIP_POSTPROCESS_SO_FILENAME,
     CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
 )
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+
+hailo_logger = get_logger(__name__)
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     QUEUE, 
     SOURCE_PIPELINE, 
@@ -50,18 +53,22 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 )
 from hailo_apps.python.pipeline_apps.clip.text_image_matcher import text_image_matcher
 from hailo_apps.python.pipeline_apps.clip import gui
-# endregion
+# endregion imports
 
 class GStreamerClipApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
-        setproctitle.setproctitle(CLIP_APP_TITLE)
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--detector", "-d", type=str, choices=["person", "vehicle", "face", "license-plate", "none"], default="none", help="Which detection pipeline to use.")
         parser.add_argument("--json-path", type=str, default=None, help="Path to JSON file to load and save embeddings. If not set, embeddings.json will be used.")
         parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
         parser.add_argument("--disable-runtime-prompts", action="store_true", help="When set, app will not support runtime prompts. Default is False.")
+        
+        # Handle --list-models flag before full initialization
+        handle_list_models_flag(parser, CLIP_PIPELINE)
+        
         super().__init__(parser, user_data)
+        setproctitle.setproctitle(CLIP_APP_TITLE)
         if self.options_menu.input is None:
             self.json_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'example_embeddings.json') if self.options_menu.json_path is None else self.options_menu.json_path
         else:

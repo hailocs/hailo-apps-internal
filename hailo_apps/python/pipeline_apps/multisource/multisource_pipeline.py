@@ -11,25 +11,35 @@ from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path
-from hailo_apps.python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
+from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type, USER_CALLBACK_PIPELINE, TRACKER_PIPELINE, QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+hailo_logger = get_logger(__name__)
 # endregion imports
 
 # User Gstreamer Application: This class inherits from the common.GStreamerApp class
 class GStreamerMultisourceApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
 
-        if parser == None:
+        if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--sources", default='', help="The list of sources to use for the multisource pipeline, separated with comma e.g., /dev/video0,/dev/video1")
+        
+        # Handle --list-models flag - uses detection models
+        handle_list_models_flag(parser, DETECTION_PIPELINE)
+        
         super().__init__(parser, user_data)  # Call the parent class constructor
         setproctitle.setproctitle(MULTI_SOURCE_APP_TITLE)  # Set the process title
 
-        # Set HEF path if not provided via parser
-        if self.hef_path is None:
-            self.hef_path = get_resource_path(SIMPLE_DETECTION_PIPELINE, RESOURCES_MODELS_DIR_NAME, self.arch)
+        # Resolve HEF path with smart lookup and auto-download (uses detection models)
+        self.hef_path = resolve_hef_path(
+            self.hef_path,
+            app_name=DETECTION_PIPELINE,
+            arch=self.arch
+        )
         self.post_process_so = get_resource_path(SIMPLE_DETECTION_PIPELINE, RESOURCES_SO_DIR_NAME, self.arch, DETECTION_POSTPROCESS_SO_FILENAME)
         self.post_function_name = DETECTION_POSTPROCESS_FUNCTION
         self.video_sources_types = [(video_source, get_source_type(video_source)) for video_source in (self.options_menu.sources.split(',') if self.options_menu.sources else [self.video_source, self.video_source])]  # Default to 2 sources if none specified

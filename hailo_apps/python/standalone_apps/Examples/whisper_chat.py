@@ -1,9 +1,30 @@
-from hailo_platform import VDevice
-from hailo_platform.genai import Speech2Text, Speech2TextTask
-from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import RESOURCES_MODELS_DIR_NAME, WHISPER_MODEL_NAME_H10, SHARED_VDEVICE_GROUP_ID
+import argparse
+import sys
 import wave
 import numpy as np
+from hailo_platform import VDevice
+from hailo_platform.genai import Speech2Text, Speech2TextTask
+from hailo_apps.python.core.common.core import get_resource_path, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.defines import WHISPER_CHAT_APP, RESOURCES_MODELS_DIR_NAME, WHISPER_MODEL_NAME_H10, SHARED_VDEVICE_GROUP_ID, HAILO10H_ARCH
+
+# Parse arguments
+parser = argparse.ArgumentParser(description="Whisper Speech-to-Text Example")
+parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
+parser.add_argument("--list-models", action="store_true", help="List available models")
+parser.add_argument("--audio", type=str, default="audio.wav", help="Path to audio file")
+
+# Handle --list-models flag before full initialization
+handle_list_models_flag(parser, WHISPER_CHAT_APP)
+
+args = parser.parse_args()
+
+# Resolve HEF path with auto-download (Whisper is Hailo-10H only)
+hef_path = resolve_hef_path(args.hef_path, app_name=WHISPER_CHAT_APP, arch=HAILO10H_ARCH)
+if hef_path is None:
+    print("Error: Failed to resolve HEF path for Whisper model.")
+    sys.exit(1)
+
+print(f"Using HEF: {hef_path}")
 
 vdevice = None
 speech2text = None
@@ -12,10 +33,10 @@ try:
     params = VDevice.create_params()
     params.group_id = SHARED_VDEVICE_GROUP_ID
     vdevice = VDevice(params)
-    speech2text = Speech2Text(vdevice, str(get_resource_path(pipeline_name=None, resource_type=RESOURCES_MODELS_DIR_NAME, model=WHISPER_MODEL_NAME_H10)))
+    speech2text = Speech2Text(vdevice, str(hef_path))
 
     # Load audio file using wave module instead of librosa
-    audio_path = 'audio.wav'
+    audio_path = args.audio
     
     with wave.open(audio_path, 'rb') as wav_file:
         # Get audio parameters
