@@ -58,8 +58,7 @@ def init_logging(
     Priority for level:
       1) explicit param
       2) env HAILO_LOG_LEVEL
-      3) env LOG_LEVEL
-      4) INFO (default)
+      3) INFO (default)
 
     If log_file is provided (or $HAILO_LOG_FILE is set),
     logs will also be written to that file.
@@ -67,7 +66,7 @@ def init_logging(
     Noisy Logger Suppression:
       Internal loggers (hailo_apps.installation.*) are suppressed to INFO
       when DEBUG is enabled via CLI, but NOT suppressed when DEBUG is set via
-      environment variable (HAILO_LOG_LEVEL/LOG_LEVEL).
+      environment variable (HAILO_LOG_LEVEL).
 
     This is the only place that should touch handlers / root config.
     All other code just calls get_logger(name).
@@ -77,7 +76,7 @@ def init_logging(
         return
 
     # Resolve level from param or env
-    env_level = os.getenv("HAILO_LOG_LEVEL") or os.getenv("LOG_LEVEL")
+    env_level = os.getenv("HAILO_LOG_LEVEL")
     # Track if level came from environment variable (user's explicit choice)
     level_from_env = env_level is not None and level is None
     resolved_level = _coerce_level(level if level is not None else env_level)
@@ -236,7 +235,7 @@ def add_logging_cli_args(parser: Any) -> None:
         "--log-level",
         default=os.getenv("HAILO_LOG_LEVEL", "INFO"),
         choices=[k.lower() for k in _LEVELS.keys()],
-        help="Logging level (default: %(default)s or $HAILO_LOG_LEVEL / $LOG_LEVEL).",
+        help="Logging level (default: %(default)s or $HAILO_LOG_LEVEL).",
     )
     parser.add_argument(
         "--debug",
@@ -260,7 +259,7 @@ def level_from_args(args: Any) -> str:
 
 
 # Auto-configuration: set HAILO_LOG_AUTOCONFIG=1 to call init_logging() at import time.
-# Level comes from HAILO_LOG_LEVEL/LOG_LEVEL env vars (defaults to INFO).
+# Level comes from HAILO_LOG_LEVEL env var (defaults to INFO).
 # Noisy loggers are NOT suppressed when level is set via env var.
 if os.getenv("HAILO_LOG_AUTOCONFIG", "0") == "1":
     try:
