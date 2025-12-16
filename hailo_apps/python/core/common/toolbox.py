@@ -8,449 +8,14 @@ import numpy as np
 import queue
 import cv2
 import time
-from enum import Enum
-from pathlib import Path
-import subprocess
-import difflib
-
 
 IMAGE_EXTENSIONS: Tuple[str, ...] = ('.jpg', '.png', '.bmp', '.jpeg')
-CAMERA_INDEX = int(os.environ.get('CAMERA_INDEX', '0'))
-RESOURCES_DOWNLOAD_DIR = Path(__file__).resolve().parents[2] / "resources_download"
-GET_HEF_BASH_SCRIPT_PATH   = RESOURCES_DOWNLOAD_DIR / "get_hef.sh"
-GET_INPUT_BASH_SCRIPT_PATH = RESOURCES_DOWNLOAD_DIR / "get_input.sh"
-RESOLUTION_MAP = {
+CAMERA_RESOLUTION_MAP = {
     "sd": (640, 480),
     "hd": (1280, 720),
     "fhd": (1920, 1080)
 }
-
-def resolve_output_resolution_arg(res_arg: Optional[list[str]]) -> Optional[Tuple[int, int]]:
-    """
-    Parse --output-resolution argument.
-
-    Supported:
-      --output-resolution sd|hd|fhd
-      --output-resolution 1920 1080
-    """
-    if res_arg is None:
-        return None
-
-    # Single token: preset name (sd/hd/fhd)
-    if len(res_arg) == 1:
-        key = res_arg[0]
-        if key in RESOLUTION_MAP:
-            return RESOLUTION_MAP[key]
-        raise ValueError(
-            f"Invalid --output-resolution value '{key}'. "
-            "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
-        )
-
-    # Two tokens: custom width/height
-    if len(res_arg) == 2 and all(x.isdigit() for x in res_arg):
-        w, h = map(int, res_arg)
-        if w <= 0 or h <= 0:
-            raise ValueError("Custom --output-resolution width/height must be positive integers.")
-        return (w, h)
-
-    raise ValueError(
-        f"Invalid --output-resolution value: {res_arg}. "
-        "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
-    )
-
-def verify_hef_arch(app: str, hef_path: Path) -> None:
-    """
-    Verify that the given HEF file is compatible with the connected device
-    using:
-        get_hef.sh verify-arch --hef <path>.
-    """
-    args = ["verify-arch", "--hef", str(hef_path)]
-    result = run_bash_helper(GET_HEF_BASH_SCRIPT_PATH, args)
-
-
-    # if result.returncode != 0:
-    #     stderr = (result.stderr or "").strip()
-    #     if stderr:
-    #         logger.error(stderr)
-    #     sys.exit(1)
-
-
-def run_bash_helper(script_path: Path, args: list[str]) -> subprocess.CompletedProcess:
-    """
-    Internal helper to run a Bash helper script with the given argument list.
-    Does NOT implement any app-specific error handling.
-    """
-    if not script_path.exists():
-        logger.error(f"File not found: {script_path}")
-        sys.exit(1)
-
-    cmd = [str(script_path)] + args
-
-    result = subprocess.run(
-        cmd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    return result
-
-
-def run_get_hef_command(args: list[str]) -> subprocess.CompletedProcess:
-    """
-    Wrapper around get_hef.sh with app-level error handling.
-    Handles the 'no device detected' case nicely.
-    """
-    result = run_bash_helper(GET_HEF_BASH_SCRIPT_PATH, args)
-
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        # Special case: no device detected -> show a nicer app-level message
-        if "No device detected" in stderr:
-            logger.error(
-                "\nNo Hailo device was detected.\n"
-                "This application uses the connected device to choose the correct HEF "
-                "(e.g., hailo8 vs hailo10h).\n"
-                "Please plug in a Hailo device and run the app again.\n"
-                "If you want to download a model without hardware, run get_hef.sh directly "
-                "from the command line and pass --hw-arch explicitly (e.g., hailo8)."
-            )
-        else:
-            logger.error(stderr)
-
-        sys.exit(result.returncode)
-
-    return result
-
-
-def run_get_input_command(args: list[str]) -> subprocess.CompletedProcess:
-    """
-    Wrapper around get_input.sh with the given argument list.
-    Shares the generic process runner but has its own error handling.
-    """
-    result = run_bash_helper(GET_INPUT_BASH_SCRIPT_PATH, args)
-
-    if result.returncode != 0:
-        stdout = (result.stdout or "").strip()
-        stderr = (result.stderr or "").strip()
-
-        if stdout:
-            logger.error(stdout)
-        if stderr:
-            logger.error(stderr)
-        sys.exit(result.returncode)
-
-    return result
-
-
-def list_networks(app: str) -> None:
-    """
-    Print the supported networks for a given application.
-
-    This delegates to the Bash helper:
-        get_hef.sh list --app <app> [--hw-arch <arch>]
-
-    Notes:
-        The list is sourced from the JSON catalog file **networks.json**
-    """
-    # Build command args for get_hef.sh (without the script path)
-    cmd_args: list[str] = ["list", "--app", app]
-    logger.info("Fetching networks list... please wait")
-
-    # Run command via shared helper (with HEF-specific error handling)
-    result = run_get_hef_command(cmd_args)
-
-    # Success output
-    output = (result.stdout or "").strip()
-    if output:
-        footer = (
-            "\n\u001b[33mPick any network name from the list above and pass it with --net (without extension).\n"
-            "Example:  --net <name>\u001b[0m"
-        )
-        combined = f"\n{output}{footer}"
-        logger.info(combined)
-
-
-def list_inputs(app: str) -> None:
-    """
-    List predefined inputs for a given application using get_input.sh.
-
-    Delegates to:
-        get_input.sh list --app <app>
-    """
-    logger.info(f"Listing predefined inputs for app '{app}'...")
-    result = run_get_input_command(["list", "--app", app])
-    output = (result.stdout or "").strip()
-
-    if output:
-        footer = (
-            "\n\n\u001b[33mPick any name from the list above and pass it with -i/--input (without extension).\n"
-            "Example:  -i <name>\u001b[0m"
-        )
-
-        combined = "\n" + output + footer
-        logger.info(combined)
-
-
-def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs") -> str:
-    """
-    Resolve the --net argument into a concrete HEF path, with safety checks.
-
-    Behavior:
-      - If net_arg is None:
-          -> print error, show supported networks, exit.
-      - If net_arg points to an existing .hef file:
-          -> verify architecture (verify-arch), return absolute path.
-      - If net_arg ends with .hef but the file does NOT exist:
-          -> error, hint about using name without extension, show networks, exit.
-      - Otherwise (no extension):
-          -> treat as network name (e.g., 'yolov8m'):
-               * check if dest_dir/net_arg.hef already exists:
-                     - if exists: ask user whether to reuse or re-download.
-                     - if reuse: verify-arch on existing file, return path.
-                     - if re-download: call get_hef(app, net_arg, dest_dir) and return.
-               * if not exists: call get_hef(app, net_arg, dest_dir) and return.
-    """
-    # 1) No --net at all
-    if net_arg is None:
-        logger.error("No --net was provided.")
-        list_networks(app)
-        sys.exit(1)
-
-    dest_path = Path(dest_dir)
-    dest_path.mkdir(parents=True, exist_ok=True)
-
-    candidate = Path(net_arg)
-
-    # 2) Existing path case (user gave a direct HEF path)
-    if candidate.exists():
-        if candidate.is_file() and candidate.suffix == ".hef":
-            hef_path = candidate.resolve()
-            logger.info(f"Using local HEF file: {hef_path}")
-            verify_hef_arch(app, hef_path)
-            return str(hef_path)
-        else:
-            logger.error(
-                f"Path '{net_arg}' exists but is not a .hef file.\n"
-                "Please provide either:\n"
-                "  • A valid .hef file\n"
-                "  • OR a network name (without extension)\n"
-                f"\u001b[33mTo see all available network names, run:  --list-nets\u001b[0m\n"
-            )
-            sys.exit(1)
-
-    # 3) Non-existing path with an extension (e.g., yolov8m.hef but file missing)
-    if candidate.suffix == ".hef":
-        logger.error(f"HEF file not found: {net_arg}")
-        logger.info(
-            f"\u001b[33mTo see all available network names, run:  --list-nets\u001b[0m\n"
-        )
-        sys.exit(1)
-
-    # 4) No extension and file does not exist -> treat as network name
-    net_name = net_arg
-    existing_hef = dest_path / f"{net_name}.hef"
-
-    logger.info(
-        f"You passed a model name: '{net_name}'. "
-        "Searching for this model in the supported networks... please wait."
-    )
-
-    if existing_hef.exists():
-        # There is already a HEF file with this name in dest_dir
-        try:
-            answer = input(
-                f"A HEF file already exists for network '{net_name}': {existing_hef}\n"
-                "Do you want to reuse this file instead of downloading it again? [Y/n]: "
-            )
-        except EOFError:
-            # Non-interactive scenario: default to reuse existing file
-            answer = "y"
-
-        if answer.strip().lower() in ("", "y", "yes"):
-            hef_path = existing_hef.resolve()
-            logger.info(f"Reusing existing HEF: {hef_path}")
-            verify_hef_arch(app, hef_path)
-            return str(hef_path)
-        else:
-            try:
-                answer2 = input(
-                    f"Do you want to re-download and replace '{existing_hef}'? [Y/n]: "
-                )
-            except EOFError:
-                answer2 = "n"
-
-            if answer2.strip().lower() in ("y", "yes", ""):
-                logger.info(
-                    f"Re-downloading network '{net_name}' and replacing existing HEF..."
-                )
-                hef_path_str = get_hef(app, net_name, dest_dir)
-                hef_path = Path(hef_path_str).resolve()
-                # get_hef.sh should choose the correct arch; we can still verify to be safe
-                verify_hef_arch(app, hef_path)
-                return str(hef_path)
-            else:
-                logger.error(
-                    "Aborting: existing HEF was neither reused nor replaced. "
-                    "Please provide a different --net or remove the file manually."
-                )
-                sys.exit(1)
-
-    # 5) No existing HEF with that name -> download normally
-    logger.info(f"Downloading model name {net_name}, please wait...")
-    hef_path_str = get_hef(app, net_name, dest_dir)
-    hef_path = Path(hef_path_str).resolve()
-    logger.success(f"Download complete: {hef_path}")
-    return str(hef_path)
-
-
-def get_hef(app: str, net: str, dest_dir: str = "hefs") -> str:
-    """
-    Resolve a network to a concrete HEF path (validate or download).
-
-    This delegates to the Bash helper:
-        get_hef.sh get --app <app> --net <name|path> [--hw-arch <arch>] [--dest DIR]
-
-    Notes:
-        - Network names and their supported architectures are defined in the
-          JSON catalog **networks.json**, which `get_hef.sh` reads to validate
-          and locate the requested HEF.
-
-    Args:
-        app: Application key (e.g., "object_detection").
-        net: Network name (e.g., "yolov8n") or a local `.hef` path.
-        dest_dir: Directory for downloaded HEFs (created if missing).
-
-    Returns:
-        str: Absolute path to the resolved `.hef` file.
-    """
-    dest = Path(dest_dir)
-    dest.mkdir(parents=True, exist_ok=True)
-
-    cmd_args: list[str] = ["get", "--app", app, "--net", net]
-    if dest_dir:
-        cmd_args += ["--dest", str(dest)]
-
-    result = run_get_hef_command(cmd_args)
-
-    out = (result.stdout or "").strip()
-    hef_path = Path(out.splitlines()[-1]).resolve()
-    return str(hef_path)
-
-
-def resolve_input_arg(app: str, input_arg: str | None) -> str:
-    """
-    Resolve the --input/-i argument into a concrete value to use in the app.
-
-    Behavior:
-      - If input_arg is None:
-          Ask the user if they want to download the default input ("default")
-          from resources. If yes -> download and return its path.
-          If no  -> exit with an error asking them to provide an input.
-      - If input_arg == "camera":
-          Return "camera" unchanged.
-      - If input_arg points to an existing file or directory:
-          Return the path unchanged.
-      - If input_arg looks like a path with an extension (e.g. 'bus.jpg'),
-        but it does NOT exist:
-          Print an error and list supported inputs from resources, then exit.
-      - Otherwise (no extension and path does not exist):
-          Treat it as a logical input ID in inputs.json and download it
-          via get_input.sh (e.g. "bus"), then return the downloaded path.
-    """
-    # No input: interactive default download
-    if input_arg is None:
-        try:
-            answer = input(
-                f"No --input was provided for app '{app}'. "
-                "Do you want to download and use the default input from resources? [Y/n]: "
-            )
-        except EOFError:
-            logger.error("No input provided and cannot prompt interactively. "
-                         "Please specify -i/--input explicitly.")
-            sys.exit(1)
-
-        if answer.strip().lower() in ("y", "yes", ""):
-            return download_input(app, "default", target_dir="inputs")
-        else:
-            logger.error(
-                "No input provided. Please run again with -i/--input or accept the default resource."
-            )
-            sys.exit(1)
-
-    # "camera" stays as is
-    if input_arg == "camera":
-        return input_arg
-
-    path_candidate = Path(input_arg)
-
-    # If it already exists (file or dir), just use it as-is
-    if path_candidate.exists():
-        return str(path_candidate)
-
-    # If it has an extension but does NOT exist -> error + list inputs
-    if path_candidate.suffix:
-        logger.error(f"Input file not found: {input_arg}")
-        logger.info("Available predefined inputs for this app:")
-        list_inputs(app)
-        sys.exit(1)
-
-    # No extension and path does not exist -> treat as logical ID in resources
-    logger.info(
-        f"Input '{input_arg}' does not exist as a local file or directory. "
-        "Assuming this is a resource ID and downloading from inputs.json..."
-    )
-    return download_input(app, input_arg, target_dir="inputs")
-
-
-
-def download_input(app: str, input_id: str, target_dir: str | Path = "inputs") -> str:
-    """
-    Download an input resource for the given app and input ID using get_input.sh.
-
-    Delegates to:
-        get_input.sh get --app <app> --target-dir <dir> --i <ID>
-
-    Returns:
-        str: Path to the downloaded file (as returned by get_input.sh).
-    """
-    target_dir_path = Path(target_dir)
-    target_dir_path.mkdir(parents=True, exist_ok=True)
-
-    logger.info(f"Downloading input '{input_id}' for app '{app}' from resources...")
-    result = run_get_input_command([
-        "get",
-        "--app", app,
-        "--target-dir", str(target_dir_path),
-        "--i", input_id,
-    ])
-
-    # get_input.sh is implemented so that the *last line* on stdout is the path
-    stdout = (result.stdout or "").strip()
-    if not stdout:
-        logger.error("get_input.sh returned empty stdout; cannot determine downloaded path.")
-        sys.exit(1)
-
-    downloaded_path = stdout.splitlines()[-1].strip()
-    logger.success(f"Download complete: {downloaded_path}")
-
-    return downloaded_path
-
-
-def get_network_meta_value(app: str, name: str, key: str, sub_key: str | None = None) -> str:
-    """
-    Query a specific key (and optional sub-key) from networks.json via get_hef.sh.
-
-    Examples:
-        get_network_key_value("classifier", "hardnet68", "apply_softmax")
-        get_network_key_value("instance_seg", "yolov5m_seg", "postprocess", "cpp")
-    """
-    cmd_args: list[str] = ["get_key_value", "--app", app, "--name", name, "--key", key]
-    if sub_key is not None:
-        cmd_args += ["--sub_key", sub_key]
-
-    result = run_get_hef_command(cmd_args)
-    value = (result.stdout or "").strip()
-    return value
+CAMERA_INDEX = 0 # or 1, or 2 — depending on your setup
 
 
 def load_json_file(path: str) -> Dict[str, Any]:
@@ -515,19 +80,27 @@ def list_available_cameras(max_index=5):
     return available
 
 
-def init_input_source(input_path, batch_size, camera_resolution):
+def init_input_source(input_path, batch_size, resolution):
     """
     Initialize input source from camera, video file, or image directory.
 
     Args:
         input_path (str): "camera", video file path, or image directory.
         batch_size (int): Number of images to validate against.
+        resolution (str or None): One of ['sd', 'hd', 'fhd'], or None to use native camera resolution.
 
     Returns:
         Tuple[Optional[cv2.VideoCapture], Optional[List[np.ndarray]]]
     """
     cap = None
     images = None
+
+    def get_camera_native_resolution():
+        cap = cv2.VideoCapture(CAMERA_INDEX)
+        res = (int(cap.get(3)), int(cap.get(4))) if cap.isOpened() else (640, 480)
+        cap.release()
+        return res
+
 
     if input_path == "camera":
 
@@ -537,15 +110,15 @@ def init_input_source(input_path, batch_size, camera_resolution):
             logger.warning(f"Available camera indices: {available}")
             exit(1)
 
-        resolution = None
-        # Open camera at its native resolution; don't force sd/hd/fhd here.
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-        if camera_resolution in RESOLUTION_MAP:
-            CAMERA_CAP_WIDTH, CAMERA_CAP_HEIGHT = RESOLUTION_MAP.get(camera_resolution)
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CAP_WIDTH)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CAP_HEIGHT)
+        if not resolution:
+            CAMERA_CAP_WIDTH, CAMERA_CAP_HEIGHT = get_camera_native_resolution()
+        else:
+            CAMERA_CAP_WIDTH, CAMERA_CAP_HEIGHT = CAMERA_RESOLUTION_MAP.get(resolution, (640, 480))  # fallback to SD
 
+        cap = cv2.VideoCapture(CAMERA_INDEX)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CAP_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CAP_HEIGHT)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
 
     elif any(input_path.lower().endswith(suffix) for suffix in ['.mp4', '.avi', '.mov', '.mkv']):
         if not os.path.exists(input_path):
@@ -573,26 +146,15 @@ def load_images_opencv(images_path: str) -> List[np.ndarray]:
     Returns:
         List[np.ndarray]: List of images as NumPy arrays.
     """
+    import cv2
     path = Path(images_path)
-
-    def read_rgb(p: Path):
-        img = cv2.imread(str(p))
-        if img is not None:
-            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        return None
-
     if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
-        img = read_rgb(path)
-        return [img] if img is not None else []
-
+        return [cv2.imread(str(path))]
     elif path.is_dir():
-        images = [
-            read_rgb(img)
-            for img in path.glob("*")
+        return [
+            cv2.imread(str(img)) for img in path.glob("*")
             if img.suffix.lower() in IMAGE_EXTENSIONS
         ]
-        return [img for img in images if img is not None]
-
     return []
 
 def load_input_images(images_path: str):
@@ -695,7 +257,7 @@ def id_to_color(idx):
 # PreProcess of Network Input
 ####################################################################
 
-def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, framerate: float, batch_size: int,
+def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, batch_size: int,
                input_queue: queue.Queue, width: int, height: int,
                preprocess_fn: Optional[Callable[[np.ndarray, int, int], np.ndarray]] = None) -> None:
 
@@ -717,60 +279,33 @@ def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, framerate: float
     if cap is None:
         preprocess_images(images, batch_size, input_queue, width, height, preprocess_fn)
     else:
-        preprocess_from_cap(cap, batch_size, input_queue, width, height, preprocess_fn, framerate)
+        preprocess_from_cap(cap, batch_size, input_queue, width, height, preprocess_fn)
 
     input_queue.put(None)  #Add sentinel value to signal end of input
 
 
-def preprocess_from_cap(cap: cv2.VideoCapture,
-                        batch_size: int,
-                        input_queue: queue.Queue,
-                        width: int,
-                        height: int,
-                        preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
-                        framerate: Optional[float] = None) -> None:
+def preprocess_from_cap(cap: cv2.VideoCapture, batch_size: int, input_queue: queue.Queue, width: int, height: int,
+                        preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray]) -> None:
     """
     Process frames from the camera stream and enqueue them.
-
-    If `framerate` is provided, we *skip frames* so that only approximately
-    `framerate` frames per second are processed and displayed.
-
-    The camera can still run at its native FPS (e.g. 30 FPS), but we only
-    use every N-th frame. This gives the effect of 1 FPS / 5 FPS / 10 FPS
-    in the live view without adding artificial lag.
+    Args:
+        batch_size (int): Number of images per batch.
+        input_queue (queue.Queue): Queue for input images.
+        width (int): Model input width.
+        height (int): Model input height.
+        preprocess_fn (Callable): Function to preprocess a single image (image, width, height) -> image.
     """
     frames = []
     processed_frames = []
-
-    # Estimate camera FPS
-    cam_fps = cap.get(cv2.CAP_PROP_FPS)
-    if not cam_fps or cam_fps <= 0:
-        cam_fps = 30.0  # sensible default
-
-    # Decide how many frames to skip
-    if framerate is not None and framerate > 0:
-        # e.g. cam_fps=30, framerate=1  -> skip=30  (use every 30th frame)
-        #      cam_fps=30, framerate=10 -> skip=3   (use every 3rd frame)
-        skip = max(1, int(round(cam_fps / float(framerate))))
-    else:
-        skip = 1  # no frame skipping, use all frames
-    frame_idx = 0
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
-        frame_idx += 1
-
-        # Skip frames to achieve the desired effective FPS
-        if frame_idx % skip != 0:
-            continue
-
-        # Process only the kept frames
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frames.append(frame)
-        processed_frame = preprocess_fn(frame, width, height)
+        processed_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        processed_frame = preprocess_fn(processed_frame, width, height)
         processed_frames.append(processed_frame)
 
         if len(frames) == batch_size:
@@ -792,7 +327,10 @@ def preprocess_images(images: List[np.ndarray], batch_size: int, input_queue: qu
     """
     for batch in divide_list_to_batches(images, batch_size):
         input_tuple = ([image for image in batch], [preprocess_fn(image, width, height) for image in batch])
+
         input_queue.put(input_tuple)
+
+
 
 
 def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
@@ -821,6 +359,18 @@ def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndar
 
 
 def oriented_object_detection_preprocess(image: np.ndarray, model_w: int, model_h: int, config_data: dict) -> np.ndarray:
+    """
+    Preprocess image for oriented object detection with letterbox resize.
+    
+    Args:
+        image (np.ndarray): Input image.
+        model_w (int): Model input width.
+        model_h (int): Model input height.
+        config_data (dict): Configuration data (currently unused but kept for API compatibility).
+    
+    Returns:
+        np.ndarray: Preprocessed and padded image.
+    """
     # run letterbox resize
     h0, w0 = image.shape[:2]
     new_w, new_h = model_w, model_h
@@ -850,140 +400,95 @@ def oriented_object_detection_preprocess(image: np.ndarray, model_w: int, model_
 ####################################################################
 # Visualization
 ####################################################################
-def resize_frame_for_output(frame: np.ndarray,
-                            resolution: Optional[Tuple[int, int]]) -> np.ndarray:
+
+def visualize(output_queue: queue.Queue, cap: cv2.VideoCapture, save_stream_output: bool, output_dir: str,
+                callback: Callable[[Any, Any], None], fps_tracker: Optional["FrameRateTracker"] = None, side_by_side: bool = False) -> None:
     """
-    Resize a frame according to the selected output resolution while
-    preserving aspect ratio. Only the target height is enforced.
+    Process and visualize the output results.
 
     Args:
-        frame (np.ndarray): Input RGB or BGR image.
-        resolution (Optional[Tuple[int, int]]): (width, height) or None.
-
-    Returns:
-        np.ndarray: Resized frame, or the original frame if resolution is None.
+        output_queue (queue.Queue): Queue containing (frame, results, boxes) to visualize.
+        cap (cv2.VideoCapture): VideoCapture object (camera or video file) or None.
+        save_stream_output (bool): Whether to save output video stream to disk.
+        output_dir (str): Directory where output video will be saved.
+        callback (Callable): Function to process each (frame, result) pair.
+        fps_tracker (FrameRateTracker, optional): Instance of a frame rate tracking class to monitor and log FPS.
+        side_by_side (bool): If True, assumes callback generates a side-by-side comparison (original vs. processed),
+                             and output frame width will be doubled.
     """
-    if resolution is None:
-        return frame
 
-    _, target_h = resolution
-
-    h, w = frame.shape[:2]
-    if h == 0 or w == 0:
-        return frame
-
-    scale = target_h / float(h)
-    new_w = int(round(w * scale))
-    new_h = target_h
-
-    resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    return resized
-
-def visualize(
-    output_queue: queue.Queue,
-    cap: Optional[cv2.VideoCapture],
-    save_stream_output: bool,
-    output_dir: str,
-    callback: Callable[[Any, Any], None],
-    fps_tracker: Optional["FrameRateTracker"] = None,
-    output_resolution: Optional[Tuple[int, int]] = None,
-    framerate: Optional[float] = None,
-    side_by_side: bool = False
-) -> None:
-    """
-    Visualize inference results: draw detections, show them on screen,
-    and optionally save the output video.
-
-    Args:
-        output_queue: Queue with (frame, inference_result[, extra]).
-        cap: VideoCapture for camera/video input, or None for image mode.
-        save_stream_output: If True, write the visualization to a video file.
-        output_dir: Directory to save output frames or videos.
-        callback: Function that draws detections on the frame.
-        fps_tracker: Tracks real-time FPS (optional).
-        output_resolution: One of ['sd','hd','fhd'] or a custom resolution for final display/save size.
-        framerate: Override output video FPS (optional).
-        side_by_side: If True, the callback returns a wide comparison frame.
-    """
     image_id = 0
     out = None
-    frame_width = None
-    frame_height = None
 
-    # Window + writer init (only for camera/video, not images)
     if cap is not None:
+        #Create a named window
         cv2.namedWindow("Output", cv2.WND_PROP_FULLSCREEN)
+        #Set the window to fullscreen
         cv2.setWindowProperty("Output", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-        base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
-        base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
-
-        if output_resolution is not None:
-            target_w, target_h = output_resolution
-        else:
-            target_w, target_h = base_width, base_height
-
-        frame_width  = target_w * (2 if side_by_side else 1)
-        frame_height = target_h
-
         if save_stream_output:
-            cam_fps   = cap.get(cv2.CAP_PROP_FPS)
-            final_fps = framerate or (cam_fps if cam_fps and cam_fps > 1 else 30.0)
+            # Read video dimensions
+            base_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+            # Double width if side-by-side visualization is expected
+            frame_width = base_width * 2 if side_by_side else base_width
+            frame_height = base_height
+
+            # Setup video writer
             os.makedirs(output_dir, exist_ok=True)
             out_path = os.path.join(output_dir, "output.avi")
             out = cv2.VideoWriter(
                 out_path,
                 cv2.VideoWriter_fourcc(*"XVID"),
-                final_fps,
-                (frame_width, frame_height),
+                cap.get(cv2.CAP_PROP_FPS),
+                (frame_width, frame_height)
             )
 
-    # Main loop
     while True:
+
         result = output_queue.get()
-        if result is None:
-            output_queue.task_done()
-            break
+        if result is None: break
 
-        original_frame, inference_result, *rest = result
+        # Unpack the result tuple into original frame, inference results, and optional extra context
+        original, infer, *rest = result  # result can be (original, infer) or (original, infer, extra)
 
-        if isinstance(inference_result, list) and len(inference_result) == 1:
-            inference_result = inference_result[0]
+        # If the inference result is a single-item list, unwrap it to get the actual result object
+        infer = infer[0] if isinstance(infer, list) and len(infer) == 1 else infer
 
+        # If there is extra context (e.g. boxes or metadata), pass it to the callback
         if rest:
-            frame_with_detections = callback(original_frame, inference_result, rest[0])
+            frame_with_detections = callback(original, infer, rest[0])
         else:
-            frame_with_detections = callback(original_frame, inference_result)
+            frame_with_detections = callback(original, infer)
+
 
         if fps_tracker is not None:
             fps_tracker.increment()
 
-        bgr_frame = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
-        frame_to_show = resize_frame_for_output(bgr_frame, output_resolution)
-
         if cap is not None:
-            cv2.imshow("Output", frame_to_show)
-            if save_stream_output and out is not None and frame_width and frame_height:
-                frame_to_save = cv2.resize(frame_to_show, (frame_width, frame_height))
-                out.write(frame_to_save)
+            # Display output
+            cv2.imshow("Output", frame_with_detections)
+            if save_stream_output:
+                out.write(frame_with_detections)
         else:
-            cv2.imwrite(os.path.join(output_dir, f"output_{image_id}.png"), frame_to_show)
+            cv2.imwrite(os.path.join(output_dir, f"output_{image_id}.png"), frame_with_detections)
 
+        # Wait for key press "q"
         image_id += 1
-        output_queue.task_done()
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            if save_stream_output and out is not None:
-                out.release()
-            if cap is not None:
-                cap.release()
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            # Close the window and release the camera
+            if save_stream_output:
+                out.release()  # Release the VideoWriter object
+            cap.release()
             cv2.destroyAllWindows()
             break
 
-    if cap is not None and save_stream_output and out is not None:
-        out.release()
+    if cap is not None and save_stream_output:
+        out.release()  # Release the VideoWriter object
 
+    output_queue.task_done()  # Indicate that processing is complete
 
 
 
@@ -1046,4 +551,174 @@ class FrameRateTracker:
             str: e.g. "Processed 200 frames at 29.81 FPS"
         """
         return f"Processed {self.count} frames at {self.fps:.2f} FPS"
+
+####################################################################
+# Resource Resolution Functions (for HACE compatibility)
+####################################################################
+
+def resolve_output_resolution_arg(res_arg: Optional[list[str]]) -> Optional[Tuple[int, int]]:
+    """
+    Parse --output-resolution argument.
+
+    Supported:
+      --output-resolution sd|hd|fhd
+      --output-resolution 1920 1080
+    """
+    if res_arg is None:
+        return None
+
+    # Single token: preset name (sd/hd/fhd)
+    if len(res_arg) == 1:
+        key = res_arg[0]
+        if key in CAMERA_RESOLUTION_MAP:
+            return CAMERA_RESOLUTION_MAP[key]
+        raise ValueError(
+            f"Invalid --output-resolution value '{key}'. "
+            "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+        )
+
+    # Two tokens: custom width/height
+    if len(res_arg) == 2 and all(x.isdigit() for x in res_arg):
+        w, h = map(int, res_arg)
+        if w <= 0 or h <= 0:
+            raise ValueError("Custom --output-resolution width/height must be positive integers.")
+        return (w, h)
+
+    raise ValueError(
+        f"Invalid --output-resolution value: {res_arg}. "
+        "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+    )
+
+
+def list_networks(app: str) -> None:
+    """
+    Print the supported networks for a given application.
+    
+    Note: This is a stub implementation for HACE compatibility.
+    In hailo-apps-infra, use config_manager.get_model_names() instead.
+    """
+    logger.warning(
+        f"list_networks() called for app '{app}'. "
+        "This is a compatibility stub. "
+        "For full functionality, use hailo_apps.config.config_manager.get_model_names()"
+    )
+    try:
+        from hailo_apps.config.config_manager import get_model_names
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+        
+        arch = detect_hailo_arch() or "hailo8"
+        models = get_model_names(app, arch, tier="all")
+        if models:
+            logger.info(f"Available models for {app} ({arch}):")
+            for model in models:
+                logger.info(f"  - {model}")
+        else:
+            logger.info(f"No models found for {app} ({arch})")
+    except ImportError:
+        logger.error("Could not import config_manager. Please ensure hailo-apps-infra is properly installed.")
+
+
+def list_inputs(app: str) -> None:
+    """
+    List predefined inputs for a given application.
+    
+    Note: This is a stub implementation for HACE compatibility.
+    """
+    logger.warning(
+        f"list_inputs() called for app '{app}'. "
+        "This is a compatibility stub. "
+        "Inputs should be specified as file paths or 'camera'."
+    )
+
+
+def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs") -> str:
+    """
+    Resolve the --net argument into a concrete HEF path.
+    
+    Note: This is a compatibility function for HACE apps.
+    In hailo-apps-infra, prefer using core.resolve_hef_path() directly.
+    """
+    if net_arg is None:
+        logger.error("No --net was provided.")
+        list_networks(app)
+        sys.exit(1)
+
+    dest_path = Path(dest_dir)
+    dest_path.mkdir(parents=True, exist_ok=True)
+
+    candidate = Path(net_arg)
+
+    # If it's an existing HEF file, use it
+    if candidate.exists() and candidate.is_file() and candidate.suffix == ".hef":
+        logger.info(f"Using local HEF file: {candidate.resolve()}")
+        return str(candidate.resolve())
+
+    # If it has .hef extension but doesn't exist, error
+    if candidate.suffix == ".hef":
+        logger.error(f"HEF file not found: {net_arg}")
+        list_networks(app)
+        sys.exit(1)
+
+    # Treat as model name - try to resolve using hailo-apps-infra mechanism
+    model_name = net_arg
+    existing_hef = dest_path / f"{model_name}.hef"
+    
+    if existing_hef.exists():
+        logger.info(f"Using existing HEF: {existing_hef.resolve()}")
+        return str(existing_hef.resolve())
+    
+    # Try to resolve using hailo-apps-infra's config system
+    try:
+        from hailo_apps.python.core.common.core import resolve_hef_path
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+        
+        arch = detect_hailo_arch() or "hailo8"
+        resolved = resolve_hef_path(model_name, app, arch)
+        if resolved and resolved.exists():
+            logger.info(f"Resolved model '{model_name}' to: {resolved}")
+            return str(resolved)
+    except Exception as e:
+        logger.debug(f"Could not resolve via config system: {e}")
+
+    # Fallback: error and suggest listing networks
+    logger.error(f"Model '{model_name}' not found locally and could not be resolved.")
+    logger.info("Please provide a full path to a .hef file, or use --list-nets to see available models.")
+    list_networks(app)
+    sys.exit(1)
+
+
+def resolve_input_arg(app: str, input_arg: str | None) -> str:
+    """
+    Resolve the --input argument into a concrete input source.
+    
+    Note: This is a compatibility function for HACE apps.
+    """
+    if input_arg is None:
+        logger.error("No --input was provided. Please specify -i/--input with a file path, directory, or 'camera'.")
+        sys.exit(1)
+
+    # "camera" stays as is
+    if input_arg == "camera":
+        return input_arg
+
+    path_candidate = Path(input_arg)
+
+    # If it already exists (file or dir), just use it as-is
+    if path_candidate.exists():
+        return str(path_candidate)
+
+    # If it has an extension but does NOT exist -> error
+    if path_candidate.suffix:
+        logger.error(f"Input file not found: {input_arg}")
+        logger.info("Please provide a valid file path, directory, or 'camera'.")
+        sys.exit(1)
+
+    # No extension and path does not exist -> treat as logical ID
+    logger.warning(
+        f"Input '{input_arg}' does not exist as a local file or directory. "
+        "Treating as logical input ID, but download functionality is not implemented in this compatibility stub."
+    )
+    logger.info("Please provide a full file path, directory path, or 'camera'.")
+    sys.exit(1)
+
 

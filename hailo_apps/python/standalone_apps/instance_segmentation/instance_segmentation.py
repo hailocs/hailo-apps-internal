@@ -11,24 +11,16 @@ from functools import partial
 import time
 from pathlib import Path
 import numpy as np
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from common.tracker.byte_tracker import BYTETracker
-from common.hailo_inference import HailoInfer
-from common.toolbox import (
-    init_input_source,
-    get_labels,
-    load_json_file,
-    preprocess,
-    visualize,
-    FrameRateTracker,
-    resolve_net_arg,
-    resolve_input_arg,
-    resolve_output_resolution_arg,
-    list_networks,
-    list_inputs
-)
+try:
+    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.toolbox import init_input_source, load_json_file, get_labels, visualize, preprocess, FrameRateTracker
+except ImportError:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'core')))
+    from tracker.byte_tracker import BYTETracker
+    from common.hailo_inference import HailoInfer
+    from common.toolbox import init_input_source, load_json_file, get_labels, visualize, preprocess, FrameRateTracker
 
-APP_NAME = Path(__file__).stem
 
 def parse_args() -> argparse.Namespace:
     """
@@ -37,32 +29,18 @@ def parse_args() -> argparse.Namespace:
         argparse.Namespace: Parsed arguments.
     """
     parser = argparse.ArgumentParser(
-        description="Instance segmentation supporting Yolov5, Yolov8, and FastSAM architectures.",
-        formatter_class=argparse.RawTextHelpFormatter
+        description="Instance segmentation supporting Yolov5, Yolov8, and FastSAM architectures."
     )
+
     parser.add_argument(
         "-n", "--net",
-        type=str,
-        help=(
-            "- A local HEF file path\n"
-            "    → uses the specified HEF directly.\n"
-            "- A model name (e.g., yolov8n)\n"
-            "    → automatically downloads & resolves the correct HEF for your device.\n"
-            "      Use --list-nets to see the available nets."
-        )    
+        help="Path for the network in HEF format.",
+        required=True
     )
     parser.add_argument(
         "-i", "--input",
-        type=str,
-        default=None,
-        help=(
-            "Input source. Examples:\n"
-            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
-            "  - Special:    'camera'\n"
-            "  - Named resource (without extension), e.g. 'bus'.\n"
-            "    If a named resource is used, it will be downloaded automatically\n"
-            "    if not already available. Use --list-inputs to see the options."
-        )
+        default="zidane.jpg",
+        help="Path to the input - either an image or a folder of images."
     )
     parser.add_argument(
         "-b", "--batch_size",
@@ -76,12 +54,13 @@ def parse_args() -> argparse.Namespace:
         help="Save the output of the inference from a stream."
     )
     parser.add_argument(
-        "-t", "--model-type",
-        help="Model type: v5, v8 or fast"
+        "-a", "--arch",
+        required=True,
+        help="The architecture type of the model: v5, v8 or fast"
     )
     parser.add_argument(
         "-l", "--labels",
-        default=str(Path(__file__).parent.parent / "common" / "coco.txt"),
+        default=str(Path(__file__).parent.parent.parent.parent.parent / "local_resources" / "coco.txt"),
         help="Path to a text file containing labels. If not provided, coco2017 will be used."
     )
     parser.add_argument(
@@ -89,28 +68,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Directory to save the results."
     )
-    display_group = parser.add_mutually_exclusive_group(required=False)
-    display_group.add_argument(
-        "-cr","--camera-resolution",
-        type=str,
-        choices=["sd", "hd", "fhd"],
-        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080)."
-    )
-    display_group.add_argument(
-        "-or","--output-resolution",
-        nargs="+",
-        type=str,
-        help=(
-            "(Camera only) Output resolution. Use: 'sd', 'hd', 'fhd', "
-            "or custom size like '--output-resolution 1920 1080'."
-        )
-    )
     parser.add_argument(
-        "-f", "--framerate",
-        type=float,
-        default=30.0,
-        help=("[Camera only] Override the camera input framerate.\n"
-            "Example: -f 10.0")
+        "-r", "--resolution",
+        choices=["sd", "hd", "fhd"],
+        default=None,
+        help="(Camera input only) Choose output resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080). "
+             "If not specified, the camera's native resolution will be used."
     )
     parser.add_argument(
         "--track",
@@ -122,37 +85,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable FPS performance measurement."
     )
-    parser.add_argument(
-        "--list-nets",
-        action="store_true",
-        help="List supported nets for this app and exit"
-    )
-    parser.add_argument(
-        "--list-inputs",
-        action="store_true",
-        help="List predefined sample inputs for this app and exit."
-    )
+
     args = parser.parse_args()
 
-    # Handle --list-nets and exit
-    if args.list_nets:
-        list_networks(APP_NAME)
-        sys.exit(0)
-
-    # Handle --list-inputs and exit
-    if args.list_inputs:
-        list_inputs(APP_NAME)
-        sys.exit(0)
-
-    args.net = resolve_net_arg(APP_NAME, args.net, ".")
-    args.input = resolve_input_arg(APP_NAME, args.input)
-    args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
-
-    # Allow list-nets and list-inputs without requiring -t
-    if not args.list_nets and not args.list_inputs:
-        if args.model_type is None:
-            parser.error("the following argument is required: -t/--model-type")
-            
+    # Validate paths
+    if not os.path.exists(args.net):
+        raise FileNotFoundError(f"Network file not found: {args.net}")
 
     if args.output_dir is None:
         args.output_dir = os.path.join(os.getcwd(), "output")
@@ -193,15 +131,13 @@ def inference_callback(
 
 def run_inference_pipeline(
     net,
-    input,
-    model_type,
+    input_path,
+    arch,
     batch_size,
     labels_file,
     output_dir,
-    camera_resolution,
-    output_resolution,
-    framerate,
     save_stream_output=False,
+    resolution="sd",
     enable_tracking=False,
     show_fps=False
 ) -> None:
@@ -212,7 +148,7 @@ def run_inference_pipeline(
     labels = get_labels(labels_file)
 
     # Initialize input source from string: "camera", video file, or image folder
-    cap, images = init_input_source(input, batch_size, camera_resolution)
+    cap, images = init_input_source(input_path, batch_size, resolution)
     tracker = None
     fps_tracker = None
 
@@ -236,7 +172,7 @@ def run_inference_pipeline(
         inference_result_handler,
         tracker=tracker,
         config_data=config_data,
-        model_type=model_type,
+        arch=arch,
         labels=labels,
         nms_postprocess_enabled=hailo_inference.is_nms_postprocess_enabled()
     )
@@ -245,12 +181,12 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, framerate, batch_size, input_queue, width, height)
+        args=(images, cap, batch_size, input_queue, width, height)
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
-        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker, output_resolution, framerate)
+        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker)
     )
 
     infer_thread = threading.Thread(
@@ -272,9 +208,7 @@ def run_inference_pipeline(
     if show_fps:
         logger.debug(fps_tracker.frame_rate_summary())
 
-    logger.success("Inference was successful!")
-    if save_stream_output or input.lower() != "camera":
-        logger.success(f'Results have been saved in {output_dir}')
+    logger.info('Inference was successful!')
 
 
 
@@ -322,14 +256,12 @@ def main() -> None:
     run_inference_pipeline(
         args.net,
         args.input,
-        args.model_type,
+        args.arch,
         args.batch_size,
         args.labels,
         args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.framerate,
         args.save_stream_output,
+        args.resolution,
         args.track,
         args.show_fps
     )
