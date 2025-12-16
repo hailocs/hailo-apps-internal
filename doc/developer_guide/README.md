@@ -7,3 +7,4 @@ This section is for developers who want to build their own custom applications o
 *   **[Application Development](./app_development.md)**: The primary guide for developers. It covers the core concepts of the Python framework and how to build new applications.
 *   **[Writing a C++ Post-Process](./writing_postprocess.md)**: A step-by-step tutorial for creating custom C++ post-processing functions for new or unsupported neural networks.
 *   **[Retraining models](./retraining_example.md)**: A step-by-step tutorial for retraining models.
+*   **[Debugging with GST Shark](./debugging_with_gst_shark.md)**: Debugging tool for GStreamer pipelines.

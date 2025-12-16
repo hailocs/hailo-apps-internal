@@ -24,12 +24,29 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 ### ✔️ Applications Guide
 **References for applications guides.**
 
-*   **[Detection simple](../hailo_apps/python/pipeline_apps/detection_simple/README.md)**
-*   **[Detection](../hailo_apps/python/pipeline_apps/detection/README.md)**
+#### Pipeline apps ####
+
+*   **[Clip](../hailo_apps/python/pipeline_apps/clip/README.md)**
 *   **[Depth](../hailo_apps/python/pipeline_apps/depth/README.md)**
-*   **[Instance Segmentation](../hailo_apps/python/pipeline_apps/instance_segmentation/README.md)**
-*   **[Pose Estimation](../hailo_apps/python/pipeline_apps/pose_estimation/README.md)**
+*   **[Detection](../hailo_apps/python/pipeline_apps/detection/README.md)**
+*   **[Detection simple](../hailo_apps/python/pipeline_apps/detection_simple/README.md)**
 *   **[Face Recognition](../hailo_apps/python/pipeline_apps/face_recognition/README.md)**
-*   **[Tiling](../hailo_apps/python/pipeline_apps/tiling/README.md)**
+*   **[Instance Segmentation](../hailo_apps/python/pipeline_apps/instance_segmentation/README.md)**
 *   **[Multisource](../hailo_apps/python/pipeline_apps/multisource/README.md)**
+*   **[Paddle OCR](../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)**
+*   **[Pose Estimation](../hailo_apps/python/pipeline_apps/pose_estimation/README.md)**
 *   **[REID Multisource](../hailo_apps/python/pipeline_apps/reid_multisource/README.md)**
+*   **[Tiling](../hailo_apps/python/pipeline_apps/tiling/README.md)**
+
+#### Standalone apps ####
+*   **[Agent Tools Example](../hailo_apps/python/standalone_apps/agent_tools_example/README.md)**
+*   **[Examples](../hailo_apps/python/standalone_apps/Examples/README.md)**
+*   **[Instance Segmentation](../hailo_apps/python/standalone_apps/instance_segmentation/README.md)**
+*   **[Lane Detection](../hailo_apps/python/standalone_apps/lane_detection/README.md)**
+*   **[Object Detection](../hailo_apps/python/standalone_apps/object_detection/README.md)**
+*   **[Paddle OCR](../hailo_apps/python/standalone_apps/paddle_ocr/README.md)**
+*   **[Pose Estimation](../hailo_apps/python/standalone_apps/pose_estimation/README.md)**
+*   **[Speech Recognition](../hailo_apps/python/standalone_apps/speech_recognition/README.md)**
+*   **[Super Resolution](../hailo_apps/python/standalone_apps/super_resolution/README.md)**
+*   **[VLM Chat](../hailo_apps/python/standalone_apps/vlm_chat/README.md)**
+*   **[Voice Assistant](../hailo_apps/python/standalone_apps/voice_assistant/README.md)**
