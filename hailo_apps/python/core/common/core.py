@@ -546,21 +546,18 @@ def resolve_hef_path(
     arch: str
 ) -> Path | None:
     """
-    Smart HEF path resolution with auto-download capability.
+    Main method for resolving HEF (Hailo Executable Format) file paths.
 
-    Resolution order:
-    1. If hef_path is None, use default model for the app
-    2. If hef_path is a full path that exists, use it
-    3. If hef_path is in the resources folder, use it
-    4. If hef_path is a known model name, download it
+    Provides intelligent path resolution with automatic model downloading.
+    See README.md for detailed documentation and usage examples.
 
     Args:
-        hef_path: User-provided path or model name (can be None)
-        app_name: App name from resources config (e.g., 'detection') - use pipeline constants like DETECTION_PIPELINE
-        arch: Hailo architecture
+        hef_path: User-provided path or model name (None uses default model)
+        app_name: Application name from resources config (e.g., DETECTION_PIPELINE)
+        arch: Hailo architecture ('hailo8', 'hailo8l', or 'hailo10h')
 
     Returns:
-        Resolved Path to the HEF file, or None if not found
+        Path to the HEF file, or None if not found
     """
     try:
         from hailo_apps.config.config_manager import (
