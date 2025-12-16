@@ -1,0 +1,262 @@
+# tools/elevator/config.yaml
+version: "1.0"
+tool_name: "elevator"
+
+persona:
+  role: "Wonkavator Elevator Operator"
+  style: "Whimsical, themed, helpful"
+  constraints:
+    - "Always use tool for floor navigation"
+    - "Map natural language to floor numbers"
+    - "Support floor names, character names, keywords"
+
+capabilities:
+  - "Navigate between floors 0 to 5"
+  - "Understand room names and keywords"
+  - "Map keywords to their floors"
+  - "Support natural language floor descriptions"
+  - "Move relative to current floor (up/down N floors)"
+
+floors:
+  0:
+    name: "Staff & Utilities (Basement)"
+    description: "The infrastructural and unseen level containing the boiler room, Oompa Loompa staff quarters, and other utilities necessary for maintenance and operation."
+    keywords:
+      - "maintenance"
+      - "boiler room"
+      - "staff quarters"
+      - "utilities"
+      - "basement"
+      - "underground"
+      - "oompa loompas"
+      - "oompa loompa"
+      - "lowest floor"
+  1:
+    name: "The Chocolate Room"
+    description: "The vast, edible garden floor. Features the Chocolate River and Waterfall. The starting point of the tour, famous for the elimination of Augustus Gloop, who fell into the river and was sucked up the pipe toward the Fudge Room."
+    keywords:
+      - "chocolate river"
+      - "waterfall"
+      - "edible grass"
+      - "augustus gloop"
+      - "fudge room"
+      - "first floor"
+      - "ground floor"
+      - "chocolate room"
+  2:
+    name: "The Inventing Room"
+    description: "A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry."
+    keywords:
+      - "inventing"
+      - "everlasting gobstopper"
+      - "gobstopper"
+      - "three-course gum"
+      - "violet"
+      - "blueberry"
+      - "blue berry"
+      - "swelling"
+      - "chewing gum"
+      - "innovation"
+      - "inventing room"
+      - "laboratory"
+      - "lab"
+      - "second floor"
+  3:
+    name: "The Fizzy Lifting Drinks Room"
+    description: "The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating."
+    keywords:
+      - "floating"
+      - "fizzy lifting drinks"
+      - "burping"
+      - "ceiling fan"
+      - "soda"
+      - "beverages"
+      - "float"
+      - "fly"
+  4:
+    name: "The Nut Room"
+    description: "Dedicated to quality control where hundreds of trained Squirrels shell walnuts to find 'good' and 'bad' nuts. Veruca Salt was eliminated here, judged a 'bad nut' by the squirrels and sent down the Rubbish Chute."
+    keywords:
+      - "squirrels"
+      - "squirrel"
+      - "veruca salt"
+      - "bad egg"
+      - "rubbish chute"
+      - "nuts"
+      - "quality control"
+      - "i want it now"
+      - "nutrom"
+      - "walnuts"
+  5:
+    name: "The Television-Chocolate Room"
+    description: "A sterile, white room containing the powerful Wonkavision camera/teleporter. It develops a way to send chocolate bars through television waves. Mike Teavee was eliminated here after shrinking himself down to a tiny size."
+    keywords:
+      - "tv"
+      - "television"
+      - "wonkavision"
+      - "teleporter"
+      - "shrinking"
+      - "top floor"
+      - "highest floor"
+      - "television room"
+      - "tv room"
+
+output_format:
+  tool_call: "XML-wrapped JSON: <tool_call>{...}</tool_call>"
+  direct_response: "Confirm destination"
+  after_tool: "Announce arrival at floor"
+
+tool_instructions: |
+  Use this tool to navigate the Wonkavator elevator.
+  Function name: 'elevator'
+
+  FLOOR DIRECTORY - Complete floor information:
+
+  Floor 0: Staff & Utilities (Basement)
+    Description: The infrastructural and unseen level containing the boiler room, Oompa Loompa staff quarters, and other utilities necessary for maintenance and operation.
+
+  Floor 1: The Chocolate Room
+    Description: The vast, edible garden floor. Features the Chocolate River and Waterfall. The starting point of the tour, famous for the elimination of Augustus Gloop, who fell into the river and was sucked up the pipe toward the Fudge Room.
+
+  Floor 2: The Inventing Room
+    Description: A laboratory filled with machines and bubbling pots where experimental sweets are created. This floor features the Everlasting Gobstopper and the disastrous Three-Course Dinner Chewing Gum. Violet Beauregarde was eliminated here by swelling up into a blueberry.
+
+  Floor 3: The Fizzy Lifting Drinks Room
+    Description: The room housing the Fizzy Lifting Drinks, famous for the scene where Charlie and Grandpa Joe risk being chopped up by the ceiling fan after defying gravity and floating up. Ideal for requests about non-standard beverages or floating.
+
+  Floor 4: The Nut Room
+    Description: Dedicated to quality control where hundreds of trained Squirrels shell walnuts to find 'good' and 'bad' nuts. Veruca Salt was eliminated here, judged a 'bad nut' by the squirrels and sent down the Rubbish Chute.
+
+  Floor 5: The Television-Chocolate Room
+    Description: A sterile, white room containing the powerful Wonkavision camera/teleporter. It develops a way to send chocolate bars through television waves. Mike Teavee was eliminated here after shrinking himself down to a tiny size.
+
+  YOUR TASK: Interpret the user's request and call this tool with the integer floor number or relative movement.
+  Match room names, character names, or location descriptions to the correct floor.
+  Use the floor directory above to find the correct floor number.
+
+  Match user requests to floors using:
+  - Floor names (exact or partial matches)
+  - Floor descriptions (match user's description to floor descriptions above)
+  - Character names mentioned in descriptions
+  - Room descriptions
+  - Natural language descriptions (e.g., "top floor" → Floor 5, "basement" → Floor 0)
+
+  RELATIVE MOVEMENTS: When the user requests to move up or down a certain number of floors, use the 'relative_floor' parameter:
+  - "go up 2 floors" → relative_floor: 2
+  - "move down 1 floor" → relative_floor: -1
+  - "go up one floor" → relative_floor: 1
+  - "move down 3 floors" → relative_floor: -3
+  - Positive integers = move up, negative integers = move down
+  - The tool will automatically calculate the target floor based on the current position
+  - If the relative movement would result in an invalid floor, the tool will return an error
+
+  DEFAULT OPTION: If the user requests a floor number outside the available range (0-5), or if you cannot determine which floor
+  the user wants (ambiguous request), set 'default' to true.
+  Use this when you cannot confidently map the user's request to a valid floor number.
+  The tool will automatically generate an appropriate error message.
+
+few_shot_examples:
+  # Valid floor requests using keywords
+  - user: "Take me to the chocolate room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 1
+
+  - user: "Go to where Violet turned into a blueberry"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 2
+
+  - user: "I want to float"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 3
+
+  - user: "Take me to the squirrels"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 4
+
+  - user: "Take me to the top floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 5
+
+  - user: "Go to the television room"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 5
+
+  - user: "Take me to the basement"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 0
+
+  - user: "Go to floor 0"
+    tool_call:
+      name: "elevator"
+      arguments:
+        floor: 0
+
+  # Relative movement examples
+  - user: "Go up 2 floors"
+    tool_call:
+      name: "elevator"
+      arguments:
+        relative_floor: 2
+
+  - user: "Move down 1 floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        relative_floor: -1
+
+  # Default option examples - invalid floor numbers
+  - user: "Take me to the 7th floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+  # Default option examples - ambiguous or unclear requests
+  - user: "Take me to the turn floor"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+  - user: "I want to go somewhere fun"
+    tool_call:
+      name: "elevator"
+      arguments:
+        default: true
+
+test_cases:
+  - id: "elevator_001"
+    input: "go to the chocolate room"
+    expected:
+      tool_called: true
+      tool_name: "elevator"
+    tags: ["basic", "room-name"]
+    difficulty: "easy"
+
+  - id: "elevator_002"
+    input: "take me to the squirrels"
+    expected:
+      tool_called: true
+      tool_name: "elevator"
+    tags: ["keyword", "nut-room"]
+    difficulty: "medium"
+
+metadata:
+  author: "hailo-team"
+  created: "2025-12-11"
+  description: "Wonkavator elevator control"
+

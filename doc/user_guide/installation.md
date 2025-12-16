@@ -349,6 +349,17 @@ After running any of the installation methods, you can verify that everything is
 *   **Driver Issues (RPi)**: If you see driver errors, ensure your kernel is up to date (`sudo apt update && sudo apt full-upgrade`).
 *   **`DEVICE_IN_USE()` Error**: This means the Hailo device is being used by another process. Run the cleanup script: `./scripts/kill_first_hailo.sh`.
 *   **GStreamer `cannot allocate memory in static TLS block` (RPi)**: This is a known issue. Add `export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1` to your `~/.bashrc` file and reboot.
+*   **Emoji Display Issues (RPi)**: If emoji icons (❌, ✅, etc.) are not displaying correctly in terminal output, install the Noto Color Emoji font:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install fonts-noto-color-emoji
+    fc-cache -f -v
+    ```
+    After installation, restart your terminal or log out and back in. If emojis still don't display, ensure your locale supports UTF-8:
+    ```bash
+    export LANG=en_US.UTF-8
+    export LC_ALL=en_US.UTF-8
+    ```
 
 </details>
 
