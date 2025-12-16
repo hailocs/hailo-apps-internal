@@ -9,6 +9,10 @@ HEF_REGISTRY = {
         "hailo8l": {
             "encoder": "app/hefs/h8l/base/base-whisper-encoder-5s_h8l.hef",
             "decoder": "app/hefs/h8l/base/base-whisper-decoder-fixed-sequence-matmul-split_h8l.hef",
+        },
+        "hailo10h": {
+            "encoder": "app/hefs/h10h/base/base-whisper-encoder-10s.hef",
+            "decoder": "app/hefs/h10h/base/base-whisper-decoder-10s-out-seq-64.hef",
         }
 
     },

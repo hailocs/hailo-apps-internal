@@ -4,24 +4,13 @@ import time
 import argparse
 import os
 import sys
-try:
-    from hailo_apps.python.standalone_apps.speech_recognition.app.hailo_whisper_pipeline import HailoWhisperPipeline
-    from hailo_apps.python.standalone_apps.speech_recognition.common.audio_utils import load_audio
-    from hailo_apps.python.standalone_apps.speech_recognition.common.preprocessing import preprocess, improve_input_audio
-    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import clean_transcription
-    from hailo_apps.python.standalone_apps.speech_recognition.common.record_utils import record_audio
-    from hailo_apps.python.standalone_apps.speech_recognition.app.whisper_hef_registry import HEF_REGISTRY
-except ImportError:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from app.hailo_whisper_pipeline import HailoWhisperPipeline
-    from common.audio_utils import load_audio
-    from common.preprocessing import preprocess, improve_input_audio
-    from common.postprocessing import clean_transcription
-    from common.record_utils import record_audio
-    from app.whisper_hef_registry import HEF_REGISTRY
+from app.hailo_whisper_pipeline import HailoWhisperPipeline
+from common.audio_utils import load_audio
+from common.preprocessing import preprocess, improve_input_audio
+from common.postprocessing import clean_transcription
+from common.record_utils import record_audio
+from app.whisper_hef_registry import HEF_REGISTRY
 
-
-DURATION = 5  # recording duration in seconds
 
 
 def get_args():
@@ -55,6 +44,12 @@ def get_args():
         "--multi-process-service", 
         action="store_true", 
         help="Enable multi-process service to run other models in addition to Whisper"
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=10,
+        help="Recording duration in seconds (default: 10 seconds)"
     )
     return parser.parse_args()
 
@@ -100,7 +95,7 @@ def main():
     audio_path = "sampled_audio.wav"
     is_nhwc = True
 
-    chunk_length = 10 if "tiny" in variant else 5
+    chunk_length = whisper_hailo.get_model_input_audio_length()
 
     while True:
         if args.reuse_audio:
@@ -113,7 +108,7 @@ def main():
             if user_input.lower() == "q":
                 break
             # Record audio
-            sampled_audio = record_audio(DURATION, audio_path=audio_path)
+            sampled_audio = record_audio(args.duration, audio_path=audio_path)
 
         # Process audio
         sampled_audio = load_audio(audio_path)

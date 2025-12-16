@@ -5,7 +5,7 @@ import sys
 import os
 from multiprocessing import Process
 from functools import partial
-
+from pathlib import Path
 import numpy as np
 from loguru import logger
 import cv2
@@ -15,12 +15,17 @@ from lane_detection_utils import (UFLDProcessing,
                                   check_process_errors,
                                   compute_scaled_radius)
 
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-except ImportError:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'core')))
-    from common.hailo_inference import HailoInfer
+# Add the parent directory to the system path to access utils module
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from common.hailo_inference import HailoInfer
+from common.toolbox import (
+    resolve_net_arg,
+    resolve_input_arg,
+    list_networks,
+    list_inputs
+)
 
+APP_NAME = Path(__file__).stem
 
 
 def parser_init():
@@ -30,30 +35,68 @@ def parser_init():
     Returns:
         argparse.ArgumentParser: An instance of ArgumentParser.
     """
-    parser = argparse.ArgumentParser(description="UFLD_v2 inference")
-
-    parser.add_argument(
-        "-n",
-        "--net",
-        help="Path of model file in HEF format.",
-        default="ufld_v2_tu.hef"
+    parser = argparse.ArgumentParser(description="UFLD_v2 inference",
+        formatter_class=argparse.RawTextHelpFormatter
     )
-
     parser.add_argument(
-        "-i",
-        "--input_video",
-        default="input_video.mp4",
-        help="Path of the video to perform inference on.",
+        "-n", "--net",
+        type=str,
+        help=(
+            "- A local HEF file path\n"
+            "    → uses the specified HEF directly.\n"
+            "- A model name (e.g., yolov8n)\n"
+            "    → automatically downloads & resolves the correct HEF for your device.\n"
+            "      Use --list-nets to see the available nets."
+        )    
     )
-
+    parser.add_argument(
+        "-i", "--input",
+        type=str,
+        default=None,
+        help=(
+            "Input source. Examples:\n"
+            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
+            "  - Named resource (without extension), e.g. 'bus'.\n"
+            "    If a named resource is used, it will be downloaded automatically\n"
+            "    if not already available. Use --list-inputs to see the options."
+        )
+    )
     parser.add_argument(
         "-o",
-        "--output_video",
-        default="output_video.mp4",
+        "--output_dir",
+        default=None,
         help="Path of the output video.",
     )
+    parser.add_argument(
+        "--list-nets",
+        action="store_true",
+        help="List supported nets for this app and exit"
+    )
+    parser.add_argument(
+        "--list-inputs",
+        action="store_true",
+        help="List predefined sample inputs for this app and exit."
+    )
+    args = parser.parse_args()
 
-    return parser
+    # Handle --list-nets and exit
+    if args.list_nets:
+        list_networks(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-inputs and exit
+    if args.list_inputs:
+        list_inputs(APP_NAME)
+        sys.exit(0)
+
+    args.net = resolve_net_arg(APP_NAME, args.net, ".")
+    args.input = resolve_input_arg(APP_NAME, args.input)
+    
+    if args.output_dir is None:
+        args.output_dir = os.path.join(os.getcwd(), "output")
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    return args
 
 
 def get_video_info(video_path):
@@ -108,14 +151,14 @@ def preprocess_input(video_path: str,
 
 
 def postprocess_output(output_queue: mp.Queue,
-                       output_video_path: str,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+                       output_dir: str,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
                        ufld_processing: UFLDProcessing) -> None:
     """
     Post-process inference results, draw lane detections, and write output to a video.
 
     Args:
         output_queue (mp.Queue): Queue for output results.
-        output_video_path (str): Path to the output video file.
+        output_dir (str): Path to the output video file.
         ufld_processing (UFLDProcessing): Lane detection post-processing class.
     """
     # Import tqdm here to avoid issues with multiprocessing
@@ -123,8 +166,9 @@ def postprocess_output(output_queue: mp.Queue,
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     width, height = ufld_processing.get_original_frame_size()
-    output_video = cv2.VideoWriter(output_video_path, fourcc, 20,
-                                   (width, height))
+
+    out_path = os.path.join(output_dir, "output.avi")
+    output_video = cv2.VideoWriter(out_path, fourcc, 20, (width, height))
 
     # Compute the scaled radius for the lane detection points
     radius = compute_scaled_radius(width, height)
@@ -228,7 +272,7 @@ def run_inference_pipeline(
     video_path: str,
     net_path: str,
     batch_size: int,
-    output_video_path: str,
+    output_dir: str,
     ufld_processing: UFLDProcessing
 ) -> None:
     """
@@ -238,7 +282,7 @@ def run_inference_pipeline(
         video_path (str): Path to the input video.
         net_path (str): Path to the HEF model file.
         batch_size (int): Number of frames per batch.
-        output_video_path (str): Path to save the output video.
+        output_dir (str): Path to save the output video.
         ufld_processing (UFLDProcessing): Lane detection processing class.
     """
 
@@ -258,7 +302,7 @@ def run_inference_pipeline(
     )
     postprocess_thread = threading.Thread(
         target=postprocess_output,
-        args=(output_queue, output_video_path, ufld_processing)
+        args=(output_queue, output_dir, ufld_processing)
     )
 
     infer_thread = threading.Thread(
@@ -276,16 +320,16 @@ def run_inference_pipeline(
     output_queue.put(None)
     postprocess_thread.join()
 
-    logger.info(f"Inference was successful! Results saved in {output_video_path}")
+    logger.info(f"Inference was successful! Results saved in {output_dir}")
 
 
 
 if __name__ == "__main__":
 
     # Parse command-line arguments
-    args = parser_init().parse_args()
+    args = parser_init()
     try:
-        original_frame_width, original_frame_height, total_frames= get_video_info(args.input_video)
+        original_frame_width, original_frame_height, total_frames= get_video_info(args.input)
     except ValueError as e:
         logger.error(e)
 
@@ -300,9 +344,9 @@ if __name__ == "__main__":
                                      total_frames = total_frames)
 
     run_inference_pipeline(
-        args.input_video,
+        args.input,
         args.net,
         batch_size=1,
-        output_video_path=args.output_video,
+        output_dir=args.output_dir,
         ufld_processing=ufld_processing
     )

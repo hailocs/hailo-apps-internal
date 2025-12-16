@@ -10,21 +10,11 @@ import argparse
 from PIL import Image
 
 
-try:
-    from hailo_apps.python.standalone_apps.speech_recognition.common.preprocessing import preprocess, improve_input_audio
-    from hailo_apps.python.standalone_apps.speech_recognition.app.hailo_whisper_pipeline import HailoWhisperPipeline
-    from hailo_apps.python.standalone_apps.speech_recognition.common.audio_utils import load_audio
-    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import clean_transcription
-    from hailo_apps.python.standalone_apps.speech_recognition.app.whisper_hef_registry import HEF_REGISTRY
-except ImportError:
-    import sys
-    import os
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from common.preprocessing import preprocess, improve_input_audio
-    from app.hailo_whisper_pipeline import HailoWhisperPipeline
-    from common.audio_utils import load_audio
-    from common.postprocessing import clean_transcription
-    from app.whisper_hef_registry import HEF_REGISTRY
+from common.preprocessing import preprocess, improve_input_audio
+from app.hailo_whisper_pipeline import HailoWhisperPipeline
+from common.audio_utils import load_audio
+from common.postprocessing import clean_transcription
+from app.whisper_hef_registry import HEF_REGISTRY
 
 # --- Constants ---
 SAMPLE_RATE = 16000
