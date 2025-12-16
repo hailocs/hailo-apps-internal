@@ -46,6 +46,7 @@ class AudioRecorder:
         self.debug = debug
         self.recording_counter = 0
         self.stream = None
+        self.device_sr = TARGET_SR  # Will be updated based on device capabilities
 
         # Select device
         if device_id is None:
@@ -55,31 +56,61 @@ class AudioRecorder:
         else:
             self.device_id = device_id
 
-        logger.debug(f"Initialized AudioRecorder with device_id={self.device_id}")
+        # Query device's native sample rate
+        try:
+            devices = sd.query_devices()
+            if self.device_id is not None and self.device_id < len(devices):
+                device_info = devices[self.device_id]
+                self.device_sr = device_info['default_samplerate']
+                logger.debug(f"Device {self.device_id} native sample rate: {self.device_sr} Hz")
+        except Exception as e:
+            logger.warning(f"Could not query device sample rate, using TARGET_SR: {e}")
+            self.device_sr = TARGET_SR
+
+        logger.debug(f"Initialized AudioRecorder with device_id={self.device_id}, sample_rate={self.device_sr}")
 
     def start(self):
         """Start recording from the microphone."""
         self.audio_frames = []
         self.is_recording = True
 
+        # Calculate chunk size for device sample rate (maintain similar time duration)
+        device_chunk_size = int(CHUNK_SIZE * self.device_sr / TARGET_SR)
+
         try:
+            # Try device's native sample rate first
             self.stream = sd.InputStream(
-                samplerate=TARGET_SR,
-                blocksize=CHUNK_SIZE,
+                samplerate=self.device_sr,
+                blocksize=device_chunk_size,
                 device=self.device_id,
                 channels=1,
                 dtype='float32',
                 callback=self._callback
             )
             self.stream.start()
-            logger.debug("Recording started")
+            logger.debug(f"Recording started at {self.device_sr} Hz")
         except Exception as e:
-            logger.error(f"Failed to start recording stream: {e}")
-            self.is_recording = False
-            raise RuntimeError(
-                f"Could not start recording on device {self.device_id}. "
-                "Check if microphone is connected and not in use."
-            ) from e
+            # Fallback to TARGET_SR if device rate fails
+            logger.warning(f"Failed to start recording at {self.device_sr} Hz, trying {TARGET_SR} Hz: {e}")
+            try:
+                self.device_sr = TARGET_SR
+                self.stream = sd.InputStream(
+                    samplerate=TARGET_SR,
+                    blocksize=CHUNK_SIZE,
+                    device=self.device_id,
+                    channels=1,
+                    dtype='float32',
+                    callback=self._callback
+                )
+                self.stream.start()
+                logger.debug(f"Recording started at fallback rate {TARGET_SR} Hz")
+            except Exception as fallback_error:
+                logger.error(f"Failed to start recording stream: {fallback_error}")
+                self.is_recording = False
+                raise RuntimeError(
+                    f"Could not start recording on device {self.device_id}. "
+                    "Check if microphone is connected and not in use."
+                ) from fallback_error
 
     def stop(self) -> np.ndarray:
         """
@@ -107,6 +138,11 @@ class AudioRecorder:
         # Flatten if necessary (handle (N, 1) shape from sounddevice)
         if audio_data.ndim > 1:
             audio_data = audio_data.flatten()
+
+        # Resample to TARGET_SR if needed
+        if abs(self.device_sr - TARGET_SR) > 1.0:
+            logger.debug(f"Resampling audio from {self.device_sr} Hz to {TARGET_SR} Hz")
+            audio_data = AudioDiagnostics.resample_audio(audio_data, self.device_sr, TARGET_SR)
 
         # Ensure the audio data is in little-endian format
         audio_le = audio_data.astype('<f4')

@@ -146,6 +146,36 @@ class AudioDiagnostics:
         return input_devices, output_devices
 
     @staticmethod
+    def resample_audio(audio: np.ndarray, original_sr: float, target_sr: float) -> np.ndarray:
+        """
+        Resample audio from original_sr to target_sr using numpy linear interpolation.
+
+        Args:
+            audio (np.ndarray): Input audio data (1D array).
+            original_sr (float): Original sample rate.
+            target_sr (float): Target sample rate.
+
+        Returns:
+            np.ndarray: Resampled audio data.
+        """
+        if abs(original_sr - target_sr) < 1.0:
+            return audio  # No resampling needed
+
+        # Calculate the number of samples in the output
+        num_samples = len(audio)
+        duration = num_samples / original_sr
+        target_num_samples = int(duration * target_sr)
+
+        # Create indices for the original and target arrays
+        original_indices = np.arange(num_samples)
+        target_indices = np.linspace(0, num_samples - 1, target_num_samples)
+
+        # Use numpy's interp function for linear interpolation
+        resampled = np.interp(target_indices, original_indices, audio)
+
+        return resampled.astype(audio.dtype)
+
+    @staticmethod
     def test_microphone(device_id: int, duration: float = 1.0, threshold: float = 0.001) -> Tuple[bool, str, float, Optional[np.ndarray]]:
         """
         Test a microphone device by recording a short clip.
@@ -160,15 +190,55 @@ class AudioDiagnostics:
         """
         try:
             logger.debug(f"Testing microphone device {device_id}...")
-            # Record short clip
-            recording = sd.rec(
-                int(duration * TARGET_SR),
-                samplerate=TARGET_SR,
-                channels=1,
-                device=device_id,
-                dtype='float32',
-                blocking=True
-            )
+
+            # Get device info to determine supported sample rate
+            devices = sd.query_devices()
+            device_info = devices[device_id]
+            device_sr = device_info['default_samplerate']
+
+            # Try to record at device's native sample rate first
+            # If that fails, try TARGET_SR as fallback
+            recording = None
+            actual_sr = device_sr
+
+            try:
+                # Record at device's native sample rate
+                num_samples = int(duration * device_sr)
+                recording = sd.rec(
+                    num_samples,
+                    samplerate=device_sr,
+                    channels=1,
+                    device=device_id,
+                    dtype='float32',
+                    blocking=True
+                )
+                logger.debug(f"Recorded at device sample rate: {device_sr} Hz")
+            except Exception as e:
+                # Fallback: try TARGET_SR
+                logger.debug(f"Failed to record at {device_sr} Hz, trying {TARGET_SR} Hz: {e}")
+                try:
+                    num_samples = int(duration * TARGET_SR)
+                    recording = sd.rec(
+                        num_samples,
+                        samplerate=TARGET_SR,
+                        channels=1,
+                        device=device_id,
+                        dtype='float32',
+                        blocking=True
+                    )
+                    actual_sr = TARGET_SR
+                    logger.debug(f"Recorded at fallback sample rate: {TARGET_SR} Hz")
+                except Exception as fallback_error:
+                    raise fallback_error  # Re-raise if fallback also fails
+
+            # Ensure mono (take first channel if stereo)
+            if recording.ndim > 1:
+                recording = recording[:, 0]
+
+            # Resample to TARGET_SR if needed
+            if abs(actual_sr - TARGET_SR) > 1.0:
+                logger.debug(f"Resampling from {actual_sr} Hz to {TARGET_SR} Hz")
+                recording = AudioDiagnostics.resample_audio(recording, actual_sr, TARGET_SR)
 
             # Calculate levels
             max_amp = float(np.max(np.abs(recording)))
