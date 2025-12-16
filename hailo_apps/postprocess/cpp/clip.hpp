@@ -16,4 +16,5 @@ public:
 ClipParams *init(std::string config_path, std::string func_name);
 
 void filter(HailoROIPtr roi, void *params_void_ptr);
+void filter_custom_clip(HailoROIPtr roi, void *params_void_ptr);
 __END_DECLS

@@ -11,8 +11,8 @@
 #include "xtensor/xadapt.hpp"
 #include "xtensor/xarray.hpp"
 
-#define OUTPUT_LAYER_NAME "clip_resnet_50x4_image_encoder/conv89"  // "clip_resnet_50x4/conv89"
-
+#define CUSTOM_OUTPUT_LAYER_NAME "clip_vit_b_32_image_encoder/conv50"
+#define OUTPUT_LAYER_NAME "clip_resnet_50x4_image_encoder/conv89"
 
 ClipParams *init(std::string config_path, std::string func_name)
 {
@@ -46,4 +46,10 @@ void filter(HailoROIPtr roi, void *params_void_ptr)
 {
     ClipParams *params = reinterpret_cast<ClipParams *>(params_void_ptr);
     clip(roi, OUTPUT_LAYER_NAME, params->tracker_name);
+}
+
+void filter_custom_clip(HailoROIPtr roi, void *params_void_ptr)
+{
+    ClipParams *params = reinterpret_cast<ClipParams *>(params_void_ptr);
+    clip(roi, CUSTOM_OUTPUT_LAYER_NAME, params->tracker_name);
 }
