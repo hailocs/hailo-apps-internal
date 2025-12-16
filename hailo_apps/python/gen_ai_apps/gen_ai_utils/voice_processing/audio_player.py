@@ -166,12 +166,6 @@ class AudioPlayer:
                 except Exception:
                     pass
 
-        # Global stop
-        try:
-            sd.stop()
-        except Exception:
-            pass
-
         # Signal reinit
         self._reinit_event.set()
 
@@ -344,6 +338,10 @@ class AudioPlayer:
 
                                     self.stream.write(chunk)
                                 except Exception as write_error:
+                                    # If we are stopping, this error is expected (abort called on stream)
+                                    if self._stop_event.is_set() or self._reinit_event.is_set():
+                                        break
+
                                     logger.error("Error writing to audio stream: %s", write_error)
                                     raise
                             else:

@@ -204,7 +204,7 @@ class AudioDiagnostics:
             try:
                 # Record at device's native sample rate
                 num_samples = int(duration * device_sr)
-            recording = sd.rec(
+                recording = sd.rec(
                     num_samples,
                     samplerate=device_sr,
                     channels=1,

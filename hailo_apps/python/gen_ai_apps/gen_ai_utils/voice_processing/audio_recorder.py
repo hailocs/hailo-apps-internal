@@ -94,15 +94,15 @@ class AudioRecorder:
             logger.warning(f"Failed to start recording at {self.device_sr} Hz, trying {TARGET_SR} Hz: {e}")
             try:
                 self.device_sr = TARGET_SR
-            self.stream = sd.InputStream(
-                samplerate=TARGET_SR,
-                blocksize=CHUNK_SIZE,
-                device=self.device_id,
-                channels=1,
-                dtype='float32',
-                callback=self._callback
-            )
-            self.stream.start()
+                self.stream = sd.InputStream(
+                    samplerate=TARGET_SR,
+                    blocksize=CHUNK_SIZE,
+                    device=self.device_id,
+                    channels=1,
+                    dtype='float32',
+                    callback=self._callback
+                )
+                self.stream.start()
                 logger.debug(f"Recording started at fallback rate {TARGET_SR} Hz")
             except Exception as fallback_error:
                 logger.error(f"Failed to start recording stream: {fallback_error}")
