@@ -324,3 +324,43 @@ def get_default_parser() -> argparse.ArgumentParser:
         stacklevel=2,
     )
     return get_pipeline_parser()
+
+
+def configure_multi_model_hef_path(parser: argparse.ArgumentParser) -> None:
+    """
+    Configure --hef-path argument for multi-model apps.
+    
+    Multi-model apps (face_recognition, reid, paddle_ocr, clip) require multiple
+    HEF files. This function modifies the --hef-path argument to accept multiple
+    values using action='append'.
+    
+    Usage:
+        --hef-path model1 --hef-path model2
+    
+    Args:
+        parser: The argument parser to modify
+    """
+    # Find and remove the existing --hef-path argument
+    for action in parser._actions[:]:
+        if hasattr(action, 'option_strings') and '--hef-path' in action.option_strings:
+            parser._remove_action(action)
+            # Also remove from _option_string_actions
+            for opt in action.option_strings:
+                if opt in parser._option_string_actions:
+                    del parser._option_string_actions[opt]
+            break
+    
+    # Add the multi-model version
+    parser.add_argument(
+        "--hef-path",
+        "-n",
+        action="append",
+        default=None,
+        help=(
+            "HEF model name or path (repeat for multi-model apps). "
+            "Can be: (1) full path to .hef file, (2) model name from resources, "
+            "or (3) model name from available models (will auto-download if not found). "
+            "For multi-model apps, repeat the flag: --hef-path model1 --hef-path model2. "
+            "If not specified, uses the default models for this application."
+        ),
+    )

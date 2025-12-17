@@ -5,6 +5,7 @@ import queue
 import sys
 from pathlib import Path
 
+from dataclasses import dataclass
 from dotenv import load_dotenv
 from . import parser as common_parser
 
@@ -50,6 +51,7 @@ from .defines import (
 )
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
+from hailo_apps.config.config_manager import get_default_models, get_extra_models, get_all_models
 
 hailo_logger = get_logger(__name__)
 
@@ -107,6 +109,11 @@ def get_standalone_parser():
 def get_default_parser():
     """Legacy proxy preserved for backward compatibility."""
     return common_parser.get_default_parser()
+
+
+def configure_multi_model_hef_path(parser):
+    """Proxy to configure --hef-path for multi-model apps."""
+    return common_parser.configure_multi_model_hef_path(parser)
 
 
 def get_model_name(pipeline_name: str, arch: str) -> str:
@@ -317,10 +324,12 @@ def resolve_hef_path(
             hailo_logger.error(f"No default model found for {app_name}/{arch}")
             return None
     
-    # Normalize model name (extract basename and remove .hef if present)
-    # This handles both full paths like "/path/to/yolov8s.hef" and just "yolov8s"
-    model_name = Path(hef_path).stem  # Gets filename without extension
-    # stem handles both "yolov8s.hef" -> "yolov8s" and "yolov8s" -> "yolov8s"
+    # Normalize model name (extract basename and remove only the .hef suffix, keep dots in name)
+    candidate_name = Path(hef_path).name
+    if candidate_name.endswith(HAILO_FILE_EXTENSION):
+        model_name = candidate_name[: -len(HAILO_FILE_EXTENSION)]
+    else:
+        model_name = candidate_name
     
     # Case 2: Check if it's a full path that exists
     hef_full_path = Path(hef_path)
@@ -418,3 +427,64 @@ def handle_list_models_flag(args, app_name: str) -> None:
     if getattr(options, 'list_models', False):
         arch = getattr(options, 'arch', None)
         list_models_for_app(app_name, arch)
+
+def app_requires_multiple_models(app_name: str, arch: str) -> bool:
+    models = get_default_models(app_name, arch)
+    return len(models) > 1
+
+
+
+@dataclass
+class ResolvedModel:
+    name: str
+    path: Path
+
+
+def resolve_hef_paths(
+    hef_paths: list[str] | None,
+    app_name: str,
+    arch: str,
+) -> list[ResolvedModel]:
+    """
+    Resolve one or more HEF paths for apps that require multiple models.
+
+    Rules:
+    - If hef_paths is None:
+        → use ALL default models for the app
+    - If hef_paths is provided:
+        → length must match required model count
+    - Each model is resolved via resolve_hef_path()
+    """
+
+    default_models = get_default_models(app_name, arch)
+    required_count = len(default_models)
+
+    # Normalize inputs
+    if hef_paths in (None, [], ""):
+        model_names = [m.name for m in default_models]
+    elif isinstance(hef_paths, str):
+        model_names = [hef_paths]
+    else:
+        model_names = list(hef_paths)
+
+    # Validate count
+    if len(model_names) != required_count:
+        raise ValueError(
+            f"{app_name} requires {required_count} models "
+            f"but {len(model_names)} were provided"
+        )
+
+    resolved: list[ResolvedModel] = []
+
+    for model_name in model_names:
+        path = resolve_hef_path(
+            hef_path=model_name,
+            app_name=app_name,
+            arch=arch,
+        )
+        if path is None:
+            raise RuntimeError(f"Failed to resolve model: {model_name}")
+
+        resolved.append(ResolvedModel(name=model_name, path=path))
+
+    return resolved

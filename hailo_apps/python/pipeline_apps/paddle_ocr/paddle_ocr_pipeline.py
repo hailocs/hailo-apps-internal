@@ -5,7 +5,13 @@ import os
 
 import setproctitle
 
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    configure_multi_model_hef_path,
+    resolve_hef_paths,
+)
 from hailo_apps.python.core.common.defines import (
     OCR_APP_TITLE,
     PADDLE_OCR_PIPELINE,
@@ -54,6 +60,9 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         if parser is None:
             parser = get_pipeline_parser()
         
+        # Configure --hef-path for multi-model support (OCR detection + OCR recognition)
+        configure_multi_model_hef_path(parser)
+        
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, PADDLE_OCR_PIPELINE)
         
@@ -93,25 +102,15 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         # Architecture is already handled by GStreamerApp parent class
         # Use self.arch which is set by parent
 
-        # OCR Detection model (detects text regions - bounding boxes)
-        # Note: OCR uses a different HEF path structure, so we don't use self.hef_path
-        if self.options_menu.hef_path is not None:
-            self.ocr_det_hef_path = self.options_menu.hef_path
-        else:
-            self.ocr_det_hef_path = get_resource_path(
-                pipeline_name=None,
-                resource_type=RESOURCES_MODELS_DIR_NAME,
-                arch=self.arch,
-                model=OCR_DETECTION_MODEL_NAME
-            )
-
-        # OCR Recognition model (recognizes text in cropped regions)
-        self.ocr_rec_hef_path = get_resource_path(
-            pipeline_name=None,
-            resource_type=RESOURCES_MODELS_DIR_NAME,
+        # Resolve HEF paths for multi-model app (OCR detection + OCR recognition)
+        # Uses --hef-path arguments if provided, otherwise uses defaults
+        models = resolve_hef_paths(
+            hef_paths=self.options_menu.hef_path,  # List from action='append' or None
+            app_name=PADDLE_OCR_PIPELINE,
             arch=self.arch,
-            model=OCR_RECOGNITION_MODEL_NAME
         )
+        self.ocr_det_hef_path = models[0].path
+        self.ocr_rec_hef_path = models[1].path
 
         # Post-processing shared object file (contains both detection and recognition functions)
         self.post_process_so = get_resource_path(
