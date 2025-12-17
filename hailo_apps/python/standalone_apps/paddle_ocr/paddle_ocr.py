@@ -16,14 +16,16 @@ from common.toolbox import (
     preprocess,
     visualize,
     FrameRateTracker,
-    resolve_net_arg,
     resolve_arch,
     resolve_input_arg,
     resolve_output_resolution_arg,
-    list_networks,
     list_inputs,
 )
-from common.core import handle_list_models_flag
+from common.core import (
+    configure_multi_model_hef_path,
+    handle_list_models_flag,
+    resolve_hef_paths,
+)
 from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
@@ -41,36 +43,7 @@ def parse_args():
     """
     parser = get_standalone_parser()
     parser.description = "Paddle OCR Example with detection + OCR networks."
-
-    # Override the --hef-path argument to accept two networks
-    # First, remove the existing --hef-path argument
-    for action in parser._actions[:]:
-        if action.dest == 'hef_path':
-            parser._remove_action(action)
-            break
-    # Remove from _option_string_actions as well
-    for opt_str in ['-n', '--hef-path']:
-        if opt_str in parser._option_string_actions:
-            del parser._option_string_actions[opt_str]
-
-    parser.add_argument(
-        "--hef-path",
-        "-n",
-        type=str,
-        nargs=2,
-        metavar=("DET_NET", "REC_NET"),
-        help=(
-            "Provide two networks:\n"
-            "  1) Detection network (e.g., ocr_det)\n"
-            "  2) Recognition network (e.g., ocr_rec)\n\n"
-            "Each item can be:\n"
-            "- A local HEF file path\n"
-            "    → uses the specified HEF directly.\n"
-            "- A model name (e.g., ocr_det)\n"
-            "    → auto-downloads and resolves the correct HEF.\n\n"
-            "Use --list-nets to see the available models."
-        ),
-    )
+    configure_multi_model_hef_path(parser)
 
     # App-specific arguments
     parser.add_argument(
@@ -111,7 +84,17 @@ def parse_args():
 
     # Resolve the two networks
     args.arch = resolve_arch(args.arch)
-    args.det_net, args.ocr_net = resolve_paddle_ocr_nets(args.hef_path, args.arch, dest_dir=".")
+    try:
+        models = resolve_hef_paths(
+            hef_paths=args.hef_path,
+            app_name=APP_NAME,
+            arch=args.arch,
+        )
+    except Exception as exc:
+        logger.error("Failed to resolve HEF paths for %s: %s", APP_NAME, exc)
+        sys.exit(1)
+
+    args.det_net, args.ocr_net = [model.path for model in models]
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
@@ -121,38 +104,6 @@ def parse_args():
     os.makedirs(args.output_dir, exist_ok=True)
 
     return args
-
-
-def resolve_paddle_ocr_nets(net_args, arch: str, dest_dir: str = ".") -> tuple:
-    """
-    PaddleOCR-specific resolver:
-      - expects exactly 2 networks: DET_NET, REC_NET
-      - prints supported networks and exits nicely on errors
-    """
-    if not net_args:
-        logger.error(
-            "No --hef-path was provided.\n"
-            "PaddleOCR requires two networks: DET_NET and REC_NET.\n"
-            "Example:\n"
-            "  ./paddle_ocr.py -n ocr_det ocr_rec\n"
-        )
-        list_networks(APP_NAME)
-        sys.exit(1)
-
-    if len(net_args) != 2:
-        logger.error(
-            f"--hef-path for {APP_NAME} expects exactly 2 values (DET_NET and REC_NET), "
-            f"but got {len(net_args)}.\n"
-            "Example:\n"
-            "  ./paddle_ocr.py -n ocr_det ocr_rec\n"
-        )
-        list_networks(APP_NAME)
-        sys.exit(1)
-
-    det_name, rec_name = net_args
-    det_hef = resolve_net_arg(APP_NAME, det_name, dest_dir, arch)
-    rec_hef = resolve_net_arg(APP_NAME, rec_name, dest_dir, arch)
-    return det_hef, rec_hef
 
 
 def detector_hailo_infer(hailo_inference, input_queue, output_queue):

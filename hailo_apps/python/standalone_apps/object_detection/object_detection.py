@@ -18,12 +18,11 @@ try:
         preprocess,
         visualize,
         FrameRateTracker,
-        resolve_net_arg,
         resolve_arch,
         resolve_input_arg,
         list_inputs,
     )
-    from hailo_apps.python.core.common.core import handle_list_models_flag
+    from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 except ImportError:
@@ -37,12 +36,11 @@ except ImportError:
         preprocess,
         visualize,
         FrameRateTracker,
-        resolve_net_arg,
         resolve_arch,
         resolve_input_arg,
         list_inputs,
     )
-    from common.core import handle_list_models_flag
+    from common.core import handle_list_models_flag, resolve_hef_path
     from common.parser import get_standalone_parser
     from common.hailo_logger import get_logger, init_logging, level_from_args
 from object_detection_post_process import inference_result_handler
@@ -72,7 +70,14 @@ def parse_args():
 
     # Resolve network and input paths
     args.arch = resolve_arch(args.arch)
-    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".", args.arch)
+    args.hef_path = resolve_hef_path(
+        hef_path=args.hef_path,
+        app_name=APP_NAME,
+        arch=args.arch,
+    )
+    if args.hef_path is None:
+        logger.error("Failed to resolve HEF path for %s", APP_NAME)
+        sys.exit(1)
     args.input = resolve_input_arg(APP_NAME, args.input)
 
     # Setup output directory

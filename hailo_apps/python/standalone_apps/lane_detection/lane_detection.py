@@ -13,16 +13,24 @@ from lane_detection_utils import (UFLDProcessing,
                                   check_process_errors,
                                   compute_scaled_radius)
 
-# Add the parent directory to the system path to access utils module
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from common.hailo_inference import HailoInfer
-    from common.toolbox import (
-        resolve_net_arg,
+try:
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.toolbox import (
         resolve_arch,
         resolve_input_arg,
         list_inputs,
     )
-    from common.core import handle_list_models_flag
+    from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+except ImportError:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'core')))
+    from common.hailo_inference import HailoInfer
+    from common.toolbox import (
+        resolve_arch,
+        resolve_input_arg,
+        list_inputs,
+    )
+    from common.core import handle_list_models_flag, resolve_hef_path
     from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
@@ -51,7 +59,14 @@ def parser_init():
 
     # Resolve network and input paths
     args.arch = resolve_arch(args.arch)
-    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".", args.arch)
+    args.hef_path = resolve_hef_path(
+        hef_path=args.hef_path,
+        app_name=APP_NAME,
+        arch=args.arch,
+    )
+    if args.hef_path is None:
+        logger.error("Failed to resolve HEF path for %s", APP_NAME)
+        sys.exit(1)
     args.input = resolve_input_arg(APP_NAME, args.input)
 
     # Setup output directory

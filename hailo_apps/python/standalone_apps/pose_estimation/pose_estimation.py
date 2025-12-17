@@ -18,13 +18,12 @@ from common.toolbox import (
     preprocess,
     visualize,
     FrameRateTracker,
-    resolve_net_arg,
     resolve_arch,
     resolve_input_arg,
     resolve_output_resolution_arg,
     list_inputs,
 )
-from common.core import handle_list_models_flag
+from common.core import handle_list_models_flag, resolve_hef_path
 from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
@@ -82,7 +81,14 @@ def parse_args():
 
     # Resolve network and input paths
     args.arch = resolve_arch(args.arch)
-    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".", args.arch)
+    args.hef_path = resolve_hef_path(
+        hef_path=args.hef_path,
+        app_name=APP_NAME,
+        arch=args.arch,
+    )
+    if args.hef_path is None:
+        logger.error("Failed to resolve HEF path for %s", APP_NAME)
+        sys.exit(1)
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
