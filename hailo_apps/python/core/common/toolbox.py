@@ -9,7 +9,12 @@ from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
 import cv2
 import numpy as np
 
-from hailo_apps.python.core.common.defines import HAILO_ARCH_KEY
+from hailo_apps.python.core.common.defines import (
+    HAILO_ARCH_KEY,
+    RESOURCES_PHOTOS_DIR_NAME,
+    RESOURCES_VIDEOS_DIR_NAME,
+)
+from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.common.hailo_logger import get_logger
 
 logger = get_logger(__name__)
@@ -731,8 +736,47 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     
     Note: This is a compatibility function for HACE apps.
     """
+    def resolve_tagged_resource(app_name: str, preferred_name: str | None = None) -> str | None:
+        """Resolve a resource listed in resources_config.yaml for this app."""
+        try:
+            from hailo_apps.config.config_manager import get_inputs_for_app
+        except Exception:
+            return None
+
+        inputs = get_inputs_for_app(app_name, is_standalone=True)
+
+        def pick(section: str) -> str | None:
+            for entry in inputs.get(section, []):
+                name = entry.get("name")
+                if preferred_name and preferred_name != name:
+                    continue
+                resource_type = RESOURCES_PHOTOS_DIR_NAME if section == "images" else RESOURCES_VIDEOS_DIR_NAME
+                resolved = get_resource_path(
+                    pipeline_name=None,
+                    resource_type=resource_type,
+                    arch=None,
+                    model=name,
+                )
+                if resolved and resolved.exists():
+                    return str(resolved)
+            return None
+
+        # Prefer images first, then videos
+        resolved = pick("images")
+        if resolved:
+            return resolved
+        return pick("videos")
+
     if input_arg is None:
-        logger.error("No --input was provided. Please specify -i/--input with a file path, directory, or 'camera'.")
+        resolved = resolve_tagged_resource(app)
+        if resolved:
+            logger.info("No input provided; using default bundled resource for %s: %s", app, resolved)
+            return resolved
+
+        logger.error(
+            "No --input was provided and no bundled resource was found. "
+            "Please specify -i/--input with a file path, directory, or 'camera'."
+        )
         sys.exit(1)
 
     # "camera" stays as is
@@ -744,6 +788,11 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     # If it already exists (file or dir), just use it as-is
     if path_candidate.exists():
         return str(path_candidate)
+
+    resource_path = resolve_tagged_resource(app, path_candidate.name)
+    if resource_path:
+        logger.info("Resolved input '%s' to bundled resource: %s", input_arg, resource_path)
+        return resource_path
 
     # If it has an extension but does NOT exist -> error
     if path_candidate.suffix:
