@@ -33,10 +33,8 @@ from hailo_apps.python.core.common.buffer_utils import get_numpy_from_buffer_eff
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 from hailo_apps.python.core.common.defines import (
     RESOURCES_SO_DIR_NAME, 
-    FACE_DETECTION_PIPELINE, 
     FACE_RECOGNITION_PIPELINE,
     FACE_RECOGNITION_APP_TITLE,
-    RESOURCES_MODELS_DIR_NAME, 
     FACE_DETECTION_POSTPROCESS_SO_FILENAME, 
     FACE_RECOGNITION_POSTPROCESS_SO_FILENAME, 
     FACE_ALIGN_POSTPROCESS_SO_FILENAME, 

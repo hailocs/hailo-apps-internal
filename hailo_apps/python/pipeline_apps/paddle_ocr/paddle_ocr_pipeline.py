@@ -1,7 +1,6 @@
 # region imports
 # Standard library imports
 from pathlib import Path
-import os
 
 import setproctitle
 
@@ -15,14 +14,11 @@ from hailo_apps.python.core.common.core import (
 from hailo_apps.python.core.common.defines import (
     OCR_APP_TITLE,
     PADDLE_OCR_PIPELINE,
-    OCR_DETECTION_MODEL_NAME,
-    OCR_RECOGNITION_MODEL_NAME,
     OCR_POSTPROCESS_SO_FILENAME,
     OCR_DETECTION_POSTPROCESS_FUNCTION,
     OCR_RECOGNITION_POSTPROCESS_FUNCTION,
     OCR_CROPPER_FUNCTION,
     OCR_VIDEO_NAME,
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,

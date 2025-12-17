@@ -4,11 +4,6 @@ import setproctitle
 from pathlib import Path
 from typing import Optional, Any
 
-# Third-party imports
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
-
 # Local application-specific imports
 from hailo_apps.python.core.common.core import get_pipeline_parser, handle_list_models_flag
 from hailo_apps.python.core.common.defines import TILING_APP_TITLE, TILING_PIPELINE

@@ -15,7 +15,6 @@ from hailo_apps.python.core.common.defines import (
     DETECTION_PIPELINE,
     DETECTION_POSTPROCESS_FUNCTION,
     DETECTION_POSTPROCESS_SO_FILENAME,
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
 )
 from hailo_apps.python.core.common.hef_utils import get_hef_labels_json

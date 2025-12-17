@@ -4,7 +4,6 @@ import setproctitle
 
 from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.defines import (
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     SIMPLE_DETECTION_APP_TITLE,
