@@ -52,7 +52,6 @@ from .defines import (
     CLIP_MODEL_NAME,
     CLIP_DETECTION_PIPELINE,
     CLIP_DETECTION_MODEL_NAME
-    CLIP_DETECTION_MODEL_NAME
 )
 from .hailo_logger import add_logging_cli_args, get_logger
 from .installation_utils import detect_hailo_arch
@@ -416,7 +415,6 @@ def get_model_name(pipeline_name: str, arch: str) -> str:
         else FACE_DETECTION_MODEL_NAME_H8L,
         FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8
         if is_h8
-        else FACE_RECOGNITION_MODEL_NAME_H8L
         else FACE_RECOGNITION_MODEL_NAME_H8L
     }
     name = pipeline_map[pipeline_name]
