@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os
 import sys
-from loguru import logger
 import queue
 import threading
 from types import SimpleNamespace
@@ -26,6 +25,7 @@ try:
         list_inputs,
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'core')))
     from tracker.byte_tracker import BYTETracker
@@ -43,8 +43,10 @@ except ImportError:
         list_inputs,
     )
     from common.parser import get_standalone_parser
+    from common.hailo_logger import get_logger, init_logging, level_from_args
 
 APP_NAME = Path(__file__).stem
+logger = get_logger(__name__)
 
 
 def parse_args():
@@ -252,6 +254,7 @@ def infer(hailo_inference, input_queue, output_queue):
 
 def main() -> None:
     args = parse_args()
+    init_logging(level=level_from_args(args))
     run_inference_pipeline(
         args.hef_path,
         args.input,

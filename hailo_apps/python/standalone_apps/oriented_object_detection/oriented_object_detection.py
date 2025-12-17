@@ -1,11 +1,11 @@
 import os
 import sys
-from loguru import logger
 import queue
 import threading
 from functools import partial
 import numpy as np
 from pathlib import Path
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from common.hailo_inference import HailoInfer
@@ -27,6 +27,7 @@ from common.parser import get_standalone_parser
 from oriented_object_detection_post_process import inference_result_handler
 
 APP_NAME = Path(__file__).stem
+logger = get_logger(__name__)
 
 
 def parse_args():
@@ -201,6 +202,7 @@ def inference_callback(
 
 def main() -> None:
     args = parse_args()
+    init_logging(level=level_from_args(args))
     run_inference_pipeline(
         args.hef_path,
         args.input,

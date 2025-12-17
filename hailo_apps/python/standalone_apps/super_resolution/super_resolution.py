@@ -3,13 +3,13 @@ import numpy as np
 import cv2
 from pathlib import Path
 import os
-from loguru import logger
 import sys
 from typing import List
 import threading
 import queue
 from super_resolution_utils import SrganUtils, Espcnx4Utils, inference_result_handler
 from functools import partial
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 # Add the parent directory to the system path to access utils module
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -28,6 +28,7 @@ from common.toolbox import (
 from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
+logger = get_logger(__name__)
 
 
 def parse_args():
@@ -247,10 +248,9 @@ def run_inference_pipeline(
     if show_fps:
         logger.debug(fps_tracker.frame_rate_summary())
 
-
-    logger.success("Inference was successful!")
+    logger.info("Inference was successful!")
     if save_output or input.lower() != "camera":
-        logger.success(f'Results have been saved in {output_dir}')
+        logger.info(f"Results have been saved in {output_dir}")
 
 
 def main() -> None:
@@ -259,6 +259,7 @@ def main() -> None:
     """
     # Parse command line arguments
     args = parse_args()
+    init_logging(level=level_from_args(args))
 
     # Start the inference
     run_inference_pipeline(

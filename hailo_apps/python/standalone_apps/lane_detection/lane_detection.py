@@ -5,9 +5,9 @@ import os
 from functools import partial
 from pathlib import Path
 import numpy as np
-from loguru import logger
 import cv2
 import threading
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 from lane_detection_utils import (UFLDProcessing,
                                   check_process_errors,
@@ -25,6 +25,7 @@ from common.toolbox import (
 from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
+logger = get_logger(__name__)
 
 
 def parser_init():
@@ -38,6 +39,7 @@ def parser_init():
     parser.description = "UFLD_v2 lane detection inference."
 
     args = parser.parse_args()
+    init_logging(level=level_from_args(args))
 
     # Handle --list-models and exit
     if args.list_models:

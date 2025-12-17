@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 import os
 import sys
-from loguru import logger
 import queue
 import threading
 from functools import partial
 from pathlib import Path
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from common.hailo_inference import HailoInfer
@@ -25,6 +25,7 @@ from common.toolbox import (
 from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
+logger = get_logger(__name__)
 # A dictionary that accumulates all OCR crops and their results for a single frame.
 ocr_results_dict = defaultdict(lambda: {"frame": None, "results": [], "boxes": [], "count": 0})
 ocr_expected_counts = {}
@@ -554,6 +555,7 @@ def main() -> None:
     Main function to run the script.
     """
     args = parse_args()
+    init_logging(level=level_from_args(args))
     run_inference_pipeline(
         args.det_net,
         args.ocr_net,
