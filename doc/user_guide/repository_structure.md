@@ -13,8 +13,8 @@ hailo-apps-infra/
 │   ├── installation/           # Python-side installers and env helpers
 │   ├── postprocess/            # C++ post-processing sources and builds
 │   └── python/
-│       ├── pipeline_apps/      # Packaged CLI apps (hailo-detect, hailo-tiling, etc.)
-│       ├── standalone_apps/    # Extra/experimental apps run directly with python
+│       ├── pipeline_apps/      # GStreamer-based CLI apps (hailo-detect, hailo-pose, etc.)
+│       ├── standalone_apps/    # Standalone Python applications (voice assistant, VLM chat, etc.)
 │       ├── core/               # Shared logic (common utils, gstreamer, trackers, gen-ai)
 │       └── gen_ai_utils/       # GenAI helper modules
 ├── scripts/                    # Shell installers/utilities (install, cleanup, set-env)
@@ -36,7 +36,8 @@ Contains all project documentation, including user guides, developer guides, and
 ### `hailo_apps/`
 Main Python package for AI applications. Contains:
 - **`python/`**:
-  - `apps/`: Individual AI application folders (e.g., detection, face_recognition, etc.)
+  - `pipeline_apps/`: GStreamer-based pipeline applications available as CLI commands (e.g., `hailo-detect`, `hailo-pose`, `hailo-seg`). These are production-ready applications that leverage GStreamer for efficient video processing.
+  - `standalone_apps/`: Standalone Python applications that run as independent scripts (e.g., voice assistant, VLM chat, speech recognition, lane detection). These applications demonstrate various AI capabilities and can be run directly with Python.
   - `core/`: Shared logic, utilities, and GStreamer integration for apps.
     - `common/`: Foundational utilities (installation, configuration, helpers).
     - `gstreamer/`: Reusable GStreamer components and pipelines.

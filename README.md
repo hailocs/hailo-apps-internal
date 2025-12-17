@@ -3,122 +3,103 @@
 # Hailo Applications
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps-infra)
 
-Welcome to the Hailo Applications repository! This project provides a foundational infrastructure, reusable components, and practical examples for building and deploying high-performance AI applications using Hailo hardware accelerators.
+Build and deploy high-performance AI applications on edge devices with Hailo hardware accelerators. From real-time computer vision to GenAI voice assistants - production-ready applications and reusable infrastructure to accelerate your AI development.
 
+**Supports:** Hailo-8, Hailo-8L, and Hailo-10H accelerators
 
-This repository is designed for both x86_64 Ubuntu systems and Raspberry Pi 5, with a special focus on Raspberry Pi 5, including integration with RPi cameras and GPIO-based applications.
+**Perfect for:** Raspberry Pi 5, x86_64 Ubuntu systems, and edge AI deployments.
 
-- **Ready-to-use AI pipelines** for object detection, pose estimation, and more.
-- **Modular infrastructure** for rapid development and custom applications.
-- **Packaged as a Python library** for easy integration into your own projects.
+## What You Get
 
-Visit the [Hailo Official Website](https://hailo.ai/) and [Hailo Community Forum](https://community.hailo.ai/) for more information.
+✨ **20+ Ready-to-Run Applications**
+- **Computer Vision:** Object detection, pose estimation, instance segmentation, face recognition, depth estimation, OCR
+- **GenAI:** Voice assistants, VLM chat, speech recognition (Whisper), AI agents with tool integration
+- **Advanced:** Multi-camera tracking, zero-shot classification (CLIP), tiling for high-res processing
 
-## Getting Started
+🚀 **Production-Ready Infrastructure**
+- GStreamer-based pipelines for efficient video processing
+- Modular Python library for rapid prototyping
+- Hardware-optimized performance with Hailo accelerators
 
+🛠️ **Developer-Friendly**
+- Install in minutes with automated scripts
+- Extensive documentation and examples
+- Easy integration into your own projects
 
-### Hardware and Software Installation
+**Learn more:** [Hailo Official Website](https://hailo.ai/) | [Community Forum](https://community.hailo.ai/)
 
-For detailed instructions on setting up your hardware, including both x86_64 Ubuntu systems and Raspberry Pi devices, please refer to the [Full Installation Guide](./doc/user_guide/installation.md#quick-start-automated-recommended). This guide covers everything from hardware setup to software installation, ensuring your environment is ready for deploying AI applications with Hailo hardware accelerators.
+## Quick Start
 
-
-### Hailo Apps Installation
-Get up and running in minutes with the automated installation script.
+### Installation
 ```bash
-# Clone the repository
 git clone https://github.com/hailo-ai/hailo-apps-infra.git
 cd hailo-apps-infra
-
-# Run the installer
 sudo ./install.sh
 ```
 
-### Running Applications
+**Need help?** See the [Full Installation Guide](./doc/user_guide/installation.md) for hardware setup and troubleshooting.
 
-Here are a few of the ready-to-use applications included in this repository.
-Before running any application, ensure you activate the Python virtual environment created during installation. This ensures all dependencies are correctly loaded.
-
-**Setup environment:**
-
-This should be run on every new terminal session.
+### Run Your First Application
 ```bash
-source setup_env.sh
+source setup_env.sh           # Activate environment
+hailo-detect-simple           # Start object detection
 ```
-
-Additionally, in the common case of a Raspberry Pi connected remotely via SSH, add:
-```bash
-export DISPLAY=:0
-```
-
-#### Simple Object Detection
-A lightweight version focused on demonstrating raw Hailo performance with minimal CPU overhead.
-
-**Command:**
-```bash
-hailo-detect-simple
-```
-**Output:**
-
-![Detection Example](doc/images/detection.gif)
-
-#### Full Object Detection
-A comprehensive detection application featuring object tracking and resolution scaling.
-
-**Command:**
-```bash
-hailo-detect
-```
-
-#### Pose Estimation
-Detects human pose keypoints (e.g., joints and limbs) in real-time.
-
-**Command:**
-```bash
-hailo-pose
-```
-**Output:**
-
-![Pose Estimation Example](doc/images/pose_estimation.gif)
-
-#### Instance Segmentation
-Provides pixel-level masks for each detected object.
-
-**Command:**
-```bash
-hailo-seg
-```
-**Output:**
-
-![Instance Segmentation Example](doc/images/instance_segmentation.gif)
-
-#### Tiling
-Detects small objects in high-resolution frames.
-
-**Command:**
-```bash
-hailo-tiling
-```
-**Output:**
 
 ![Tiling Example](local_resources/tiling.gif)
 
-#### Wait there's more!
-For a complete list of all available applications and their features, please see the [Running Applications Guide](./doc/user_guide/running_applications.md).
+**Try more:**
+```bash
+hailo-pose                    # Pose estimation
+hailo-seg                     # Instance segmentation
+hailo-tiling                  # Tiling for high-res processing
+```
 
-## Full Documentation
+### GenAI Applications
+```bash
+# Voice Assistant
+cd hailo_apps/python/standalone_apps/voice_assistant/
+python voice_assistant.py
 
-For detailed guides on installation, usage, and development, please see our complete documentation:
+# VLM Chat - Vision + Language
+cd hailo_apps/python/standalone_apps/vlm_chat/
+python vlm_chat.py
+```
 
-**[➡️ View the Full Documentation](./doc/README.md)**
+**📚 See all applications:** [Running Applications Guide](./doc/user_guide/running_applications.md)
 
-The documentation includes:
-*   **[User Guide](./doc/user_guide/README.md)**: How to run applications and configure the system.
-*   **[Developer Guide](./doc/developer_guide/README.md)**: How to build your own applications.
+## Documentation
 
-## License
+**[📖 Complete Documentation](./doc/README.md)**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for complete details.
+| Guide | What's Inside |
+|-------|---------------|
+| **[User Guide](./doc/user_guide/README.md)** | Installation, running apps, configuration, repository structure |
+| **[Developer Guide](./doc/developer_guide/README.md)** | Build custom apps, write post-processing, model retraining |
 
-## Getting Help
+## Key Features
 
-If you run into any issues, the best place to get help is the [Hailo Community Forum](https://community.hailo.ai/). You can search for existing solutions or open a new topic to get help from the community and the Hailo team.
+**🎯 Input Flexibility**
+- Raspberry Pi Camera, USB cameras, video files, RTSP streams
+- Multi-camera and multi-source processing
+
+**⚡ Optimized Performance**
+- Hardware-accelerated inference on Hailo devices
+- Efficient GStreamer pipelines for real-time processing
+- Minimal CPU overhead
+
+**🧩 Modular & Extensible**
+- Reusable Python library (`hailo_apps`)
+- Custom model support with HEF files
+- Easy integration into existing projects
+
+**[→ Learn about the repository structure](./doc/user_guide/repository_structure.md)**
+
+## Support & Community
+
+💬 **[Hailo Community Forum](https://community.hailo.ai/)** - Get help, share projects, connect with other developers
+
+🐛 **Issues?** Search the forum or open a discussion - the community and Hailo team are here to help!
+
+---
+
+**License:** MIT - see [LICENSE](LICENSE) for details
