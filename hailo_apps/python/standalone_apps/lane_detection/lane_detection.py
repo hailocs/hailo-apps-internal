@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from common.hailo_inference import HailoInfer
 from common.toolbox import (
     resolve_net_arg,
+    resolve_arch,
     resolve_input_arg,
     list_networks,
     list_inputs,
@@ -57,7 +58,8 @@ def parser_init():
         sys.exit(0)
 
     # Resolve network and input paths
-    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".")
+    args.arch = resolve_arch(args.arch)
+    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".", args.arch)
     args.input = resolve_input_arg(APP_NAME, args.input)
 
     # Setup output directory

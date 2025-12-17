@@ -17,6 +17,7 @@ from common.toolbox import (
     visualize,
     FrameRateTracker,
     resolve_net_arg,
+    resolve_arch,
     resolve_input_arg,
     resolve_output_resolution_arg,
     list_networks,
@@ -116,7 +117,8 @@ def parse_args():
         sys.exit(0)
 
     # Resolve the two networks
-    args.det_net, args.ocr_net = resolve_paddle_ocr_nets(args.hef_path, dest_dir=".")
+    args.arch = resolve_arch(args.arch)
+    args.det_net, args.ocr_net = resolve_paddle_ocr_nets(args.hef_path, args.arch, dest_dir=".")
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
@@ -128,7 +130,7 @@ def parse_args():
     return args
 
 
-def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple:
+def resolve_paddle_ocr_nets(net_args, arch: str, dest_dir: str = ".") -> tuple:
     """
     PaddleOCR-specific resolver:
       - expects exactly 2 networks: DET_NET, REC_NET
@@ -155,8 +157,8 @@ def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple:
         sys.exit(1)
 
     det_name, rec_name = net_args
-    det_hef = resolve_net_arg(APP_NAME, det_name, dest_dir)
-    rec_hef = resolve_net_arg(APP_NAME, rec_name, dest_dir)
+    det_hef = resolve_net_arg(APP_NAME, det_name, dest_dir, arch)
+    rec_hef = resolve_net_arg(APP_NAME, rec_name, dest_dir, arch)
     return det_hef, rec_hef
 
 

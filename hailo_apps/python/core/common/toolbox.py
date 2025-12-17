@@ -1,13 +1,18 @@
-from typing import List, Generator, Optional, Tuple, Dict, Callable ,Any
-from pathlib import Path
-from loguru import logger
 import json
 import os
 import sys
-import numpy as np
-import queue
-import cv2
 import time
+import queue
+from pathlib import Path
+from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
+
+import cv2
+import numpy as np
+
+from hailo_apps.python.core.common.defines import HAILO_ARCH_KEY
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+logger = get_logger(__name__)
 
 IMAGE_EXTENSIONS: Tuple[str, ...] = ('.jpg', '.png', '.bmp', '.jpeg')
 CAMERA_RESOLUTION_MAP = {
@@ -604,9 +609,8 @@ def list_networks(app: str) -> None:
     )
     try:
         from hailo_apps.config.config_manager import get_model_names
-        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
-        
-        arch = detect_hailo_arch() or "hailo8"
+
+        arch = resolve_arch(None)
         models = get_model_names(app, arch, tier="all")
         if models:
             logger.info(f"Available models for {app} ({arch}):")
@@ -631,7 +635,43 @@ def list_inputs(app: str) -> None:
     )
 
 
-def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs") -> str:
+def resolve_arch(arch: str | None) -> str:
+    """
+    Resolve the target Hailo architecture using CLI, environment, or auto-detection.
+
+    Order:
+      1. Explicit --arch value
+      2. Environment variable HAILO_ARCH_KEY (used by pipelines)
+      3. Automatic detection via detect_hailo_arch()
+
+    Exits with an error message if none of the above succeed.
+    """
+    if arch:
+        return arch
+
+    env_arch = os.getenv(HAILO_ARCH_KEY)
+    if env_arch:
+        return env_arch
+
+    try:
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+
+        detected_arch = detect_hailo_arch()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(f"Failed to auto-detect Hailo architecture: {exc}")
+        detected_arch = None
+
+    if detected_arch:
+        return detected_arch
+
+    logger.error(
+        "Could not determine Hailo architecture. "
+        "Please specify --arch or set the environment variable 'hailo_arch'."
+    )
+    sys.exit(1)
+
+
+def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch: str | None = None) -> str:
     """
     Resolve the --net argument into a concrete HEF path.
     
@@ -668,14 +708,12 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs") -> st
         return str(existing_hef.resolve())
     
     # Try to resolve using hailo-apps-infra's config system
+    resolved_arch = resolve_arch(arch)
     try:
         from hailo_apps.python.core.common.core import resolve_hef_path
-        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
-        
-        arch = detect_hailo_arch() or "hailo8"
-        resolved = resolve_hef_path(model_name, app, arch)
+        resolved = resolve_hef_path(model_name, app, resolved_arch)
         if resolved and resolved.exists():
-            logger.info(f"Resolved model '{model_name}' to: {resolved}")
+            logger.info(f"Resolved model '{model_name}' to: {resolved} (arch={resolved_arch})")
             return str(resolved)
     except Exception as e:
         logger.debug(f"Could not resolve via config system: {e}")
@@ -720,5 +758,3 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     )
     logger.info("Please provide a full file path, directory path, or 'camera'.")
     sys.exit(1)
-
-

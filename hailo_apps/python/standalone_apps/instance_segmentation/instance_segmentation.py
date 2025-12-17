@@ -20,6 +20,7 @@ try:
         preprocess,
         FrameRateTracker,
         resolve_net_arg,
+        resolve_arch,
         resolve_input_arg,
         list_networks,
         list_inputs,
@@ -38,6 +39,7 @@ except ImportError:
         preprocess,
         FrameRateTracker,
         resolve_net_arg,
+        resolve_arch,
         resolve_input_arg,
         list_networks,
         list_inputs,
@@ -89,7 +91,8 @@ def parse_args():
         sys.exit(0)
 
     # Resolve network and input paths
-    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".")
+    args.arch = resolve_arch(args.arch)
+    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".", args.arch)
     args.input = resolve_input_arg(APP_NAME, args.input)
 
     # Setup output directory
