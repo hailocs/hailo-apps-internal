@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os, subprocess
-import argparse
 import sys
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
 BASE_HEF = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper"
 BASE_ASSETS = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets"
@@ -60,9 +60,11 @@ FILES = {
 }
 
 def get_args():
-    parser = argparse.ArgumentParser(description="Whisper Downloader")
+    parser = get_standalone_parser()
+    parser.description = "Whisper Downloader"
     parser.add_argument(
         "--hw-arch",
+        dest="arch",
         type=str,
         default=None,
         choices=["hailo8", "hailo8l", "hailo10h"],
@@ -75,7 +77,9 @@ def get_args():
         choices=["base", "tiny", "tiny.en"],
         help="Whisper variant to download (default: None)"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.hw_arch = args.arch
+    return args
 
 
 def remove_existing_file(path):
@@ -122,7 +126,7 @@ def download_assets(variant=None):
 
 if __name__ == "__main__":
     args = get_args()
-    arch = args.hw_arch
-    variant =args.variant
+    arch = args.arch
+    variant = args.variant
     download_hefs(arch, variant)
     download_assets(variant)

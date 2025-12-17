@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-import argparse
 import os
 import sys
 from loguru import logger
 import queue
 import threading
 from functools import partial
-import time
 from pathlib import Path
 from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -22,8 +20,9 @@ from common.toolbox import (
     resolve_input_arg,
     resolve_output_resolution_arg,
     list_networks,
-    list_inputs
+    list_inputs,
 )
+from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 # A dictionary that accumulates all OCR crops and their results for a single frame.
@@ -31,19 +30,31 @@ ocr_results_dict = defaultdict(lambda: {"frame": None, "results": [], "boxes": [
 ocr_expected_counts = {}
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     """
     Initialize argument parser for the script.
     Returns:
         argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="Paddle OCR Example with detection + OCR networks",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
+    parser = get_standalone_parser()
+    parser.description = "Paddle OCR Example with detection + OCR networks."
+
+    # Override the --hef-path argument to accept two networks
+    # First, remove the existing --hef-path argument
+    for action in parser._actions[:]:
+        if action.dest == 'hef_path':
+            parser._remove_action(action)
+            break
+    # Remove from _option_string_actions as well
+    for opt_str in ['-n', '--hef-path']:
+        if opt_str in parser._option_string_actions:
+            del parser._option_string_actions[opt_str]
+
     parser.add_argument(
-        "-n", "--net",
+        "--hef-path",
+        "-n",
         type=str,
-        nargs=2,   # <-- IMPORTANT!
+        nargs=2,
         metavar=("DET_NET", "REC_NET"),
         help=(
             "Provide two networks:\n"
@@ -57,75 +68,43 @@ def parse_args() -> argparse.Namespace:
             "Use --list-nets to see the available models."
         ),
     )
+
+    # App-specific arguments
     parser.add_argument(
-        "-i", "--input",
+        "--camera-resolution",
+        "-cr",
+        type=str,
+        choices=["sd", "hd", "fhd"],
+        default=None,
+        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080).",
+    )
+
+    parser.add_argument(
+        "--output-resolution",
+        "-or",
+        nargs="+",
         type=str,
         default=None,
         help=(
-            "Input source. Examples:\n"
-            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
-            "  - Special:    'camera'\n"
-            "  - Named resource (without extension), e.g. 'bus'.\n"
-            "    If a named resource is used, it will be downloaded automatically\n"
-            "    if not already available. Use --list-inputs to see the options."
-        )
-    )
-    parser.add_argument(
-        "-b", "--batch-size", default=1, type=int, required=False,
-        help="Number of images in one batch"
-    )
-    parser.add_argument(
-        "-s", "--save_stream_output", action="store_true",
-        help="Save the output of the inference from a stream."
-    )
-    parser.add_argument(
-        "-o", "--output-dir", help="Directory to save the results.",
-        default=None
-    )
-    display_group = parser.add_mutually_exclusive_group(required=False)
-    display_group.add_argument(
-        "-cr","--camera-resolution",
-        type=str,
-        choices=["sd", "hd", "fhd"],
-        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080)."
-    )
-    display_group.add_argument(
-        "-or","--output-resolution",
-        nargs="+",
-        type=str,
-        help=(
-            "(Camera only) Output resolution. Use: 'sd', 'hd', 'fhd', "
+            "Output resolution. Use: 'sd', 'hd', 'fhd', "
             "or custom size like '--output-resolution 1920 1080'."
-        )
+        ),
     )
+
     parser.add_argument(
-        "-f", "--framerate",
-        type=float,
-        default=30.0,
-        help=("[Camera only] Override the camera input framerate.\n"
-            "Example: -f 10.0")
-    )
-    parser.add_argument(
-        "--show-fps", action="store_true",
-        help="Enable FPS performance measurement."
-    )
-    parser.add_argument(
-        "--use-corrector", action="store_true",
-        help="Enable text correction after OCR (e.g., for spelling or formatting)."
-    )
-    parser.add_argument(
-        "--list-nets",
+        "--use-corrector",
         action="store_true",
-        help="List supported nets for this app and exit"
+        help="Enable text correction after OCR (e.g., for spelling or formatting).",
     )
-    parser.add_argument(
-        "--list-inputs",
-        action="store_true",
-        help="List predefined sample inputs for this app and exit."
-    )
+
     args = parser.parse_args()
 
-    # Handle --list-nets and exit
+    # Handle --list-models and exit
+    if args.list_models:
+        list_networks(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-nets and exit (alias for --list-models)
     if args.list_nets:
         list_networks(APP_NAME)
         sys.exit(0)
@@ -135,11 +114,12 @@ def parse_args() -> argparse.Namespace:
         list_inputs(APP_NAME)
         sys.exit(0)
 
-    args.det_net, args.ocr_net = resolve_paddle_ocr_nets(args.net, dest_dir=".")
+    # Resolve the two networks
+    args.det_net, args.ocr_net = resolve_paddle_ocr_nets(args.hef_path, dest_dir=".")
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
-    # Setup output dir
+    # Setup output directory
     if args.output_dir is None:
         args.output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -147,7 +127,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple[str, str]:
+def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple:
     """
     PaddleOCR-specific resolver:
       - expects exactly 2 networks: DET_NET, REC_NET
@@ -155,7 +135,7 @@ def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple[str, str]:
     """
     if not net_args:
         logger.error(
-            "No --net was provided.\n"
+            "No --hef-path was provided.\n"
             "PaddleOCR requires two networks: DET_NET and REC_NET.\n"
             "Example:\n"
             "  ./paddle_ocr.py -n ocr_det ocr_rec\n"
@@ -165,12 +145,12 @@ def resolve_paddle_ocr_nets(net_args, dest_dir: str = ".") -> tuple[str, str]:
 
     if len(net_args) != 2:
         logger.error(
-            f"--net for {app} expects exactly 2 values (DET_NET and REC_NET), "
+            f"--hef-path for {APP_NAME} expects exactly 2 values (DET_NET and REC_NET), "
             f"but got {len(net_args)}.\n"
             "Example:\n"
             "  ./paddle_ocr.py -n ocr_det ocr_rec\n"
         )
-        list_networks(app)
+        list_networks(APP_NAME)
         sys.exit(1)
 
     det_name, rec_name = net_args
@@ -259,8 +239,19 @@ def ocr_hailo_infer(hailo_inference, input_queue, output_queue):
     hailo_inference.close()
 
 
-def run_inference_pipeline(det_net, ocr_net, input, batch_size, output_dir, camera_resolution, output_resolution,
-                           framerate, save_stream_output=False, show_fps=False, use_corrector=False) -> None:
+def run_inference_pipeline(
+    det_net,
+    ocr_net,
+    input,
+    batch_size,
+    output_dir,
+    camera_resolution,
+    output_resolution,
+    frame_rate,
+    save_output=False,
+    show_fps=False,
+    use_corrector=False,
+) -> None:
     """
     Run full detector + OCR inference pipeline with multi-threading and streaming.
 
@@ -270,8 +261,10 @@ def run_inference_pipeline(det_net, ocr_net, input, batch_size, output_dir, came
         input (str): Input source — 'camera', image directory, or video file path.
         batch_size (int): Number of frames to process in each batch.
         output_dir (str): Directory where output images or videos will be saved.
-        save_stream_output (bool): Whether to save the output stream. Defaults to False.
-        resolution (str): Input resolution format (e.g., 'sd', 'hd'). Defaults to 'sd'.
+        camera_resolution (str): Camera input resolution (e.g., 'sd', 'hd', 'fhd').
+        output_resolution (str): Output resolution for display/saving.
+        frame_rate (float): Target frame rate for processing.
+        save_output (bool): Whether to save the output stream. Defaults to False.
         show_fps (bool): Whether to display frames-per-second performance. Defaults to False.
         use_corrector (bool): Whether to enable text spell correction. Defaults to False.
 
@@ -334,7 +327,7 @@ def run_inference_pipeline(det_net, ocr_net, input, batch_size, output_dir, came
 
     # input postprocess
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, framerate, batch_size, det_input_queue, width, height)
+        target=preprocess, args=(images, cap, frame_rate, batch_size, det_input_queue, width, height)
     )
 
     # detector output postprocess
@@ -351,8 +344,8 @@ def run_inference_pipeline(det_net, ocr_net, input, batch_size, output_dir, came
 
     # visualisation postprocess
     vis_postprocess_thread = threading.Thread(
-        target=visualize, args=(vis_output_queue, cap, save_stream_output, output_dir, 
-                                post_process_callback_fn, fps_tracker, output_resolution, framerate, True)
+        target=visualize, args=(vis_output_queue, cap, save_output, output_dir, 
+                                post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True)
     )
 
     det_thread = threading.Thread(
@@ -561,9 +554,19 @@ def main() -> None:
     Main function to run the script.
     """
     args = parse_args()
-    run_inference_pipeline(args.det_net, args.ocr_net, args.input, args.batch_size,
-          args.output_dir, args.camera_resolution, args.output_resolution,
-          args.framerate, args.save_stream_output, args.show_fps, args.use_corrector)
+    run_inference_pipeline(
+        args.det_net,
+        args.ocr_net,
+        args.input,
+        args.batch_size,
+        args.output_dir,
+        args.camera_resolution,
+        args.output_resolution,
+        args.frame_rate,
+        args.save_output,
+        args.show_fps,
+        args.use_corrector,
+    )
 
 
 if __name__ == "__main__":

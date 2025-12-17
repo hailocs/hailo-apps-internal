@@ -1,14 +1,13 @@
-import argparse
 import sys
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 from hailo_apps.python.core.common.core import get_resource_path, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.common.defines import LLM_CHAT_APP, LLM_MODEL_NAME_H10, RESOURCES_MODELS_DIR_NAME, SHARED_VDEVICE_GROUP_ID, HAILO10H_ARCH
 
 # Parse arguments
-parser = argparse.ArgumentParser(description="LLM Chat Example")
-parser.add_argument("--hef-path", type=str, default=None, help="Path to HEF model file")
-parser.add_argument("--list-models", action="store_true", help="List available models")
+parser = get_standalone_parser()
+parser.description = "LLM Chat Example"
 
 # Handle --list-models flag before full initialization
 handle_list_models_flag(parser, LLM_CHAT_APP)

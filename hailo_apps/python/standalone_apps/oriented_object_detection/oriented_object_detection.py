@@ -1,4 +1,3 @@
-import argparse
 import os
 import sys
 from loguru import logger
@@ -11,11 +10,11 @@ from pathlib import Path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from common.hailo_inference import HailoInfer
 from common.toolbox import (
-    init_input_source, 
-    get_labels, 
-    load_json_file, 
-    preprocess, 
-    visualize, 
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    visualize,
     FrameRateTracker,
     resolve_net_arg,
     resolve_input_arg,
@@ -24,106 +23,51 @@ from common.toolbox import (
     list_inputs,
     oriented_object_detection_preprocess,
 )
+from common.parser import get_standalone_parser
 from oriented_object_detection_post_process import inference_result_handler
 
 APP_NAME = Path(__file__).stem
 
-def parse_args() -> argparse.Namespace:
+
+def parse_args():
     """
     Initialize argument parser for the script.
     Returns:
         argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(
-        description="Instance segmentation supporting Yolov5, Yolov8, and FastSAM architectures.",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
+    parser = get_standalone_parser()
+    parser.description = "Oriented object detection using rotated bounding boxes."
+
+    # App-specific arguments
     parser.add_argument(
-        "-n", "--net",
-        type=str,
-        help=(
-            "- A local HEF file path\n"
-            "    → uses the specified HEF directly.\n"
-            "- A model name (e.g., yolov8n)\n"
-            "    → automatically downloads & resolves the correct HEF for your device.\n"
-            "      Use --list-nets to see the available nets."
-        )    
-    )
-    parser.add_argument(
-        "-i", "--input",
-        type=str,
-        default=None,
-        help=(
-            "Input source. Examples:\n"
-            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
-            "  - Special:    'camera'\n"
-            "  - Named resource (without extension), e.g. 'bus'.\n"
-            "    If a named resource is used, it will be downloaded automatically\n"
-            "    if not already available. Use --list-inputs to see the options."
-        )
-    )
-    parser.add_argument(
-        "-b", "--batch_size",
-        type=int,
-        default=1,
-        help="Number of images in one batch"
-    )
-    parser.add_argument(
-        "-s", "--save_stream_output",
-        action="store_true",
-        help="Save the output of the inference from a stream."
-    )
-    parser.add_argument(
-        "-l", "--labels",
-        default=str(Path(__file__).parent.parent / "common" / "dota.txt"),
-        help="Path to a text file containing labels. If not provided, dota_v1 will be used."
-    )
-    parser.add_argument(
-        "-o", "--output-dir",
-        default=None,
-        help="Directory to save the results."
-    )
-    display_group = parser.add_mutually_exclusive_group(required=False)
-    display_group.add_argument(
-        "-cr","--camera-resolution",
+        "--camera-resolution",
+        "-cr",
         type=str,
         choices=["sd", "hd", "fhd"],
-        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080)."
+        default=None,
+        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080).",
     )
-    display_group.add_argument(
-        "-or","--output-resolution",
+
+    parser.add_argument(
+        "--output-resolution",
+        "-or",
         nargs="+",
         type=str,
+        default=None,
         help=(
-            "(Camera only) Output resolution. Use: 'sd', 'hd', 'fhd', "
+            "Output resolution. Use: 'sd', 'hd', 'fhd', "
             "or custom size like '--output-resolution 1920 1080'."
-        )
+        ),
     )
-    parser.add_argument(
-        "-f", "--framerate",
-        type=float,
-        default=30.0,
-        help=("[Camera only] Override the camera input framerate.\n"
-            "Example: -f 10.0")
-    )
-    parser.add_argument(
-        "--show-fps",
-        action="store_true",
-        help="Enable FPS performance measurement."
-    )
-    parser.add_argument(
-        "--list-nets",
-        action="store_true",
-        help="List supported nets for this app and exit"
-    )
-    parser.add_argument(
-        "--list-inputs",
-        action="store_true",
-        help="List predefined sample inputs for this app and exit."
-    )
+
     args = parser.parse_args()
 
-    # Handle --list-nets and exit
+    # Handle --list-models and exit
+    if args.list_models:
+        list_networks(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-nets and exit (alias for --list-models)
     if args.list_nets:
         list_networks(APP_NAME)
         sys.exit(0)
@@ -133,10 +77,12 @@ def parse_args() -> argparse.Namespace:
         list_inputs(APP_NAME)
         sys.exit(0)
 
-    args.net = resolve_net_arg(APP_NAME, args.net, ".")
+    # Resolve network and input paths
+    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".")
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
+    # Setup output directory
     if args.output_dir is None:
         args.output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -152,9 +98,9 @@ def run_inference_pipeline(
     output_dir,
     camera_resolution,
     output_resolution,
-    framerate,
-    save_stream_output=False,
-    show_fps=False
+    frame_rate,
+    save_output=False,
+    show_fps=False,
 ) -> None:
 
     labels = get_labels(labels_file)
@@ -185,11 +131,11 @@ def run_inference_pipeline(
     height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, framerate, batch_size, input_queue, width, height, preprocess_callback_fn)
+        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height, preprocess_callback_fn)
     )
     postprocess_thread = threading.Thread(
-        target=visualize, args=(output_queue, cap, save_stream_output,
-                                output_dir, post_process_callback_fn, fps_tracker, output_resolution, framerate)
+        target=visualize, args=(output_queue, cap, save_output,
+                                output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue)
@@ -256,16 +202,16 @@ def inference_callback(
 def main() -> None:
     args = parse_args()
     run_inference_pipeline(
-        args.net,
+        args.hef_path,
         args.input,
         args.batch_size,
         args.labels,
         args.output_dir,
         args.camera_resolution,
         args.output_resolution,
-        args.framerate,
-        args.save_stream_output,
-        args.show_fps
+        args.frame_rate,
+        args.save_output,
+        args.show_fps,
     )
 
 

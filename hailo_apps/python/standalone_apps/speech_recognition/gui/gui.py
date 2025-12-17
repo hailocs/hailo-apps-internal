@@ -6,7 +6,6 @@ import base64
 import threading
 import time
 import os
-import argparse
 from PIL import Image
 
 
@@ -15,6 +14,7 @@ from app.hailo_whisper_pipeline import HailoWhisperPipeline
 from common.audio_utils import load_audio
 from common.postprocessing import clean_transcription
 from app.whisper_hef_registry import HEF_REGISTRY
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
 # --- Constants ---
 SAMPLE_RATE = 16000
@@ -34,13 +34,16 @@ def get_args():
     Return:
         argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="Whisper Hailo Pipeline")
+    parser = get_standalone_parser()
+    parser.description = "Whisper Hailo Pipeline"
+    parser.set_defaults(arch="hailo8")
     parser.add_argument(
         "--hw-arch",
+        dest="arch",
         type=str,
-        default="hailo8",
         choices=["hailo8", "hailo8l", "hailo10h"],
-        help="Hardware architecture to use (default: hailo8)"
+        default=None,
+        help="Hardware architecture to use (alias for --arch, default: hailo8)"
     )
     parser.add_argument(
         "--variant",
@@ -49,7 +52,11 @@ def get_args():
         choices=["base", "tiny"],
         help="Whisper variant to use (default: base)"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.arch is None:
+        args.arch = "hailo8"
+    args.hw_arch = args.arch
+    return args
 
 def get_hef_path(model_variant: str, hw_arch: str, component: str) -> str:
     """
@@ -236,8 +243,8 @@ if 'initialized' not in st.session_state:
     print(f"Selected variant: Whisper {variant}")
     st.session_state.variant = variant
     st.session_state.chunk_length = 10 if ("tiny" in variant) else 5
-    encoder_path = get_hef_path(variant, args.hw_arch, "encoder")
-    decoder_path = get_hef_path(variant, args.hw_arch, "decoder")
+    encoder_path = get_hef_path(variant, args.arch, "encoder")
+    decoder_path = get_hef_path(variant, args.arch, "decoder")
     st.session_state.initialized = True
     print("Initializing whisper model...")
     st.session_state.whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant=variant)

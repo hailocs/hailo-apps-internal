@@ -1,7 +1,6 @@
 """Main app for Hailo Whisper"""
 
 import time
-import argparse
 import os
 import sys
 from app.hailo_whisper_pipeline import HailoWhisperPipeline
@@ -10,6 +9,7 @@ from common.preprocessing import preprocess, improve_input_audio
 from common.postprocessing import clean_transcription
 from common.record_utils import record_audio
 from app.whisper_hef_registry import HEF_REGISTRY
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
 
 
@@ -20,7 +20,9 @@ def get_args():
     Return:
         argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="Whisper Hailo Pipeline")
+    parser = get_standalone_parser()
+    parser.description = "Whisper Hailo Pipeline"
+    parser.set_defaults(arch="hailo8")
     parser.add_argument(
         "--reuse-audio", 
         action="store_true", 
@@ -28,10 +30,11 @@ def get_args():
     )
     parser.add_argument(
         "--hw-arch",
+        dest="arch",
         type=str,
-        default="hailo8",
         choices=["hailo8", "hailo8l", "hailo10h"],
-        help="Hardware architecture to use (default: hailo8)"
+        default=None,
+        help="Hardware architecture to use (alias for --arch, default: hailo8)"
     )
     parser.add_argument(
         "--variant",
@@ -51,7 +54,12 @@ def get_args():
         default=10,
         help="Recording duration in seconds (default: 10 seconds)"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.arch is None:
+        args.arch = "hailo8"
+    # Preserve backwards compatibility with previous flag naming
+    args.hw_arch = args.arch
+    return args
 
 
 def get_hef_path(model_variant: str, hw_arch: str, component: str) -> str:
@@ -87,8 +95,8 @@ def main():
 
     variant = args.variant
     print(f"Selected variant: Whisper {variant}")
-    encoder_path = get_hef_path(variant, args.hw_arch, "encoder")
-    decoder_path = get_hef_path(variant, args.hw_arch, "decoder")
+    encoder_path = get_hef_path(variant, args.arch, "encoder")
+    decoder_path = get_hef_path(variant, args.arch, "decoder")
 
     whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant, multi_process_service=args.multi_process_service)
     print("Hailo Whisper pipeline initialized.")

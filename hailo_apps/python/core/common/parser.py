@@ -1,6 +1,4 @@
-# ===============================
-# path: hailo_apps/python/core/common/cli.py
-# ===============================
+
 """Shared CLI argument parsing utilities."""
 
 from __future__ import annotations
@@ -261,6 +259,15 @@ def get_standalone_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--list-nets",
+        action="store_true",
+        help=(
+            "List available models for this application and exit. "
+            "Alias for --list-models to align with legacy app flags."
+        ),
+    )
+
+    parser.add_argument(
         "--resolution",
         "-r",
         type=str,
@@ -317,4 +324,3 @@ def get_default_parser() -> argparse.ArgumentParser:
         stacklevel=2,
     )
     return get_pipeline_parser()
-

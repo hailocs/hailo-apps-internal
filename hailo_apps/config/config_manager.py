@@ -312,6 +312,17 @@ def get_resources_path_config() -> dict:
     return config.get("resources", {})
 
 
+def get_model_zoo_mapping() -> dict:
+    """Get the model zoo version mapping for architectures.
+    
+    Returns:
+        Dictionary mapping architecture names to Model Zoo versions
+        e.g., {"hailo8": "v2.17.0", "hailo8l": "v2.17.0", "hailo10h": "v2.17.0"}
+    """
+    config = get_main_config()
+    return config.get("model_zoo_mapping", {})
+
+
 # =============================================================================
 # Resources Config API (resources_config.yaml)
 # =============================================================================
@@ -575,6 +586,124 @@ def is_gen_ai_app(app_name: str) -> bool:
             if model.source == "gen-ai-mz":
                 return True
     return False
+
+
+# =============================================================================
+# Inputs Config API (images/videos per app based on tags)
+# =============================================================================
+
+def _get_resources_by_tag(section: str, app_name: str) -> list[dict]:
+    """Get resources from a section that are tagged for an app.
+    
+    Args:
+        section: Section name ("videos", "images", "json")
+        app_name: Application name to match in tags
+        
+    Returns:
+        List of resource entry dicts that match the app
+    """
+    config = get_resources_config()
+    all_resources = config.get(section, [])
+    
+    matching = []
+    for resource in all_resources:
+        if not isinstance(resource, dict):
+            continue
+        tags = resource.get("tag", [])
+        if isinstance(tags, str):
+            tags = [tags]
+        if app_name in tags:
+            matching.append(resource)
+    
+    return matching
+
+
+def get_videos_for_app(app_name: str) -> list[dict]:
+    """Get videos that are tagged for a specific application.
+    
+    Args:
+        app_name: Application name (e.g., "detection", "pose_estimation")
+        
+    Returns:
+        List of video entry dicts that match the app
+    """
+    return _get_resources_by_tag("videos", app_name)
+
+
+def get_images_for_app(app_name: str) -> list[dict]:
+    """Get images that are tagged for a specific application.
+    
+    Args:
+        app_name: Application name (e.g., "detection", "pose_estimation")
+        
+    Returns:
+        List of image entry dicts that match the app
+    """
+    return _get_resources_by_tag("images", app_name)
+
+
+def get_json_for_app(app_name: str) -> list[dict]:
+    """Get JSON config files that are tagged for a specific application.
+    
+    Args:
+        app_name: Application name (e.g., "detection", "tiling")
+        
+    Returns:
+        List of JSON entry dicts that match the app
+    """
+    return _get_resources_by_tag("json", app_name)
+
+
+def get_inputs_for_app(app_name: str, is_standalone: bool = False) -> dict:
+    """Get input resources for an application based on app type.
+    
+    - Standalone apps (is_standalone=True): Returns both videos AND images
+    - Pipeline apps (is_standalone=False): Returns only videos
+    
+    Args:
+        app_name: Application name (e.g., "detection", "pose_estimation")
+        is_standalone: If True, include images; if False, only videos
+        
+    Returns:
+        Dictionary with 'videos' and optionally 'images' lists for the app
+    """
+    result = {
+        "videos": get_videos_for_app(app_name),
+    }
+    
+    if is_standalone:
+        result["images"] = get_images_for_app(app_name)
+    
+    return result
+
+
+def get_all_tags() -> set[str]:
+    """Get all unique tags used across videos, images, and json.
+    
+    Returns:
+        Set of all tag strings found in resources config
+    """
+    config = get_resources_config()
+    tags = set()
+    
+    for section in ["videos", "images", "json"]:
+        for entry in config.get(section, []):
+            if isinstance(entry, dict):
+                entry_tags = entry.get("tag", [])
+                if isinstance(entry_tags, str):
+                    entry_tags = [entry_tags]
+                tags.update(entry_tags)
+    
+    return tags
+
+
+def get_apps_with_inputs() -> set[str]:
+    """Get all app names that have tagged inputs (videos/images/json).
+    
+    Returns:
+        Set of app names that have at least one tagged resource
+    """
+    return get_all_tags()
 
 
 # =============================================================================
@@ -1037,7 +1166,319 @@ def _show_models(app_name: str, arch: str):
         print("    (none)")
 
 
+def _test_all_functions():
+    """Test all API functions and print their outputs."""
+    import json
+    
+    def _safe_call(func_name: str, func, *args, **kwargs):
+        """Safely call a function and print result."""
+        try:
+            result = func(*args, **kwargs)
+            return result, None
+        except Exception as e:
+            return None, str(e)
+    
+    def _print_result(name: str, result, error=None, indent=2):
+        """Print a result with formatting."""
+        prefix = " " * indent
+        if error:
+            print(f"{prefix}❌ {name}: ERROR - {error}")
+            return False
+        
+        if result is None:
+            print(f"{prefix}✅ {name}: None")
+        elif isinstance(result, (list, tuple)):
+            if len(result) == 0:
+                print(f"{prefix}✅ {name}: [] (empty)")
+            elif len(result) <= 5:
+                print(f"{prefix}✅ {name}: {result}")
+            else:
+                print(f"{prefix}✅ {name}: [{len(result)} items] {result[:3]}...")
+        elif isinstance(result, dict):
+            if len(result) == 0:
+                print(f"{prefix}✅ {name}: {{}} (empty)")
+            elif len(result) <= 3:
+                print(f"{prefix}✅ {name}: {result}")
+            else:
+                keys = list(result.keys())[:5]
+                print(f"{prefix}✅ {name}: {{{len(result)} keys}} {keys}...")
+        elif hasattr(result, '__dataclass_fields__'):
+            # Dataclass
+            print(f"{prefix}✅ {name}: {result}")
+        else:
+            print(f"{prefix}✅ {name}: {result}")
+        return True
+    
+    print("\n" + "=" * 80)
+    print("  CONFIG MANAGER - COMPREHENSIVE FUNCTION TEST")
+    print("=" * 80)
+    
+    errors = []
+    success_count = 0
+    total_count = 0
+    
+    # =========================================================================
+    # Path Resolution Tests
+    # =========================================================================
+    _print_header("ConfigPaths Class")
+    
+    for name, func in [
+        ("repo_root()", ConfigPaths.repo_root),
+        ("main_config()", ConfigPaths.main_config),
+        ("resources_config()", ConfigPaths.resources_config),
+        ("test_definition_config()", ConfigPaths.test_definition_config),
+        ("test_control_config()", ConfigPaths.test_control_config),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(f"ConfigPaths.{name}")
+    
+    # =========================================================================
+    # Main Config API Tests
+    # =========================================================================
+    _print_header("Main Config API (config.yaml)")
+    
+    for name, func, args in [
+        ("get_main_config()", get_main_config, []),
+        ("get_valid_versions('hailort')", get_valid_versions, ["hailort"]),
+        ("get_valid_versions('tappas')", get_valid_versions, ["tappas"]),
+        ("get_valid_versions('hailo_arch')", get_valid_versions, ["hailo_arch"]),
+        ("get_model_zoo_version_for_arch('hailo8')", get_model_zoo_version_for_arch, ["hailo8"]),
+        ("get_model_zoo_version_for_arch('hailo8l')", get_model_zoo_version_for_arch, ["hailo8l"]),
+        ("get_model_zoo_version_for_arch('hailo10h')", get_model_zoo_version_for_arch, ["hailo10h"]),
+        ("get_model_zoo_mapping()", get_model_zoo_mapping, []),
+        ("get_venv_config()", get_venv_config, []),
+        ("get_resources_path_config()", get_resources_path_config, []),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # =========================================================================
+    # Resources Config API Tests
+    # =========================================================================
+    _print_header("Resources Config API (resources_config.yaml)")
+    
+    result, _ = _safe_call("get_resources_config", get_resources_config)
+    total_count += 1
+    if _print_result("get_resources_config()", result):
+        success_count += 1
+    
+    # Get available apps for further testing
+    apps, _ = _safe_call("get_available_apps", get_available_apps)
+    total_count += 1
+    if _print_result("get_available_apps()", apps):
+        success_count += 1
+    else:
+        apps = []
+    
+    # Test with first app if available
+    test_app = apps[0] if apps else "detection"
+    print(f"\n  Using test app: '{test_app}'")
+    
+    archs, _ = _safe_call("get_supported_architectures", get_supported_architectures, test_app)
+    total_count += 1
+    if _print_result(f"get_supported_architectures('{test_app}')", archs):
+        success_count += 1
+    else:
+        archs = []
+    
+    test_arch = archs[0] if archs else "hailo8"
+    print(f"  Using test arch: '{test_arch}'")
+    
+    # Model functions
+    for name, func, args in [
+        (f"get_default_models('{test_app}', '{test_arch}')", get_default_models, [test_app, test_arch]),
+        (f"get_extra_models('{test_app}', '{test_arch}')", get_extra_models, [test_app, test_arch]),
+        (f"get_all_models('{test_app}', '{test_arch}')", get_all_models, [test_app, test_arch]),
+        (f"get_model_names('{test_app}', '{test_arch}', 'all')", get_model_names, [test_app, test_arch, "all"]),
+        (f"get_model_names('{test_app}', '{test_arch}', 'default')", get_model_names, [test_app, test_arch, "default"]),
+        (f"get_default_model_name('{test_app}', '{test_arch}')", get_default_model_name, [test_app, test_arch]),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # Get a model name for model_info test
+    models, _ = _safe_call("get_all_models", get_all_models, test_app, test_arch)
+    test_model = models[0].name if models else "yolov8m"
+    
+    total_count += 1
+    result, error = _safe_call("get_model_info", get_model_info, test_app, test_arch, test_model)
+    if _print_result(f"get_model_info('{test_app}', '{test_arch}', '{test_model}')", result, error):
+        success_count += 1
+    
+    # Shared resources
+    for name, func in [
+        ("get_videos()", get_videos),
+        ("get_images()", get_images),
+        ("get_json_files()", get_json_files),
+        ("get_all_json_files()", get_all_json_files),
+        (f"is_gen_ai_app('{test_app}')", lambda: is_gen_ai_app(test_app)),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # =========================================================================
+    # Inputs Config API Tests (tag-based filtering)
+    # =========================================================================
+    _print_header("Inputs Config API (tag-based)")
+    
+    # Use 'detection' for inputs testing since it has many tagged resources
+    inputs_test_app = "detection"
+    print(f"  Using inputs test app: '{inputs_test_app}'")
+    
+    for name, func, args in [
+        ("get_all_tags()", get_all_tags, []),
+        ("get_apps_with_inputs()", get_apps_with_inputs, []),
+        (f"get_videos_for_app('{inputs_test_app}')", get_videos_for_app, [inputs_test_app]),
+        (f"get_images_for_app('{inputs_test_app}')", get_images_for_app, [inputs_test_app]),
+        (f"get_json_for_app('{inputs_test_app}')", get_json_for_app, [inputs_test_app]),
+        (f"get_inputs_for_app('{inputs_test_app}', is_standalone=False)", lambda: get_inputs_for_app(inputs_test_app, is_standalone=False), []),
+        (f"get_inputs_for_app('{inputs_test_app}', is_standalone=True)", lambda: get_inputs_for_app(inputs_test_app, is_standalone=True), []),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # =========================================================================
+    # Test Definition Config API Tests
+    # =========================================================================
+    _print_header("Test Definition Config API (test_definition_config.yaml)")
+    
+    for name, func, args in [
+        ("get_test_definition_config()", get_test_definition_config, []),
+        ("get_defined_apps()", get_defined_apps, []),
+        ("get_all_test_suites()", get_all_test_suites, []),
+        ("get_all_test_run_combinations()", get_all_test_run_combinations, []),
+        ("get_test_resources()", get_test_resources, []),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # Get defined apps for further testing
+    defined_apps, _ = _safe_call("get_defined_apps", get_defined_apps)
+    test_defined_app = defined_apps[0] if defined_apps else "detection"
+    
+    for name, func, args in [
+        (f"get_app_definition('{test_defined_app}')", get_app_definition, [test_defined_app]),
+        (f"get_test_suites_for_app('{test_defined_app}', 'default')", get_test_suites_for_app, [test_defined_app, "default"]),
+        (f"get_test_suites_for_app('{test_defined_app}', 'extra')", get_test_suites_for_app, [test_defined_app, "extra"]),
+        (f"get_test_suites_for_app('{test_defined_app}', 'all')", get_test_suites_for_app, [test_defined_app, "all"]),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # Test suite details
+    suites, _ = _safe_call("get_all_test_suites", get_all_test_suites)
+    test_suite = suites[0] if suites else "basic_show_fps"
+    
+    total_count += 1
+    result, error = _safe_call("get_test_suite", get_test_suite, test_suite)
+    if _print_result(f"get_test_suite('{test_suite}')", result, error):
+        success_count += 1
+    
+    # Test run combinations
+    combinations, _ = _safe_call("get_all_test_run_combinations", get_all_test_run_combinations)
+    test_combo = combinations[0] if combinations else "ci_run"
+    
+    total_count += 1
+    result, error = _safe_call("get_test_run_combination", get_test_run_combination, test_combo)
+    if _print_result(f"get_test_run_combination('{test_combo}')", result, error):
+        success_count += 1
+    
+    # =========================================================================
+    # Test Control Config API Tests
+    # =========================================================================
+    _print_header("Test Control Config API (test_control.yaml)")
+    
+    for name, func, args in [
+        ("get_test_control_config()", get_test_control_config, []),
+        ("get_control_parameter('default_run_time')", get_control_parameter, ["default_run_time"]),
+        ("get_control_parameter('term_timeout')", get_control_parameter, ["term_timeout"]),
+        ("get_control_parameter('nonexistent', 'default_val')", get_control_parameter, ["nonexistent", "default_val"]),
+        ("get_logging_config()", get_logging_config, []),
+        ("get_enabled_run_methods()", get_enabled_run_methods, []),
+        ("get_custom_test_apps()", get_custom_test_apps, []),
+        ("is_special_test_enabled('h8l_on_h8')", is_special_test_enabled, ["h8l_on_h8"]),
+        ("is_special_test_enabled('sanity_checks')", is_special_test_enabled, ["sanity_checks"]),
+        ("get_enabled_test_combinations()", get_enabled_test_combinations, []),
+    ]:
+        total_count += 1
+        result, error = _safe_call(name, func, *args)
+        if _print_result(name, result, error):
+            success_count += 1
+        else:
+            errors.append(name)
+    
+    # =========================================================================
+    # Cache Management Tests
+    # =========================================================================
+    _print_header("Cache Management")
+    
+    total_count += 1
+    try:
+        clear_cache()
+        print("  ✅ clear_cache(): OK")
+        success_count += 1
+    except Exception as e:
+        print(f"  ❌ clear_cache(): ERROR - {e}")
+        errors.append("clear_cache()")
+    
+    total_count += 1
+    try:
+        reload_all()
+        print("  ✅ reload_all(): OK")
+        success_count += 1
+    except Exception as e:
+        print(f"  ❌ reload_all(): ERROR - {e}")
+        errors.append("reload_all()")
+    
+    # =========================================================================
+    # Summary
+    # =========================================================================
+    _print_header("TEST SUMMARY")
+    
+    print(f"  Total functions tested: {total_count}")
+    print(f"  ✅ Passed: {success_count}")
+    print(f"  ❌ Failed: {len(errors)}")
+    
+    if errors:
+        print("\n  Failed functions:")
+        for err in errors:
+            print(f"    • {err}")
+        return False
+    else:
+        print("\n  🎉 All functions passed!")
+        return True
+
+
 def main():
+
     """CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Hailo Apps Configuration Manager",
@@ -1045,8 +1486,10 @@ def main():
         epilog="""
 Examples:
   python -m hailo_apps.config.config_manager --dry-run
+  python -m hailo_apps.config.config_manager --test-all
   python -m hailo_apps.config.config_manager --list-apps
   python -m hailo_apps.config.config_manager --show-models detection hailo8
+  python -m hailo_apps.config.config_manager --show-paths
         """,
     )
 
@@ -1069,11 +1512,19 @@ Examples:
         action="store_true",
         help="Show configuration file paths",
     )
+    parser.add_argument(
+        "--test-all",
+        action="store_true",
+        help="Test all API functions and print their outputs",
+    )
 
     args = parser.parse_args()
 
     if args.dry_run:
         success = _dry_run()
+        sys.exit(0 if success else 1)
+    elif args.test_all:
+        success = _test_all_functions()
         sys.exit(0 if success else 1)
     elif args.list_apps:
         _list_apps()

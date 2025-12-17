@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os
 import sys
-import argparse
 import multiprocessing as mp
 from queue import Queue
 from loguru import logger
@@ -23,107 +22,61 @@ from common.toolbox import (
     resolve_input_arg,
     resolve_output_resolution_arg,
     list_networks,
-    list_inputs
+    list_inputs,
 )
+from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 
-def parse_args() -> argparse.Namespace:
+
+def parse_args():
     """
     Initialize argument parser for the script.
 
     Returns:
         argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(
-        description="Running a Hailo inference with actual images using Hailo API and OpenCV",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
+    parser = get_standalone_parser()
+    parser.description = "Pose estimation using Hailo inference with YOLOv8-pose models."
+
+    # App-specific arguments
     parser.add_argument(
-        "-n", "--net",
+        "--class-num",
+        "-cn",
+        type=int,
+        default=1,
+        help="The number of classes the model is trained on. Defaults to 1.",
+    )
+
+    parser.add_argument(
+        "--camera-resolution",
+        "-cr",
         type=str,
-        help=(
-            "- A local HEF file path\n"
-            "    → uses the specified HEF directly.\n"
-            "- A model name (e.g., yolov8n)\n"
-            "    → automatically downloads & resolves the correct HEF for your device.\n"
-            "      Use --list-nets to see the available nets."
-        )    
+        choices=["sd", "hd", "fhd"],
+        default=None,
+        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080).",
     )
+
     parser.add_argument(
-        "-i", "--input",
+        "--output-resolution",
+        "-or",
+        nargs="+",
         type=str,
         default=None,
         help=(
-            "Input source. Examples:\n"
-            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
-            "  - Special:    'camera'\n"
-            "  - Named resource (without extension), e.g. 'bus'.\n"
-            "    If a named resource is used, it will be downloaded automatically\n"
-            "    if not already available. Use --list-inputs to see the options."
-        )
-    )
-    parser.add_argument(
-        "-b", "--batch_size",
-        default=1,
-        type=int,
-        required=False,
-        help="Number of images in one batch. Defaults to 1"
-    )
-    parser.add_argument(
-        "-cn", "--class_num",
-        help="The number of classes the model is trained on. Defaults to 1",
-        default=1
-    )
-    parser.add_argument(
-        "-s", "--save_stream_output", action="store_true",
-        help="Save the output of the inference from a stream."
-    )
-    parser.add_argument(
-        "-o", "--output-dir", help="Directory to save the results.",
-        default=None
-    )
-    display_group = parser.add_mutually_exclusive_group(required=False)
-    display_group.add_argument(
-        "-cr","--camera-resolution",
-        type=str,
-        choices=["sd", "hd", "fhd"],
-        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080)."
-    )
-    display_group.add_argument(
-        "-or","--output-resolution",
-        nargs="+",
-        type=str,
-        help=(
-            "(Camera only) Output resolution. Use: 'sd', 'hd', 'fhd', "
+            "Output resolution. Use: 'sd', 'hd', 'fhd', "
             "or custom size like '--output-resolution 1920 1080'."
-        )
+        ),
     )
-    parser.add_argument(
-        "-f", "--framerate",
-        type=float,
-        default=30.0,
-        help=("[Camera only] Override the camera input framerate.\n"
-            "Example: -f 10.0")
-    )
-    parser.add_argument(
-        "--show-fps",
-        action="store_true",
-        help="Enable FPS measurement and display."
-    )
-    parser.add_argument(
-        "--list-nets",
-        action="store_true",
-        help="List supported nets for this app and exit"
-    )
-    parser.add_argument(
-        "--list-inputs",
-        action="store_true",
-        help="List predefined sample inputs for this app and exit."
-    )
+
     args = parser.parse_args()
 
-    # Handle --list-nets and exit
+    # Handle --list-models and exit
+    if args.list_models:
+        list_networks(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-nets and exit (alias for --list-models)
     if args.list_nets:
         list_networks(APP_NAME)
         sys.exit(0)
@@ -133,10 +86,12 @@ def parse_args() -> argparse.Namespace:
         list_inputs(APP_NAME)
         sys.exit(0)
 
-    args.net = resolve_net_arg(APP_NAME, args.net, ".")
+    # Resolve network and input paths
+    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".")
     args.input = resolve_input_arg(APP_NAME, args.input)
     args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
 
+    # Setup output directory
     if args.output_dir is None:
         args.output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(args.output_dir, exist_ok=True)
@@ -218,15 +173,15 @@ def infer(hailo_inference, input_queue, output_queue):
 
 def run_inference_pipeline(
     net_path: str,
-    input :str,
+    input: str,
     batch_size: int,
     class_num: int,
     output_dir: str,
     camera_resolution: str,
     output_resolution: str,
-    framerate: float,
-    save_stream_output :bool,
-    show_fps: bool
+    frame_rate: float,
+    save_output: bool,
+    show_fps: bool,
 ) -> None:
     """
     Run the inference pipeline using HailoInfer.
@@ -237,8 +192,10 @@ def run_inference_pipeline(
         batch_size (int): Number of frames to process per batch.
         class_num (int): Number of output classes expected by the model.
         output_dir (str): Directory where processed output will be saved.
-        save_stream_output (bool): If True, saves the output stream as a video file.
-        resolution (str): Camera only, resolution of the input source (e.g., "1280x720").
+        camera_resolution (str): Camera only, input resolution (e.g., 'sd', 'hd', 'fhd').
+        output_resolution (str): Output resolution for display/saving.
+        frame_rate (float): Target frame rate for processing.
+        save_output (bool): If True, saves the output stream as a video file.
         show_fps (bool): If True, display real-time FPS on the output.
 
     Returns:
@@ -276,13 +233,13 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, framerate, batch_size, input_queue, width, height)
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height)
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
-        args=(output_queue, cap, save_stream_output,
-            output_dir, post_process_callback_fn, fps_tracker, output_resolution, framerate)
+        args=(output_queue, cap, save_output,
+            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
         )
 
     infer_thread = threading.Thread(
@@ -305,22 +262,23 @@ def run_inference_pipeline(
         logger.debug(fps_tracker.frame_rate_summary())
 
     logger.success("Inference was successful!")
-    if save_stream_output or input.lower() != "camera":
+    if save_output or input.lower() != "camera":
         logger.success(f'Results have been saved in {output_dir}')
 
 
 def main() -> None:
     args = parse_args()
     run_inference_pipeline(
-        args.net, args.input,
-        int(args.batch_size),
-        int(args.class_num),
+        args.hef_path,
+        args.input,
+        args.batch_size,
+        args.class_num,
         args.output_dir,
         args.camera_resolution,
         args.output_resolution,
-        args.framerate,
-        args.save_stream_output,
-        args.show_fps
+        args.frame_rate,
+        args.save_output,
+        args.show_fps,
     )
 
 

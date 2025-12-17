@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import multiprocessing as mp
-import argparse
 import sys
 import os
-from multiprocessing import Process
 from functools import partial
 from pathlib import Path
 import numpy as np
@@ -22,8 +20,9 @@ from common.toolbox import (
     resolve_net_arg,
     resolve_input_arg,
     list_networks,
-    list_inputs
+    list_inputs,
 )
+from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 
@@ -33,53 +32,19 @@ def parser_init():
     Initialize and configure the argument parser for this script.
     
     Returns:
-        argparse.ArgumentParser: An instance of ArgumentParser.
+        argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser(description="UFLD_v2 inference",
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument(
-        "-n", "--net",
-        type=str,
-        help=(
-            "- A local HEF file path\n"
-            "    → uses the specified HEF directly.\n"
-            "- A model name (e.g., yolov8n)\n"
-            "    → automatically downloads & resolves the correct HEF for your device.\n"
-            "      Use --list-nets to see the available nets."
-        )    
-    )
-    parser.add_argument(
-        "-i", "--input",
-        type=str,
-        default=None,
-        help=(
-            "Input source. Examples:\n"
-            "  - Local path: 'bus.jpg', 'video.mp4', 'images_dir/'\n"
-            "  - Named resource (without extension), e.g. 'bus'.\n"
-            "    If a named resource is used, it will be downloaded automatically\n"
-            "    if not already available. Use --list-inputs to see the options."
-        )
-    )
-    parser.add_argument(
-        "-o",
-        "--output_dir",
-        default=None,
-        help="Path of the output video.",
-    )
-    parser.add_argument(
-        "--list-nets",
-        action="store_true",
-        help="List supported nets for this app and exit"
-    )
-    parser.add_argument(
-        "--list-inputs",
-        action="store_true",
-        help="List predefined sample inputs for this app and exit."
-    )
+    parser = get_standalone_parser()
+    parser.description = "UFLD_v2 lane detection inference."
+
     args = parser.parse_args()
 
-    # Handle --list-nets and exit
+    # Handle --list-models and exit
+    if args.list_models:
+        list_networks(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-nets and exit (alias for --list-models)
     if args.list_nets:
         list_networks(APP_NAME)
         sys.exit(0)
@@ -89,13 +54,15 @@ def parser_init():
         list_inputs(APP_NAME)
         sys.exit(0)
 
-    args.net = resolve_net_arg(APP_NAME, args.net, ".")
+    # Resolve network and input paths
+    args.hef_path = resolve_net_arg(APP_NAME, args.hef_path, ".")
     args.input = resolve_input_arg(APP_NAME, args.input)
-    
+
+    # Setup output directory
     if args.output_dir is None:
         args.output_dir = os.path.join(os.getcwd(), "output")
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     return args
 
 
@@ -329,24 +296,26 @@ if __name__ == "__main__":
     # Parse command-line arguments
     args = parser_init()
     try:
-        original_frame_width, original_frame_height, total_frames= get_video_info(args.input)
+        original_frame_width, original_frame_height, total_frames = get_video_info(args.input)
     except ValueError as e:
         logger.error(e)
 
-    ufld_processing = UFLDProcessing(num_cell_row=100,
-                                     num_cell_col=100,
-                                     num_row=56,
-                                     num_col=41,
-                                     num_lanes=4,
-                                     crop_ratio=0.8,
-                                     original_frame_width = original_frame_width,
-                                     original_frame_height = original_frame_height,
-                                     total_frames = total_frames)
+    ufld_processing = UFLDProcessing(
+        num_cell_row=100,
+        num_cell_col=100,
+        num_row=56,
+        num_col=41,
+        num_lanes=4,
+        crop_ratio=0.8,
+        original_frame_width=original_frame_width,
+        original_frame_height=original_frame_height,
+        total_frames=total_frames,
+    )
 
     run_inference_pipeline(
         args.input,
-        args.net,
-        batch_size=1,
+        args.hef_path,
+        batch_size=args.batch_size,
         output_dir=args.output_dir,
-        ufld_processing=ufld_processing
+        ufld_processing=ufld_processing,
     )

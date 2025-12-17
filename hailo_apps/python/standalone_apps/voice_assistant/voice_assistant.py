@@ -1,4 +1,3 @@
-import argparse
 import threading
 from io import StringIO
 from contextlib import redirect_stderr
@@ -6,8 +5,14 @@ from contextlib import redirect_stderr
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 
-from hailo_apps.python.core.common.defines import LLM_PROMPT_PREFIX, SHARED_VDEVICE_GROUP_ID, RESOURCES_MODELS_DIR_NAME, LLM_MODEL_NAME_H10
+from hailo_apps.python.core.common.defines import (
+    LLM_PROMPT_PREFIX,
+    SHARED_VDEVICE_GROUP_ID,
+    RESOURCES_MODELS_DIR_NAME,
+    LLM_MODEL_NAME_H10,
+)
 from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 from hailo_apps.python.core.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
 from hailo_apps.python.core.gen_ai_utils.voice_processing.text_to_speech import (
@@ -151,15 +156,18 @@ class VoiceAssistantApp:
         # Ideally self.vdevice.release() but it's shared.
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='A simple, voice-controlled AI assistant for your terminal.')
+def parse_args():
+    parser = get_standalone_parser()
+    parser.description = "A simple, voice-controlled AI assistant for your terminal."
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug mode to save recorded audio files.')
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
+    return parser.parse_args()
 
-    args = parser.parse_args()
+
+def main():
+    args = parse_args()
 
     if args.debug:
         print("Debug mode enabled: Audio will be saved to 'debug_audio_*.wav' files.")

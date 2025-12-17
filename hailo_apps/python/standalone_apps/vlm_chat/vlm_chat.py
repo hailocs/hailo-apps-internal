@@ -10,7 +10,8 @@ from typing import Optional, Callable, Any
 
 os.environ["QT_QPA_PLATFORM"] = 'xcb'
 from backend import Backend
-from hailo_apps.python.core.common.core import get_default_parser, get_resource_path, get_logger, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.core import get_resource_path, get_logger, handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type
 from hailo_apps.python.core.common.defines import (
@@ -279,7 +280,7 @@ class VLMChatApp:
             self.video_thread.join()
 
 if __name__ == "__main__":
-    parser = get_default_parser()
+    parser = get_standalone_parser()
     
     # Handle --list-models flag before full initialization
     handle_list_models_flag(parser, VLM_CHAT_APP)

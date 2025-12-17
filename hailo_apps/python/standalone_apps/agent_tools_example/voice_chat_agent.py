@@ -42,11 +42,8 @@ from hailo_apps.python.core.common.defines import (
     WHISPER_CHAT_APP,
     HAILO10H_ARCH,
 )
-from hailo_apps.python.core.common.core import (
-    get_standalone_parser,
-    handle_list_models_flag,
-    resolve_hef_path,
-)
+from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
+from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 try:
