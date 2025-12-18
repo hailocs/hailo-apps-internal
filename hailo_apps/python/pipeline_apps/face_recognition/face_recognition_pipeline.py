@@ -22,15 +22,19 @@ from PIL import Image
 import hailo
 from hailo import HailoTracker
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    configure_multi_model_hef_path,
+    resolve_hef_paths,
+)
 from hailo_apps.python.core.common.buffer_utils import get_numpy_from_buffer_efficient, get_caps_from_pad
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 from hailo_apps.python.core.common.defines import (
     RESOURCES_SO_DIR_NAME, 
-    FACE_DETECTION_PIPELINE, 
     FACE_RECOGNITION_PIPELINE,
     FACE_RECOGNITION_APP_TITLE,
-    RESOURCES_MODELS_DIR_NAME, 
     FACE_DETECTION_POSTPROCESS_SO_FILENAME, 
     FACE_RECOGNITION_POSTPROCESS_SO_FILENAME, 
     FACE_ALIGN_POSTPROCESS_SO_FILENAME, 
@@ -62,6 +66,9 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         if parser is None:
             parser = get_pipeline_parser()
         parser.add_argument("--mode", default='run', help="The mode of the application: run, train, delete")
+        
+        # Configure --hef-path for multi-model support (face detection + face recognition)
+        configure_multi_model_hef_path(parser)
         
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, FACE_RECOGNITION_PIPELINE)
@@ -106,9 +113,15 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
         self.processed_names = set()  # ((key-name, val-global_id)) for train mode - pipeline will be playing for 2 seconds, so we need to ensure each person will be processed only once
         self.processed_files = set()  # for train mode - pipeline will be playing for 2 seconds, so we need to ensure each file will be processed only once
 
-        # Set the HEF file path based on the arch
-        self.hef_path_detection = get_resource_path(pipeline_name=FACE_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
-        self.hef_path_recognition = get_resource_path(pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
+        # Resolve HEF paths for multi-model app (face detection + face recognition)
+        # Uses --hef-path arguments if provided, otherwise uses defaults
+        models = resolve_hef_paths(
+            hef_paths=self.options_menu.hef_path,  # List from action='append' or None
+            app_name=FACE_RECOGNITION_PIPELINE,
+            arch=self.arch,
+        )
+        self.hef_path_detection = models[0].path
+        self.hef_path_recognition = models[1].path
     
         if self.arch in (HAILO8_ARCH, HAILO10H_ARCH):
             self.detection_func = SCRFD_10G_POSTPROCESS_FUNCTION

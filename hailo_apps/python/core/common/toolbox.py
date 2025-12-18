@@ -1,13 +1,23 @@
-from typing import List, Generator, Optional, Tuple, Dict, Callable ,Any
-from pathlib import Path
-from loguru import logger
 import json
 import os
 import sys
-import numpy as np
-import queue
-import cv2
 import time
+import queue
+from pathlib import Path
+from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
+
+import cv2
+import numpy as np
+
+from hailo_apps.python.core.common.defines import (
+    HAILO_ARCH_KEY,
+    RESOURCES_PHOTOS_DIR_NAME,
+    RESOURCES_VIDEOS_DIR_NAME,
+)
+from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+logger = get_logger(__name__)
 
 IMAGE_EXTENSIONS: Tuple[str, ...] = ('.jpg', '.png', '.bmp', '.jpeg')
 CAMERA_RESOLUTION_MAP = {
@@ -358,6 +368,45 @@ def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndar
     return padded_image
 
 
+def oriented_object_detection_preprocess(image: np.ndarray, model_w: int, model_h: int, config_data: dict) -> np.ndarray:
+    """
+    Preprocess image for oriented object detection with letterbox resize.
+    
+    Args:
+        image (np.ndarray): Input image.
+        model_w (int): Model input width.
+        model_h (int): Model input height.
+        config_data (dict): Configuration data (currently unused but kept for API compatibility).
+    
+    Returns:
+        np.ndarray: Preprocessed and padded image.
+    """
+    # run letterbox resize
+    h0, w0 = image.shape[:2]
+    new_w, new_h = model_w, model_h
+    r = min(new_w / w0, new_h / h0)
+    new_unpad = (int(round(w0 * r)), int(round(h0 * r)))
+    dw = (new_w - new_unpad[0]) / 2
+    dh = (new_h - new_unpad[1]) / 2
+    
+    # calculate padding to ensure exact output dimensions
+    top = int(round(dh - 0.1))
+    bottom = int(round(dh + 0.1))
+    left = int(round(dw - 0.1))
+    right = int(round(dw + 0.1))
+    
+    # adjust padding to ensure exact output shape
+    if new_unpad[1] + top + bottom != new_h:
+        bottom = new_h - new_unpad[1] - top
+    if new_unpad[0] + left + right != new_w:
+        right = new_w - new_unpad[0] - left
+    
+    color = (114, 114, 114)
+    resized = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
+    padded_image = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+    return padded_image
+
+
 ####################################################################
 # Visualization
 ####################################################################
@@ -513,3 +562,248 @@ class FrameRateTracker:
         """
         return f"Processed {self.count} frames at {self.fps:.2f} FPS"
 
+####################################################################
+# Resource Resolution Functions (for HACE compatibility)
+####################################################################
+
+def resolve_output_resolution_arg(res_arg: Optional[list[str]]) -> Optional[Tuple[int, int]]:
+    """
+    Parse --output-resolution argument.
+
+    Supported:
+      --output-resolution sd|hd|fhd
+      --output-resolution 1920 1080
+    """
+    if res_arg is None:
+        return None
+
+    # Single token: preset name (sd/hd/fhd)
+    if len(res_arg) == 1:
+        key = res_arg[0]
+        if key in CAMERA_RESOLUTION_MAP:
+            return CAMERA_RESOLUTION_MAP[key]
+        raise ValueError(
+            f"Invalid --output-resolution value '{key}'. "
+            "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+        )
+
+    # Two tokens: custom width/height
+    if len(res_arg) == 2 and all(x.isdigit() for x in res_arg):
+        w, h = map(int, res_arg)
+        if w <= 0 or h <= 0:
+            raise ValueError("Custom --output-resolution width/height must be positive integers.")
+        return (w, h)
+
+    raise ValueError(
+        f"Invalid --output-resolution value: {res_arg}. "
+        "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+    )
+
+
+def list_networks(app: str) -> None:
+    """
+    Print the supported networks for a given application.
+    
+    Note: This is a stub implementation for HACE compatibility.
+    In hailo-apps-infra, use config_manager.get_model_names() instead.
+    """
+    logger.warning(
+        f"list_networks() called for app '{app}'. "
+        "This is a compatibility stub. "
+        "For full functionality, use hailo_apps.config.config_manager.get_model_names()"
+    )
+    try:
+        from hailo_apps.config.config_manager import get_model_names
+
+        arch = resolve_arch(None)
+        models = get_model_names(app, arch, tier="all")
+        if models:
+            logger.info(f"Available models for {app} ({arch}):")
+            for model in models:
+                logger.info(f"  - {model}")
+        else:
+            logger.info(f"No models found for {app} ({arch})")
+    except ImportError:
+        logger.error("Could not import config_manager. Please ensure hailo-apps-infra is properly installed.")
+
+
+def list_inputs(app: str) -> None:
+    """
+    List predefined inputs for a given application.
+    
+    Note: This is a stub implementation for HACE compatibility.
+    """
+    logger.warning(
+        f"list_inputs() called for app '{app}'. "
+        "This is a compatibility stub. "
+        "Inputs should be specified as file paths or 'camera'."
+    )
+
+
+def resolve_arch(arch: str | None) -> str:
+    """
+    Resolve the target Hailo architecture using CLI, environment, or auto-detection.
+
+    Order:
+      1. Explicit --arch value
+      2. Environment variable HAILO_ARCH_KEY (used by pipelines)
+      3. Automatic detection via detect_hailo_arch()
+
+    Exits with an error message if none of the above succeed.
+    """
+    if arch:
+        return arch
+
+    env_arch = os.getenv(HAILO_ARCH_KEY)
+    if env_arch:
+        return env_arch
+
+    try:
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+
+        detected_arch = detect_hailo_arch()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(f"Failed to auto-detect Hailo architecture: {exc}")
+        detected_arch = None
+
+    if detected_arch:
+        return detected_arch
+
+    logger.error(
+        "Could not determine Hailo architecture. "
+        "Please specify --arch or set the environment variable 'hailo_arch'."
+    )
+    sys.exit(1)
+
+
+def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch: str | None = None) -> str:
+    """
+    Resolve the --net argument into a concrete HEF path.
+    
+    Note: This is a compatibility function for HACE apps.
+    In hailo-apps-infra, prefer using core.resolve_hef_path() directly.
+    """
+    if net_arg is None:
+        logger.error("No --net was provided.")
+        list_networks(app)
+        sys.exit(1)
+
+    dest_path = Path(dest_dir)
+    dest_path.mkdir(parents=True, exist_ok=True)
+
+    candidate = Path(net_arg)
+
+    # If it's an existing HEF file, use it
+    if candidate.exists() and candidate.is_file() and candidate.suffix == ".hef":
+        logger.info(f"Using local HEF file: {candidate.resolve()}")
+        return str(candidate.resolve())
+
+    # If it has .hef extension but doesn't exist, error
+    if candidate.suffix == ".hef":
+        logger.error(f"HEF file not found: {net_arg}")
+        list_networks(app)
+        sys.exit(1)
+
+    # Treat as model name - try to resolve using hailo-apps-infra mechanism
+    model_name = net_arg
+    existing_hef = dest_path / f"{model_name}.hef"
+    
+    if existing_hef.exists():
+        logger.info(f"Using existing HEF: {existing_hef.resolve()}")
+        return str(existing_hef.resolve())
+    
+    # Try to resolve using hailo-apps-infra's config system
+    resolved_arch = resolve_arch(arch)
+    try:
+        from hailo_apps.python.core.common.core import resolve_hef_path
+        resolved = resolve_hef_path(model_name, app, resolved_arch)
+        if resolved and resolved.exists():
+            logger.info(f"Resolved model '{model_name}' to: {resolved} (arch={resolved_arch})")
+            return str(resolved)
+    except Exception as e:
+        logger.debug(f"Could not resolve via config system: {e}")
+
+    # Fallback: error and suggest listing networks
+    logger.error(f"Model '{model_name}' not found locally and could not be resolved.")
+    logger.info("Please provide a full path to a .hef file, or use --list-nets to see available models.")
+    list_networks(app)
+    sys.exit(1)
+
+
+def resolve_input_arg(app: str, input_arg: str | None) -> str:
+    """
+    Resolve the --input argument into a concrete input source.
+    
+    Note: This is a compatibility function for HACE apps.
+    """
+    def resolve_tagged_resource(app_name: str, preferred_name: str | None = None) -> str | None:
+        """Resolve a resource listed in resources_config.yaml for this app."""
+        try:
+            from hailo_apps.config.config_manager import get_inputs_for_app
+        except Exception:
+            return None
+
+        inputs = get_inputs_for_app(app_name, is_standalone=True)
+
+        def pick(section: str) -> str | None:
+            for entry in inputs.get(section, []):
+                name = entry.get("name")
+                if preferred_name and preferred_name != name:
+                    continue
+                resource_type = RESOURCES_PHOTOS_DIR_NAME if section == "images" else RESOURCES_VIDEOS_DIR_NAME
+                resolved = get_resource_path(
+                    pipeline_name=None,
+                    resource_type=resource_type,
+                    arch=None,
+                    model=name,
+                )
+                if resolved and resolved.exists():
+                    return str(resolved)
+            return None
+
+        # Prefer images first, then videos
+        resolved = pick("images")
+        if resolved:
+            return resolved
+        return pick("videos")
+
+    if input_arg is None:
+        resolved = resolve_tagged_resource(app)
+        if resolved:
+            logger.info("No input provided; using default bundled resource for %s: %s", app, resolved)
+            return resolved
+
+        logger.error(
+            "No --input was provided and no bundled resource was found. "
+            "Please specify -i/--input with a file path, directory, or 'camera'."
+        )
+        sys.exit(1)
+
+    # "camera" stays as is
+    if input_arg == "camera":
+        return input_arg
+
+    path_candidate = Path(input_arg)
+
+    # If it already exists (file or dir), just use it as-is
+    if path_candidate.exists():
+        return str(path_candidate)
+
+    resource_path = resolve_tagged_resource(app, path_candidate.name)
+    if resource_path:
+        logger.info("Resolved input '%s' to bundled resource: %s", input_arg, resource_path)
+        return resource_path
+
+    # If it has an extension but does NOT exist -> error
+    if path_candidate.suffix:
+        logger.error(f"Input file not found: {input_arg}")
+        logger.info("Please provide a valid file path, directory, or 'camera'.")
+        sys.exit(1)
+
+    # No extension and path does not exist -> treat as logical ID
+    logger.warning(
+        f"Input '{input_arg}' does not exist as a local file or directory. "
+        "Treating as logical input ID, but download functionality is not implemented in this compatibility stub."
+    )
+    logger.info("Please provide a full file path, directory path, or 'camera'.")
+    sys.exit(1)

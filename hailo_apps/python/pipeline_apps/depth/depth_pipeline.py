@@ -20,7 +20,6 @@ from hailo_apps.python.core.common.defines import (
     DEPTH_PIPELINE,
     DEPTH_POSTPROCESS_FUNCTION,
     DEPTH_POSTPROCESS_SO_FILENAME,
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
 )
 

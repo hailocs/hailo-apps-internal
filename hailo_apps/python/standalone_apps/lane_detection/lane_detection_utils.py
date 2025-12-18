@@ -2,7 +2,9 @@ from multiprocessing import Process
 from math import hypot
 import numpy as np
 import cv2
-from loguru import logger
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+logger = get_logger(__name__)
 
 class UFLDProcessing:
     def __init__(self,

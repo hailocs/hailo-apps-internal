@@ -16,7 +16,13 @@ import numpy as np
 # Local application-specific imports
 import hailo
 from hailo import HailoTracker
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    configure_multi_model_hef_path,
+    resolve_hef_paths,
+)
 from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
 from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
@@ -26,9 +32,7 @@ from hailo_apps.python.core.common.defines import (
     FACE_ALIGN_POSTPROCESS_SO_FILENAME,
     FACE_CROP_POSTPROCESS_SO_FILENAME,
     FACE_DETECTION_JSON_NAME,
-    FACE_DETECTION_PIPELINE,
     FACE_DETECTION_POSTPROCESS_SO_FILENAME,
-    FACE_RECOGNITION_PIPELINE,
     FACE_RECOGNITION_POSTPROCESS_SO_FILENAME,
     FACE_RECOGNITION_VIDEO_NAME,
     REID_MULTI_SOURCE_DATABASE_DIR_NAME,
@@ -38,7 +42,6 @@ from hailo_apps.python.core.common.defines import (
     REID_POSTPROCESS_FUNCTION,
     REID_POSTPROCESS_SO_FILENAME,
     RESOURCES_JSON_DIR_NAME,
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     SCRFD_10G_POSTPROCESS_FUNCTION,
@@ -79,6 +82,9 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         # Note: --width and --height are already in the base parser, so we set defaults here instead of adding them again
         parser.set_defaults(width=640, height=640)
         
+        # Configure --hef-path for multi-model support (face detection + face recognition)
+        configure_multi_model_hef_path(parser)
+        
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, REID_MULTISOURCE_PIPELINE)
 
@@ -89,9 +95,15 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
 
         setproctitle.setproctitle(REID_MULTISOURCE_APP_TITLE)  # Set the process title
 
-        # hef paths
-        self.hef_path_scrfd_detection = get_resource_path(pipeline_name=FACE_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
-        self.hef_path_arcface_mobilefacenet_recognition = get_resource_path(pipeline_name=FACE_RECOGNITION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME, arch=self.arch)
+        # Resolve HEF paths for multi-model app (face detection + face recognition)
+        # Uses --hef-path arguments if provided, otherwise uses defaults
+        models = resolve_hef_paths(
+            hef_paths=self.options_menu.hef_path,  # List from action='append' or None
+            app_name=REID_MULTISOURCE_PIPELINE,
+            arch=self.arch,
+        )
+        self.hef_path_scrfd_detection = models[0].path
+        self.hef_path_arcface_mobilefacenet_recognition = models[1].path
         # so post process
         self.post_process_so_yolo_detection = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=DETECTION_POSTPROCESS_SO_FILENAME)
         self.post_process_so_repvgg_reid = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, arch=self.arch, model=REID_POSTPROCESS_SO_FILENAME)

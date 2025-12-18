@@ -25,18 +25,22 @@ from hailo_apps.python.core.common.defines import (
     CLIP_DETECTOR_TYPE_VEHICLE,
     CLIP_POSTPROCESS_FUNCTION_NAME,
     RESOURCES_SO_DIR_NAME,
-    RESOURCES_MODELS_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
     CLIP_APP_TITLE,
     CLIP_VIDEO_NAME,
     CLIP_PIPELINE,
-    CLIP_DETECTION_PIPELINE,
     DETECTION_POSTPROCESS_SO_FILENAME,
     CLIP_POSTPROCESS_SO_FILENAME,
     CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
 )
-from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag
+from hailo_apps.python.core.common.core import (
+    get_pipeline_parser,
+    get_resource_path,
+    handle_list_models_flag,
+    configure_multi_model_hef_path,
+    resolve_hef_paths,
+)
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 
@@ -64,6 +68,9 @@ class GStreamerClipApp(GStreamerApp):
         parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
         parser.add_argument("--disable-runtime-prompts", action="store_true", help="When set, app will not support runtime prompts. Default is False.")
         
+        # Configure --hef-path for multi-model support (detection + clip)
+        configure_multi_model_hef_path(parser)
+        
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, CLIP_PIPELINE)
         
@@ -84,8 +91,15 @@ class GStreamerClipApp(GStreamerApp):
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=CLIP_VIDEO_NAME)
 
-        self.hef_path_detection = get_resource_path(pipeline_name=CLIP_DETECTION_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
-        self.hef_path_clip = get_resource_path(pipeline_name=CLIP_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
+        # Resolve HEF paths for multi-model app (detection + clip)
+        # Uses --hef-path arguments if provided, otherwise uses defaults
+        models = resolve_hef_paths(
+            hef_paths=self.options_menu.hef_path,  # List from action='append' or None
+            app_name=CLIP_PIPELINE,
+            arch=self.arch,
+        )
+        self.hef_path_detection = models[0].path
+        self.hef_path_clip = models[1].path
 
         self.post_process_so_detection = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=DETECTION_POSTPROCESS_SO_FILENAME)
         self.post_process_so_clip = get_resource_path(pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME, model=CLIP_POSTPROCESS_SO_FILENAME)

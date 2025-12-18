@@ -43,7 +43,7 @@ Follow these steps to set up the environment and install dependencies for infere
 
 4. Install PyHailoRT inside the virtual environment (must be downloaded from the Hailo Developer Zone), for example:
    ```sh
-   pip install hailort-4.20.0-cp310-cp310-linux_x86_64.whl
+   pip install hailort-4.23.0-cp310-cp310-linux_x86_64.whl
    ```
    The PyHailoRT version must match the installed HailoRT version.
    **_NOTE:_** This step is not necessary for Raspberry Pi 5 users who installed the *hailo-all* package, since the *venv* will inherit the system package.

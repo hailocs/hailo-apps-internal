@@ -1,8 +1,7 @@
 Pose Estimation
 ================
 
-
-This example performs object detection using a **Hailo8** or **Hailo10H** device.  
+This example demonstrates pose estimation using a Hailo-8, Hailo-8L, or Hailo-10H device.<br>
 The example takes an input, performs inference using the input HEF file and draws the detection boxes, class type, confidence, keypoints and joints connection on the resized image.  
 
 Supported input formats include:
@@ -16,18 +15,18 @@ Supported input formats include:
 Requirements
 ------------
 
-- hailo_platform==4.22.0
+- hailo_platform:
+    - 4.23.0 (for Hailo-8 devices)
+    - 5.1.1 (for Hailo-10H devices)
 - loguru
 - opencv-python
 
 Supported Models
 ----------------
 
-This example expects the hef to contain HailoRT-Postprocess. 
-
-Because of that, this example only supports detections models that allow hailort-postprocess:
-- yolov8s
-
+This example only supports pose estimation networks that allow HailoRT-Postprocess:
+- yolov8m_pose
+- yolov8s_pose
 
 
 Usage
@@ -52,38 +51,56 @@ Usage
     pip install -r requirements.txt
     ```
 
-3. Download example files:
-
-   The script supports both Hailo-8 and Hailo-10 files.  
-   Use the `--arch` flag to specify your target hardware:
-   ```shell
-   ./download_resources.sh --arch 8     # For Hailo-8
-   ./download_resources.sh --arch 10    # For Hailo-10
-    ```
-
-4. Run the script:
+3. Run the script:
     ```shell script
-    ./pose_estimation.py -n <model_path> -i <input_image_path> -b <batch_size> -cn <class_num>
+    ./pose_estimation.py -n <model_path> -i <input_path>
     ```
 
 Arguments
 ---------
 
-- `-n, --net`: Path to the pre-trained model file (HEF).
-- `-i, --input`: Path to the input image on which object detection will be performed.
-- `-b, --batch_size`: Number of images in one batch.
+- `-n, --net`: 
+    - A **model name** (e.g., `yolov8n`) → the script will automatically download and resolve the correct HEF for your device.
+    - A **file path** to a local HEF → the script will use the specified network directly.
+- `-i, --input`:
+  - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `camera` to use the system camera.
+  - A **predefined input name** from `inputs.json` (e.g., `bus`, `street`).
+    - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
+  - Use `--list-inputs` to display all available predefined inputs.
+- `-b, --batch-size`: Number of images in one batch.
 - `-cn, --class_num`: The number of classes the model is trained on. Defaults to 1.
 - `-s, --save_stream_output`: [optional] Save the output of the inference from a stream.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `--show-fps`: [optional] Display FPS performance metrics for video/camera input.
-- `-r, --resolution`: [Camera input only] Choose output resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080). If not specified, native camera resolution is used.
+- `--camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
+- `--output-resolution`: [optional] Set output size using `sd|hd|fhd`, or pass custom width/height (e.g., `--output-resolution 1920 1080`).
+- `-f, --framerate`: [optional][Camera only] Override the camera input framerate.
+- `--list-nets` [optional] Print all supported networks for this application (from `networks.json`) and exit.
+- `--list-inputs`: [optional] Print the available predefined input resources (images/videos) defined in `inputs.json` for this application, then exit.
+
+
+### Environment Variables
+- `CAMERA_INDEX`: [Camera input only] Select which camera index to use when -i camera is specified. Defaults to 0 if not set.
+    - Example: `CAMERA_INDEX=1 ./pose_estimation.py -n model.hef -i camera`
+
 
 For more information:
 ```shell script
 ./pose_estimation.py -h
 ```
+
 Example 
 -------
+**List supported networks**
+```shell script
+./pose_estimation.py --list-nets
+```
+
+**List available input resources**
+```shell script
+./pose_estimation.py --list-inputs
+```
+
 **Inference on single image**
 ```shell script
 ./pose_estimation.py -n yolov8s_pose.hef -i zidane.jpg -b 1
@@ -94,14 +111,24 @@ Example
 ./pose_estimation.py -n yolov8s_pose.hef -i camera
 ```
 
+**Inference on a camera stream with custom frame rate**
+```shell script
+./pose_estimation.py -n yolov8s_pose.hef -i camera -f 20
+```
+
+
 Additional Notes
 ----------------
 
-- The example was only tested with ``HailoRT v4.22.0``
+- The example was tested with:
+    - HailoRT v4.23.0 (for Hailo-8)
+    - HailoRT v5.1.1 (for Hailo-10H)
 - The example expects a HEF which contains the HailoRT Postprocess
 - The script assumes that the image is in one of the following formats: .jpg, .jpeg, .png or .bmp
 - The annotated files will be saved in the `output` folder. 
 - The number of input images should be divisible by the batch_size  
+- The list of supported detection models is defined in `networks.json`.
+- For any issues, open a post on the [Hailo Community](https://community.hailo.ai)
 
 Disclaimer
 ----------
