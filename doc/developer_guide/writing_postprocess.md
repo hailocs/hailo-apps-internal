@@ -1,6 +1,6 @@
 # Writing Your Own Post-Process for Hailo Apps
 
-So you want to add a new network to Hailo-apps-infra that isn't supported yet? You've come to the right place! This guide will walk you through creating your own post-process. Don't worry—it's easier than it sounds.
+So you want to add a new network to hailo-apps that isn't supported yet? You've come to the right place! This guide will walk you through creating your own post-process. Don't worry—it's easier than it sounds.
 This guide describes how to create a post-process function written in C++ that can be used in the HailoApps framework. This is done using the 'hailofilter' element.
 **Note** For python post-process, you can add your post-process function as a python callback function.
 

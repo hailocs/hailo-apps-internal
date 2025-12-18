@@ -1,9 +1,11 @@
 ![Hailo Applications Infrastructure](doc/images/github_applications_infrastructure.png)
 
 # Hailo Applications
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps-infra)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps)
 
-Build and deploy high-performance AI applications on edge devices with Hailo hardware accelerators. From real-time computer vision to GenAI voice assistants - production-ready applications and reusable infrastructure to accelerate your AI development.
+Build and deploy high-performance AI applications on edge devices with Hailo hardware accelerators. From real-time computer vision to **GenAI voice-to-action agents** - production-ready applications and reusable infrastructure to accelerate your AI development.
+
+**Highlight:** Voice-to-action AI agents that understand natural language commands and control hardware in real-time - elevators, servos, LEDs, and more.
 
 **Supports:** Hailo-8, Hailo-8L, and Hailo-10H accelerators
 
@@ -12,8 +14,9 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 ## What You Get
 
 ✨ **20+ Ready-to-Run Applications**
+- **🎯 GenAI - Voice to Action (Featured):** AI agents that convert natural language into hardware control - talk to your devices and make things happen
 - **Computer Vision:** Object detection, pose estimation, instance segmentation, face recognition, depth estimation, OCR
-- **GenAI:** Voice assistants, VLM chat, speech recognition (Whisper), AI agents with tool integration
+- **More GenAI:** Voice assistants, VLM chat, speech recognition (Whisper)
 - **Advanced:** Multi-camera tracking, zero-shot classification (CLIP), tiling for high-res processing
 
 🚀 **Production-Ready Infrastructure**
@@ -32,8 +35,8 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 
 ### Installation
 ```bash
-git clone https://github.com/hailo-ai/hailo-apps-infra.git
-cd hailo-apps-infra
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
 sudo ./install.sh
 ```
 
@@ -45,20 +48,29 @@ source setup_env.sh           # Activate environment
 hailo-detect-simple           # Start object detection
 ```
 
-![Tiling Example](local_resources/tiling.gif)
+![Detection Example](doc/images/detection.gif)
 
-**Try more:**
+**Try more computer vision:**
 ```bash
 hailo-pose                    # Pose estimation
 hailo-seg                     # Instance segmentation
 hailo-tiling                  # Tiling for high-res processing
+hailo-depth                   # Depth estimation
 ```
+
+![Pose Estimation](doc/images/pose_estimation.gif)
+![Instance Segmentation](doc/images/instance_segmentation.gif)
+![Depth Estimation](doc/images/depth.gif)
 
 ### GenAI Applications
 ```bash
 # Voice Assistant
 cd hailo_apps/python/standalone_apps/voice_assistant/
 python voice_assistant.py
+
+# Agent Tools - Voice to Action
+cd hailo_apps/python/standalone_apps/agent_tools_example/
+python voice_chat_agent.py
 
 # VLM Chat - Vision + Language
 cd hailo_apps/python/standalone_apps/vlm_chat/

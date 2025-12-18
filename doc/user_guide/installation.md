@@ -38,8 +38,8 @@ On the Raspberry Pi, make sure you first install the HW and SW as described in t
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/hailo-ai/hailo-apps-infra.git
-cd hailo-apps-infra
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
 
 # 2. Run the automated installation script
 sudo ./install.sh
@@ -327,7 +327,7 @@ After running any of the installation methods, you can verify that everything is
 2.  **Check installed Hailo packages**
     ```bash
     pip list | grep hailo
-    # You should see packages like hailort, hailo-tappas-core, and hailo-apps-infra.
+    # You should see packages like hailort, hailo-tappas-core, and hailo-apps.
 
     apt list | grep hailo
     # This shows all installed Hailo-related system packages.

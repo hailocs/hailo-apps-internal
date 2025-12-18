@@ -26,7 +26,7 @@ The Piper TTS model files must be installed in: `local_resources/piper_models/`
 
 ```bash
 # 1. Navigate to the repository root
-cd /path/to/hailo-apps-infra
+cd /path/to/hailo-apps
 
 # 2. Navigate to the piper_models directory
 cd local_resources/piper_models

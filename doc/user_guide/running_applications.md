@@ -29,24 +29,31 @@ The following applications are available as command-line tools. Each one is a se
 | `hailo-clip`          | [CLIP Zero-shot](../../hailo_apps/python/pipeline_apps/clip/README.md)        | Zero-shot image classification using CLIP-style embeddings for flexible label sets. |
 | `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)        | Text detection and recognition using PaddleOCR models. |
 
-### Standalone Applications
+### GenAI Standalone Applications
 
-In addition to the pipeline applications above, this repository includes standalone Python applications that demonstrate various AI capabilities. These applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
+These standalone GenAI applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
 
 | Application             | Description                                                                                                                                                       |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Agent Tools Example](../../hailo_apps/python/standalone_apps/agent_tools_example/README.md) | Voice and chat agent with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
+| [Agent Tools Example](../../hailo_apps/python/standalone_apps/agent_tools_example/README.md) | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
+| [Voice Assistant](../../hailo_apps/python/standalone_apps/voice_assistant/README.md) | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech. |
+| [VLM Chat](../../hailo_apps/python/standalone_apps/vlm_chat/README.md) | Vision-Language Model chat application combining vision and language understanding. |
+| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md) | Hailo Whisper-based speech recognition application with GUI. |
+
+**Example Applications:** The `standalone_apps/Examples/` directory contains additional examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [Examples README](../../hailo_apps/python/standalone_apps/Examples/README.md) for more details.
+
+### Other Standalone Applications
+
+In addition to the pipeline and GenAI applications above, this repository includes other standalone Python applications for computer vision use cases. These applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
+
+| Application             | Description                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Instance Segmentation](../../hailo_apps/python/standalone_apps/instance_segmentation/README.md) | Standalone example of instance segmentation with custom post-processing. |
 | [Lane Detection](../../hailo_apps/python/standalone_apps/lane_detection/README.md) | Lane detection application for automotive use cases. |
 | [Object Detection](../../hailo_apps/python/standalone_apps/object_detection/README.md) | Standalone object detection example with custom post-processing. |
 | [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md) | Standalone text detection and recognition using PaddleOCR models. |
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md) | Standalone pose estimation example with custom visualization. |
-| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md) | Hailo Whisper-based speech recognition application with GUI. |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md) | Image super-resolution for enhancing image quality. |
-| [VLM Chat](../../hailo_apps/python/standalone_apps/vlm_chat/README.md) | Vision-Language Model chat application combining vision and language understanding. |
-| [Voice Assistant](../../hailo_apps/python/standalone_apps/voice_assistant/README.md) | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech. |
-
-**Example Applications:** The `standalone_apps/Examples/` directory contains additional examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [Examples README](../../hailo_apps/python/standalone_apps/Examples/README.md) for more details.
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 
