@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cleanup installation artifacts from hailo-apps-infra
+# Cleanup installation artifacts from hailo-apps
 
 set -euo pipefail
 

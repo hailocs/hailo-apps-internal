@@ -15,7 +15,7 @@ Afterwards, the post-process and drawing phases add the classified object and bo
 In addition to the common callback function object that exists in other applications, In the multisource pipeline, there are stream-specific callback functions.
 
 A detailed diagram of an example pipeline sourced from two USB cameras: ![Pipeline Example](../../../../doc/images/multisource_pipeline.png)
-File can be found here: `hailo-apps-infra/doc/images/multisource_pipeline.png`
+File can be found here: `hailo-apps/doc/images/multisource_pipeline.png`
 
 The pipeline is using [`HailoRoundRobin`](https://github.com/hailo-ai/tappas/blob/master/docs/elements/hailo_roundrobin.rst) & [`HailoStreamRouter`](https://github.com/hailo-ai/tappas/blob/master/docs/elements/hailo_stream_router.rst) elements.
 
@@ -43,7 +43,7 @@ For example:
 ```bash
 python multisource.py --sources source_1,...,source_n
 python multisource.py --sources /dev/video0,/dev/video2
-python multisource.py --sources ~/hailo-apps-infra/resources/videos/example.mp4,~/hailo-apps-infra/resources/videos/example.mp4
+python multisource.py --sources ~/hailo-apps/resources/videos/example.mp4,~/hailo-apps/resources/videos/example.mp4
 ```
 
 ### All pipeline commands support these common arguments:
