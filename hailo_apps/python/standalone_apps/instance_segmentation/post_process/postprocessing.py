@@ -1,8 +1,14 @@
 import cv2, sys, os
 import numpy as np
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from .cython_nms import nms as cnms
-from common.toolbox import  id_to_color
+try:
+    from hailo_apps.python.core.common.toolbox import id_to_color
+except ImportError:
+    from pathlib import Path
+
+    core_dir = Path(__file__).resolve().parents[3] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.toolbox import id_to_color
 from scipy.special import expit
 from concurrent.futures import ThreadPoolExecutor
 

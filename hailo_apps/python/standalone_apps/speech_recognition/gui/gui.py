@@ -9,10 +9,27 @@ import os
 from PIL import Image
 
 
-from common.preprocessing import preprocess, improve_input_audio
+try:
+    from hailo_apps.python.standalone_apps.speech_recognition.common.preprocessing import preprocess, improve_input_audio
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    speech_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(speech_root))
+    from common.preprocessing import preprocess, improve_input_audio
 from app.hailo_whisper_pipeline import HailoWhisperPipeline
-from common.audio_utils import load_audio
-from common.postprocessing import clean_transcription
+try:
+    from hailo_apps.python.standalone_apps.speech_recognition.common.audio_utils import load_audio
+    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import clean_transcription
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    speech_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(speech_root))
+    from common.audio_utils import load_audio
+    from common.postprocessing import clean_transcription
 from app.whisper_hef_registry import HEF_REGISTRY
 from hailo_apps.python.core.common.parser import get_standalone_parser
 

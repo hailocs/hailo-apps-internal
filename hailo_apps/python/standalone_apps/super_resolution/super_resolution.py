@@ -9,23 +9,39 @@ import threading
 import queue
 from super_resolution_utils import SrganUtils, Espcnx4Utils, inference_result_handler
 from functools import partial
-from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
-# Add the parent directory to the system path to access utils module
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from common.hailo_inference import HailoInfer
-from common.toolbox import (
-    init_input_source,
-    preprocess,
-    visualize,
-    FrameRateTracker,
-    resolve_arch,
-    resolve_input_arg,
-    resolve_output_resolution_arg,
-    list_inputs,
-)
-from common.core import handle_list_models_flag, resolve_hef_path
-from common.parser import get_standalone_parser
+try:
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+    from hailo_apps.python.core.common.toolbox import (
+        init_input_source,
+        preprocess,
+        visualize,
+        FrameRateTracker,
+        resolve_arch,
+        resolve_input_arg,
+        resolve_output_resolution_arg,
+        list_inputs,
+    )
+    from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+except ImportError:
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.hailo_inference import HailoInfer
+    from common.hailo_logger import get_logger, init_logging, level_from_args
+    from common.toolbox import (
+        init_input_source,
+        preprocess,
+        visualize,
+        FrameRateTracker,
+        resolve_arch,
+        resolve_input_arg,
+        resolve_output_resolution_arg,
+        list_inputs,
+    )
+    from common.core import handle_list_models_flag, resolve_hef_path
+    from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)

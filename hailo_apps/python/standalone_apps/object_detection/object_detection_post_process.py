@@ -1,6 +1,14 @@
 import cv2
 import numpy as np
-from common.toolbox import id_to_color
+try:
+    from hailo_apps.python.core.common.toolbox import id_to_color
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.toolbox import id_to_color
 
 import os
 from collections import deque

@@ -1,6 +1,14 @@
 """Preprocessing functions for Whisper audio data."""
 
-import common.audio_utils
+try:
+    from hailo_apps.python.standalone_apps.speech_recognition.common import audio_utils
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    speech_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(speech_root))
+    import common.audio_utils as audio_utils
 import numpy as np
 import logging
 

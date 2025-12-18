@@ -2,7 +2,15 @@ import cv2
 import numpy as np
 from typing import List, Tuple
 
-from common.toolbox import id_to_color
+try:
+    from hailo_apps.python.core.common.toolbox import id_to_color
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.toolbox import id_to_color
 
 
 def inference_result_handler(original_frame: np.ndarray, infer_results, labels, config_data, tracker=None):

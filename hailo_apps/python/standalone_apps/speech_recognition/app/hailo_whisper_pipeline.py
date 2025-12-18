@@ -4,7 +4,15 @@ from hailo_platform import (HEF, VDevice, HailoSchedulingAlgorithm, FormatType)
 from transformers import AutoTokenizer
 from queue import Queue, Empty
 from threading import Thread
-from common.postprocessing import apply_repetition_penalty
+try:
+    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import apply_repetition_penalty
+except ImportError:
+    from pathlib import Path
+    import sys
+
+    speech_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(speech_root))
+    from common.postprocessing import apply_repetition_penalty
 
 
 class HailoWhisperPipeline:

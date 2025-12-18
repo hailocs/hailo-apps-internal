@@ -3,12 +3,33 @@
 import time
 import os
 import sys
-from app.hailo_whisper_pipeline import HailoWhisperPipeline
-from common.audio_utils import load_audio
-from common.preprocessing import preprocess, improve_input_audio
-from common.postprocessing import clean_transcription
-from common.record_utils import record_audio
-from app.whisper_hef_registry import HEF_REGISTRY
+try:
+    from hailo_apps.python.standalone_apps.speech_recognition.app.hailo_whisper_pipeline import (
+        HailoWhisperPipeline,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.audio_utils import load_audio
+    from hailo_apps.python.standalone_apps.speech_recognition.common.preprocessing import (
+        preprocess,
+        improve_input_audio,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import (
+        clean_transcription,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.record_utils import record_audio
+    from hailo_apps.python.standalone_apps.speech_recognition.app.whisper_hef_registry import (
+        HEF_REGISTRY,
+    )
+except ImportError:
+    from pathlib import Path
+
+    speech_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(speech_root))
+    from app.hailo_whisper_pipeline import HailoWhisperPipeline
+    from common.audio_utils import load_audio
+    from common.preprocessing import preprocess, improve_input_audio
+    from common.postprocessing import clean_transcription
+    from common.record_utils import record_audio
+    from app.whisper_hef_registry import HEF_REGISTRY
 from hailo_apps.python.core.common.parser import get_standalone_parser
 
 

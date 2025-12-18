@@ -23,7 +23,8 @@ try:
     from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
     from hailo_apps.python.core.common.parser import get_standalone_parser
 except ImportError:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'core')))
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
     from common.hailo_inference import HailoInfer
     from common.toolbox import (
         resolve_arch,

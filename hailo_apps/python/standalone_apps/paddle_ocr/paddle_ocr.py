@@ -7,26 +7,47 @@ from functools import partial
 from pathlib import Path
 from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from common.hailo_inference import HailoInfer
 import uuid
 from collections import defaultdict
-from common.toolbox import (
-    init_input_source,
-    preprocess,
-    visualize,
-    FrameRateTracker,
-    resolve_arch,
-    resolve_input_arg,
-    resolve_output_resolution_arg,
-    list_inputs,
-)
-from common.core import (
-    configure_multi_model_hef_path,
-    handle_list_models_flag,
-    resolve_hef_paths,
-)
-from common.parser import get_standalone_parser
+
+try:
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.toolbox import (
+        init_input_source,
+        preprocess,
+        visualize,
+        FrameRateTracker,
+        resolve_arch,
+        resolve_input_arg,
+        resolve_output_resolution_arg,
+        list_inputs,
+    )
+    from hailo_apps.python.core.common.core import (
+        configure_multi_model_hef_path,
+        handle_list_models_flag,
+        resolve_hef_paths,
+    )
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+except ImportError:
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.hailo_inference import HailoInfer
+    from common.toolbox import (
+        init_input_source,
+        preprocess,
+        visualize,
+        FrameRateTracker,
+        resolve_arch,
+        resolve_input_arg,
+        resolve_output_resolution_arg,
+        list_inputs,
+    )
+    from common.core import (
+        configure_multi_model_hef_path,
+        handle_list_models_flag,
+        resolve_hef_paths,
+    )
+    from common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
