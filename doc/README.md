@@ -38,9 +38,17 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[REID Multisource](../hailo_apps/python/pipeline_apps/reid_multisource/README.md)**
 *   **[Tiling](../hailo_apps/python/pipeline_apps/tiling/README.md)**
 
+#### GenAI apps ####
+*   **[GenAI Apps Overview](../hailo_apps/python/gen_ai_apps/README.md)**
+*   **[Agent Tools Example](../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)**
+*   **[VLM Chat](../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)**
+*   **[Voice Assistant](../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)**
+*   **[Simple LLM Chat](../hailo_apps/python/gen_ai_apps/simple_llm_chat/README.md)**
+*   **[Simple VLM Chat](../hailo_apps/python/gen_ai_apps/simple_vlm_chat/README.md)**
+*   **[Simple Whisper Chat](../hailo_apps/python/gen_ai_apps/simple_whisper_chat/README.md)**
+*   **[Hailo Ollama](../hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)**
+
 #### Standalone apps ####
-*   **[Agent Tools Example](../hailo_apps/python/standalone_apps/agent_tools_example/README.md)**
-*   **[Examples](../hailo_apps/python/standalone_apps/Examples/README.md)**
 *   **[Instance Segmentation](../hailo_apps/python/standalone_apps/instance_segmentation/README.md)**
 *   **[Lane Detection](../hailo_apps/python/standalone_apps/lane_detection/README.md)**
 *   **[Object Detection](../hailo_apps/python/standalone_apps/object_detection/README.md)**
@@ -48,5 +56,3 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[Pose Estimation](../hailo_apps/python/standalone_apps/pose_estimation/README.md)**
 *   **[Speech Recognition](../hailo_apps/python/standalone_apps/speech_recognition/README.md)**
 *   **[Super Resolution](../hailo_apps/python/standalone_apps/super_resolution/README.md)**
-*   **[VLM Chat](../hailo_apps/python/standalone_apps/vlm_chat/README.md)**
-*   **[Voice Assistant](../hailo_apps/python/standalone_apps/voice_assistant/README.md)**

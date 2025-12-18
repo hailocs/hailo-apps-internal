@@ -65,15 +65,15 @@ hailo-depth                   # Depth estimation
 ### GenAI Applications
 ```bash
 # Voice Assistant
-cd hailo_apps/python/standalone_apps/voice_assistant/
+cd hailo_apps/python/gen_ai_apps/voice_assistant/
 python voice_assistant.py
 
 # Agent Tools - Voice to Action
-cd hailo_apps/python/standalone_apps/agent_tools_example/
+cd hailo_apps/python/gen_ai_apps/agent_tools_example/
 python voice_chat_agent.py
 
 # VLM Chat - Vision + Language
-cd hailo_apps/python/standalone_apps/vlm_chat/
+cd hailo_apps/python/gen_ai_apps/vlm_chat/
 python vlm_chat.py
 ```
 
