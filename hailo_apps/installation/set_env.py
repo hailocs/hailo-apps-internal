@@ -1,6 +1,6 @@
 """Environment configuration module for Hailo installation.
 
-This module configures environment variables for hailo-apps-infra.
+This module configures environment variables for hailo-apps.
 It assumes all required packages (HailoRT, TAPPAS) are already installed.
 
 Environment Variables Set:
@@ -13,7 +13,7 @@ Environment Variables Set:
     - RESOURCES_PATH: Path to resources directory (symlink)
     - RESOURCES_ROOT_PATH: Path to resources root (/usr/local/hailo/resources)
     - VIRTUAL_ENV_NAME: Name of the virtual environment
-    - HAILO_APPS_INFRA_PATH: Full path to the hailo-apps-infra repository
+    - HAILO_APPS_INFRA_PATH: Full path to the hailo-apps repository
     - HAILO_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 """
 
