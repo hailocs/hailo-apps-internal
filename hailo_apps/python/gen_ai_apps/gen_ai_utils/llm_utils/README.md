@@ -56,7 +56,7 @@ Handles streaming LLM responses with real-time filtering of XML tags and special
 - `StreamingTextFilter(debug_mode=False)` - Filters streaming tokens to remove XML tags and special tokens
 
 **Key Functions:**
-- `generate_and_stream_response(llm, prompt, temperature=0.1, seed=42, max_tokens=200, prefix="Assistant: ", token_callback=None, abort_callback=None, show_raw_stream=True)` - Generate and stream response with filtering
+- `generate_and_stream_response(llm, prompt, temperature=0.1, max_tokens=200, prefix="Assistant: ", token_callback=None, abort_callback=None, show_raw_stream=True)` - Generate and stream response with filtering
 - `clean_response(response)` - Clean LLM response by removing special tokens and extracting text
 
 **Features:**
@@ -134,7 +134,7 @@ Terminal interaction helpers for interactive applications.
 - `TerminalUI` - Handles terminal user interface interactions
 
 **Key Methods:**
-- `show_banner(title, controls=None)` - Display application banner with instructions
+- `show_banner(title="Terminal Voice Assistant", controls=None)` - Display application banner with instructions
 - `get_char()` - Read a single character from stdin (preserves Ctrl+C handling)
 
 **Features:**
@@ -147,8 +147,8 @@ Terminal interaction helpers for interactive applications.
 Shared utilities for agent applications.
 
 **Key Functions:**
-- `update_context_with_tool_result(llm, result, logger_instance=None)` - Update LLM context with tool execution result (wraps in `<tool_response>` tags)
-- `cleanup_resources(llm, vdevice, tool_module=None, logger_instance=None)` - Clean up agent resources safely (handles errors gracefully)
+- `update_context_with_tool_result(llm, result)` - Update LLM context with tool execution result (wraps in `<tool_response>` tags)
+- `cleanup_resources(llm, vdevice, tool_module=None)` - Clean up agent resources safely (handles errors gracefully)
 
 **Features:**
 - Automatically wraps tool results in `<tool_response>` XML tags

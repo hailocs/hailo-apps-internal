@@ -220,35 +220,40 @@ python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat.simple_whisper_chat 
 
 ### Using Shared Utilities
 
-```python
-# Example: Using voice processing utilities
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
+For detailed usage examples and API documentation, see:
+- **[Voice Processing Examples](gen_ai_utils/voice_processing/README.md#usage)** - Complete examples for `VoiceInteractionManager`, audio recording, speech-to-text, and text-to-speech
+- **[LLM Utilities Examples](gen_ai_utils/llm_utils/README.md#usage-examples)** - Complete examples for context management, streaming, tool discovery, and agent building
 
-def on_audio_ready(audio):
-    # Process audio here
-    pass
+**Quick Start Examples:**
+
+```python
+# Voice Processing - See detailed examples in voice_processing/README.md
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 
 manager = VoiceInteractionManager(
     title="My Voice App",
-    on_audio_ready=on_audio_ready
+    on_audio_ready=lambda audio: print(f"Audio: {len(audio)} samples"),
+    on_shutdown=lambda: print("Shutting down")
 )
 manager.run()
 ```
 
 ```python
-# Example: Using LLM utilities
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import context_manager, streaming
+# LLM Utilities - See detailed examples in llm_utils/README.md
+from hailo_platform import VDevice
+from hailo_platform.genai import LLM
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import context_manager, streaming, message_formatter
 
-# Check if context needs trimming
-context_manager.check_and_trim_context(llm_instance)
+vdevice = VDevice()
+llm = LLM(vdevice=vdevice)
 
-# Stream LLM response (prints automatically, returns full response)
-response = streaming.generate_and_stream_response(
-    llm=llm_instance,
-    prompt=messages,
-    temperature=0.1,
-    max_tokens=200
-)
+messages = [
+    message_formatter.messages_system("You are a helpful assistant."),
+    message_formatter.messages_user("Tell me a joke.")
+]
+
+response = streaming.generate_and_stream_response(llm=llm, prompt=messages, max_tokens=200)
+vdevice.release()
 ```
 
 ## Architecture
