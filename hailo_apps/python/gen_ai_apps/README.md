@@ -110,7 +110,7 @@ Integration guide for using Hailo-Ollama with Open WebUI for an interactive AI c
 
 **Documentation:** See [hailo_ollama/README.md](hailo_ollama/README.md) for installation and setup instructions.
 
-## Shared Utilities (`gen_ai_utils/`)
+## Shared Utilities
 
 Reusable components for building custom GenAI applications:
 

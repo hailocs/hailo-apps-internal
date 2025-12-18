@@ -20,6 +20,7 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[Application Development](./developer_guide/app_development.md)**: The primary guide for developers. It covers the core concepts of the Python framework and how to build new applications.
 *   **[Writing a C++ Post-Process](./developer_guide/writing_postprocess.md)**: A step-by-step tutorial for creating custom C++ post-processing functions for new or unsupported neural networks.
 *   **[Retraining Models](./developer_guide/retraining_example.md)**: A step-by-step tutorial for retraining models.
+*   **[Debugging with GST Shark](./developer_guide/debugging_with_gst_shark.md)**: Debugging tool for GStreamer pipelines.
 
 ### ✔️ Applications Guide
 **References for applications guides.**
