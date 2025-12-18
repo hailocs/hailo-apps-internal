@@ -1,6 +1,0 @@
-[submodule "hailo_apps/cpp/common/third_party/xtl"]
-	path = hailo_apps/cpp/common/third_party/xtl
-	url = https://github.com/xtensor-stack/xtl.git
-[submodule "hailo_apps/cpp/common/third_party/xtensor"]
-	path = hailo_apps/cpp/common/third_party/xtensor
-	url = https://github.com/xtensor-stack/xtensor.git
