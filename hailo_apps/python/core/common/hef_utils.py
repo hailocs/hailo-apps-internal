@@ -160,6 +160,9 @@ def get_hef_labels_json(hef_path: str) -> str:
     Returns:
         str: The labels JSON file path or None if not found
     """
+    if hef_path is None:
+        return None
+    
     hef_name = Path(hef_path).name
 
     if re.search(r"4_classes", hef_name):

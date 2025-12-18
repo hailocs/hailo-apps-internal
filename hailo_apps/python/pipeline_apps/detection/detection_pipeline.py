@@ -88,6 +88,12 @@ class GStreamerDetectionApp(GStreamerApp):
             app_name=DETECTION_PIPELINE,
             arch=self.arch
         )
+        
+        if self.hef_path is None:
+            raise FileNotFoundError(
+                f"Failed to locate or download HEF model for {DETECTION_PIPELINE}/{self.arch}. "
+                "Please check the logs above for download errors."
+            )
 
             # Set the post-processing shared object file
         self.post_process_so = get_resource_path(
