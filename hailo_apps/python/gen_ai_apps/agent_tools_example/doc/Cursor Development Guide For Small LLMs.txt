@@ -1,0 +1,310 @@
+﻿Orchestrating Edge Intelligence: A Definitive Development Framework for Constructing Lightweight Python Agents on Hailo Architecture using Qwen2.5-Coder-1.5B
+1. Executive Summary
+The convergence of edge computing and generative artificial intelligence has necessitated a fundamental paradigm shift in embedded software development practices. We are transitioning from static, imperative programming models to agentic workflows where stochastic language models orchestrate deterministic hardware functions. This report provides an exhaustive development guide, architectural analysis, and context definition for using Cursor—an AI-augmented Integrated Development Environment—to assist in coding Python agent applications specifically designed for the Qwen2.5-Coder-1.5B-Instruct model running on Hailo hardware infrastructure.
+The core engineering challenge addressed herein is the "weak model" constraint. While large language models (LLMs) like GPT-4 possess robust reasoning capabilities that allow for forgiving prompt structures and implicit context understanding, the Qwen2.5-Coder-1.5B—selected for its computational efficiency suitable for edge deployment—requires rigorous prompt engineering, strict context management, and architectural guardrails to function reliably as an agent.1 The 1.5 billion parameter count, while efficient, implies a reduced capacity for "world knowledge" and a higher susceptibility to hallucination if the prompt context is not meticulously managed.2
+This document analyzes the intersection of the Hailo application infrastructure (hailo-apps) and specific prompt engineering requirements derived from recent methodologies treating "prompting as programming." It culminates in a definitive .cursorrules context file and a comprehensive development strategy. This strategy ensures that the lightweight Qwen model can effectively wield complex computer vision tools—such as controlling GStreamer pipelines or querying inference results—without the logic degradation or "context drift" typical of smaller models. By enforcing strict "Clarity of Thought" and "Chain of Thought" mechanisms within the Python application logic itself, we can simulate the reasoning stability of larger models on constrained hardware.2
+2. Architectural Analysis: The Constraints and Capabilities
+To effectively instruct Cursor in generating code for this specific technology stack, one must first possess a nuanced understanding of the interplay between the specific Large Language Model (LLM) acting as the reasoning engine and the hardware acceleration layer responsible for vision tasks. The development of an agentic system on the edge is a study in resource management, where token count, memory bandwidth, and thermal headroom are the primary constraints.
+2.1 The Inference Engine: Qwen2.5-Coder-1.5B-Instruct
+The Qwen2.5-Coder-1.5B-Instruct is a specialized transformer model optimized for coding and reasoning tasks. Despite its relatively small parameter count of 1.54 billion, it utilizes Grouped-Query Attention (GQA) and has been trained on a massive corpus of 5.5 trillion tokens, including source code, text-code grounding, and synthetic data.1 This training regiment endows it with outsized capabilities in structured output generation, yet it remains a "weak" model compared to its 32B or 70B counterparts.
+Table 1: Operational Characteristics of Qwen2.5-Coder-1.5B for Agentic Workflows
+
+
+Characteristic
+	Specification
+	Implication for Agent Development
+	Parameter Count
+	1.54 Billion
+	Limited "world knowledge." The agent relies entirely on the System Prompt for instructions. It cannot "guess" user intent effectively.
+	Context Window
+	32,768 Tokens 4
+	While theoretically large, using the full window increases latency linearly. Effective "reliable" context for reasoning is significantly smaller (approx. 4k-8k).
+	Architecture
+	Transformer with RoPE, SwiGLU
+	High throughput inference, but susceptible to attention sink issues if long context is not managed (e.g., repetitive loops).
+	Tool Use
+	Native Support (OpenAI schema)
+	Supports function calling but often requires explicit XML delimiters to prevent parsing errors in complex nested JSON.5
+	Quantization
+	Available (Int4/Int8)
+	Quantization can degrade reasoning capabilities. The agent's prompt must be robust enough to handle the slight accuracy loss of quantized models.6
+	Key Characteristics for Agent Development:
+* Instruction Following: The model is fine-tuned for instruction following but lacks the deep semantic understanding of larger models. This means the System Prompt acts as the primary source of truth and behavioral constraint. If a rule is not in the system prompt, it effectively does not exist for the 1.5B model.1
+* Fragility and Context Drift: As a "weak" model, Qwen2.5-1.5B is susceptible to "context drift." If the conversational history becomes too verbose or unstructured, the model may forget specific tool definitions or the current state of the system. It prioritizes recent tokens heavily, necessitating a "rolling window" context management strategy in the Python application.3
+* Tool Use Native Format: While it supports OpenAI-compatible function calling schemas, research indicates that smaller models often perform better with explicit, structurally simple XML-based tool definitions when resources are constrained. Complex nested JSON schemas can lead to generation errors (e.g., missing closing braces), which the Python parser must be robust enough to handle.5
+2.2 The Hardware Abstraction: Hailo Apps Infrastructure
+The hailo-apps repository represents a modular approach to edge AI application development.7 Unlike monolithic scripts, this infrastructure strictly separates the pipeline construction (managed via GStreamer or HailoRT) from the application logic. This separation is crucial for stability but introduces complexity for an LLM agent that must bridge the gap between "language" and "hardware signals."
+Implications for the Agent:
+* Tool Granularity: The agent should not be responsible for constructing GStreamer pipelines string-by-string. The risk of hallucinating an invalid GStreamer element is too high. Instead, the tools exposed to Qwen must be high-level Python wrappers (e.g., start_detection(), get_person_count()) that internally manage the complex hailo-apps calls.8
+* Asynchronous Nature: Vision pipelines running on Hailo chips (Hailo-8/8L) operate asynchronously. The inference results arrive via callbacks or separate threads. The Python agent, however, typically runs in a synchronous REPL (Read-Eval-Print Loop). The development guide must instruct Cursor to generate code that handles non-blocking calls, ensuring the LLM doesn't "hang" waiting for a frame inference that is processed on a parallel thread.9
+* Resource Contention: Both the LLM (Qwen) and the Vision Model (e.g., YOLOv8) compete for system RAM (on the host) and potentially thermal headroom. Code generated by Cursor must be optimized for memory efficiency. Storing massive conversational histories or loading unoptimized model weights can lead to OOM (Out of Memory) kills by the Linux kernel, crashing the entire agent.10
+3. The "Prompting as Programming" Methodology
+Integrating insights from advanced prompt engineering tutorials 2, we derive a methodology specifically for coding agents driven by small models. The central thesis is that for a 1.5B model, the prompt is not natural language; it is a rigid programming syntax. The "weak" nature of the model means we cannot rely on it to "understand" nuance. We must program it via the prompt.
+3.1 Foundational Prompting for 1.5B Models
+The "weak" nature of Qwen2.5-1.5B requires us to implement strict foundational techniques to prevent hallucination and logic errors.
+* Persona Engineering 2:
+   * Theory: Assigning a specific role prunes the search space for the next token prediction. By narrowing the probabilistic distribution of valid tokens, we increase reliability.
+   * Application: The system prompt must explicitly define the agent not just as "an assistant" but as "A Hailo Edge AI Orchestrator capable of strict JSON tool execution." This prevents the model from drifting into conversational chit-chat or assuming it is a general-purpose chatbot. The persona acts as a "class definition" for the agent.2
+* Context is King 2:
+   * Theory: If information is missing, the model hallucinates. This is the "law of conservation of detail" for LLMs; they must generate tokens, and if the truth isn't available, they will generate plausible fiction.
+   * Application: The agent's prompt must contain the exact state of the Hailo pipeline (e.g., "Pipeline: Running", "FPS: 30", "Objects Detected: 0"). The 1.5B model cannot infer state; it must be told. We call this "Dynamic State Injection," where the Python script updates a dedicated section of the system prompt before every inference cycle.
+* Output Standardization 2:
+   * Theory: Standardize results to reduce parsing errors. Small models struggle with varied formats.
+   * Application: We must enforce strict JSON or XML outputs. Textual explanations should be separated from executable commands using delimiters (e.g., <thought> vs <command>). This allows the Python parser to easily extract the actionable payload even if the model rambles in its reasoning.
+3.2 Advanced Reasoning for Stability
+To improve the reliability of tool usage, we must induce reasoning capabilities that are not natively robust in small models.
+* Chain of Thought (CoT) 2:
+   * Mechanism: Instructing the model to "think step-by-step" before answering.
+   * Why for 1.5B: A small model might jump to a tool call (e.g., stop_pipeline) prematurely based on a keyword in the user request. By forcing it to output a reasoning trace first (<reasoning>User asked to stop. Pipeline is currently active. Action: Stop.</reasoning>), we force the model to attend to the context before generating the action token. This significantly increases the accuracy of the subsequent tool call.2
+* Adversarial Validation / Battle of the Bots 2:
+   * Mechanism: Prompting the model to critique its own plan or generate competing options.
+   * Application: Before executing a critical Hailo command (like changing the model HEF file which incurs downtime), the agent loop should ask the model: "Is this action safe given the current pipeline state?" This "self-correction" loop catches errors where the model might try to load a new network without unloading the previous one, a common error in HailoRT resource management.
+4. Development Strategy: The Cursor Context
+Cursor acts as the bridge between human intent and the specific code requirements of the Qwen/Hailo stack. To make Cursor effective, we must provide it with a "Context File" (often named .cursorrules or AGENTS.md) that encodes the expert knowledge of the system.11 This file serves as a meta-prompt for the coding assistant, ensuring that the code it generates adheres to the architectural constraints discussed above.
+4.1 The Role of .cursorrules
+The .cursorrules file instructs Cursor's internal agent on how to write code. It is distinct from the prompt that the Qwen agent will eventually use. It is a meta-instruction set.13
+Objectives of the Context File:
+1. Enforce Hailo APIs: Ensure Cursor generates code compatible with hailo_platform and hailo-apps, favoring the high-level Python API over raw C++ bindings where possible.7
+2. Enforce Qwen Formatting: Ensure Cursor writes system prompts that use the specific ChatML or XML structure required by Qwen2.5, avoiding generic OpenAI prompt formats that might not trigger the correct tool usage behaviors in the 1.5B model.5
+3. Optimize for Weak Models: Instruct Cursor to write robust error handling and validation logic, anticipating that the runtime model (Qwen) might output malformed JSON. The generated Python code must be "defensive," assuming the LLM will eventually fail to close a bracket or misspell a key.
+4.2 Pattern Extraction from hailo-apps
+Analysis of the agent_tools_example and general infrastructure 7 reveals specific coding patterns that must be codified in the Cursor rules:
+* Pipeline Management: Usage of context managers (with VDevice() as target:) is mandatory for resource cleanup. The rules must strictly forbid manual open()/close() pairs which are prone to leaks during exception handling.
+* GStreamer Interop: The infrastructure uses GStreamer strings. The agent tools must abstract these strings away from the LLM. The LLM should call set_resolution("1080p"), and the Python tool should map that to the complex GStreamer caps string video/x-raw,width=1920,height=1080.
+* Event Loops: The Python application usually requires a main loop to process inference results. The LLM agent should run in a separate thread or be event-driven to prevent blocking the video processing pipeline.
+5. The Context File (.cursorrules)
+Below is the definitive context file to be placed in the root of the project (e.g., .cursorrules). This file encapsulates the research findings, enabling Cursor to act as an expert developer for this specific stack. It integrates the prompt engineering tips from the video 2 and the technical documentation of Qwen and Hailo.
+Cursor Rules for Hailo Qwen Agent Development
+1. Project Context & Persona
+You are an expert Embedded AI Engineer specializing in the Hailo AI Software Suite and Small Language Models (SLMs). You are tasked with building a Python-based agent application that runs on an edge device (e.g., Raspberry Pi 5 with Hailo-8L).
+The application uses Qwen2.5-Coder-1.5B-Instruct as the reasoning engine. This is a "weak" model (1.5B parameters), meaning it requires:
+* Extremely structured prompts (XML/JSON).
+* Robust error handling in the Python host code.
+* "Chain of Thought" (CoT) enforcement to prevent logic errors.
+* "Clarity of Thought" in system prompts: defining exactly what the AI can and cannot do.2
+2. Coding Standards (Python & Hailo)
+2.1 Hailo Infrastructure (hailo-apps)
+* Library Usage: Use hailo_platform for device management and hailo_apps_infra for pipeline construction.
+* Resource Management: ALWAYS use context managers (with) for VDevice, InferVStreams, and ConfiguredNetworkGroup. Hailo devices will hang if resources are not explicitly released.
+* Concurrency: The Agent loop must not block the Inference loop. Use threading or asyncio. The generic pattern is:
+   * Thread 1: hailo_inference_loop() (Producers data/frames).
+   * Thread 2: agent_interaction_loop() (Consumes data/controls pipeline).
+2.2 Qwen2.5-Coder-1.5B Interaction
+* Prompt Templates: Use the specific ChatML format expected by Qwen:python
+messages =
+Use the tokenizer's template function to ensure correct special tokens
+prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+* Tool Calling: The 1.5B model struggles with implicit tool use. You must implement a Explicit Tool Definition strategy.
+* Parsing: Do NOT rely on json.loads alone. Implement a "repair parser" that can handle common 1.5B model errors (e.g., missing closing braces, trailing commas, mixed text/JSON).
+3. Prompt Engineering Guidelines (Implemented in Code)
+When writing the Python code that constructs prompts for Qwen, adhere to these principles derived from "Prompt Engineering for Developers":
+3.1 The System Prompt Structure
+The system prompt generated in the Python code MUST follow this structure to ensure stability:
+   1. Persona: "You are a specific AI agent controlling a Hailo detection pipeline." 2
+   2. Capabilities: List available tools with strict signatures.
+   3. Constraints: "Do not assume parameter values. Ask the user if unclear."
+   4. Output Format: Force XML or JSON.
+   * Example: "You must output your reasoning in <thought> tags, followed by the tool call in <tool> tags."
+3.2 Tool Definition (Function Calling)
+Qwen 1.5B requires explicit type descriptions. When generating tool schemas in Python, use a format that mimics Python signatures or simplified JSON schemas:
+
+
+Python
+
+
+
+
+tools_description = """
+Available Tools:
+- start_detection(network_name: str) -> str
+ Description: Starts the object detection pipeline on the Hailo device.
+ Args: network_name must be one of ["yolov8n", "yolov6n"].
+- get_status() -> dict
+ Description: Returns current FPS and active network.
+"""
+
+3.3 Managing "Weak Model" Hallucinations
+   * Context Injection: The Python code must inject the current state of the system into the prompt before every turn. This satisfies the "Context is King" rule.2
+   * Bad: "User: Stop the camera."
+   * Good: "System State:. User: Stop the camera."
+   * Fallback Mechanism: Generate code that catches JSONDecodeError from Qwen's output and automatically feeds it back to Qwen with an error message: "You generated invalid JSON. Please fix it."
+4. Specific Code Patterns to Use
+4.1 Tool Executor Pattern
+Create a central registry for tools to decouple the LLM from the actual Hailo API calls.
+
+
+Python
+
+
+
+
+class ToolRegistry:
+   def register(self, func):
+       # decorator logic to add function metadata
+   def execute(self, tool_name, **kwargs):
+       # execution logic with error handling
+
+4.2 The "ReAct" Loop (Reason + Act)
+Implement a loop that enforces reasoning:
+   1. Thought: Model explains why it needs a tool.
+   2. Action: Model emits tool call.
+   3. Observation: Python executes tool and returns output.
+   4. Response: Model summarizes result to user.
+5. Reference Material Constraints
+   * Qwen Capabilities: "Context length 32k", "Supports tool use", "Fragile with complex prompts."
+   * Video Insight: "Treat prompting as programming." -> Use strict delimiters.
+   * Video Insight: "Few-Shot Prompting." -> The system prompt should include 1-2 examples of valid tool calls to "prime" the 1.5B model.2
+6. Avoidance
+   * DO NOT use LangChain or heavy frameworks. Keep it raw Python to fit on the Raspberry Pi/Hailo host and minimize overhead.
+   * DO NOT assume the model knows the current time or state unless passed in the prompt.
+   * DO NOT generate infinite retry loops. Fail gracefully after 3 retries.
+
+
+
+
+
+
+## 6. Comprehensive Development Guide
+
+This section details the step-by-step workflow for developers using Cursor to build this application, expanding on the patterns defined in the rules file.
+
+### Phase 1: Environment and Tool Definition
+
+The developer must first define the "tools" the agent can use. In the context of the `hailo-apps`, tools are Python functions that wrap the underlying C++ or GStreamer calls.
+
+**Guidance for Tool Construction:**
+Create a `tools.py` file. Use Python type hints (`List`, `Optional`) strictly. Qwen2.5-Coder relies on these type hints to understand the schema.[14] The docstrings are critical; for a 1.5B model, the docstring *is* the instruction manual.
+
+**Cursor Instruction:**
+"Generate a Python function `start_detection` that initializes a Hailo pipeline using `hailo-apps` patterns. Decorate it with a docstring formatted for OpenAI function calling extraction. Include error handling for `HailoRTException`."
+
+**Example Tool Pattern:**
+```python
+def set_inference_threshold(threshold: float) -> str:
+   """
+   Sets the confidence threshold for the object detection post-processing.
+   
+   Args:
+       threshold (float): A value between 0.0 and 1.0.
+       
+   Returns:
+       str: Confirmation message or error description.
+   """
+   if not 0.0 <= threshold <= 1.0:
+       return "Error: Threshold must be between 0.0 and 1.0."
+   
+   # Interaction with the Hailo application instance
+   try:
+       app_instance.set_threshold(threshold)
+       return f"Success: Threshold set to {threshold}."
+   except Exception as e:
+       return f"Error setting threshold: {str(e)}"
+
+Phase 2: System Prompt Construction
+The system prompt is the operating system of the agent. For Qwen2.5-1.5B, this prompt must be constructed dynamically in Python before being sent to the model.
+Guidance: Use the "Persona" tip.2 The prompt must be modular.
+Template Structure:
+   1. Static Persona: "You are the Hailo AI Controller..."
+   2. Tool Definitions: "You have access to the following tools..."
+   3. Dynamic State: "Current Pipeline Status: {status_json}"
+   4. Few-Shot Examples: "User: Start camera. Assistant: Camera is off...start_camera()"
+Qwen Specifics: Use <|im_start|>system headers if constructing raw prompts, or standard list of dictionaries if using HuggingFace templating.3
+Phase 3: The Agent Loop
+The application logic (the "Agent") needs to handle the interaction between the user, the Qwen model, and the Hailo tools. This is the "Runtime" of the agent.
+Pattern:
+   1. Input Capture: User Input -> Append to History.
+   2. Context Management: Prune history if it exceeds the token limit. (Note: Qwen 1.5B context window is 32k, but optimal reasoning degrades after 8k. Keep it tight.)
+   3. Inference: Send History to Qwen.
+   4. Output Parsing: Qwen Output -> Parse for Tool Calls.
+   * Validation: Regex check the output. (Small models often miss a closing bracket or use single quotes instead of double quotes).
+   5. Execution: Execute Tool -> Get Result.
+   6. Recursion: Append Result -> Send back to Qwen for final summary or next step.
+7. Deep Analysis of Prompting Patterns for Weak Models
+The following insights are critical for the developer to understand why the .cursorrules and development guide are structured as they are. These insights are derived from the synthesis of the video's prompt engineering tips 2 and the documented behaviors of the Qwen model family.
+7.1 The "Context is King" Imperative (2nd Order Insight)
+The video emphasizes that "Context is King".2 For a 1.5B model, this is not just advice; it is a mechanical necessity. Larger models (70B+) use their vast parameter count to perform "implicit reasoning" filling in context gaps. A 1.5B model lacks this capacity.
+   * Insight: The Python application must act as a "State Manager." It must maintain a state object (e.g., PipelineStatus) and serialize this object into the system prompt on every single interaction. If the prompt does not say "The camera is currently recording," the Qwen 1.5B model will likely hallucinate that it is (or isn't) based on the statistical likelihood of its training data, not reality.
+   * Implementation: The Agent class should have a get_system_prompt() method that dynamically f-strings the current status into the prompt template. This ensures the model is always "grounded" in the current reality of the hardware.
+7.2 The Token Economy of Edge Agents
+We are running on edge hardware where context length is expensive (latency-wise) and memory-constrained.9
+   * Insight: While Qwen supports 32k tokens 4, filling the context window increases the "Time to First Token" (TTFT) linearly or quadratically depending on the attention mechanism implementation. On a Raspberry Pi or similar host, processing a 32k prompt for every turn will make the agent feel sluggish.
+   * Optimization Strategy: The agent code must implement a "Rolling Window" or "Summary Compression" strategy. We cannot simply append the entire chat history indefinitely. The Cursor guide instructs the creation of a HistoryManager class that prunes old messages while retaining the System Prompt (the Persona) and the most recent tool outputs.
+7.3 The Tool-Use Paradox
+Qwen2.5-Coder is "optimized for tool use," but the snippets indicate it often fails if the schema is not perfect.14
+   * Insight: The "Native" tool use of Qwen often relies on XML tags (<tool_call>), while many libraries default to JSON.
+   * Recommendation: The report recommends a Hybrid Approach. The System Prompt should instruct the model to use a specific, simplified XML format for tool calls, which is easier to parse via Regex in Python than a potentially malformed nested JSON string.
+   * Prompt Instruction: "Call a tool by writing: <tool>tool_name(arg1='value')</tool>".
+   * Reasoning: This custom delimiter is less token-heavy than full JSON syntax and less prone to "unclosed brace" errors common in 1.5B models. It also separates the tool call from the reasoning text more clearly than a JSON object embedded in a text stream.
+8. Detailed Implementation Architecture
+8.1 The Agent Loop Logic
+The core application code generated by Cursor should follow this flowchart:
+   1. Initialize: Load Hailo HEF, Initialize Qwen Model (local or API), Load Tools.
+   2. Wait for Trigger: (User input or System Event).
+   3. Construct Prompt:
+   * System: Persona + Tool Definitions + Current System State.
+   * History: Last N messages.
+   * User: Current query.
+   4. Inference (Qwen): Generate text.
+   5. Parse: Look for <tool> or JSON function call.
+   6. Branch:
+   * If Tool Found: Execute Python function -> Get Output -> Feed back to Step 3 (as "Observation").
+   * If Text Only: Display to user.
+   7. Loop.
+8.2 Tool Example: get_object_count
+This tool bridges the asynchronous Hailo pipeline and the synchronous Agent.
+
+
+Python
+
+
+
+
+# Conceptual code for Cursor to generate
+def get_object_count(class_name: str = None) -> str:
+   """
+   Returns the count of objects detected in the *last processed frame*.
+   """
+   # Access the shared state object protected by a mutex
+   with state_lock:
+       detections = latest_inference_result.get('detections',)
+   
+   if class_name:
+       count = sum(1 for d in detections if d['label'] == class_name)
+       return f"There are {count} {class_name}s visible."
+   else:
+       return f"Total objects visible: {len(detections)}."
+
+9. Testing and Validation Strategies
+Because the Qwen 1.5B model is probabilistic, "Unit Tests" in the traditional sense are insufficient. We need "Behavioral Tests."
+   * Prompt Red-Teaming 2: The video suggests "Red Teaming" your prompts.
+   * Implementation: Create a test suite that simulates user inputs designed to confuse the model (e.g., "Turn on the camera" when it's already on).
+   * Success Metric: The agent should call check_status tool first, realize it's on, and reply "Camera is already on," rather than blindly calling start_camera (which might cause a hardware resource error).
+   * Syntactic Validation: The agent_tools_example code should include a parser test that feeds broken JSON (e.g., {"arg": "value") to the parser to ensure the repair logic functions correctly. This is critical for the "weak model" which will inevitably make syntax errors.
+10. Conclusion
+Developing an AI agent for Hailo hardware using the Qwen2.5-Coder-1.5B model requires a departure from standard LLM development practices. We cannot rely on the model's inherent intelligence to handle ambiguity. Instead, we must use Cursor to build a rigid scaffolding around the model.
+By treating "Prompting as Programming"—implementing strict personas, explicit state injection, and robust parsing layers—we can transform a lightweight, edge-compatible model into a reliable orchestrator of complex computer vision tasks. This framework ensures that the deterministic reliability required by embedded systems (Hailo) is not compromised by the stochastic nature of the generative agent (Qwen). The resulting application is not just a chatbot, but a resilient command-and-control interface for edge AI.
+________________
+11. Appendix: Development Checklist for Cursor
+   1. [ ] Create .cursorrules: Copy the content from Section 5 into the project root.
+   2. [ ] Define Tools: Write tools.py with clear pydantic models or type hints.
+   3. [ ] Implement State Manager: Create a singleton class that holds the Hailo pipeline status.
+   4. [ ] Design System Prompt: Draft the prompt using the "Persona" and "Context is King" principles.
+   5. [ ] Build Parser: Write regex-based parsing logic for tool calls (XML/JSON).
+   6. [ ] Run Red-Team Tests: Verify agent behavior on edge cases (e.g., hardware disconnected).
+   7. [ ] Deploy: Test on physical hardware (Raspberry Pi/Hailo Kit) to verify memory usage.
+Works cited
+   1. Qwen/Qwen2.5-Coder-1.5B-Instruct Free Chat Online - Skywork.ai, accessed on December 11, 2025, https://skywork.ai/blog/models/qwen-qwen2-5-coder-1-5b-instruct-free-chat-online-skywork-ai/
+   2. You SUCK at Prompting AI (Here's the secret), accessed on December 11, 2025, https://www.youtube.com/watch?v=pwWBcsxEoLk
+   3. Qwen2.5 Coder 1.5B Instruct · Models - Dataloop AI, accessed on December 11, 2025, https://dataloop.ai/library/model/qwen_qwen25-coder-15b-instruct/
+   4. qwen2.5-coder-instruct - Xinference, accessed on December 11, 2025, https://inference.readthedocs.io/en/v1.9.1/models/builtin/llm/qwen2.5-coder-instruct.html
+   5. qwen2.5-coder:1.5b-instruct/template - Ollama, accessed on December 11, 2025, https://ollama.com/library/qwen2.5-coder:1.5b-instruct/blobs/e94a8ecb9327
+   6. Qwen2.5 Speed Benchmark - Qwen - Read the Docs, accessed on December 11, 2025, https://qwen.readthedocs.io/en/v2.5/benchmark/speed_benchmark.html
+   7. hailo-ai/hailo-apps - GitHub, accessed on December 11, 2025, https://github.com/hailo-ai/hailo-apps
+   8. hailo-ai/hailo-rpi5-examples - GitHub, accessed on December 11, 2025, https://github.com/hailo-ai/hailo-rpi5-examples
+   9. HailoRT minimal working example for Python and Hailo8 - #2 by omria - Hailo Community, accessed on December 11, 2025, https://community.hailo.ai/t/hailort-minimal-working-example-for-python-and-hailo8/7685/2
+   10. Qwen-Agent: A Guide With Demo Project - DataCamp, accessed on December 11, 2025, https://www.datacamp.com/tutorial/qwen-agent
+   11. Rules | Cursor Docs, accessed on December 11, 2025, https://cursor.com/docs/context/rules
+   12. Top Cursor Rules for Coding Agents - PromptHub, accessed on December 11, 2025, https://www.prompthub.us/blog/top-cursor-rules-for-coding-agents
+   13. How to write great Cursor Rules - Trigger.dev, accessed on December 11, 2025, https://trigger.dev/blog/cursor-rules
+   14. Qwen2.5_Coder_(1.5B)-Tool_Calling.ipynb - Colab, accessed on December 11, 2025, https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen2.5_Coder_(1.5B)-Tool_Calling.ipynb
+   15. Tool Calling Parsers Fail to Populate tool_calls Array for Qwen2.5-Coder Models - GitHub, accessed on December 11, 2025, https://github.com/vllm-project/vllm/issues/29192

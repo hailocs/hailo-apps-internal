@@ -87,7 +87,7 @@ class TestHailoAppsPackage:
             pytest.fail(f"Failed to import hailo_apps: {e}")
     
     def test_hailo_apps_installed_via_pip(self):
-        """Verify hailo-apps-infra is installed via pip."""
+        """Verify hailo-apps is installed via pip."""
         result = subprocess.run(
             ["pip", "list"], 
             check=False, 
@@ -96,10 +96,10 @@ class TestHailoAppsPackage:
         )
         
         if "hailo-apps" in result.stdout:
-            logger.info("hailo-apps-infra package is installed via pip")
+            logger.info("hailo-apps package is installed via pip")
         else:
             logger.warning(
-                "hailo-apps-infra package not found in pip list. "
+                "hailo-apps package not found in pip list. "
                 "Run 'pip install -e .' to install in development mode."
             )
 

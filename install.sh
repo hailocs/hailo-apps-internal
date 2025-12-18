@@ -104,7 +104,7 @@ init_logging() {
             } >> "${LOG_FILE}" 2>/dev/null
         fi
     fi
-    
+
     if [[ "${LOG_ENABLED}" != true ]]; then
         # Use a temp file for logging if log dir not writable
         LOG_FILE="/tmp/hailo_install_${TIMESTAMP}.log"
@@ -184,7 +184,7 @@ trap_error() {
     local exit_code=$?
     local line_no=${1:-unknown}
     local command="${BASH_COMMAND:-unknown}"
-    
+
     log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     log_error "UNEXPECTED ERROR"
     log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -194,13 +194,13 @@ trap_error() {
     log_error ""
     log_error "Check the log file for details: ${LOG_FILE}"
     log_error "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
+
     # Cleanup if needed
     if [[ -n "${ORIGINAL_USER:-}" ]]; then
         log_debug "Attempting ownership cleanup..."
         fix_ownership "${SCRIPT_DIR}" 2>/dev/null || true
     fi
-    
+
     exit "${exit_code}"
 }
 
@@ -268,7 +268,7 @@ validate_versions() {
     local tappas_ver="$2"
     local hailo_arch_val="${3:-}"
     local valid=true
-    
+
     # Validate HailoRT version
     if [[ -n "$hailort_ver" && "$hailort_ver" != "-1" && -n "${VALID_HAILORT_VERSIONS:-}" ]]; then
         local found=false
@@ -283,7 +283,7 @@ validate_versions() {
             valid=false
         fi
     fi
-    
+
     # Validate TAPPAS version
     if [[ -n "$tappas_ver" && "$tappas_ver" != "-1" && -n "${VALID_TAPPAS_VERSIONS:-}" ]]; then
         local found=false
@@ -298,7 +298,7 @@ validate_versions() {
             valid=false
         fi
     fi
-    
+
     # Validate Hailo architecture
     if [[ -n "$hailo_arch_val" && "$hailo_arch_val" != "unknown" && -n "${VALID_HAILO_ARCH:-}" ]]; then
         local found=false
@@ -313,7 +313,7 @@ validate_versions() {
             valid=false
         fi
     fi
-    
+
     if [[ "$valid" != true ]]; then
         log_warning "Version validation warnings above - installation will continue"
     fi
@@ -323,7 +323,7 @@ validate_versions() {
 get_model_zoo_version() {
     local arch="$1"
     local mz_version=""
-    
+
     if [[ -z "${MODEL_ZOO_MAPPING:-}" ]]; then
         # Default mapping if not loaded from config
         case "$arch" in
@@ -342,7 +342,7 @@ get_model_zoo_version() {
             fi
         done
     fi
-    
+
     echo "$mz_version"
 }
 
@@ -351,11 +351,11 @@ validate_model_zoo_version() {
     local arch="$1"
     local mz_version="$2"
     local valid=true
-    
+
     if [[ -z "$mz_version" || -z "$arch" ]]; then
         return 0
     fi
-    
+
     # Determine which valid versions to check based on architecture
     local valid_versions=""
     case "$arch" in
@@ -366,7 +366,7 @@ validate_model_zoo_version() {
             valid_versions="${VALID_MZ_H10_VERSIONS:-v5.1.1}"
             ;;
     esac
-    
+
     if [[ -n "$valid_versions" ]]; then
         local found=false
         for valid_ver in $valid_versions; do
@@ -380,7 +380,7 @@ validate_model_zoo_version() {
             valid=false
         fi
     fi
-    
+
     if [[ "$valid" != true ]]; then
         return 1
     fi
@@ -393,13 +393,13 @@ safe_remove() {
     if [[ ! -e "$target" ]]; then
         return 0
     fi
-    
+
     log_debug "Removing: ${target}"
-    
+
     if run_as_user rm -rf "${target}" 2>/dev/null; then
         return 0
     fi
-    
+
     log_debug "Regular removal failed, fixing ownership first..."
     fix_ownership "${target}"
     run_as_user rm -rf "${target}"
@@ -415,19 +415,19 @@ yaml_get() {
     local key="$1"
     local file="$2"
     local value=""
-    
+
     if [[ "$key" == *.* ]]; then
         # Nested key like "venv.name" - find section then key
         local section="${key%%.*}"
         local subkey="${key#*.}"
-        
+
         # Find section and get indented value using sed
         value=$(sed -n "/^${section}:/,/^[a-zA-Z_]/{ /^  ${subkey}:/{ s/^  ${subkey}:[ \t]*//; s/^[\"\x27]//; s/[\"\x27]$//; s/[ \t]*#.*$//; p; q; }}" "$file")
     else
         # Simple key at root level
         value=$(sed -n "/^${key}:/{ s/^${key}:[ \t]*//; s/^[\"\x27]//; s/[\"\x27]$//; s/[ \t]*#.*$//; p; q; }" "$file")
     fi
-    
+
     echo "$value"
 }
 
@@ -436,11 +436,11 @@ yaml_get_list() {
     local key="$1"
     local file="$2"
     local result=""
-    
+
     if [[ "$key" == *.* ]]; then
         local section="${key%%.*}"
         local subkey="${key#*.}"
-        
+
         # Extract list items from nested section
         result=$(sed -n "/^${section}:/,/^[a-zA-Z_]/{
             /^  ${subkey}:/,/^  [a-zA-Z_]/{
@@ -465,7 +465,7 @@ yaml_get_list() {
             }
         }" "$file" | tr '\n' ' ')
     fi
-    
+
     # Trim trailing space
     echo "${result% }"
 }
@@ -474,7 +474,7 @@ yaml_get_list() {
 yaml_get_mapping() {
     local section="$1"
     local file="$2"
-    
+
     sed -n "/^${section}:/,/^[a-zA-Z_]/{
         /^  [a-zA-Z0-9_]*:/{
             s/^  \([a-zA-Z0-9_]*\):[ \t]*/\1=/
@@ -488,55 +488,55 @@ yaml_get_mapping() {
 # Load configuration from config.yaml (pure bash - no Python required)
 load_config() {
     log_debug "Loading configuration from: ${CONFIG_FILE}"
-    
+
     if [[ ! -f "${CONFIG_FILE}" ]]; then
         log_error "Config file not found: ${CONFIG_FILE}"
         log_error "The config.yaml file is required for installation."
         return 1
     fi
-    
+
     # Parse YAML config using bash
     log_debug "Parsing config.yaml..."
-    
+
     # Extract venv settings
     VENV_NAME=$(yaml_get "venv.name" "${CONFIG_FILE}")
     local cfg_use_system_site_packages
     cfg_use_system_site_packages=$(yaml_get "venv.use_system_site_packages" "${CONFIG_FILE}")
-    
+
     # Handle boolean for use_system_site_packages
     case "${cfg_use_system_site_packages,,}" in
         true|yes|1) USE_SYSTEM_SITE_PACKAGES=true ;;
         false|no|0) USE_SYSTEM_SITE_PACKAGES=false ;;
         *) USE_SYSTEM_SITE_PACKAGES=true ;;
     esac
-    
+
     # Extract resources settings
     RESOURCES_ROOT=$(yaml_get "resources.root" "${CONFIG_FILE}")
     RESOURCES_SYMLINK_NAME=$(yaml_get "resources.path" "${CONFIG_FILE}")
     DOWNLOAD_GROUP=$(yaml_get "resources.download_group" "${CONFIG_FILE}")
     ENV_FILE=$(yaml_get "resources.env_file" "${CONFIG_FILE}")
-    
+
     # Extract system packages (list)
     local cfg_system_packages
     cfg_system_packages=$(yaml_get_list "system_packages" "${CONFIG_FILE}")
     IFS=' ' read -r -a SYSTEM_PACKAGES <<< "$cfg_system_packages"
-    
+
     # Extract resource directories to create (list)
     RESOURCES_DIRS=$(yaml_get_list "resources.dirs" "${CONFIG_FILE}")
-    
+
     # Extract valid versions
     VALID_HAILORT_VERSIONS=$(yaml_get_list "valid_versions.hailort" "${CONFIG_FILE}")
     VALID_TAPPAS_VERSIONS=$(yaml_get_list "valid_versions.tappas" "${CONFIG_FILE}")
     VALID_HAILO_ARCH=$(yaml_get_list "valid_versions.hailo_arch" "${CONFIG_FILE}")
     VALID_HOST_ARCH=$(yaml_get_list "valid_versions.host_arch" "${CONFIG_FILE}")
-    
+
     # Extract model zoo mapping
     MODEL_ZOO_MAPPING=$(yaml_get_mapping "model_zoo_mapping" "${CONFIG_FILE}")
-    
+
     # Extract valid model zoo versions
     VALID_MZ_H8_VERSIONS=$(yaml_get_list "valid_model_zoo_versions.h8" "${CONFIG_FILE}")
     VALID_MZ_H10_VERSIONS=$(yaml_get_list "valid_model_zoo_versions.h10" "${CONFIG_FILE}")
-    
+
     log_success "Configuration loaded from config.yaml"
     log_debug "  VENV_NAME=${VENV_NAME}"
     log_debug "  USE_SYSTEM_SITE_PACKAGES=${USE_SYSTEM_SITE_PACKAGES}"
@@ -549,7 +549,7 @@ load_config() {
     log_debug "  VALID_TAPPAS_VERSIONS=${VALID_TAPPAS_VERSIONS}"
     log_debug "  VALID_HAILO_ARCH=${VALID_HAILO_ARCH}"
     log_debug "  MODEL_ZOO_MAPPING=${MODEL_ZOO_MAPPING}"
-    
+
     return 0
 }
 
@@ -654,7 +654,7 @@ parse_arguments() {
 
 detect_user_and_group() {
     log_step 1 "User Detection"
-    
+
     # Check if running with sudo
     if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
         log_error "This script requires sudo privileges"
@@ -663,7 +663,7 @@ detect_user_and_group() {
         record_step_result "FAILED" "Not running as root"
         return 1
     fi
-    
+
     # Check if running as root directly (not via sudo)
     if [[ -z "${SUDO_USER:-}" ]]; then
         log_error "This script must be run with sudo, not as root directly"
@@ -673,19 +673,19 @@ detect_user_and_group() {
         record_step_result "FAILED" "Running as root directly"
         return 1
     fi
-    
+
     ORIGINAL_USER="${SUDO_USER}"
     ORIGINAL_GROUP="$(id -gn "${SUDO_USER}")"
-    
+
     log_success "Detected user: ${ORIGINAL_USER}"
     log_success "Detected primary group: ${ORIGINAL_GROUP}"
-    
+
     if [[ "${ORIGINAL_USER}" == "${ORIGINAL_GROUP}" ]]; then
         log_debug "User's primary group matches username"
     else
         log_info "User's primary group differs from username: ${ORIGINAL_GROUP}"
     fi
-    
+
     export ORIGINAL_USER ORIGINAL_GROUP
     record_step_result "SUCCESS" "User: ${ORIGINAL_USER}, Group: ${ORIGINAL_GROUP}"
     return 0
@@ -697,44 +697,44 @@ detect_user_and_group() {
 
 check_prerequisites() {
     log_step 2 "Prerequisites Check"
-    
+
     local check_script="${SCRIPT_DIR}/scripts/check_installed_packages.sh"
-    
+
     if [[ ! -f "$check_script" ]]; then
         log_error "Prerequisites check script not found: $check_script"
         record_step_result "FAILED" "Check script missing"
         return 1
     fi
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "Running: ${check_script}"
         log_info "Would check: Hailo driver, HailoRT installations"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     log_info "Checking installed Hailo components..."
-    
+
     local summary_line
     disable_error_trap
     summary_line=$(as_original_user "$check_script" 2>&1 | sed -n 's/^SUMMARY: //p')
     enable_error_trap
-    
+
     if [[ -z "$summary_line" ]]; then
         log_error "Could not get package summary from check script"
         log_debug "This usually means the check script failed or returned unexpected output"
         record_step_result "FAILED" "No SUMMARY output"
         return 1
     fi
-    
+
     log_debug "SUMMARY line: $summary_line"
-    
+
     # Parse the summary line
     local driver_version="-1"
     local hailort_version="-1"
     local pyhailort_version="-1"
     local tappas_version="-1"
-    
+
     # Parse key=value pairs
     for pair in $summary_line; do
         local key="${pair%%=*}"
@@ -747,13 +747,13 @@ check_prerequisites() {
             tappas-core) tappas_version="$value" ;;
         esac
     done
-    
+
     # Determine Model Zoo version based on architecture
     if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
         MODEL_ZOO_VER=$(get_model_zoo_version "${HAILO_ARCH}")
     fi
     local model_zoo_version="${MODEL_ZOO_VER}"
-    
+
     log_info "Detected versions:"
     log_info "  Hailo Architecture: ${HAILO_ARCH:-unknown}"
     log_info "  Driver: ${driver_version}"
@@ -762,25 +762,25 @@ check_prerequisites() {
     if [[ -n "$model_zoo_version" ]]; then
         log_info "  Model Zoo Version: ${model_zoo_version} (for ${HAILO_ARCH})"
     fi
-    
+
     # Validate versions against config (including architecture)
     validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"
-    
+
     # Validate Model Zoo version if we have both arch and MZ version
     if [[ -n "$model_zoo_version" && -n "${HAILO_ARCH:-}" ]]; then
         validate_model_zoo_version "${HAILO_ARCH}" "$model_zoo_version" || true
     fi
-    
+
     # Check required components
     local missing_components=()
-    
+
     if [[ "$driver_version" == "-1" ]]; then
         missing_components+=("Hailo PCI driver")
     fi
     if [[ "$hailort_version" == "-1" ]]; then
         missing_components+=("HailoRT")
     fi
-    
+
     if [[ ${#missing_components[@]} -gt 0 ]]; then
         log_error "Missing required components:"
         for component in "${missing_components[@]}"; do
@@ -792,18 +792,18 @@ check_prerequisites() {
         record_step_result "FAILED" "Missing: ${missing_components[*]}"
         return 1
     fi
-    
+
     # Check Python bindings
     if [[ "$pyhailort_version" == "-1" ]]; then
         log_warning "Python HailoRT binding not installed - will be installed in virtualenv"
         INSTALL_HAILORT=true
     fi
-    
+
     if [[ "${NO_INSTALL}" == true ]]; then
         log_info "Skipping Python package installation (--no-install flag)"
         INSTALL_HAILORT=false
     fi
-    
+
     log_success "Prerequisites check passed"
     record_step_result "SUCCESS" "All required components found"
     return 0
@@ -815,21 +815,21 @@ check_prerequisites() {
 
 install_system_packages() {
     log_step 3 "System Package Installation"
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "apt-get install -y ${SYSTEM_PACKAGES[*]}"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     log_info "Installing system packages: ${SYSTEM_PACKAGES[*]}"
-    
+
     # Update apt cache
     log_debug "Updating apt cache..."
     if ! apt-get update -qq 2>/dev/null; then
         log_warning "apt-get update had warnings (continuing anyway)"
     fi
-    
+
     # Install packages
     local failed_packages=()
     for pkg in "${SYSTEM_PACKAGES[@]}"; do
@@ -839,14 +839,14 @@ install_system_packages() {
             failed_packages+=("$pkg")
         fi
     done
-    
+
     if [[ ${#failed_packages[@]} -gt 0 ]]; then
         log_warning "Some packages failed to install: ${failed_packages[*]}"
         log_info "Installation will continue - these may not be required"
     else
         log_success "System packages installed"
     fi
-    
+
     record_step_result "SUCCESS" "Packages installed"
     return 0
 }
@@ -857,7 +857,7 @@ install_system_packages() {
 
 setup_resources() {
     log_step 4 "Resources Directory Setup"
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "mkdir -p ${RESOURCES_ROOT}/{${RESOURCES_DIRS// /,}}"
         log_dry_run "chown -R ${ORIGINAL_USER}:${ORIGINAL_GROUP} ${RESOURCES_ROOT}"
@@ -865,37 +865,37 @@ setup_resources() {
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     log_info "Creating resources directories at ${RESOURCES_ROOT}..."
-    
+
     # Create directory structure from config.yaml
     for dir in ${RESOURCES_DIRS}; do
         mkdir -p "${RESOURCES_ROOT}/${dir}"
         log_debug "  Created: ${RESOURCES_ROOT}/${dir}"
     done
-    
+
     # Set ownership
     chown -R "${ORIGINAL_USER}:${ORIGINAL_GROUP}" "${RESOURCES_ROOT}"
-    
+
     # Set permissions (775 for group access)
     chmod -R 775 "${RESOURCES_ROOT}"
-    
+
     # Remove existing .env file
     if [[ -f "${ENV_FILE}" ]]; then
         log_debug "Removing existing .env file"
         safe_remove "${ENV_FILE}"
     fi
-    
+
     # Create new .env file at resources root
     run_as_user touch "${ENV_FILE}"
     run_as_user chmod 644 "${ENV_FILE}"
     log_debug "Created .env file at ${ENV_FILE}"
-    
+
     log_success "Resources directories created"
     log_info "  Owner: ${ORIGINAL_USER}:${ORIGINAL_GROUP}"
     log_info "  Location: ${RESOURCES_ROOT}"
     log_info "  Environment file: ${ENV_FILE}"
-    
+
     record_step_result "SUCCESS" "Resources at ${RESOURCES_ROOT}"
     return 0
 }
@@ -906,15 +906,15 @@ setup_resources() {
 
 setup_virtual_environment() {
     log_step 5 "Virtual Environment Setup"
-    
+
     local venv_path="${SCRIPT_DIR}/${VENV_NAME}"
-    
+
     # Remove existing virtualenv
     if [[ -d "${venv_path}" ]]; then
         log_info "Removing existing virtualenv at ${venv_path}"
         safe_remove "${venv_path}"
     fi
-    
+
     # Clean up build artifacts
     log_info "Cleaning up build artifacts..."
     disable_error_trap
@@ -922,7 +922,7 @@ setup_virtual_environment() {
     run_as_user rm -rf "${SCRIPT_DIR}/build/" "${SCRIPT_DIR}/dist/" 2>/dev/null || true
     enable_error_trap
     log_debug "Build artifacts cleaned"
-    
+
     # Create virtual environment
     local venv_args=""
     if [[ "${USE_SYSTEM_SITE_PACKAGES}" == true && "${NO_SYSTEM_PYTHON}" != true ]]; then
@@ -931,13 +931,13 @@ setup_virtual_environment() {
     else
         log_info "Creating virtualenv '${VENV_NAME}' (without system site-packages)..."
     fi
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "python3 -m venv ${venv_args} '${venv_path}'"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     if ! run_as_user python3 -m venv ${venv_args} "${venv_path}"; then
         log_error "Failed to create virtual environment"
         log_info "Troubleshooting:"
@@ -947,7 +947,7 @@ setup_virtual_environment() {
         record_step_result "FAILED" "venv creation failed"
         return 1
     fi
-    
+
     # Verify venv creation
     if [[ ! -f "${venv_path}/bin/activate" ]]; then
         log_error "Virtual environment created but activate script not found"
@@ -955,7 +955,7 @@ setup_virtual_environment() {
         record_step_result "FAILED" "activate script missing"
         return 1
     fi
-    
+
     log_success "Virtual environment created at ${venv_path}"
     record_step_result "SUCCESS" "venv: ${venv_path}"
     return 0
@@ -967,10 +967,10 @@ setup_virtual_environment() {
 
 install_python_packages() {
     log_step 6 "Python Package Installation"
-    
+
     local venv_path="${SCRIPT_DIR}/${VENV_NAME}"
     local venv_activate="${venv_path}/bin/activate"
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "source ${venv_activate}"
         log_dry_run "pip install --upgrade pip setuptools wheel"
@@ -980,7 +980,7 @@ install_python_packages() {
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     # Install custom wheel files if provided
     if [[ -n "$PYHAILORT_PATH" ]]; then
         log_info "Installing custom HailoRT binding: ${PYHAILORT_PATH}"
@@ -996,7 +996,7 @@ install_python_packages() {
         fi
         INSTALL_HAILORT=false
     fi
-    
+
     if [[ -n "$PYTAPPAS_PATH" ]]; then
         log_info "Installing custom TAPPAS binding: ${PYTAPPAS_PATH}"
         if [[ ! -f "$PYTAPPAS_PATH" ]]; then
@@ -1010,11 +1010,11 @@ install_python_packages() {
             return 1
         fi
     fi
-    
+
     # Install Hailo Python packages if needed
     if [[ "${INSTALL_HAILORT}" == true ]]; then
         local install_script="${SCRIPT_DIR}/scripts/hailo_python_installation.sh"
-        
+
         if [[ -f "$install_script" ]]; then
             log_info "Installing Hailo Python packages..."
             local flags=""
@@ -1050,13 +1050,13 @@ install_python_packages() {
             log_info "Skipping Hailo Python package installation"
         fi
     fi
-    
+
     # Upgrade pip/setuptools/wheel
     log_info "Upgrading pip, setuptools, and wheel..."
     if ! run_as_user bash -c "source '${venv_activate}' && python3 -m pip install --upgrade pip setuptools wheel"; then
         log_warning "pip upgrade had issues (continuing anyway)"
     fi
-    
+
     # Install the hailo_apps package in editable mode
     log_info "Installing hailo_apps package (editable mode)..."
     if ! run_as_user bash -c "source '${venv_activate}' && pip install -e '${SCRIPT_DIR}'"; then
@@ -1068,7 +1068,7 @@ install_python_packages() {
         record_step_result "FAILED" "hailo_apps install failed"
         return 1
     fi
-    
+
     log_success "Python packages installed"
     record_step_result "SUCCESS" "Packages installed"
     return 0
@@ -1083,56 +1083,56 @@ install_python_packages() {
 setup_resources_symlink() {
     local symlink_path="${SCRIPT_DIR}/${RESOURCES_SYMLINK_NAME}"
     local target_path="${RESOURCES_ROOT}"
-    
+
     log_info "Setting up resources symlink..."
     log_debug "  Symlink: ${symlink_path}"
     log_debug "  Target:  ${target_path}"
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "ln -sf ${target_path} ${symlink_path}"
         return 0
     fi
-    
+
     # Verify target exists
     if [[ ! -d "${target_path}" ]]; then
         log_error "Resources root does not exist: ${target_path}"
         log_error "Run setup_resources step first or check config.yaml resources.root"
         return 1
     fi
-    
+
     # Remove existing path if present (symlink, file, or directory)
     if [[ -e "${symlink_path}" || -L "${symlink_path}" ]]; then
         log_debug "Removing existing: ${symlink_path}"
         rm -rf "${symlink_path}"
     fi
-    
+
     # Create symlink
     ln -s "${target_path}" "${symlink_path}"
-    
+
     # Set ownership to user (not root)
     chown -h "${ORIGINAL_USER}:${ORIGINAL_GROUP}" "${symlink_path}"
-    
+
     log_success "Created symlink: ${symlink_path} -> ${target_path}"
     return 0
 }
 
 run_post_install() {
     log_step 7 "Post-Installation"
-    
+
     local venv_path="${SCRIPT_DIR}/${VENV_NAME}"
     local venv_activate="${venv_path}/bin/activate"
-    
+
     # Fix permissions before running as user
     log_debug "Fixing ownership of project directory..."
     fix_ownership "${SCRIPT_DIR}"
     fix_ownership "${RESOURCES_ROOT}"
-    
+
     # Build post-install command
     local post_install_args="--group '${DOWNLOAD_GROUP}'"
     if [[ "$DOWNLOAD_GROUP" == "all" ]]; then
         post_install_args="--all"
     fi
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "source ${venv_activate} && hailo-post-install ${post_install_args}"
         log_info "Would run as user ${ORIGINAL_USER}:"
@@ -1143,30 +1143,30 @@ run_post_install() {
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
-    
+
     log_info "Running post-installation as user: ${ORIGINAL_USER}"
     log_info "Download group: ${DOWNLOAD_GROUP}"
-    
+
     # Setup resources symlink (from config parameters)
     if ! setup_resources_symlink; then
         log_error "Failed to create resources symlink"
         record_step_result "FAILED" "Symlink creation failed"
         return 1
     fi
-    
+
     # Run post-install
     disable_error_trap
     local post_install_output
     local post_install_exit=0
-    
+
     post_install_output=$(run_as_user bash -c "
         source '${venv_activate}' && \
         cd '${SCRIPT_DIR}' && \
         hailo-post-install ${post_install_args} 2>&1
     ") || post_install_exit=$?
-    
+
     enable_error_trap
-    
+
     # Log output
     if [[ -n "$post_install_output" ]]; then
         while IFS= read -r line; do
@@ -1174,7 +1174,7 @@ run_post_install() {
             echo "$line"
         done <<< "$post_install_output"
     fi
-    
+
     if [[ $post_install_exit -ne 0 ]]; then
         log_error "Post-installation failed (exit code: ${post_install_exit})"
         echo ""
@@ -1187,11 +1187,11 @@ run_post_install() {
         log_info "You can retry post-installation manually:"
         log_info "  source ${SCRIPT_DIR}/setup_env.sh"
         log_info "  hailo-post-install --group '${DOWNLOAD_GROUP}'"
-        
+
         record_step_result "FAILED" "Exit code: ${post_install_exit}"
         return 1
     fi
-    
+
     log_success "Post-installation completed"
     record_step_result "SUCCESS" "Post-install done"
     return 0
@@ -1207,16 +1207,16 @@ verify_installation() {
     echo -e "${CYAN}${BOLD}  Installation Verification${NC}"
     echo -e "${CYAN}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    
+
     local venv_path="${SCRIPT_DIR}/${VENV_NAME}"
     local venv_activate="${venv_path}/bin/activate"
     local all_ok=true
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         log_info "Skipping verification in dry-run mode"
         return 0
     fi
-    
+
     # Check venv
     echo -n "  📁 Virtual environment: "
     if [[ -f "${venv_activate}" ]]; then
@@ -1225,7 +1225,7 @@ verify_installation() {
         echo -e "${RED}❌ Missing${NC}"
         all_ok=false
     fi
-    
+
     # Check hailo_apps import
     echo -n "  🐍 hailo_apps package: "
     if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo_apps'" 2>/dev/null; then
@@ -1234,7 +1234,7 @@ verify_installation() {
         echo -e "${RED}❌ Import failed${NC}"
         all_ok=false
     fi
-    
+
     # Check HailoRT binding
     echo -n "  📦 HailoRT binding: "
     if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
@@ -1242,7 +1242,7 @@ verify_installation() {
     else
         echo -e "${YELLOW}⚠️  Not available (may use system)${NC}"
     fi
-    
+
     # Show detected architecture and Model Zoo version
     if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
         echo "  🏗️  Hailo Architecture: ${HAILO_ARCH}"
@@ -1250,12 +1250,12 @@ verify_installation() {
             echo "  📦 Model Zoo Version: ${MODEL_ZOO_VER}"
         fi
     fi
-    
+
     # Check resources symlink
     echo -n "  📁 Resources symlink: "
     if [[ -L "${SCRIPT_DIR}/resources" && -d "${SCRIPT_DIR}/resources" ]]; then
         echo -e "${GREEN}✅ OK${NC}"
-        
+
         # Count models
         local model_count=0
         model_count=$(find "${SCRIPT_DIR}/resources/models" -name "*.hef" 2>/dev/null | wc -l)
@@ -1263,7 +1263,7 @@ verify_installation() {
     else
         echo -e "${YELLOW}⚠️  Not created${NC}"
     fi
-    
+
     # Check .env file (at resources root)
     echo -n "  📄 Environment file: "
     if [[ -f "${ENV_FILE}" ]]; then
@@ -1271,7 +1271,7 @@ verify_installation() {
     else
         echo -e "${YELLOW}⚠️  Not created${NC}"
     fi
-    
+
     # Check compiled libraries
     echo -n "  🔨 C++ postprocess libs: "
     if [[ -d "${RESOURCES_ROOT}/so" ]]; then
@@ -1285,9 +1285,9 @@ verify_installation() {
     else
         echo -e "${YELLOW}⚠️  Directory not found${NC}"
     fi
-    
+
     echo ""
-    
+
     if [[ "$all_ok" == true ]]; then
         return 0
     else
@@ -1305,7 +1305,7 @@ print_summary() {
     echo -e "${BOLD}  Installation Summary${NC}"
     echo -e "${BOLD}════════════════════════════════════════════════════════════════${NC}"
     echo ""
-    
+
     local step_names=(
         "User Detection"
         "Prerequisites Check"
@@ -1315,33 +1315,33 @@ print_summary() {
         "Python Packages"
         "Post-Installation"
     )
-    
+
     local all_success=true
     local i=0
-    
+
     for result in "${STEP_RESULTS[@]}"; do
         local status="${result%%:*}"
         local message="${result#*:}"
         local icon
-        
+
         case "$status" in
             SUCCESS) icon="${GREEN}✅${NC}" ;;
             FAILED) icon="${RED}❌${NC}"; all_success=false ;;
             SKIPPED) icon="${YELLOW}⏭️ ${NC}" ;;
             *) icon="❓" ;;
         esac
-        
+
         printf "  %b %-25s %b\n" "$icon" "${step_names[$i]:-Step $((i+1))}" "${DIM}${message}${NC}"
         ((i++))
     done
-    
+
     echo ""
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         echo -e "${YELLOW}${BOLD}This was a DRY RUN - no changes were made${NC}"
         echo ""
     fi
-    
+
     if [[ "$all_success" == true ]]; then
         echo -e "${GREEN}${BOLD}✅ Installation completed successfully!${NC}"
         echo ""
@@ -1352,7 +1352,7 @@ print_summary() {
         echo ""
         echo "Please review the errors above and try again."
     fi
-    
+
     echo ""
     echo "Log file: ${LOG_FILE}"
     echo ""
@@ -1365,31 +1365,31 @@ print_summary() {
 main() {
     # Parse arguments first (before any output)
     parse_arguments "$@"
-    
+
     # Initialize logging
     init_logging
-    
+
     # Show banner
     echo ""
     echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}${BOLD}║      Hailo Apps Infrastructure - Single-File Installer           ║${NC}"
     echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    
+
     if [[ "${DRY_RUN}" == true ]]; then
         echo -e "${MAGENTA}${BOLD}🔍 DRY-RUN MODE - No changes will be made${NC}"
         echo ""
     fi
-    
+
     # Enable error trap
     enable_error_trap
-    
+
     # Load configuration from config.yaml (required)
     if ! load_config; then
         log_error "Failed to load configuration. Cannot continue."
         exit 1
     fi
-    
+
     # Show configuration summary
     log_info "Configuration:"
     log_info "  Virtual Environment: ${VENV_NAME}"
@@ -1397,7 +1397,7 @@ main() {
     log_info "  Resources Root: ${RESOURCES_ROOT}"
     log_info "  System Site-Packages: ${USE_SYSTEM_SITE_PACKAGES}"
     log_info "  Log File: ${LOG_FILE}"
-    
+
     # Show valid versions from config (if loaded)
     if [[ -n "${VALID_HAILORT_VERSIONS:-}" ]]; then
         log_debug "Valid HailoRT versions: ${VALID_HAILORT_VERSIONS}"
@@ -1411,75 +1411,75 @@ main() {
     if [[ -n "${MODEL_ZOO_MAPPING:-}" ]]; then
         log_debug "Model Zoo mapping: ${MODEL_ZOO_MAPPING}"
     fi
-    
+
     # Run installation steps
     local failed=false
-    
+
     # Step 1: User detection
     if ! detect_user_and_group; then
         failed=true
     fi
-    
+
     # Step 2: Prerequisites check
     if [[ "$failed" != true ]]; then
         if ! check_prerequisites; then
             failed=true
         fi
     fi
-    
+
     # Step 3: System packages
     if [[ "$failed" != true ]]; then
         if ! install_system_packages; then
             failed=true
         fi
     fi
-    
+
     # Step 4: Resources setup (before venv so packages dir is available)
     if [[ "$failed" != true ]]; then
         if ! setup_resources; then
             failed=true
         fi
     fi
-    
+
     # Step 5: Virtual environment
     if [[ "$failed" != true ]]; then
         if ! setup_virtual_environment; then
             failed=true
         fi
     fi
-    
+
     # Step 6: Python packages
     if [[ "$failed" != true ]]; then
         if ! install_python_packages; then
             failed=true
         fi
     fi
-    
+
     # Step 7: Post-installation
     if [[ "$failed" != true ]]; then
         if ! run_post_install; then
             failed=true
         fi
     fi
-    
+
     # Final ownership fix
     if [[ "${DRY_RUN}" != true && "$failed" != true ]]; then
         log_debug "Fixing final ownership..."
         fix_ownership "${SCRIPT_DIR}"
     fi
-    
+
     # Verification
     if [[ "$failed" != true ]]; then
         verify_installation || true
     fi
-    
+
     # Print summary
     print_summary
-    
+
     if [[ "$failed" == true ]]; then
         exit 1
     fi
-    
+
     exit 0
 }
 

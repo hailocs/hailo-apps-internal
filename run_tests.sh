@@ -4,7 +4,7 @@ set -e
 # ============================================================================
 # Hailo Apps Infrastructure Test Runner
 # ============================================================================
-# This script runs the test suite for hailo-apps-infra.
+# This script runs the test suite for hailo-apps.
 #
 # Test Execution Order:
 #   1. Sanity checks (environment validation)

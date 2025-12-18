@@ -48,10 +48,10 @@ class TestAudioDiagnostics(unittest.TestCase):
         mock_sd.default.device = [0, 0]
 
         # Import after mocking
-        if 'hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics' in sys.modules:
-            del sys.modules['hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics']
+        if 'hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics' in sys.modules:
+            del sys.modules['hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics']
 
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         input_devs, output_devs = AudioDiagnostics.list_audio_devices()
 
@@ -61,7 +61,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_score_device(self):
         """Test device scoring favors USB devices and correct sample rates."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import (
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import (
             AudioDiagnostics,
             AudioDeviceInfo,
         )
@@ -97,7 +97,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_auto_detect_devices(self):
         """Test auto-detection selects highest scoring devices."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import (
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import (
             AudioDiagnostics,
             AudioDeviceInfo,
         )
@@ -123,7 +123,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_is_raspberry_pi(self):
         """Test Raspberry Pi detection."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         with patch('platform.machine', return_value='aarch64'), \
              patch('platform.release', return_value='5.10.0'):
@@ -135,7 +135,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_get_audio_server(self):
         """Test audio server detection."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         # Mock subprocess to return PulseAudio
         with patch('subprocess.run') as mock_run:
@@ -164,7 +164,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_get_pulseaudio_usb_devices(self):
         """Test PulseAudio USB device detection."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         with patch('subprocess.run') as mock_run:
             # Mock sinks output
@@ -179,7 +179,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_get_alsa_cards(self):
         """Test ALSA card detection."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         with patch('subprocess.run') as mock_run:
             mock_result = MagicMock()
@@ -192,7 +192,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_check_audio_permissions(self):
         """Test audio permission checking."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import AudioDiagnostics
 
         # Mock user in audio group
         with patch('getpass.getuser', return_value='testuser'), \
@@ -214,7 +214,7 @@ class TestAudioDiagnostics(unittest.TestCase):
 
     def test_configure_usb_audio_rpi(self):
         """Test USB audio configuration for RPi."""
-        from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics import (
+        from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics import (
             AudioDiagnostics,
             AudioDeviceInfo,
         )
@@ -267,12 +267,12 @@ class TestAudioPlayer(unittest.TestCase):
         self.mock_stream = mock_stream
 
         # Need to reimport to pick up the mock
-        if 'hailo_apps.python.core.gen_ai_utils.voice_processing.audio_player' in sys.modules:
-            del sys.modules['hailo_apps.python.core.gen_ai_utils.voice_processing.audio_player']
+        if 'hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_player' in sys.modules:
+            del sys.modules['hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_player']
 
-        with patch('hailo_apps.python.core.gen_ai_utils.voice_processing.audio_diagnostics.AudioDiagnostics.auto_detect_devices') as mock_detect:
+        with patch('hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_diagnostics.AudioDiagnostics.auto_detect_devices') as mock_detect:
             mock_detect.return_value = (None, 1)
-            from hailo_apps.python.core.gen_ai_utils.voice_processing.audio_player import AudioPlayer
+            from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_player import AudioPlayer
             self.player = AudioPlayer()
 
         time.sleep(0.2)  # Allow worker thread to start

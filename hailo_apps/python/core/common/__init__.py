@@ -53,7 +53,14 @@ __all__ = [
     "get_pipeline_parser",
     "get_resource_path",
     "get_standalone_parser",
+    "handle_list_models_flag",
+    "list_models_for_app",
     "load_environment",
+    "resolve_hef_path",
+    # HEF utilities
+    "get_hef_input_size",
+    "get_hef_input_shape",
+    "get_hef_labels_json",
     # Logger
     "add_logging_cli_args",
     "get_logger",
