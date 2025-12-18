@@ -50,3 +50,7 @@ venv_hailo_apps/
 
 resources/
 resources
+
+# IDE configuration files (user-specific)
+.vscode/launch.json
+.cursor/
