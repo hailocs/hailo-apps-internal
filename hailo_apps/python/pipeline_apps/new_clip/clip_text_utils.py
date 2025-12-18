@@ -3,11 +3,13 @@ CLIP Text Utilities
 Handles tokenization and token embedding for CLIP text encoder.
 Provides tokenizer and pre-computed token embedding LUT (Look-Up Table).
 """
-
+import os
 from pathlib import Path
 from tokenizers import Tokenizer
 import numpy as np
 from hailo_platform import VDevice, FormatType
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+from hailo_apps.python.core.common.defines import HAILO_ARCH_KEY, HAILO8_ARCH, HAILO8L_ARCH, HAILO10H_ARCH
 
 # Default paths (in setup subfolder)
 DEFAULT_TOKENIZER_PATH = Path(__file__).parent / "setup" / "clip_tokenizer.json"
@@ -465,7 +467,10 @@ def run_text_encoder_inference(text, hef_path,
         # Set format types before configuring the infer model
         infer_model.input(input_layer_name).set_format_type(FormatType.FLOAT32)
         infer_model.output(output_layer_name).set_format_type(FormatType.FLOAT32)
+        arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
         with infer_model.configure() as configured_infer_model:
+            if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
+                configured_infer_model.activate()
             bindings = configured_infer_model.create_bindings()
             input_buffer = np.empty(infer_model.input().shape, dtype=np.float32)
             input_buffer[:] = input_embeddings
@@ -473,6 +478,8 @@ def run_text_encoder_inference(text, hef_path,
             output_buffer = np.empty(infer_model.output().shape, dtype=np.float32)
             bindings.output().set_buffer(output_buffer)
             configured_infer_model.run([bindings], timeout_ms)
+            if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
+                configured_infer_model.deactivate()
         output_buffer = bindings.output().get_buffer()
 
     # ========== STEP 3: POST-PROCESS ==========
