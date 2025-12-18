@@ -3,7 +3,7 @@
 This document provides an overview of the directory structure for the Hailo Applications repository, explaining the purpose of each key folder and clarifying which directories are tracked by git and which are generated or managed by scripts.
 
 ```
-hailo-apps-infra/
+hailo-apps/
 ├── doc/                        # Comprehensive documentation (user & developer guides)
 │   ├── user_guide/             # User-facing docs (installation, running apps, config, structure)
 │   ├── developer_guide/        # Developer docs (app development, post-process, retraining)
