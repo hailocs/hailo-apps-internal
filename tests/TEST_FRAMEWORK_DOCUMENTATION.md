@@ -88,7 +88,7 @@ The Hailo Apps test framework is a **configuration-driven**, **dynamically-gener
 ## Directory Structure
 
 ```
-hailo-apps-infra/
+hailo-apps/
 ├── tests/
 │   ├── conftest.py               # Pytest fixtures & config parsing
 │   ├── test_control.yaml         # Test execution control (WHAT to run)

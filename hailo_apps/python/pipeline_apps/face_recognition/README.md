@@ -68,10 +68,10 @@ Face landmarks ratios - In simple abstract words, practically this ensures the p
 
 ## Installation
 
-The application is part of the `hailo-apps-infra` package - please follow those general installation guidelines. Short non-comprehensive process summary:
+The application is part of the `hailo-apps` package - please follow those general installation guidelines. Short non-comprehensive process summary:
 
 ```
-git clone https://github.com/hailo-ai/hailo-apps-infra.git
+git clone https://github.com/hailo-ai/hailo-apps.git
 # cd to the directory
 ./install.sh --all  # install all
 source setup_env.sh  # activate python virtual enviornment

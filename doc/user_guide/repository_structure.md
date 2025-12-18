@@ -13,10 +13,10 @@ hailo-apps-infra/
 │   ├── installation/           # Python-side installers and env helpers
 │   ├── postprocess/            # C++ post-processing sources and builds
 │   └── python/
-│       ├── pipeline_apps/      # Packaged CLI apps (hailo-detect, hailo-tiling, etc.)
-│       ├── standalone_apps/    # Extra/experimental apps run directly with python
-│       ├── core/               # Shared logic (common utils, gstreamer, trackers, gen-ai)
-│       └── gen_ai_utils/       # GenAI helper modules
+│       ├── pipeline_apps/      # GStreamer-based CLI apps (hailo-detect, hailo-pose, etc.)
+│       ├── gen_ai_apps/        # GenAI applications (voice assistant, VLM chat, LLM chat, etc.)
+│       ├── standalone_apps/    # Other standalone Python applications (lane detection, super resolution, etc.)
+│       └── core/               # Shared logic (common utils, gstreamer, trackers, postprocess)
 ├── scripts/                    # Shell installers/utilities (install, cleanup, set-env)
 ├── tests/                      # Pytest-based test suite
 ├── config/                     # Top-level configs referenced by installers
@@ -36,9 +36,15 @@ Contains all project documentation, including user guides, developer guides, and
 ### `hailo_apps/`
 Main Python package for AI applications. Contains:
 - **`python/`**:
-  - `apps/`: Individual AI application folders (e.g., detection, face_recognition, etc.)
+  - `pipeline_apps/`: GStreamer-based pipeline applications available as CLI commands (e.g., `hailo-detect`, `hailo-pose`, `hailo-seg`). These are production-ready applications that leverage GStreamer for efficient video processing.
+  - `gen_ai_apps/`: Generative AI applications including:
+    - Full applications: `voice_assistant/`, `agent_tools_example/`, `vlm_chat/`
+    - Simple examples: `simple_llm_chat/`, `simple_vlm_chat/`, `simple_whisper_chat/`
+    - Documentation: `hailo_ollama/` (Ollama integration guide)
+    - Shared utilities: `gen_ai_utils/` (LLM utilities, voice processing components)
+  - `standalone_apps/`: Other standalone Python applications (e.g., lane detection, super resolution, speech recognition). These applications demonstrate various computer vision capabilities and can be run directly with Python.
   - `core/`: Shared logic, utilities, and GStreamer integration for apps.
-    - `common/`: Foundational utilities (installation, configuration, helpers).
+    - `common/`: Foundational utilities (installation, configuration, helpers, logging).
     - `gstreamer/`: Reusable GStreamer components and pipelines.
     - `cpp_postprocess/`: C++ post-processing modules for AI outputs.
     - `installation/`: Installation and environment setup utilities.
