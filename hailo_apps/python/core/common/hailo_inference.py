@@ -32,6 +32,8 @@ class HailoInfer:
         vDevice = VDevice(params)
 
         self.target = vDevice
+        # Ensure hef_path is a string (convert Path objects)
+        hef_path = str(hef_path)
         self.hef = HEF(hef_path)
 
         self.infer_model = self.target.create_infer_model(hef_path)

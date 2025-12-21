@@ -65,10 +65,11 @@ def parse_args():
         "-m",
         type=str,
         choices=["v5", "v8", "fast"],
-        required=True,
+        default="v5",
         help=(
             "The architecture type of the segmentation model.\n"
-            "Options: 'v5' (YOLOv5-seg), 'v8' (YOLOv8-seg), 'fast' (FastSAM)."
+            "Options: 'v5' (YOLOv5-seg), 'v8' (YOLOv8-seg), 'fast' (FastSAM).\n"
+            "Defaults to 'v5'."
         ),
     )
 
@@ -174,7 +175,7 @@ def run_inference_pipeline(
         inference_result_handler,
         tracker=tracker,
         config_data=config_data,
-        arch=arch,
+        model_type=arch,
         labels=labels,
         nms_postprocess_enabled=hailo_inference.is_nms_postprocess_enabled()
     )

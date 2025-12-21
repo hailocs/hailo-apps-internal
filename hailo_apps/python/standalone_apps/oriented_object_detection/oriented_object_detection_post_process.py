@@ -320,7 +320,7 @@ def rotated_nms(rects: List[Tuple], scores: List[float], iou_thresh=0.6):
 def draw_detection_local(image, boxes, scores, classes, labels=None):
     for box, score, cid in zip(boxes, scores, classes):
         pts = cv2.boxPoints(box)
-        pts = np.int0(pts)
+        pts = np.intp(pts)  # Use np.intp instead of deprecated np.int0
         cv2.polylines(image, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
         
         # label at top-left corner of polygon bbox

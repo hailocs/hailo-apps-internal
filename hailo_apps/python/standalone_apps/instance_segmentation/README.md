@@ -25,6 +25,22 @@ Supported Models
 - yolov5m_seg_with_nms
 - fast_sam_s
 
+Direct usage within the repository:
+-----
+```bash
+cd ~/hailo_apps/python/standalone_apps/instance_segmentation
+python instance_segmentation.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo_apps/python/standalone_apps/instance_segmentation
+python instance_segmentation.py --help
+```
+
+Standalone Usage
+-----
+
 Usage
 -----
 To avoid compatibility issues, it's recommended to have a separate venv from the DFC.

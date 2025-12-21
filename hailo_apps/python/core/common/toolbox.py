@@ -13,6 +13,7 @@ from hailo_apps.python.core.common.defines import (
     HAILO_ARCH_KEY,
     RESOURCES_PHOTOS_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
+    DEFAULT_COCO_LABELS_PATH
 )
 from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -252,6 +253,8 @@ def get_labels(labels_path: str) -> list:
         Returns:
             list: List of class names.
         """
+        if labels_path is None or not os.path.exists(labels_path):
+            labels_path = DEFAULT_COCO_LABELS_PATH
         with open(labels_path, 'r', encoding="utf-8") as f:
             class_names = f.read().splitlines()
         return class_names
@@ -736,6 +739,15 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     
     Note: This is a compatibility function for HACE apps.
     """
+    # Map standalone app names to their base resource tag names
+    APP_NAME_MAPPING = {
+        "object_detection": "detection",
+        "simple_detection": "simple_detection",
+        "instance_segmentation": "instance_segmentation",
+        "oriented_object_detection": "detection",  # Use detection's videos as default
+        "super_resolution": "super_resolution",
+    }
+    
     def resolve_tagged_resource(app_name: str, preferred_name: str | None = None) -> str | None:
         """Resolve a resource listed in resources_config.yaml for this app."""
         try:
@@ -743,7 +755,9 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
         except Exception:
             return None
 
-        inputs = get_inputs_for_app(app_name, is_standalone=True)
+        # Map app name to base resource tag if needed
+        resource_app_name = APP_NAME_MAPPING.get(app_name, app_name)
+        inputs = get_inputs_for_app(resource_app_name, is_standalone=True)
 
         def pick(section: str) -> str | None:
             for entry in inputs.get(section, []):

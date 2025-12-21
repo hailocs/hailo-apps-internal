@@ -1,5 +1,5 @@
-Lane Detection
-================
+Lane Detection - *Beta Release*
+===============================
 
 This example demonstrates lane detection using a **Hailo8** or **Hailo10H** device.  
 It receives an input video and annotates it with the lane detection coordinates.
@@ -20,6 +20,22 @@ Requirements
 Supported Models
 ----------------
 - ufld_v2_tu
+
+Direct usage within the repository:
+-----
+```bash
+cd ~/hailo_apps/python/standalone_apps/lane_detection
+python lane_detection.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo_apps/python/standalone_apps/lane_detection
+python lane_detection.py --help
+```
+
+Standalone Usage
+-----
 
 Usage
 -----

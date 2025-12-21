@@ -146,7 +146,7 @@ def postprocess_output(output_queue: mp.Queue,
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     width, height = ufld_processing.get_original_frame_size()
 
-    out_path = os.path.join(output_dir, "output.avi")
+    out_path = os.path.join(output_dir, "output.mp4")
     output_video = cv2.VideoWriter(out_path, fourcc, 20, (width, height))
 
     # Compute the scaled radius for the lane detection points
@@ -172,7 +172,25 @@ def postprocess_output(output_queue: mp.Queue,
 
     pbar.close()
     output_video.release()
-
+    
+    # Convert to H.264 for better compatibility
+    import subprocess
+    logger.info("Converting video to H.264 format...")
+    temp_path = out_path.replace('.mp4', '_temp.mp4')
+    try:
+        result = subprocess.run([
+            'ffmpeg', '-y', '-loglevel', 'error', '-i', out_path, 
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+            temp_path
+        ], check=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        os.replace(temp_path, out_path)
+        logger.info("Video conversion complete!")
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to convert video to H.264")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    except FileNotFoundError:
+        logger.warning("ffmpeg not found, keeping original mp4v format")
 
 
 def inference_callback(

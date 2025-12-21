@@ -21,6 +21,21 @@ Requirements
 - pyclipper
 - symspellpy
 
+Direct usage within the repository:
+-----
+```bash
+cd ~/hailo_apps/python/standalone_apps/paddle_ocr
+python paddle_ocr.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo_apps/python/standalone_apps/paddle_ocr
+python paddle_ocr.py --help
+```
+
+Standalone Usage
+-----
 
 Usage
 -----
