@@ -13,7 +13,7 @@
 #         - {name: "model_name", source: "mz"}  # Model Zoo model
 #         - {name: "model_name", source: "s3"}  # S3 model (URL built dynamically)
 #         - {name: "model_name", url: "https://...", source: "s3"}  # S3 model with explicit URL (backward compatibility)
-#         - {name: "model_name", url: "https://...", source: "gen-ai-mz"}  # Gen-AI model from server (requires explicit URL)
+#         - {name: "model_name", source: "gen-ai-mz"}  # Gen-AI model from server (URL built from metadata)
 #
 #   json: [list of JSON config file entries - shared across all apps]
 #   videos: [list of video entries with name field]
@@ -678,7 +678,6 @@ vlm_chat:
     hailo10h:
       default:
         - name: Qwen2-VL-2B-Instruct
-          url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2-VL-2B-Instruct.hef
           source: gen-ai-mz
 
 llm_chat:
@@ -690,7 +689,6 @@ llm_chat:
     hailo10h:
       default:
         - name: Qwen2.5-1.5B-Instruct
-          url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-1.5B-Instruct.hef
           source: gen-ai-mz
 
 whisper_chat:
@@ -702,7 +700,6 @@ whisper_chat:
     hailo10h:
       default:
         - name: Whisper-Base
-          url: https://dev-public.hailo.ai/v5.1.1/blob/Whisper-Base.hef
           source: gen-ai-mz
 
 agent:
@@ -714,7 +711,6 @@ agent:
     hailo10h:
       default:
         - name: Qwen2.5-Coder-1.5B-Instruct
-          url: https://dev-public.hailo.ai/v5.1.1/blob/Qwen2.5-Coder-1.5B-Instruct.hef
           source: gen-ai-mz
 
 clip:
