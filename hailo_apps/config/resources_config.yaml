@@ -720,19 +720,19 @@ clip:
         - name: clip_resnet_50x4_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
-          source: mz
+          source: s3
     hailo8l:
       default:
         - name: clip_resnet_50x4_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
-          source: mz
+          source: s3
     hailo10h:
       default:
         - name: clip_resnet_50x4_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
-          source: mz
+          source: s3
 
 
 #-------------------------------------------------------------------------------
@@ -744,7 +744,7 @@ metadata:
     cs_bucket: "https://hailo-csdata.s3.eu-west-2.amazonaws.com"
     model_zoo_h8: "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
     gen_ai_mz: "https://dev-public.hailo.ai"
-  
+
   # Model Zoo version mapping
   model_zoo_versions:
     hailo8: "v2.17.0"

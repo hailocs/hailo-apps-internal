@@ -1160,16 +1160,21 @@ run_post_install() {
     disable_error_trap
     local post_install_exit=0
 
-    # Use process substitution to print output in real-time while capturing exit code
+    # Use unbuffered output to ensure real-time progress display
+    # PYTHONUNBUFFERED=1 ensures Python outputs are unbuffered (most reliable for Python)
+    # stdbuf -oL -eL ensures line-buffered output as fallback (flush on each line)
     run_as_user bash -c "
+        export PYTHONUNBUFFERED=1 && \
         source '${venv_activate}' && \
         cd '${SCRIPT_DIR}' && \
-        hailo-post-install ${post_install_args} 2>&1
+        stdbuf -oL -eL hailo-post-install ${post_install_args} 2>&1
     " | while IFS= read -r line; do
+        # Log to file for debugging
         log_debug "  $line"
+        # Print to console immediately (unbuffered)
         echo "$line"
     done
-    
+
     # Capture the exit code from the pipe
     post_install_exit=${PIPESTATUS[0]}
 
@@ -1236,12 +1241,19 @@ verify_installation() {
     fi
 
     # Check HailoRT binding
-    echo -n "  📦 HailoRT binding: "
+    echo -n "  📦 HailoRT Python binding: "
+    if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo_platform'" 2>/dev/null; then
+        echo -e "${GREEN}✅ OK${NC}"
+        all_ok=false
+    fi
+
+    # Check TAPPAS binding
+    echo -n "  📦 TAPPAS Core Python binding: "
     if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
         echo -e "${GREEN}✅ OK${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Not available (may use system)${NC}"
+        all_ok=false
     fi
+
 
     # Show detected architecture and Model Zoo version
     if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
