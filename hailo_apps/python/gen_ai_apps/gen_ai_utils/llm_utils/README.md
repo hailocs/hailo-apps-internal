@@ -252,7 +252,9 @@ vdevice = VDevice()
 llm = LLM(vdevice=vdevice)
 
 # Discover tools from tools/ subdirectory
-tool_dir = Path(__file__).parent
+# Note: In your actual code, replace this with the path to your tools directory
+# For example: tool_dir = Path("path/to/your/tools/directory")
+tool_dir = Path("tools")  # Adjust this path to your tools directory
 modules = tool_discovery.discover_tool_modules(tool_dir)
 tools = tool_discovery.collect_tools(modules)
 
