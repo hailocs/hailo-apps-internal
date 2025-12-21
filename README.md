@@ -69,8 +69,7 @@ cd hailo_apps/python/gen_ai_apps/voice_assistant/
 python voice_assistant.py
 
 # Agent Tools - Voice to Action
-cd hailo_apps/python/gen_ai_apps/agent_tools_example/
-python voice_chat_agent.py
+python -m hailo_apps.python.gen_ai_apps.agent_tools_example.agent
 
 # VLM Chat - Vision + Language
 cd hailo_apps/python/gen_ai_apps/vlm_chat/
