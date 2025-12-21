@@ -1,5 +1,5 @@
-Lane Detection
-================
+Lane Detection - *Beta Release*
+===============================
 
 This example demonstrates lane detection using a **Hailo8** or **Hailo10H** device.  
 It receives an input video and annotates it with the lane detection coordinates.
