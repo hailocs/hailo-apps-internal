@@ -85,14 +85,14 @@ videos:
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
 images:
-  - name: dog_bicycle.jpg
-    source: s3
+  - name: zidane.jpg
+    url: https://ultralytics.com/images/zidane.jpg
     tag:
       - detection
       - instance_segmentation
       - pose_estimation
-  - name: zidane.jpg
-    url: https://ultralytics.com/images/zidane.jpg
+  - name: dog_bicycle.jpg
+    source: s3
     tag:
       - detection
       - instance_segmentation

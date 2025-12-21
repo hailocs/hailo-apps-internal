@@ -30,8 +30,8 @@ FILES = {
         },
         "hailo10h": {
             "base": [
-                f"{BASE_HEF}/h10h/base-whisper-decoder-fixed-sequence-matmul-split_h8l.hef",
-                f"{BASE_HEF}/h10h/base-whisper-encoder-5s_h8l.hef",
+                f"{BASE_HEF}/h10h/base-whisper-decoder-10s-out-seq-64.hef",
+                f"{BASE_HEF}/h10h/base-whisper-encoder-10s.hef",
             ],
             "tiny": [
                 f"{BASE_HEF}/h10h/tiny-whisper-decoder-fixed-sequence.hef",

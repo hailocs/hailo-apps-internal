@@ -6,6 +6,49 @@ import threading
 from functools import partial
 from pathlib import Path
 from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+
+# Check OCR dependencies before importing OCR-specific modules
+def check_ocr_dependencies():
+    """
+    Check if all required OCR dependencies are installed.
+    
+    Exits the program with installation instructions if any dependencies are missing.
+    """
+    missing_deps = []
+    # Map package names to their import names
+    ocr_deps = {
+        "paddlepaddle": "paddle",  # pip install paddlepaddle, but import paddle
+        "shapely": "shapely",
+        "pyclipper": "pyclipper",
+        "symspellpy": "symspellpy",
+    }
+    
+    for package_name, import_name in ocr_deps.items():
+        try:
+            __import__(import_name)
+        except ImportError:
+            missing_deps.append(package_name)
+
+    if missing_deps:
+        print("\n" + "="*70)
+        print("❌ MISSING REQUIRED DEPENDENCIES")
+        print("="*70)
+        print("\nThe following dependencies are required but not installed:")
+        for dep in missing_deps:
+            print(f"  • {dep}")
+        print("\n" + "-"*70)
+        print("INSTALLATION INSTRUCTIONS:")
+        print("-"*70)
+        print("\nTo install all dependencies (recommended):")
+        print("  1. Navigate to the repository root directory")
+        print("  2. Run: pip install -e \".[ocr]\"")
+        print("\n" + "="*70)
+        sys.exit(1)
+
+# Check dependencies early
+check_ocr_dependencies()
+
+# Now import OCR-specific modules that require shapely, pyclipper, etc.
 from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
 import uuid
 from collections import defaultdict
@@ -295,7 +338,7 @@ def run_inference_pipeline(
 
     # input postprocess
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, det_input_queue, width, height)
+        target=preprocess, args=(images, cap, batch_size, det_input_queue, width, height)
     )
 
     # detector output postprocess
@@ -313,7 +356,7 @@ def run_inference_pipeline(
     # visualisation postprocess
     vis_postprocess_thread = threading.Thread(
         target=visualize, args=(vis_output_queue, cap, save_output, output_dir, 
-                                post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True)
+                                post_process_callback_fn, fps_tracker, True)
     )
 
     det_thread = threading.Thread(

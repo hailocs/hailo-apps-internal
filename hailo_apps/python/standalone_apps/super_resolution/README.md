@@ -20,8 +20,21 @@ Supported Models
 ----------------
 
 - real_esrgan_x2
+
+Direct usage within the repository:
+-----
+```bash
+cd ~/hailo_apps/python/standalone_apps/super_resolution
+python super_resolution.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo_apps/python/standalone_apps/super_resolution
+python super_resolution.py --help
+```
  
-Usage
+Standalone Usage
 -----
 
 0. Install PyHailoRT

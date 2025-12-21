@@ -131,7 +131,7 @@ TAPPAS_POSTPROC_PATH_DEFAULT = ""  # Will be populated from environment at runti
 RESOURCES_MODELS_DIR_NAME = "models"
 RESOURCES_VIDEOS_DIR_NAME = "videos"
 RESOURCES_SO_DIR_NAME = "so"
-RESOURCES_PHOTOS_DIR_NAME = "photos"
+RESOURCES_PHOTOS_DIR_NAME = "images"  # Changed from "photos" to match actual directory name
 RESOURCES_JSON_DIR_NAME = "json"
 
 # Depth pipeline defaults
@@ -296,3 +296,5 @@ OCR_DETECTION_POSTPROCESS_FUNCTION = "paddleocr_det"
 OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
 OCR_CROPPER_FUNCTION = "crop_text_regions"
 OCR_VIDEO_NAME = "ocr.mp4"
+
+DEFAULT_COCO_LABELS_PATH = str(REPO_ROOT / "local_resources" / "coco.txt")

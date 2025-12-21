@@ -31,6 +31,7 @@ except ImportError:
     from common.record_utils import record_audio
     from app.whisper_hef_registry import HEF_REGISTRY
 from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.toolbox import resolve_arch
 
 
 
@@ -43,7 +44,7 @@ def get_args():
     """
     parser = get_standalone_parser()
     parser.description = "Whisper Hailo Pipeline"
-    parser.set_defaults(arch="hailo8")
+    # Don't set a default here - let resolve_arch() handle auto-detection
     parser.add_argument(
         "--reuse-audio", 
         action="store_true", 
@@ -55,7 +56,7 @@ def get_args():
         type=str,
         choices=["hailo8", "hailo8l", "hailo10h"],
         default=None,
-        help="Hardware architecture to use (alias for --arch, default: hailo8)"
+        help="Hardware architecture to use (alias for --arch, will auto-detect if not specified)"
     )
     parser.add_argument(
         "--variant",
@@ -76,8 +77,6 @@ def get_args():
         help="Recording duration in seconds (default: 10 seconds)"
     )
     args = parser.parse_args()
-    if args.arch is None:
-        args.arch = "hailo8"
     # Preserve backwards compatibility with previous flag naming
     args.hw_arch = args.arch
     return args
@@ -103,7 +102,13 @@ def get_hef_path(model_variant: str, hw_arch: str, component: str) -> str:
         ) from e
 
     if not os.path.exists(hef_path):
-        raise FileNotFoundError(f"HEF file not found at: {hef_path}\nIf not done yet, please run python3 ./download_resources.py --hw-arch {hw_arch} from the app/ folder to download the required HEF files.")
+        from pathlib import Path
+        download_script = Path(__file__).parent / "download_resources.py"
+        raise FileNotFoundError(
+            f"HEF file not found at: {hef_path}\n\n"
+            f"To download the required HEF files, run:\n"
+            f"  python3 {download_script} --hw-arch {hw_arch}"
+        )
     return hef_path
 
 
@@ -113,9 +118,14 @@ def main():
     """
     # Get command line arguments
     args = get_args()
+    
+    # Resolve architecture (auto-detect if not specified)
+    args.arch = resolve_arch(args.arch)
+    args.hw_arch = args.arch
 
     variant = args.variant
     print(f"Selected variant: Whisper {variant}")
+    print(f"Using hardware architecture: {args.arch}")
     encoder_path = get_hef_path(variant, args.arch, "encoder")
     decoder_path = get_hef_path(variant, args.arch, "decoder")
 

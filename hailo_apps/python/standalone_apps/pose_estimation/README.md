@@ -28,6 +28,21 @@ This example only supports pose estimation networks that allow HailoRT-Postproce
 - yolov8m_pose
 - yolov8s_pose
 
+Direct usage within the repository:
+-----
+```bash
+cd ~/hailo_apps/python/standalone_apps/pose_estimation
+python pose_estimation.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo_apps/python/standalone_apps/pose_estimation
+python pose_estimation.py --help
+```
+
+Standalone Usage
+-----
 
 Usage
 -----
