@@ -20,11 +20,7 @@ The CLIP application demonstrates zero-shot learning capabilities by matching vi
 This application requires additional Python dependencies for CLIP:
 
 ```bash
-# Install PyTorch (CPU version)
-pip install torch torchvision
-
-# Install CLIP
-pip install git+https://github.com/openai/CLIP.git
+pip install -e ".[clip]"
 ```
 
 ## Usage Examples

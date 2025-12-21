@@ -1154,6 +1154,8 @@ run_post_install() {
         return 1
     fi
 
+    log_info "Continue running Post-Installation steps..."
+
     # Run post-install
     disable_error_trap
     local post_install_output
