@@ -10,8 +10,6 @@
 #       * HailoRT driver deb
 #       * HailoRT deb
 #       * Tapas core deb
-#       * HailoRT Python bindings whl
-#       * Tapas core Python bindings whl
 #
 # The deb server is hosted at: http://dev-public.hailo.ai/
 # Owner: Sergii Tishchenko
@@ -111,6 +109,23 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
+# Validate that hardware architecture is specified
+if [[ -z "$HW_ARCHITECTURE" ]]; then
+    echo "Error: --hw-arch must be specified (hailo8 or hailo10h)"
+    echo
+    usage
+    exit 1
+fi
+
+# Ensure versions are set (either from --hw-arch or manually via --hailort-version/--tappas-core-version)
+if [[ -z "$HAILORT_VERSION" ]]; then
+    echo "Error: HailoRT version is not set. Either specify --hw-arch or --hailort-version"
+    exit 1
+fi
+if [[ -z "$TAPPAS_CORE_VERSION" ]]; then
+    echo "Error: TAPPAS Core version is not set. Either specify --hw-arch or --tappas-core-version"
+    exit 1
+fi
 
 TARGET_DIR="${OUTPUT_DIR_BASE}/${HW_ARCHITECTURE}"
 mkdir -p "$TARGET_DIR"
@@ -150,15 +165,7 @@ install_file() {
 
   echo "Installing $file..."
   if [[ "$file" == *.deb ]]; then
-    sudo dpkg -i "$path"
-  elif [[ "$file" == *.whl ]]; then
-    if python3 -c "import site; import os; print(os.access(site.getsitepackages()[0], os.W_OK))" 2>/dev/null | grep -q "True"; then
-      echo "Installing system-wide (writable site-packages)"
-      python3 -m pip install "$path" --break-system-packages
-    else
-      echo "Installing with --user flag (user site-packages)"
-      python3 -m pip install "$path" --user --break-system-packages
-    fi
+    sudo apt install -y "$path"
   else
     echo "Unknown file type: $file"
   fi
@@ -232,7 +239,6 @@ else
     fi
   fi
 fi
-echo "Using wheel tag: $PY_TAG"
 
 if [[ "$DOWNLOAD_ONLY" != "true" ]]; then
   KERNEL_VERSION="$(uname -r)"
@@ -256,7 +262,6 @@ fi
 # -------- Build file lists --------
 common_files=(
   "hailort-pcie-driver_${HAILORT_VERSION}_all.deb"
-  "hailo_tappas_core_python_binding-${TAPPAS_CORE_VERSION}-py3-none-any.whl"
 )
 
 ARCH_FILES=()
@@ -280,13 +285,11 @@ case "$ARCH" in
       ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_amd64.deb")
       echo "Using generic AMD64 package (no Ubuntu detection)"
     fi
-    ARCH_FILES+=("hailort-${HAILORT_VERSION}-${PY_TAG}-linux_x86_64.whl")
     ;;
   aarch64|arm64)
     echo "Configuring ARM64 package names..."
     ARCH_FILES+=("hailort_${HAILORT_VERSION}_arm64.deb")
     ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_arm64.deb")
-    ARCH_FILES+=("hailort-${HAILORT_VERSION}-${PY_TAG}-linux_aarch64.whl")
     ;;
   rpi)
     echo "Configuring rpi  package names..."
@@ -297,7 +300,6 @@ case "$ARCH" in
     else
       ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_arm64.deb")
     fi
-    ARCH_FILES+=("hailort-${HAILORT_VERSION}-${PY_TAG}-linux_aarch64.whl")
     ;;
   *)
     echo "Unsupported architecture: $ARCH"
@@ -341,7 +343,5 @@ echo "Starting installation..."
 install_file "${common_files[0]}"       # PCIe driver
 install_file "${ARCH_FILES[0]}"         # HailoRT deb
 install_file "${ARCH_FILES[1]}"         # Tappas Core deb
-install_file "${common_files[1]}"       # Tappas Core Python bindings (any)
-install_file "${ARCH_FILES[2]}"         # HailoRT wheel
 
 echo "Installation complete."

@@ -331,7 +331,7 @@ log "→ Download dir writable?  = $([[ -w "$(dirname "$DOWNLOAD_DIR")" || -w "$
 log "────────────────────────────────────────────────────────────────"
 log ""
 
-log "→ BASE_URL            = $BASE_URL" 
+log "→ BASE_URL            = $BASE_URL"
 log "→ ARCH preset         = $HW_ARCHITECTURE"
 log "→ Python tag          = $PY_TAG"
 log "→ Wheel arch tag      = $ARCH_TAG"
@@ -345,7 +345,7 @@ log "→ Dry-run mode?       = $DRY_RUN"
 fetch() {
   local url="$1"
   local out="$2"
-  
+
   if [[ "$DRY_RUN" == true ]]; then
     if [[ -f "$out" ]]; then
       log "  [DRY-RUN] Would skip (already exists): $(basename "$out")"
@@ -355,7 +355,7 @@ fetch() {
     fi
     return 0
   fi
-  
+
   if [[ -f "$out" ]]; then
     log "  - Exists: $(basename "$out")"
     return 0
@@ -484,11 +484,11 @@ verify_installation() {
   local package_name="$1"
   local expected_version="$2"
   local display_name="$3"
-  
+
   # Try to get the installed version
   local installed_version
   installed_version=$(python3 -m pip show "$package_name" 2>/dev/null | grep "^Version:" | awk '{print $2}')
-  
+
   if [[ -z "$installed_version" ]]; then
     log "  ❌ $display_name: NOT INSTALLED"
     return 1
@@ -504,7 +504,7 @@ verify_installation() {
 verify_wheel_file() {
   local wheel_path="$1"
   local display_name="$2"
-  
+
   if [[ -f "$wheel_path" ]]; then
     local file_size
     file_size=$(stat -c%s "$wheel_path" 2>/dev/null || stat -f%z "$wheel_path" 2>/dev/null || echo "unknown")
@@ -526,9 +526,9 @@ else
   log "────────────────────────────────────────────────────────────────"
   log "  Verification"
   log "────────────────────────────────────────────────────────────────"
-  
+
   VERIFICATION_FAILED=false
-  
+
   # Verify downloaded wheel files exist
   log "→ Checking downloaded wheel files:"
   if [[ "$INSTALL_HAILORT" == true ]]; then
@@ -541,7 +541,7 @@ else
       VERIFICATION_FAILED=true
     fi
   fi
-  
+
   # Verify installed packages (only if not download-only)
   if [[ "$DOWNLOAD_ONLY" != true ]]; then
     log ""
@@ -558,19 +558,17 @@ else
         verify_installation "hailo_tappas_core_python_binding" "$TAPPAS_CORE_VERSION" "TAPPAS Core" || VERIFICATION_FAILED=true
       fi
     fi
-    
+
     # Show where packages are installed
     log ""
     log "→ Installation locations:"
     if [[ "$INSTALL_HAILORT" == true ]]; then
-      local hailort_location
       hailort_location=$(python3 -m pip show hailort 2>/dev/null | grep "^Location:" | awk '{print $2}')
       if [[ -n "$hailort_location" ]]; then
         log "  HailoRT: $hailort_location"
       fi
     fi
     if [[ "$INSTALL_TAPPAS" == true ]]; then
-      local tappas_location
       tappas_location=$(python3 -m pip show hailo-tappas-core-python-binding 2>/dev/null | grep "^Location:" | awk '{print $2}')
       if [[ -z "$tappas_location" ]]; then
         tappas_location=$(python3 -m pip show hailo_tappas_core_python_binding 2>/dev/null | grep "^Location:" | awk '{print $2}')
@@ -580,10 +578,10 @@ else
       fi
     fi
   fi
-  
+
   log "────────────────────────────────────────────────────────────────"
   log ""
-  
+
   if [[ "$VERIFICATION_FAILED" == true ]]; then
     log "⚠️  Installation completed with warnings - some verifications failed"
   else
