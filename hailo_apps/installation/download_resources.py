@@ -127,6 +127,23 @@ def is_valid_model_entry(entry) -> bool:
     return False
 
 
+def test_url(url: str) -> bool:
+    """Test if a URL is reachable and valid."""
+    try:
+        request = urllib.request.Request(url, method='HEAD')
+        with urllib.request.urlopen(request, timeout=30) as response:
+            print(f"✓ URL valid: {url}")
+            print(f"  Status: {response.status}")
+            print(f"  Size: {response.headers.get('Content-Length', 'unknown')} bytes")
+            return True
+    except urllib.error.HTTPError as e:
+        print(f"✗ HTTP Error {e.code}: {url}")
+        return False
+    except urllib.error.URLError as e:
+        print(f"✗ URL Error: {e.reason} - {url}")
+        return False
+
+
 def map_arch_to_config_key(hailo_arch: str) -> str:
     """Map Hailo architecture to config key (H8 or H10)."""
     if hailo_arch in (HAILO8_ARCH, HAILO8L_ARCH):
@@ -154,8 +171,6 @@ def map_arch_to_s3_path(hailo_arch: str) -> str:
 def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
     """Get Model Zoo version and download architecture for a given Hailo architecture."""
     download_arch = hailo_arch
-    if hailo_arch == HAILO10H_ARCH:
-        download_arch = "hailo15h"
     
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
     
@@ -184,6 +199,11 @@ def is_gen_ai_source(source: str) -> bool:
     """Check if the source is a gen-ai model source."""
     return source == "gen-ai-mz"
 
+def _ensure_hef_filename(name: str) -> str:
+    """Return a .hef filename for a model name."""
+    if name.endswith(HAILO_FILE_EXTENSION):
+        return name
+    return f"{name}{HAILO_FILE_EXTENSION}"
 
 # =============================================================================
 # Progress Display
@@ -431,13 +451,23 @@ class ResourceDownloader:
         # Build URL based on source
         if source == "s3":
             s3_arch = map_arch_to_s3_path(self.hailo_arch)
+            url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
+            if test_url(url=url):
+                return url
             return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
         elif source == "mz":
             return f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
         elif source == "gen-ai-mz":
-            # Gen-AI models require explicit URL
-            hailo_logger.warning(f"Gen-AI model '{name}' requires explicit URL in config")
-            return None
+            # Gen-AI models default to metadata-driven URL construction:
+            #   {gen_ai_base}/{version}/blob/{model}.hef
+            gen_ai_base = (
+                self.config.get("metadata", {})
+                .get("s3_endpoints", {})
+                .get("gen_ai_mz", "https://dev-public.hailo.ai")
+            )
+            gen_ai_version = "v5.1.1"
+            
+            return f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
         else:
             hailo_logger.warning(f"Unknown source '{source}' for model '{name}'")
             return None

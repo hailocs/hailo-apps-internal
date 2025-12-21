@@ -47,14 +47,14 @@ valid_versions:
 model_zoo_mapping:
   hailo8: "v2.17.0"
   hailo8l: "v2.17.0"
-  hailo10h: "v5.1.1"
+  hailo10h: "v5.1.0"
 
 # Valid Model Zoo versions by architecture family
 valid_model_zoo_versions:
   h8:   # Applies to hailo8 and hailo8l
     - "v2.17.0"
   h10:  # Applies to hailo10h
-    - "v5.1.1"
+    - "v5.1.0"
 
 #-------------------------------------------------------------------------------
 # Virtual Environment
