@@ -17,9 +17,60 @@ Ensure your system matches the following requirements before proceeding:
   ```
 - **Python 3.10 or 3.11** installed.
 
+## Before running the app
 
+- Make sure you have a microphone connected to your system. If you have multiple microphones connected, please make sure the proper one is selected in the system configuration, and that the input volume is set to a medium/high level.  
+  A good quality microphone (or a USB camera) is suggested to acquire the audio.
+- The application allows the user to acquire and process an audio sample up to 5 seconds long. The duration can be modified in the application code.
+- The current pipeline supports **English language only**.
 
-## Installation - Inference only
+## Usage
+
+### Standalone Usage (within hailo-apps-infra repository)
+
+Before running, install the required dependencies:
+
+```bash
+pip install -e ".[speech-rec]"
+```
+
+This will install:
+- `transformers==4.50.1`
+- `sounddevice==0.5.1`
+- `torch==2.6.0`
+- `streamlit`
+
+In addition, download resources:
+
+```bash
+python3 ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app/download_resources.py --hw-arch <hailo device type>
+```
+
+Direct usage within the repository:
+
+```bash
+cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
+python3 app_hailo_whisper.py
+```
+
+To see all possible arguments:
+```bash
+cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
+python3 app_hailo_whisper.py --help
+```
+
+The app uses Hailo-8 models as default. If you have an Hailo-8L device, run the following command instead:
+```bash
+python3 app_hailo_whisper.py --hw-arch hailo8l
+```
+
+If you want to select a specific Whisper model, use the *--variant* argument:
+```bash
+python3 app_hailo_whisper.py --variant base
+python3 app_hailo_whisper.py --variant tiny
+```
+
+### Inference only - Installation
 
 Follow these steps to set up the environment and install dependencies for inference:
 
@@ -50,54 +101,7 @@ Follow these steps to set up the environment and install dependencies for infere
    The PyHailoRT version must match the installed HailoRT version.
    **_NOTE:_** This step is not necessary for Raspberry Pi 5 users who installed the *hailo-all* package, since the *venv* will inherit the system package.
 
-## Before running the app
-
-- Make sure you have a microphone connected to your system. If you have multiple microphones connected, please make sure the proper one is selected in the system configuration, and that the input volume is set to a medium/high level.  
-  A good quality microphone (or a USB camera) is suggested to acquire the audio.
-- The application allows the user to acquire and process an audio sample up to 5 seconds long. The duration can be modified in the application code.
-- The current pipeline supports **English language only**.
-
-## Usage
-
-### Standalone Usage (within hailo-apps-infra repository)
-
-Before running, install the required dependencies:
-
-```bash
-pip install -e ".[speech-rec]"
-```
-
-This will install:
-- `transformers==4.50.1`
-- `sounddevice==0.5.1`
-- `torch==2.6.0`
-- `streamlit`
-
-Direct usage within the repository:
-
-```bash
-cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
-python3 app_hailo_whisper.py
-```
-
-To see all possible arguments:
-```bash
-cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
-python3 app_hailo_whisper.py --help
-```
-
-The app uses Hailo-8 models as default. If you have an Hailo-8L device, run the following command instead:
-```bash
-python3 app_hailo_whisper.py --hw-arch hailo8l
-```
-
-If you want to select a specific Whisper model, use the *--variant* argument:
-```bash
-python3 app_hailo_whisper.py --variant base
-python3 app_hailo_whisper.py --variant tiny
-```
-
-### Usage from CLI (legacy installation)
+### Usage from CLI (installation above)
 1. Activate the virtual environment from the repository root folder:
 
    ```sh
@@ -116,7 +120,6 @@ python3 app_hailo_whisper.py --variant tiny
    python3 -m app.app_hailo_whisper --variant base
    python3 -m app.app_hailo_whisper --variant tiny
    ```
-   
 
 ### Command line arguments
 Use the `python3 -m app.app_hailo_whisper --help` command to print the helper.
