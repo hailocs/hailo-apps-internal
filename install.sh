@@ -1154,26 +1154,26 @@ run_post_install() {
         return 1
     fi
 
-    # Run post-install
+    log_info "Continue running Post-Installation steps..."
+
+    # Run post-install with real-time output
     disable_error_trap
-    local post_install_output
     local post_install_exit=0
 
-    post_install_output=$(run_as_user bash -c "
+    # Use process substitution to print output in real-time while capturing exit code
+    run_as_user bash -c "
         source '${venv_activate}' && \
         cd '${SCRIPT_DIR}' && \
         hailo-post-install ${post_install_args} 2>&1
-    ") || post_install_exit=$?
+    " | while IFS= read -r line; do
+        log_debug "  $line"
+        echo "$line"
+    done
+    
+    # Capture the exit code from the pipe
+    post_install_exit=${PIPESTATUS[0]}
 
     enable_error_trap
-
-    # Log output
-    if [[ -n "$post_install_output" ]]; then
-        while IFS= read -r line; do
-            log_debug "  $line"
-            echo "$line"
-        done <<< "$post_install_output"
-    fi
 
     if [[ $post_install_exit -ne 0 ]]; then
         log_error "Post-installation failed (exit code: ${post_install_exit})"
