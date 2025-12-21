@@ -55,13 +55,13 @@ class GStreamerPaddleOCRApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
         if parser is None:
             parser = get_pipeline_parser()
-        
+
         # Configure --hef-path for multi-model support (OCR detection + OCR recognition)
         configure_multi_model_hef_path(parser)
-        
+
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, PADDLE_OCR_PIPELINE)
-        
+
         hailo_logger.info("Initializing GStreamer OCR App...")
 
         # Call the parent class constructor
@@ -83,18 +83,18 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         if self.batch_size == 1:
             self.batch_size = 2
             hailo_logger.info("OCR pipeline: Using batch_size=2 for detection")
-        
+
         # Recognition batch size - set to 2 for better responsiveness
         # batch_size=2 processes faster and reduces lag
         self.recognition_batch_size = 2
-        hailo_logger.info("OCR pipeline: Using batch_size=%d for recognition (will batch up to %d cropped regions)", 
+        hailo_logger.info("OCR pipeline: Using batch_size=%d for recognition (will batch up to %d cropped regions)",
                          self.recognition_batch_size, self.recognition_batch_size)
-        
+
         # Set frame rate to 15 FPS for better performance and reduced processing load
         if self.frame_rate > 15:
             self.frame_rate = 15
             hailo_logger.info("OCR pipeline: Frame rate set to %d FPS", self.frame_rate)
-        
+
         # Architecture is already handled by GStreamerApp parent class
         # Use self.arch which is set by parent
 
@@ -145,7 +145,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         ocr_config_name = "ocr_config.json"
         ocr_config_path = Path(REPO_ROOT) / "local_resources" / ocr_config_name
         self.ocr_config_path = str(ocr_config_path) if ocr_config_path.exists() else None
-        
+
         if not ocr_config_path.exists():
             hailo_logger.warning("OCR config file not found at: %s", ocr_config_path)
 
@@ -178,6 +178,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
             video_height=self.video_height,
             frame_rate=self.frame_rate,
             sync=self.sync,
+            mirror_image=False,
         )
 
         # 2. OCR Detection pipeline - detects text regions (bounding boxes)
@@ -188,7 +189,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
             batch_size=self.batch_size,
             name="ocr_detection",
         )
-        
+
         # Wrap detection to preserve original frame size
         ocr_det_wrapper = INFERENCE_PIPELINE_WRAPPER(ocr_det_pipeline)
 
@@ -196,7 +197,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         # Reduced keep_lost_frames and keep_tracked_frames to remove stale tracks faster
         # This prevents boxes from persisting after text disappears
         tracker_pipeline = TRACKER_PIPELINE(
-            class_id=-1, 
+            class_id=-1,
             name="ocr_tracker",
             keep_lost_frames=1,  # Remove lost tracks after 1 frame (faster cleanup)
             keep_tracked_frames=5,  # Consider tracked instances lost after 5 frames without match (was 15)
@@ -254,7 +255,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
             f"{QUEUE(name='ocr_display_input_q', max_size_buffers=10, leaky='downstream')} ! "
             f"{display_pipeline}"
         )
-        
+
         return pipeline_string
 
 

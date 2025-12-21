@@ -160,6 +160,11 @@ class HardwarePWMServo(ServoInterface):
 
         For angle range -90 to 90, we map to 2.5% to 12.5% duty cycle.
 
+        Direction mapping (inverted to match simulator):
+        - +90° = 2.5% duty cycle (LEFT)
+        - 0° = 7.5% duty cycle (CENTER)
+        - -90° = 12.5% duty cycle (RIGHT)
+
         Args:
             angle: Angle in degrees
 
@@ -169,13 +174,18 @@ class HardwarePWMServo(ServoInterface):
         # Clamp angle to valid range
         clamped_angle = max(self.min_angle, min(self.max_angle, angle))
 
-        # Map angle range to duty cycle range (2.5% to 12.5%)
-        # Standard mapping: -90° = 2.5%, 0° = 7.5%, +90° = 12.5%
+        # Invert angle to match simulator direction: -90° = LEFT, 0° = UP, +90° = RIGHT
+        inverted_angle = -clamped_angle
+
+        # Map inverted angle range to duty cycle range (2.5% to 12.5%)
+        # After inversion: +90° = 2.5%, 0° = 7.5%, -90° = 12.5%
         if self.max_angle == self.min_angle:
             return 7.5  # Center position
 
-        # Linear interpolation: duty = 2.5 + (angle - min) / (max - min) * 10.0
-        normalized = (clamped_angle - self.min_angle) / (self.max_angle - self.min_angle)
+        # Linear interpolation with inverted angle
+        # Use same formula but with inverted_angle: normalized = (inverted_angle - min) / (max - min)
+        # Since inverted_angle range is [-max_angle, -min_angle], we use -max_angle as min and -min_angle as max
+        normalized = (inverted_angle - (-self.max_angle)) / ((-self.min_angle) - (-self.max_angle))
         duty_cycle = 2.5 + normalized * 10.0
 
         return duty_cycle

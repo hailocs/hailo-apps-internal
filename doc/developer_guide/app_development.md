@@ -56,7 +56,7 @@ See our [GstShark Debugging Guide](debugging_with_gst_shark.md) for installation
 ### Level 3: Hailo Apps Python Layer
 This layer is developed in this repository to simplify the process of building and running applications on top of the GStreamer and TAPPAS foundation. It consists of three main components:
 *   **The Application Runner (`gstreamer_app.py`)**: This component features the `GStreamerApp` class, which serves as the core engine of the application. It is responsible for managing the pipeline's lifecycle, handling bus messages (such as errors or End-Of-Stream), and integrating your Python callback functions.
-*   **The Pipeline Factory (`gstreamer_helper_pipelines.py`)**: This module provides a set of Python functions that facilitate the creation of GStreamer pipeline strings in a modular and easily understandable manner.
+*   **The Pipeline Factory (`gstreamer_helper_pipelines.py`)**: This module provides a set of Python functions that facilitate the creation of GStreamer pipeline strings in a modular and easily understandable manner. For a comprehensive reference of all available helper functions, see the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md).
 *   **Hailo Pipelines**: These are pre-configured, ready-to-use AI pipelines that leverage the helper functions from the factory to form complete, executable applications for common scenarios like object detection or pose estimation. You can connect to their outputs with a simple callback, allowing you to easily integrate custom logic or processing steps.
 For example, `hailo_apps/python/pipeline_apps/detection/detection_pipeline.py`.
 
@@ -268,6 +268,8 @@ if __name__ == "__main__":
 ```
 You have full control to reorder, remove, or add new GStreamer elements in the string returned by `get_pipeline_string` to create your desired data flow.
 
+> **Note**: For detailed information about all available helper functions and their parameters, see the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md).
+
 ### Common Architectural Patterns
 The following patterns are examples for commonly used pipeline architectures. Most common patterns are already implemented in the GStreamerHelperPipelines.
 It is highly recommended to use the helper functions to build your pipeline, but you can also build your own pipeline string from scratch.
@@ -281,7 +283,7 @@ flowchart LR
 ```
 A high level code example for building this pipeline using the helper functions:
 ```python
-from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
 )
 
@@ -291,6 +293,8 @@ pipeline_string = (
     f"{DISPLAY_PIPELINE()}"
 )
 ```
+
+> **See also**: For complete examples and detailed function documentation, refer to the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md#complete-pipeline-examples).
 
 #### 2. Wrapped Inference for Resolution Preservation
 **Use case:** Run inference on a scaled-down version of the video for performance, but display the original high-res video with overlays.
@@ -310,7 +314,7 @@ flowchart LR
 
 A high level code example for building this pipeline using the helper functions:
 ```python
-from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE, INFERENCE_PIPELINE, INFERENCE_PIPELINE_WRAPPER, DISPLAY_PIPELINE
 )
 
@@ -322,6 +326,8 @@ pipeline_string = (
     f"{DISPLAY_PIPELINE()}"
 )
 ```
+
+> **See also**: For detailed documentation on `INFERENCE_PIPELINE_WRAPPER`, see the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md#inference-pipeline-functions).
 
 
 #### 3. Cascaded Networks Pipeline
@@ -344,7 +350,7 @@ A high level code example for building this pipeline using the helper functions.
 Note that the `CROPPER_PIPELINE` is a helper function that is used to crop the detections from the first network and pass them to the second network. You can control the cropper by passing a custom C++ function to it.
 
 ```python
-from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE, INFERENCE_PIPELINE, CROPPER_PIPELINE, DISPLAY_PIPELINE
 )
 
@@ -356,6 +362,8 @@ pipeline_string = (
     f"{first_infer} ! {cropper} ! {DISPLAY_PIPELINE()}"
 )
 ```
+
+> **See also**: For detailed documentation on `CROPPER_PIPELINE` and its parameters, see the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md#cropping-and-tiling-functions).
 
 #### 4. Parallel Networks Pipeline
 **Use case:** Run multiple models in parallel on the same input stream and combine their results.
@@ -371,7 +379,7 @@ flowchart TD
 A high level code example for building this pipeline using the helper functions.
 
 ```python
-from hailo_apps.hailo_gstreamer.gstreamer_helper_pipelines import (
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
 )
 
@@ -382,14 +390,14 @@ pipeline_string = (
     f"m. ! {DISPLAY_PIPELINE()}"
 )
 ```
+
 #### 5. Tiled Inference Pipeline
 **Use case:** Split a high-res frame into tiles, run inference on each, and aggregate results for display.
-Gstreamer helper functions and examples will be added soon.
 
 ```mermaid
 flowchart LR
     A[Source] --> C
-    subgraph INFERENCE_PIPELINE_WRAP
+    subgraph TILE_CROPPER_PIPELINE
         C[hailotilecropper]
         C -- Tile --> I[Inner Pipeline]
         C -- Original Frame --> Q[Queue]
@@ -398,6 +406,29 @@ flowchart LR
     end
     AGG -- Original Frame with AI Metadata --> F[hailooverlay] --> G[Display]
 ```
+
+A high level code example for building this pipeline using the helper functions:
+
+```python
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
+    SOURCE_PIPELINE, INFERENCE_PIPELINE, TILE_CROPPER_PIPELINE, DISPLAY_PIPELINE
+)
+
+tile_inference = INFERENCE_PIPELINE(hef_path='model.hef', post_process_so='post.so')
+tile_cropper = TILE_CROPPER_PIPELINE(
+    inner_pipeline=tile_inference,
+    tiles_along_x_axis=4,
+    tiles_along_y_axis=3,
+    overlap_x_axis=0.1
+)
+pipeline_string = (
+    f"{SOURCE_PIPELINE(video_source='input.mp4')} ! "
+    f"{tile_cropper} ! {DISPLAY_PIPELINE()}"
+)
+```
+
+> **See also**: For detailed documentation on `TILE_CROPPER_PIPELINE` and its parameters, see the [GStreamer Helper Pipelines Reference](./gstreamer_helper_pipelines.md#tile_cropper_pipeline).
+
 ## Additional Topics
 ### Retraining your own models
 See [Retraining your own models](retraining_example.md) for more information.

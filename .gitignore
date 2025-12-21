@@ -24,6 +24,9 @@ local_resources/piper_models/*.onnx.json
 *.mp3
 *.ogg
 
+# User-specific audio device preferences
+local_resources/audio_device_preferences.json
+
 # Packages and dependencies
 *.egg-info/
 

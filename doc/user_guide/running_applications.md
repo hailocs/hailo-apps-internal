@@ -15,30 +15,30 @@ source setup_env.sh
 
 The following applications are available as command-line tools. Each one is a self-contained GStreamer pipeline that can be launched with a simple command.
 
-| CLI Command           | Application             | Description                                                                                                                                                       |
-| --------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hailo-detect-simple` | [Simple Object Detection](../../hailo_apps/python/pipeline_apps/detection_simple/README.md) | A lightweight version focused on demonstrating raw Hailo performance with minimal CPU overhead. It uses a YOLOv6-Nano model and does not include object tracking. |
-| `hailo-detect`        | [Full Object Detection](../../hailo_apps/python/pipeline_apps/detection/README.md)   | A comprehensive detection application featuring object tracking and support for multiple video resolutions.                                                       |
-| `hailo-pose`          | [Pose Estimation](../../hailo_apps/python/pipeline_apps/pose_estimation/README.md)         | Detects human pose keypoints (e.g., joints and limbs) in real-time.                                                                                               |
-| `hailo-seg`           | [Instance Segmentation](../../hailo_apps/python/pipeline_apps/instance_segmentation/README.md)   | Provides pixel-level masks for each detected object, distinguishing different instances from one another.                                                         |
-| `hailo-depth`         | [Depth Estimation](../../hailo_apps/python/pipeline_apps/depth/README.md)        | Estimates the depth of a scene from a single 2D camera input.                                                                                                     |
-| `hailo-face-recon`    | [Face Recognition](../../hailo_apps/python/pipeline_apps/face_recognition/README.md)        | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA. |
-| `hailo-tiling`        | [Tiling](../../hailo_apps/python/pipeline_apps/tiling/README.md)        | Single & multi-scale tiling splitting each frame into several tiles, effective for small objects in high-resolution frames. |
-| `hailo-multisource`   | [Multisource](../../hailo_apps/python/pipeline_apps/multisource/README.md)        | Demonstrating parallel processing on multiple streams from a combination of various inputs (USB cameras, files, RTSP, etc.). |
-| `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)        | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA. |
-| `hailo-clip`          | [CLIP Zero-shot](../../hailo_apps/python/pipeline_apps/clip/README.md)        | Zero-shot image classification using CLIP-style embeddings for flexible label sets. |
-| `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)        | Text detection and recognition using PaddleOCR models. |
+| CLI Command           | Application                                                                                    | Description                                                                                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hailo-detect-simple` | [Simple Object Detection](../../hailo_apps/python/pipeline_apps/detection_simple/README.md)    | A lightweight version focused on demonstrating raw Hailo performance with minimal CPU overhead. It uses a YOLOv6-Nano model and does not include object tracking. |
+| `hailo-detect`        | [Full Object Detection](../../hailo_apps/python/pipeline_apps/detection/README.md)             | A comprehensive detection application featuring object tracking and support for multiple video resolutions.                                                       |
+| `hailo-pose`          | [Pose Estimation](../../hailo_apps/python/pipeline_apps/pose_estimation/README.md)             | Detects human pose keypoints (e.g., joints and limbs) in real-time.                                                                                               |
+| `hailo-seg`           | [Instance Segmentation](../../hailo_apps/python/pipeline_apps/instance_segmentation/README.md) | Provides pixel-level masks for each detected object, distinguishing different instances from one another.                                                         |
+| `hailo-depth`         | [Depth Estimation](../../hailo_apps/python/pipeline_apps/depth/README.md)                      | Estimates the depth of a scene from a single 2D camera input.                                                                                                     |
+| `hailo-face-recon`    | [Face Recognition](../../hailo_apps/python/pipeline_apps/face_recognition/README.md)           | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA.                                            |
+| `hailo-tiling`        | [Tiling](../../hailo_apps/python/pipeline_apps/tiling/README.md)                               | Single & multi-scale tiling splitting each frame into several tiles, effective for small objects in high-resolution frames.                                       |
+| `hailo-multisource`   | [Multisource](../../hailo_apps/python/pipeline_apps/multisource/README.md)                     | Demonstrating parallel processing on multiple streams from a combination of various inputs (USB cameras, files, RTSP, etc.).                                      |
+| `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)           | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.              |
+| `hailo-clip`          | [CLIP Zero-shot](../../hailo_apps/python/pipeline_apps/clip/README.md)                         | Zero-shot image classification using CLIP-style embeddings for flexible label sets.                                                                               |
+| `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)                        | Text detection and recognition using PaddleOCR models. This application is currently in BETA.                                                                     |
 
 ### GenAI Standalone Applications
 
 These standalone GenAI applications are located in `hailo_apps/python/gen_ai_apps/` and can be run directly as Python scripts.
 
-| Application             | Description                                                                                                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md) | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
-| [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md) | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech. |
-| [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md) | Vision-Language Model chat application combining vision and language understanding. |
-| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md) | Hailo Whisper-based speech recognition application with GUI. |
+| Application                                                                                | Description                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)   | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
+| [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)           | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech.                                                                            |
+| [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)                         | Vision-Language Model chat application combining vision and language understanding.                                                                                       |
+| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md) | Hailo Whisper-based speech recognition application with GUI.                                                                                                              |
 
 **Simple Example Applications:** The `gen_ai_apps/` directory contains additional simple examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for more details.
 
@@ -46,14 +46,14 @@ These standalone GenAI applications are located in `hailo_apps/python/gen_ai_app
 
 In addition to the pipeline and GenAI applications above, this repository includes other standalone Python applications for computer vision use cases. These applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
 
-| Application             | Description                                                                                                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application                                                                                      | Description                                                              |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
 | [Instance Segmentation](../../hailo_apps/python/standalone_apps/instance_segmentation/README.md) | Standalone example of instance segmentation with custom post-processing. |
-| [Lane Detection](../../hailo_apps/python/standalone_apps/lane_detection/README.md) | Lane detection application for automotive use cases. |
-| [Object Detection](../../hailo_apps/python/standalone_apps/object_detection/README.md) | Standalone object detection example with custom post-processing. |
-| [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md) | Standalone text detection and recognition using PaddleOCR models. |
-| [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md) | Standalone pose estimation example with custom visualization. |
-| [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md) | Image super-resolution for enhancing image quality. |
+| [Lane Detection](../../hailo_apps/python/standalone_apps/lane_detection/README.md)               | Lane detection application for automotive use cases.                     |
+| [Object Detection](../../hailo_apps/python/standalone_apps/object_detection/README.md)           | Standalone object detection example with custom post-processing.         |
+| [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md)                        | Standalone text detection and recognition using PaddleOCR models.        |
+| [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
+| [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 

@@ -339,16 +339,22 @@ To use the RGB LED tool with real hardware on a Raspberry Pi 5:
 
 To use the servo tool with real hardware on a Raspberry Pi:
 
-1. **Enable Hardware PWM**:
+1. **Install the library**:
+   ```bash
+   pip install rpi-hardware-pwm
+   ```
+
+2. **Enable Hardware PWM**:
    Edit `/boot/firmware/config.txt`:
    ```bash
    sudo nano /boot/firmware/config.txt
    ```
 
-   **Disable onboard audio** (if present): The Raspberry Pi's analog audio uses the same PWM channels as hardware PWM, so you need to disable it. Look for this line and comment it out:
+   **Disable onboard audio** (may be required on some models): On older Raspberry Pi models, the analog audio may conflict with hardware PWM channels. If you encounter issues with PWM initialization, try disabling audio by commenting out this line (if present):
    ```
    # dtparam=audio=on
    ```
+   **Note**: On Raspberry Pi 5 and some newer models, PWM and audio can typically coexist, so this step may not be necessary. Try enabling PWM first; only disable audio if you encounter conflicts.
 
    **Add the PWM overlay**: Add the following line at the **bottom** of the config file:
    ```
@@ -380,11 +386,6 @@ To use the servo tool with real hardware on a Raspberry Pi:
    18: a3 pd | lo // PIN12/GPIO18 = PWM0_CHAN2
    ```
    If the overlay loaded correctly, the output should show a function other than `input` or `output` (like `PWM0_CHAN2` in the example above).
-
-2. **Install the library**:
-   ```bash
-   pip install rpi-hardware-pwm
-   ```
 
 3. **Wiring**: Connect the servo motor to the Raspberry Pi:
    - **Control Signal (Orange/Yellow wire)**:
@@ -427,6 +428,6 @@ To use the servo tool with real hardware on a Raspberry Pi:
   - Hardware PWM should eliminate jitter - if jitter persists, check power supply and wiring
 
 ## References
-- **[AGENTS.md](./AGENTS.md)** - Detailed developer documentation and architecture guide
+
 - **Qwen 2.5 Coder Tool Calling** - Colab notebook with hands-on walkthrough ([link](https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/Qwen2.5_Coder_(1.5B)-Tool_Calling.ipynb))
 - **OpenAI Function Calling Guide** - Official reference on defining functions ([link](https://platform.openai.com/docs/guides/function-calling?api-mode=chat#defining-functions))

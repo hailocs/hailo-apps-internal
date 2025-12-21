@@ -66,6 +66,7 @@ def SOURCE_PIPELINE(
     frame_rate=30,
     sync=True,
     video_format="RGB",
+    mirror_image=True,
 ):
     """Creates a GStreamer pipeline string for the video source with a separate fps caps
     for frame rate control.
@@ -76,11 +77,15 @@ def SOURCE_PIPELINE(
         video_height (int, optional): The height of the video. Defaults to 640.
         video_format (str, optional): The video format. Defaults to 'RGB'.
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'source'.
+        mirror_image (bool, optional): Whether to horizontally mirror the image (for camera sources). Defaults to True.
 
     Returns:
         str: A string representing the GStreamer pipeline for the video source.
     """
     source_type = get_source_type(video_source)
+
+    # Build videoflip element string conditionally
+    videoflip_str = f'videoflip name=videoflip_{name} video-direction=horiz ! ' if mirror_image else ''
 
     if source_type == "usb":
         if no_webcam_compression:
@@ -88,7 +93,7 @@ def SOURCE_PIPELINE(
             source_element = (
                 f'v4l2src device={video_source} name={name} ! '
                 f'video/x-raw, width=640, height=480 ! '
-                f'videoflip name=videoflip_{name} video-direction=horiz ! '
+                f'{videoflip_str}'
             )
         else:
             # Use compressed format for webcam
@@ -97,12 +102,13 @@ def SOURCE_PIPELINE(
                 f'v4l2src device={video_source} name={name} ! image/jpeg, framerate=30/1, width={width}, height={height} ! '
                 f'{QUEUE(name=f"{name}_queue_decode")} ! '
                 f'decodebin name={name}_decodebin ! '
-                f'videoflip name=videoflip_{name} video-direction=horiz ! '
+                f'{videoflip_str}'
             )
     elif source_type == "rpi":
+        rpi_videoflip_str = "videoflip name=videoflip video-direction=horiz ! " if mirror_image else ""
         source_element = (
             f"appsrc name=app_source is-live=true leaky-type=downstream max-buffers=3 ! "
-            "videoflip name=videoflip video-direction=horiz ! "
+            f"{rpi_videoflip_str}"
             f"video/x-raw, format={video_format}, width={video_width}, height={video_height} ! "
         )
     elif source_type == "libcamera":
@@ -465,7 +471,7 @@ def TILE_CROPPER_PIPELINE(
     The tile cropper divides the input frame into tiles based on the specified tiling parameters.
     Each tile is processed by the inner pipeline, and the aggregator combines the results from all tiles.
 
-    Example use case: After a detection pipeline stage, crop the frame into tiles for further processing 
+    Example use case: After a detection pipeline stage, crop the frame into tiles for further processing
     (e.g., object recognition or classification) and aggregate the results.
 
     Args:
