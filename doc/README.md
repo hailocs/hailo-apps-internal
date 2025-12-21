@@ -18,6 +18,7 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 **For developers and contributors.** This section provides the technical details you need to build on top of our framework. It includes:
 
 *   **[Application Development](./developer_guide/app_development.md)**: The primary guide for developers. It covers the core concepts of the Python framework and how to build new applications.
+*   **[GStreamer Helper Pipelines Reference](./developer_guide/gstreamer_helper_pipelines.md)**: Comprehensive reference documentation for all helper functions in the `gstreamer_helper_pipelines.py` module.
 *   **[Writing a C++ Post-Process](./developer_guide/writing_postprocess.md)**: A step-by-step tutorial for creating custom C++ post-processing functions for new or unsupported neural networks.
 *   **[Retraining Models](./developer_guide/retraining_example.md)**: A step-by-step tutorial for retraining models.
 *   **[Debugging with GST Shark](./developer_guide/debugging_with_gst_shark.md)**: Debugging tool for GStreamer pipelines.
@@ -34,7 +35,7 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[Face Recognition](../hailo_apps/python/pipeline_apps/face_recognition/README.md)**
 *   **[Instance Segmentation](../hailo_apps/python/pipeline_apps/instance_segmentation/README.md)**
 *   **[Multisource](../hailo_apps/python/pipeline_apps/multisource/README.md)**
-*   **[Paddle OCR](../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)**
+*   **[Paddle OCR](../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)** (BETA)
 *   **[Pose Estimation](../hailo_apps/python/pipeline_apps/pose_estimation/README.md)**
 *   **[REID Multisource](../hailo_apps/python/pipeline_apps/reid_multisource/README.md)**
 *   **[Tiling](../hailo_apps/python/pipeline_apps/tiling/README.md)**
