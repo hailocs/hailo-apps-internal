@@ -23,7 +23,7 @@ HARDWARE_MODE: str = "simulator"  # "real" or "simulator"
 # SPI uses MOSI pin (GPIO 10) automatically - no pin configuration needed
 NEOPIXEL_SPI_BUS: int = 0  # SPI bus number (0 = /dev/spidev0.x)
 NEOPIXEL_SPI_DEVICE: int = 0  # SPI device number (0 = /dev/spidev0.0)
-NEOPIXEL_COUNT: int = 1  # Number of LEDs in strip
+NEOPIXEL_COUNT: int = 8  # Number of LEDs in strip
 # Simulator Ports (using 8xxx range to avoid conflicts with Cursor IDE which uses 5xxx)
 FLASK_PORT: int = 8500  # Port for LED simulator web server
 SERVO_SIMULATOR_PORT: int = 8501  # Port for servo simulator web server
