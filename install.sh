@@ -328,7 +328,7 @@ get_model_zoo_version() {
         # Default mapping if not loaded from config
         case "$arch" in
             hailo8|hailo8l) mz_version="v2.17.0" ;;
-            hailo10h) mz_version="v5.1.1" ;;
+            hailo10h) mz_version="v5.1.0" ;;
             *) mz_version="" ;;
         esac
     else
