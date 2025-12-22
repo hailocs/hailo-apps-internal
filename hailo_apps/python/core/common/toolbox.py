@@ -9,14 +9,24 @@ from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
 import cv2
 import numpy as np
 
-from hailo_apps.python.core.common.defines import (
-    HAILO_ARCH_KEY,
-    RESOURCES_PHOTOS_DIR_NAME,
-    RESOURCES_VIDEOS_DIR_NAME,
-    DEFAULT_COCO_LABELS_PATH
-)
-from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.hailo_logger import get_logger
+try:
+    from hailo_apps.python.core.common.defines import (
+        HAILO_ARCH_KEY,
+        RESOURCES_PHOTOS_DIR_NAME,
+        RESOURCES_VIDEOS_DIR_NAME,
+        DEFAULT_COCO_LABELS_PATH
+    )
+    from hailo_apps.python.core.common.core import get_resource_path
+    from hailo_apps.python.core.common.hailo_logger import get_logger
+except ImportError:
+    from .defines import (
+        HAILO_ARCH_KEY,
+        RESOURCES_PHOTOS_DIR_NAME,
+        RESOURCES_VIDEOS_DIR_NAME,
+        DEFAULT_COCO_LABELS_PATH
+    )
+    from .core import get_resource_path
+    from .hailo_logger import get_logger
 
 logger = get_logger(__name__)
 

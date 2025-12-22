@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import argparse
 
-from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, get_logger
+try:
+    from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, get_logger
+except ImportError:
+    from .hailo_logger import add_logging_cli_args, get_logger
 
 hailo_logger = get_logger(__name__)
 
