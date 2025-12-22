@@ -224,18 +224,6 @@ apps:
       - "input_video_with_hef"
     extra_test_suites: []
 
-  oriented_object_detection_standalone:
-    name: "Oriented Object Detection Standalone"
-    description: "Standalone oriented object detection app"
-    module: "hailo_apps.python.standalone_apps.oriented_object_detection.oriented_object_detection"
-    script: "hailo_apps/python/standalone_apps/oriented_object_detection/oriented_object_detection.py"
-    cli: ""
-    default_test_suites:
-      - "basic_image_smoke"
-      - "basic_show_fps"
-      - "input_video_with_hef"
-    extra_test_suites: []
-
   paddle_ocr_standalone:
     name: "Paddle OCR Standalone"
     description: "Standalone Paddle OCR app (multi-model)"

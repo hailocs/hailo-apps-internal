@@ -153,10 +153,6 @@ images:
     source: s3
     tag:
       - paddle_ocr
-  - name: dota_image.png
-    source: s3
-    tag:
-      - oriented_object_detection
   - name: tree_branches.png
     source: s3
     tag:
@@ -677,21 +673,6 @@ super_resolution: &super_resolution_app
         - name: real_esrgan_x2
           source: mz
 
-oriented_object_detection: &oriented_object_detection_app
-  models:
-    hailo8:
-      default:
-        - name: yolo11s_obb
-          source: s3
-    hailo8l:
-      default:
-        - name: yolo11s_obb
-          source: s3
-    hailo10h:
-      default:
-        - name: yolo11s_obb
-          source: s3
-
 reid_multisource: &reid_multisource_app
   models:
     hailo8:
@@ -707,7 +688,7 @@ reid_multisource: &reid_multisource_app
         - name: arcface_mobilefacenet
           source: mz
     hailo10h:
-      default: 
+      default:
         - name: scrfd_10g
           source: mz
         - name: arcface_mobilefacenet
