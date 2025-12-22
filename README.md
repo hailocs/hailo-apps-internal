@@ -92,7 +92,6 @@ python vlm_chat.py
 | `pose_estimation`          | Pose estimation with yolov8                                      |
 | `semantic_segmentation`    | Semantic segmentation with Resnet18_fcn (Cityscapes dataset)     |
 | `zero_shot_classification` | Zero-shot classification with clip_vit_l14                       |
-| `oriented_object_detection`| Oriented object detection using YOLO11 OBB                       |
 
 </details>
 
@@ -107,7 +106,6 @@ python vlm_chat.py
 | `pose_estimation`          | Pose estimation with yolov8                                        |
 | `speech_recognition`       | Automatic speech recognition with the Whisper model                |
 | `super_resolution`         | Super-resolution with espcnx4 and SRGAN                            |
-| `oriented_object_detection`| Oriented object detection using YOLO11 OBB                         |
 
 </details>
 
@@ -128,7 +126,7 @@ This repository provides three types of applications, each suited for different 
 | App Type | Best For | Examples |
 |----------|----------|----------|
 | **Pipeline Apps** | Production-ready video processing with cameras, RTSP streams, and real-time inference | Object detection, pose estimation, instance segmentation, face recognition |
-| **Standalone Apps** | Learning HailoRT API (Python/C++). Quickly install specific apps. Supports images, video, camera | Oriented object detection, stereo depth estimation, OCR |
+| **Standalone Apps** | Learning HailoRT API (Python/C++). Quickly install specific apps. Supports images, video, camera | Object Detection, OCR, Stereo depth estimation |
 | **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents, Whisper speech recognition |
 
 ### Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
