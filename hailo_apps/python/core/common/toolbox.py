@@ -744,7 +744,7 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
         "object_detection": "detection",
         "simple_detection": "simple_detection",
         "instance_segmentation": "instance_segmentation",
-        "oriented_object_detection": "detection",  # Use detection's videos as default
+        "oriented_object_detection": "oriented_object_detection",
         "super_resolution": "super_resolution",
     }
     
