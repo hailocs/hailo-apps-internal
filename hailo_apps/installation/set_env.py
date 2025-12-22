@@ -51,6 +51,7 @@ try:
         HAILO_ARCH_KEY,
         HAILO_APPS_PATH_KEY,
         HAILO_LOG_LEVEL_KEY,
+        HAILORT_PIP_PACKAGE_NAMES,
         HAILORT_VERSION_KEY,
         HOST_ARCH_KEY,
         MODEL_ZOO_VERSION_KEY,
@@ -71,6 +72,7 @@ try:
         detect_host_arch,
         detect_system_pkg_version,
         get_hailort_package_name,
+        _detect_pip_package_version,
     )
 except ImportError:
     # Fallback: import from path
@@ -93,6 +95,7 @@ except ImportError:
         HAILO_ARCH_KEY = defines_module.HAILO_ARCH_KEY
         HAILO_APPS_PATH_KEY = defines_module.HAILO_APPS_PATH_KEY
         HAILO_LOG_LEVEL_KEY = defines_module.HAILO_LOG_LEVEL_KEY
+        HAILORT_PIP_PACKAGE_NAMES = defines_module.HAILORT_PIP_PACKAGE_NAMES
         HAILORT_VERSION_KEY = defines_module.HAILORT_VERSION_KEY
         HOST_ARCH_KEY = defines_module.HOST_ARCH_KEY
         MODEL_ZOO_VERSION_KEY = defines_module.MODEL_ZOO_VERSION_KEY
@@ -118,6 +121,7 @@ except ImportError:
         detect_host_arch = installation_utils_module.detect_host_arch
         detect_system_pkg_version = installation_utils_module.detect_system_pkg_version
         get_hailort_package_name = installation_utils_module.get_hailort_package_name
+        _detect_pip_package_version = installation_utils_module._detect_pip_package_version
     else:
         raise ImportError(f"Could not find installation_utils.py at {installation_utils_path}")
 
@@ -151,11 +155,25 @@ def _write_env_file(env_path: Path, env_vars: Dict[str, Optional[str]]) -> None:
 
 
 def _get_hailort_version() -> str:
-    """Get installed HailoRT version."""
+    """Get installed HailoRT version.
+    
+    Checks both system packages (dpkg) and pip packages.
+    On RPi, hailort is typically installed via pip.
+    """
     pkg_name = get_hailort_package_name()
+    
+    # First try dpkg (system package)
     version = detect_system_pkg_version(pkg_name)
     if version:
         return version
+    
+    # Fallback: try various pip package names for hailort
+    for pip_pkg in HAILORT_PIP_PACKAGE_NAMES:
+        version = _detect_pip_package_version(pip_pkg)
+        if version:
+            hailo_logger.debug(f"HailoRT version {version} detected via pip package '{pip_pkg}'")
+            return version
+    
     hailo_logger.error("HailoRT version not detected. Is HailoRT installed?")
     sys.exit(1)
 

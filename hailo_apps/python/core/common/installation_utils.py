@@ -11,6 +11,7 @@ Function Organization:
     - post_install Utilities: Functions used by post_install.py
 """
 
+import os
 import platform
 import shlex
 import subprocess
@@ -18,6 +19,7 @@ import subprocess
 from .defines import (
     ARM_NAME_I,
     ARM_POSSIBLE_NAME,
+    AUTO_DETECT,
     HAILO8_ARCH,
     HAILO8_ARCH_CAPS,
     HAILO8L_ARCH,
@@ -30,11 +32,14 @@ from .defines import (
     HAILO_TAPPAS_CORE_PYTHON_NAMES,
     HAILORT_PACKAGE_NAME,
     HAILORT_PACKAGE_NAME_RPI,
+    HAILORT_PIP_PACKAGE_NAMES,
+    HOST_ARCH_KEY,
     LINUX_SYSTEM_NAME_I,
     PIP_CMD,
     RPI_NAME_I,
     RPI_POSSIBLE_NAME,
     UNKNOWN_NAME_I,
+    VALID_HOST_ARCH,
     X86_NAME_I,
     X86_POSSIBLE_NAME,
 )
@@ -79,11 +84,15 @@ def _auto_detect_pkg_config(pkg_name: str) -> bool:
 
 
 def _detect_pip_package_installed(pkg: str) -> bool:
-    """Internal: Check if a pip package is installed."""
+    """Internal: Check if a pip package is installed.
+    
+    Uses sys.executable to ensure we check the current Python environment.
+    """
+    import sys
     hailo_logger.debug(f"Checking if pip package is installed: {pkg}")
     try:
         result = subprocess.run(
-            [PIP_CMD, "show", pkg],
+            [sys.executable, "-m", "pip", "show", pkg],
             check=False,
             capture_output=True,
             text=True,
@@ -94,6 +103,33 @@ def _detect_pip_package_installed(pkg: str) -> bool:
     except Exception as e:
         hailo_logger.exception(f"Error checking pip package {pkg}: {e}")
         return False
+
+
+def _detect_pip_package_version(pkg: str) -> str:
+    """Internal: Get the version of an installed pip package.
+    
+    Uses sys.executable to ensure we check the current Python environment.
+    """
+    import sys
+    hailo_logger.debug(f"Detecting pip package version for: {pkg}")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "show", pkg],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("Version:"):
+                    version = line.split(":", 1)[1].strip()
+                    hailo_logger.debug(f"Found pip package {pkg} version: {version}")
+                    return version
+        hailo_logger.debug(f"Pip package {pkg} not found or no version info")
+        return ""
+    except Exception as e:
+        hailo_logger.exception(f"Error getting pip package version for {pkg}: {e}")
+        return ""
 
 
 def _run_command_with_output(cmd: list[str]) -> str:
@@ -113,6 +149,45 @@ def _run_command_with_output(cmd: list[str]) -> str:
 # =============================================================================
 
 
+def _is_raspberry_pi() -> bool:
+    """Check multiple indicators to confirm Raspberry Pi hardware.
+    
+    Uses device-tree model, cpuinfo, and RPi-specific files to reliably
+    identify Raspberry Pi hardware regardless of hostname configuration.
+    
+    Returns:
+        bool: True if running on Raspberry Pi hardware
+    """
+    import os
+    indicators = []
+    
+    # Check 1: Device tree model file
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            if 'Raspberry Pi' in model:
+                indicators.append('device-tree')
+                hailo_logger.debug(f"Raspberry Pi detected via device-tree: {model.strip()}")
+    except (FileNotFoundError, PermissionError, IOError):
+        pass
+    
+    # Check 2: cpuinfo for BCM (Broadcom - RPi's chip manufacturer)
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+            if 'BCM' in cpuinfo or 'Raspberry Pi' in cpuinfo:
+                indicators.append('cpuinfo')
+                hailo_logger.debug("Raspberry Pi detected via cpuinfo (BCM/Raspberry Pi)")
+    except (FileNotFoundError, PermissionError, IOError):
+        pass
+        
+    # Return True only if we found RPi indicators
+    is_rpi = len(indicators) > 0
+    if is_rpi:
+        hailo_logger.debug(f"Raspberry Pi confirmed with indicators: {indicators}")
+    return is_rpi
+
+
 def detect_host_arch() -> str:
     """Detect the host system architecture.
 
@@ -120,6 +195,21 @@ def detect_host_arch() -> str:
         str: One of 'x86', 'rpi', 'arm', or 'unknown'
     """
     hailo_logger.debug("Detecting host architecture.")
+    # Allow explicit override via environment variable.
+    env_host_arch = os.getenv(HOST_ARCH_KEY)
+    if env_host_arch:
+        env_host_arch = env_host_arch.strip().lower()
+        if env_host_arch in VALID_HOST_ARCH and env_host_arch != AUTO_DETECT:
+            hailo_logger.info(
+                "Detected host architecture override from environment: %s",
+                env_host_arch,
+            )
+            return env_host_arch
+        hailo_logger.warning(
+            "Ignoring invalid host_arch override from environment: %s",
+            env_host_arch,
+        )
+
     machine_name = platform.machine().lower()
     system_name = platform.system().lower()
     hailo_logger.debug(f"Machine: {machine_name}, System: {system_name}")
@@ -128,7 +218,7 @@ def detect_host_arch() -> str:
         hailo_logger.info("Detected host architecture: x86")
         return X86_NAME_I
     if machine_name in ARM_POSSIBLE_NAME:
-        if system_name == LINUX_SYSTEM_NAME_I and platform.uname().node in RPI_POSSIBLE_NAME:
+        if system_name == LINUX_SYSTEM_NAME_I and _is_raspberry_pi():
             hailo_logger.info("Detected host architecture: Raspberry Pi")
             return RPI_NAME_I
         hailo_logger.info("Detected host architecture: ARM")
@@ -231,14 +321,16 @@ def get_hailort_package_name() -> str:
 def auto_detect_hailort_python_bindings() -> bool:
     """Check if HailoRT Python bindings are installed.
 
+    Checks all possible pip package names for HailoRT.
+
     Returns:
         bool: True if bindings are installed, False otherwise
     """
     hailo_logger.debug("Detecting HailoRT Python bindings.")
-    pkg_name = get_hailort_package_name()
-    if _detect_pip_package_installed(pkg_name):
-        hailo_logger.info("Detected HailoRT Python bindings installed.")
-        return True
+    for pkg_name in HAILORT_PIP_PACKAGE_NAMES:
+        if _detect_pip_package_installed(pkg_name):
+            hailo_logger.info(f"Detected HailoRT Python bindings installed via '{pkg_name}'.")
+            return True
     hailo_logger.warning("HailoRT Python bindings not found.")
     return False
 
@@ -326,5 +418,3 @@ def auto_detect_tappas_postproc_dir() -> str:
     except Exception as e:
         hailo_logger.error(f"Could not detect TAPPAS postproc directory: {e}")
         return ""
-
-

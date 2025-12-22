@@ -89,6 +89,13 @@ echo ""
 echo "Activating virtual environment..."
 source "${SCRIPT_DIR}/setup_env.sh"
 
+# Load resources/.env if present so host_arch overrides apply
+if [ -f "${SCRIPT_DIR}/resources/.env" ]; then
+    # shellcheck source=/dev/null
+    source "${SCRIPT_DIR}/resources/.env"
+    export host_arch
+fi
+
 # Install pytest and test dependencies
 echo "Installing test requirements..."
 python -m pip install --upgrade pip --quiet

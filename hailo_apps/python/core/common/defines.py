@@ -13,6 +13,12 @@ HAILO_TAPPAS_CORE_PYTHON_NAMES = [
 ]
 HAILORT_PACKAGE_NAME = "hailort"
 HAILORT_PACKAGE_NAME_RPI = "h10-hailort"
+HAILORT_PIP_PACKAGE_NAMES = [
+    "hailort",
+    "pyhailort",
+    "python3-hailort",
+    "h10-hailort",
+]
 HAILO_FILE_EXTENSION = ".hef"
 MODEL_ZOO_URL = "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 S3_RESOURCES_BASE_URL = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources"

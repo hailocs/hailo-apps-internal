@@ -34,6 +34,7 @@ try:
         HAILO8_ARCH,
         HAILO8L_ARCH,
         HAILO10H_ARCH,
+        HAILORT_PIP_PACKAGE_NAMES,
     )
     from hailo_apps.python.core.common.core import load_environment
     from hailo_apps.python.core.common.installation_utils import (
@@ -54,6 +55,7 @@ except ImportError as e:
     HAILO8_ARCH = "hailo8"
     HAILO8L_ARCH = "hailo8l"
     HAILO10H_ARCH = "hailo10h"
+    HAILORT_PIP_PACKAGE_NAMES = ["hailort", "pyhailort", "python3-hailort", "h10-hailort"]
 
 
 # ============================================================================
@@ -155,9 +157,10 @@ class TestPythonEnvironment:
         if auto_detect_hailort_python_bindings():
             logger.info("HailoRT Python bindings are installed")
         else:
+            pkg_list = ", ".join(HAILORT_PIP_PACKAGE_NAMES)
             pytest.fail(
                 "HailoRT Python bindings not found. "
-                "Install hailort or h10-hailort package."
+                f"Install one of: {pkg_list}"
             )
     
     def test_tappas_python_bindings(self):

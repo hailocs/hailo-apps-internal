@@ -12,6 +12,7 @@ apps:
     script: "hailo_apps/python/pipeline_apps/detection/detection.py"
     cli: "hailo-detect"
     default_test_suites:
+      - "basic_input_rpi"
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"

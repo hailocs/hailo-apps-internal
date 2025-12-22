@@ -354,7 +354,7 @@ def _generate_cases_for_app(
 
     # Filter out RPI camera tests if host is not rpi
     rpi_suites = ["basic_input_rpi", "input_rpi_with_hef", "input_rpi_with_labels"]
-    if host_arch != "rpi":
+    if host_arch == "x86":
         test_suites = [ts for ts in test_suites if ts not in rpi_suites]
 
     for architecture in architectures:
