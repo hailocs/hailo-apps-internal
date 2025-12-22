@@ -63,6 +63,8 @@ hailo-depth                   # Depth estimation
 ![Depth Estimation](doc/images/depth.gif)
 
 ### GenAI Applications
+> Hailo-10H generative AI demos: voice assistants, VLM chat, voice-to-action agents
+
 ```bash
 # Voice Assistant
 cd hailo_apps/python/gen_ai_apps/voice_assistant/
@@ -76,11 +78,52 @@ cd hailo_apps/python/gen_ai_apps/vlm_chat/
 python vlm_chat.py
 ```
 
+
+<details>
+<summary>All GenAI Apps — <a href="hailo_apps/python/gen_ai_apps">hailo_apps/python/gen_ai_apps</a></summary>
+
+
+| APP                   | Description                                                         |
+|:----------------------|:--------------------------------------------------------------------|
+| `voice_assistant`     | Voice assistant with speech recognition and TTS                     |
+| `agent_tools_example` | Voice-to-action agent tools: natural language → hardware control    |
+| `vlm_chat`            | Vision-Language chat: combine images and text for reasoning         |
+| `simple_llm_chat`     | Minimal text-only LLM chat example                                  |
+| `simple_vlm_chat`     | Minimal VLM chat example (image + text)                             |
+| `simple_whisper_chat` | Minimal Whisper-based speech recognition chat                       |
+| `hailo_ollama`        | Ollama integration utilities for running local LLMs                 |
+| `gen_ai_utils`        | Shared utilities used by GenAI applications                         |
+
+</details>
+
+### Pipeline Applications
+> Real-time pipelines for cameras, RTSP streams, and multi-source processing
+
+<details>
+<summary>All Pipeline Apps — <a href="hailo_apps/python/pipeline_apps">hailo_apps/python/pipeline_apps</a></summary>
+
+| APP                 | Description                                      |
+|:--------------------|:-------------------------------------------------|
+| `detection`         | Real-time object detection pipeline               |
+| `detection_simple`  | Lightweight object detection example              |
+| `instance_segmentation` | Instance segmentation pipeline                 |
+| `pose_estimation`   | Human pose estimation pipeline                    |
+| `depth`             | Depth estimation pipeline                         |
+| `face_recognition`  | Face detection and recognition                    |
+| `tiling`            | High-resolution tiling-based inference             |
+| `multisource`       | Multiple camera/source pipeline                    |
+| `reid_multisource`  | Multi-source person re-identification              |
+| `paddle_ocr`        | OCR pipeline (PaddleOCR)                           |
+| `clip`              | Zero-shot classification with CLIP                 |
+
+</details>
+
+
 ### Standalone Apps (Python & C++)
 > Learn HailoRT with hands-on Python and C++ demos
 
 <details>
-<summary>C++ Standalone Apps — <a href="hailo_apps/cpp">hailo_apps/cpp</a></summary>
+<summary>All C++ Standalone Apps — <a href="hailo_apps/cpp">hailo_apps/cpp</a></summary>
 
 | APP                        | Description                                                      |
 |:---------------------------|:-----------------------------------------------------------------|
@@ -96,7 +139,7 @@ python vlm_chat.py
 </details>
 
 <details>
-<summary>Python Standalone Apps — <a href="hailo_apps/python/standalone_apps">hailo_apps/python/standalone_apps</a></summary>
+<summary>All Python Standalone Apps — <a href="hailo_apps/python/standalone_apps">hailo_apps/python/standalone_apps</a></summary>
 
 | APP                        | Description                                                        |
 |:---------------------------|:-------------------------------------------------------------------|
@@ -126,7 +169,7 @@ This repository provides three types of applications, each suited for different 
 | App Type | Best For | Examples |
 |----------|----------|----------|
 | **Pipeline Apps** | Production-ready video processing with cameras, RTSP streams, and real-time inference | Object detection, pose estimation, instance segmentation, face recognition |
-| **Standalone Apps** | Learning HailoRT API (Python/C++). Quickly install specific apps. Supports images, video, camera | Object Detection, OCR, Stereo depth estimation |
+| **Standalone Apps** | Learn HailoRT (Python/C++); install only specific apps; images/video/camera | Object Detection, OCR, Stereo Depth Estimation |
 | **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents, Whisper speech recognition |
 
 ### Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
