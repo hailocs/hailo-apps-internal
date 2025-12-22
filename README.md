@@ -92,7 +92,6 @@ python vlm_chat.py
 | `simple_vlm_chat`     | Minimal VLM chat example (image + text)                             |
 | `simple_whisper_chat` | Minimal Whisper-based speech recognition chat                       |
 | `hailo_ollama`        | Ollama integration utilities for running local LLMs                 |
-| `gen_ai_utils`        | Shared utilities used by GenAI applications                         |
 
 </details>
 
