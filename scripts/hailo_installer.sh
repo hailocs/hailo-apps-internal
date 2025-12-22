@@ -29,7 +29,7 @@ declare -a DOWNLOADED_URLS=()
 
 HAILORT_VERSION_H8="4.23.0"
 TAPPAS_CORE_VERSION_H8="5.1.0"
-HAILORT_VERSION_H10="5.1.0"
+HAILORT_VERSION_H10="5.1.1"
 TAPPAS_CORE_VERSION_H10="5.1.0"
 
 HAILORT_VERSION=""
@@ -40,6 +40,7 @@ TAPPAS_CORE_VERSION=""
 HW_ARCHITECTURE=""               # hailo8 | hailo10h
 VENV_NAME="venv_hailo_apps"
 DOWNLOAD_ONLY="false"
+DRY_RUN="false"
 OUTPUT_DIR_BASE="/usr/local/hailo/resources/packages"
 
 PY_TAG_OVERRIDE=""
@@ -54,6 +55,7 @@ Options:
   --venv-name=NAME                Virtualenv name (install mode only) [default: $VENV_NAME]
   --hw-arch=hailo8|hailo10h       Target hardware (affects version defaults & folder) [default: $HW_ARCHITECTURE]
   --download-only                 Only download packages, do NOT install
+  --dry-run                       Show URLs that would be downloaded without downloading
   --output-dir=DIR                Base output directory for downloads [default: $OUTPUT_DIR_BASE]
   --py-tag=TAG                    Wheel tag (e.g. cp311-cp311). Useful with --download-only
   -h|--help                       Show this help
@@ -90,6 +92,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --download-only)
             DOWNLOAD_ONLY="true"
+            ;;
+        --dry-run)
+            DRY_RUN="true"
             ;;
         --output-dir=*)
             OUTPUT_DIR_BASE="${1#*=}"
@@ -128,14 +133,16 @@ if [[ -z "$TAPPAS_CORE_VERSION" ]]; then
 fi
 
 TARGET_DIR="${OUTPUT_DIR_BASE}/${HW_ARCHITECTURE}"
-mkdir -p "$TARGET_DIR"
+if [[ "$DRY_RUN" != "true" ]]; then
+  mkdir -p "$TARGET_DIR"
+fi
 echo "Download target directory: $TARGET_DIR"
 HW_NAME=""
 # Determine hardware name based on architecture
 if [[ "$HW_ARCHITECTURE" == "hailo8" ]]; then
   HW_NAME="Hailo8"
 else
-  HW_NAME="Hailo10H"
+  HW_NAME="Hailo10"
 fi
 BASE_URL="${BASE_URL}/${HW_NAME}"
 
@@ -144,6 +151,12 @@ download_file() {
   local rel="$1"
   local url="${BASE_URL}/${rel}"
   local dst="${TARGET_DIR}/${rel}"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] Would download: $url"
+    DOWNLOADED_URLS+=("$url")
+    return
+  fi
 
   echo "Downloading ${rel}"
   mkdir -p "$(dirname "$dst")"
@@ -240,7 +253,7 @@ else
   fi
 fi
 
-if [[ "$DOWNLOAD_ONLY" != "true" ]]; then
+if [[ "$DOWNLOAD_ONLY" != "true" && "$DRY_RUN" != "true" ]]; then
   KERNEL_VERSION="$(uname -r)"
   echo "Kernel version: $KERNEL_VERSION"
   OFFICIAL_KERNEL_PREFIX="6.5.0"
@@ -331,6 +344,12 @@ if ((${#DOWNLOADED_URLS[@]})); then
   done
   echo "============================="
   echo
+fi
+
+# -------- Exit if dry-run --------
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "[dry-run] Done. No files were downloaded or installed."
+  exit 0
 fi
 
 # -------- Install (skipped if download-only) --------

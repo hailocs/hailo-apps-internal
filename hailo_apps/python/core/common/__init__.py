@@ -7,17 +7,12 @@ This module provides core utilities used across all Hailo applications, includin
 - Core argument parsers and configuration loading
 - Hailo architecture detection and resource path resolution
 - Logging infrastructure
+
+Note: GStreamer-dependent imports (buffer_utils) are lazy-loaded to allow
+standalone apps and installation scripts to work without GStreamer/gi.
 """
 
-from .buffer_utils import (
-    get_caps_from_pad,
-    get_numpy_from_buffer,
-    get_numpy_from_buffer_efficient,
-)
-from .camera_utils import (
-    get_usb_video_devices,
-    is_rpi_camera_available,
-)
+# Core utilities that don't require GStreamer
 from .core import FIFODropQueue, get_model_name, get_resource_path, load_environment
 from .hailo_logger import (
     add_logging_cli_args,
@@ -36,6 +31,23 @@ from .parser import (
     get_pipeline_parser,
     get_standalone_parser,
 )
+from .camera_utils import (
+    get_usb_video_devices,
+    is_rpi_camera_available,
+)
+
+
+# Lazy imports for GStreamer-dependent modules
+def __getattr__(name):
+    """Lazy-load GStreamer-dependent functions to avoid import errors when gi is not available."""
+    if name in ("get_caps_from_pad", "get_numpy_from_buffer", "get_numpy_from_buffer_efficient"):
+        from .buffer_utils import (
+            get_caps_from_pad,
+            get_numpy_from_buffer,
+            get_numpy_from_buffer_efficient,
+        )
+        return locals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # Buffer utilities

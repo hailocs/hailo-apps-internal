@@ -157,16 +157,6 @@ custom_tests:
       model_selection: "default"  # default | extra | all
       description: "CLIP Pipeline"
 
-    lane_detection:
-      test_suite_mode: "None"  # None | default | extra | all
-      model_selection: "None"  # default | extra | all
-      description: "Lane Detection Pipeline"
-
-    super_resolution:
-      test_suite_mode: "None"  # None | default | extra | all
-      model_selection: "None"  # default | extra | all
-      description: "Super Resolution Pipeline"
-
 standalone_tests:
   enabled: true  # Enable standalone app tests
   apps:
@@ -220,7 +210,7 @@ run_methods:
     priority: 1
 
   cli:
-    enabled: false
+    enabled: true
     priority: 2
     command_template: "python -m test_runner"
 

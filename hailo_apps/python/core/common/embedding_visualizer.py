@@ -18,12 +18,18 @@ except ImportError:
     exit(1)
 
 # Local application/library imports
-from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
-
-from hailo_apps.python.core.common.defines import (
-    FACE_RECON_DATABASE_DIR_NAME,
-    FACE_RECON_SAMPLES_DIR_NAME
-)
+try:
+    from hailo_apps.python.core.common.db_handler import DatabaseHandler, Record
+    from hailo_apps.python.core.common.defines import (
+        FACE_RECON_DATABASE_DIR_NAME,
+        FACE_RECON_SAMPLES_DIR_NAME
+    )
+except ImportError:
+    from .db_handler import DatabaseHandler, Record
+    from .defines import (
+        FACE_RECON_DATABASE_DIR_NAME,
+        FACE_RECON_SAMPLES_DIR_NAME
+    )
 
 
 def visualize_embeddings(db_handler):

@@ -51,7 +51,15 @@ from .defines import (
 )
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
-from hailo_apps.config.config_manager import get_default_models, get_extra_models, get_all_models
+
+try:
+    from hailo_apps.config.config_manager import get_default_models, get_extra_models, get_all_models
+except ImportError:
+    import sys
+    from pathlib import Path
+    config_dir = Path(__file__).resolve().parents[3] / "config"
+    sys.path.insert(0, str(config_dir))
+    from config_manager import get_default_models, get_extra_models, get_all_models
 
 hailo_logger = get_logger(__name__)
 

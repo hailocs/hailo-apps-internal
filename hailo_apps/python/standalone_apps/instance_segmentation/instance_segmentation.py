@@ -4,10 +4,10 @@ import sys
 import queue
 import threading
 from types import SimpleNamespace
-from post_process.postprocessing import inference_result_handler
 from functools import partial
 from pathlib import Path
 import numpy as np
+from post_process.postprocessing import inference_result_handler
 
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
@@ -184,12 +184,12 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, batch_size, input_queue, width, height)
+        args=(images, cap, None, batch_size, input_queue, width, height)
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
-        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker)
+        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker, None, None)
     )
 
     infer_thread = threading.Thread(

@@ -12,10 +12,16 @@ import lancedb
 from lancedb.pydantic import LanceModel, Vector
 
 # Local application-specific imports
-from hailo_apps.python.core.common.defines import (
-    FACE_RECON_DATABASE_DIR_NAME,
-    FACE_RECON_SAMPLES_DIR_NAME
-)
+try:
+    from hailo_apps.python.core.common.defines import (
+        FACE_RECON_DATABASE_DIR_NAME,
+        FACE_RECON_SAMPLES_DIR_NAME
+    )
+except ImportError:
+    from .defines import (
+        FACE_RECON_DATABASE_DIR_NAME,
+        FACE_RECON_SAMPLES_DIR_NAME
+    )
 # endregion
 
 

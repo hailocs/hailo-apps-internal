@@ -54,6 +54,7 @@ fi
 DRY_RUN=false
 NO_INSTALL=false
 NO_SYSTEM_PYTHON=false
+NO_TAPPAS_REQUIRED=false
 PYHAILORT_PATH=""
 PYTAPPAS_PATH=""
 
@@ -571,6 +572,8 @@ ${BOLD}OPTIONS:${NC}
     --all                       Download all available models/resources
     -x, --no-install            Skip Python package installation
     --no-system-python          Don't use system site-packages in venv
+    --no-tappas-required        Skip TAPPAS checks, Python TAPPAS install, compile, and post_install
+                                (downloads resources directly, no C++ compilation)
     --dry-run                   Show what would be done without executing
     -h, --help                  Show this help message
 
@@ -629,6 +632,10 @@ parse_arguments() {
             --no-system-python)
                 NO_SYSTEM_PYTHON=true
                 USE_SYSTEM_SITE_PACKAGES=false
+                shift
+                ;;
+            --no-tappas-required)
+                NO_TAPPAS_REQUIRED=true
                 shift
                 ;;
             --dry-run)
@@ -758,13 +765,21 @@ check_prerequisites() {
     log_info "  Hailo Architecture: ${HAILO_ARCH:-unknown}"
     log_info "  Driver: ${driver_version}"
     log_info "  HailoRT: ${hailort_version}"
-    log_info "  TAPPAS: ${tappas_version}"
+    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+        log_info "  TAPPAS: skipped (--no-tappas-required)"
+    else
+        log_info "  TAPPAS: ${tappas_version}"
+    fi
     if [[ -n "$model_zoo_version" ]]; then
         log_info "  Model Zoo Version: ${model_zoo_version} (for ${HAILO_ARCH})"
     fi
 
     # Validate versions against config (including architecture)
-    validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"
+    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+        validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"
+    else
+        validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"
+    fi
 
     # Validate Model Zoo version if we have both arch and MZ version
     if [[ -n "$model_zoo_version" && -n "${HAILO_ARCH:-}" ]]; then
@@ -975,7 +990,9 @@ install_python_packages() {
         log_dry_run "source ${venv_activate}"
         log_dry_run "pip install --upgrade pip setuptools wheel"
         [[ -n "$PYHAILORT_PATH" ]] && log_dry_run "pip install '${PYHAILORT_PATH}'"
-        [[ -n "$PYTAPPAS_PATH" ]] && log_dry_run "pip install '${PYTAPPAS_PATH}'"
+        if [[ -n "$PYTAPPAS_PATH" && "${NO_TAPPAS_REQUIRED}" != true ]]; then
+            log_dry_run "pip install '${PYTAPPAS_PATH}'"
+        fi
         log_dry_run "pip install -e ."
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
@@ -995,6 +1012,13 @@ install_python_packages() {
             return 1
         fi
         INSTALL_HAILORT=false
+    fi
+
+    if [[ -n "$PYTAPPAS_PATH" ]]; then
+        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+            log_warning "Ignoring PyTappas wheel (--no-tappas-required): ${PYTAPPAS_PATH}"
+            PYTAPPAS_PATH=""
+        fi
     fi
 
     if [[ -n "$PYTAPPAS_PATH" ]]; then
@@ -1038,6 +1062,9 @@ install_python_packages() {
             if [[ "${INSTALL_HAILORT}" == true && -n "${HAILORT_VERSION}" && "${HAILORT_VERSION}" != "-1" ]]; then
                 flags="${flags} --hailort-version=${HAILORT_VERSION}"
                 log_debug "Installing HailoRT version: ${HAILORT_VERSION}"
+            fi
+            if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+                flags="${flags} --no-tappas"
             fi
 
             log_debug "Running: ${install_script} ${flags}"
@@ -1126,6 +1153,64 @@ run_post_install() {
     log_debug "Fixing ownership of project directory..."
     fix_ownership "${SCRIPT_DIR}"
     fix_ownership "${RESOURCES_ROOT}"
+
+    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+        log_info "Running minimal post-installation (--no-tappas-required)"
+        
+        # Create resources symlink
+        if ! setup_resources_symlink; then
+            log_error "Failed to create resources symlink"
+            record_step_result "FAILED" "Symlink creation failed"
+            return 1
+        fi
+        
+        # Build download args
+        local download_args=""
+        if [[ "$DOWNLOAD_GROUP" == "all" ]]; then
+            download_args="--all"
+        elif [[ -n "$DOWNLOAD_GROUP" ]]; then
+            download_args="--group '${DOWNLOAD_GROUP}'"
+        fi
+        
+        if [[ "${DRY_RUN}" == true ]]; then
+            log_dry_run "source ${venv_activate} && hailo-download-resources ${download_args}"
+            record_step_result "SKIPPED" "Dry-run mode"
+            return 0
+        fi
+        
+        # Run download_resources directly (skip compile and full post_install)
+        log_info "Downloading resources (skipping compile and post_install)..."
+        log_info "Download group: ${DOWNLOAD_GROUP}"
+        
+        disable_error_trap
+        local download_exit=0
+        
+        run_as_user bash -c "
+            export PYTHONUNBUFFERED=1 && \
+            source '${venv_activate}' && \
+            cd '${SCRIPT_DIR}' && \
+            stdbuf -oL -eL hailo-download-resources ${download_args} 2>&1
+        " | while IFS= read -r line; do
+            log_debug "  $line"
+            echo "$line"
+        done
+        
+        download_exit=${PIPESTATUS[0]}
+        enable_error_trap
+        
+        if [[ $download_exit -ne 0 ]]; then
+            log_error "Resource download failed (exit code: ${download_exit})"
+            log_info "You can retry manually:"
+            log_info "  source ${SCRIPT_DIR}/setup_env.sh"
+            log_info "  hailo-download-resources ${download_args}"
+            record_step_result "FAILED" "Download failed: ${download_exit}"
+            return 1
+        fi
+        
+        log_success "Resources downloaded (no-tappas mode)"
+        record_step_result "SUCCESS" "Resources downloaded (no-tappas)"
+        return 0
+    fi
 
     # Build post-install command
     local post_install_args="--group '${DOWNLOAD_GROUP}'"
@@ -1249,9 +1334,13 @@ verify_installation() {
 
     # Check TAPPAS binding
     echo -n "  📦 TAPPAS Core Python binding: "
-    if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
-        echo -e "${GREEN}✅ OK${NC}"
-        all_ok=false
+    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+        echo -e "${YELLOW}⚠️  Skipped (--no-tappas-required)${NC}"
+    else
+        if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
+            echo -e "${GREEN}✅ OK${NC}"
+            all_ok=false
+        fi
     fi
 
 
@@ -1497,4 +1586,3 @@ main() {
 
 # Run main
 main "$@"
-

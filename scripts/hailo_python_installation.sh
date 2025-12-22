@@ -17,7 +17,7 @@ BASE_URL="http://dev-public.hailo.ai/2025_10"
 
 HAILORT_VERSION_H8="4.23.0"
 TAPPAS_CORE_VERSION_H8="5.1.0"
-HAILORT_VERSION_H10="5.1.0"
+HAILORT_VERSION_H10="5.1.1"
 TAPPAS_CORE_VERSION_H10="5.1.0"
 
 
@@ -33,6 +33,7 @@ QUIET=false
 
 INSTALL_HAILORT=false
 INSTALL_TAPPAS=false
+NO_TAPPAS=false
 
 # Pip flag presets
 PIP_SYS_FLAGS=(--break-system-packages --disable-pip-version-check --no-input --prefer-binary)
@@ -48,6 +49,7 @@ Options:
   --arch=(hailo8|hailo10h)       Choose hardware preset for default versions
   --hailort-version=VER          Force a specific HailoRT wheel version (overrides preset)
   --tappas-core-version=VER      Force a specific TAPPAS core wheel version (overrides preset)
+  --no-tappas                    Skip TAPPAS core download/install
   --base-url=URL                 Override base URL (default: ${BASE_URL})
   --download-dir=DIR             Where to place wheels (default: ${DOWNLOAD_DIR})
   --download-only                Only download wheels; do not install
@@ -182,6 +184,11 @@ while [[ $# -gt 0 ]]; do
       INSTALL_TAPPAS=true
       shift
       ;;
+    --no-tappas)
+      NO_TAPPAS=true
+      INSTALL_TAPPAS=false
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -216,6 +223,11 @@ if [[ -z ${TAPPAS_CORE_VERSION+x} || -z "$TAPPAS_CORE_VERSION" ]]; then
     hailo10h) TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H10" ;;
     *)        TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H8" ;;
   esac
+fi
+
+if [[ "$NO_TAPPAS" == true ]]; then
+  TAPPAS_CORE_VERSION=""
+  INSTALL_TAPPAS=false
 fi
 
 # If user specified only one version, we install only that one; otherwise decide based on installed state.
