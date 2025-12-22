@@ -13,7 +13,7 @@ Environment Variables Set:
     - RESOURCES_PATH: Path to resources directory (symlink)
     - RESOURCES_ROOT_PATH: Path to resources root (/usr/local/hailo/resources)
     - VIRTUAL_ENV_NAME: Name of the virtual environment
-    - HAILO_APPS_INFRA_PATH: Full path to the hailo-apps repository
+    - HAILO_APPS_PATH: Full path to the hailo-apps repository
     - HAILO_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 """
 
@@ -49,7 +49,7 @@ try:
         HAILO10H_ARCH,
         HAILO_ARCH_DEFAULT,
         HAILO_ARCH_KEY,
-        HAILO_APPS_INFRA_PATH_KEY,
+        HAILO_APPS_PATH_KEY,
         HAILO_LOG_LEVEL_KEY,
         HAILORT_VERSION_KEY,
         HOST_ARCH_KEY,
@@ -91,7 +91,7 @@ except ImportError:
         HAILO10H_ARCH = defines_module.HAILO10H_ARCH
         HAILO_ARCH_DEFAULT = defines_module.HAILO_ARCH_DEFAULT
         HAILO_ARCH_KEY = defines_module.HAILO_ARCH_KEY
-        HAILO_APPS_INFRA_PATH_KEY = defines_module.HAILO_APPS_INFRA_PATH_KEY
+        HAILO_APPS_PATH_KEY = defines_module.HAILO_APPS_PATH_KEY
         HAILO_LOG_LEVEL_KEY = defines_module.HAILO_LOG_LEVEL_KEY
         HAILORT_VERSION_KEY = defines_module.HAILORT_VERSION_KEY
         HOST_ARCH_KEY = defines_module.HOST_ARCH_KEY
@@ -247,7 +247,7 @@ def configure_environment(config: Dict, env_path: Path) -> None:
         RESOURCES_PATH_KEY: resources_config.get('path', DEFAULT_RESOURCES_SYMLINK_PATH),
         RESOURCES_ROOT_PATH_KEY: RESOURCES_ROOT_PATH_DEFAULT,
         VIRTUAL_ENV_NAME_KEY: venv_config.get('name', VIRTUAL_ENV_NAME_DEFAULT),
-        HAILO_APPS_INFRA_PATH_KEY: repo_root,
+        HAILO_APPS_PATH_KEY: repo_root,
         HAILO_LOG_LEVEL_KEY: log_level,
     }
     
@@ -295,7 +295,7 @@ Environment Variables Set:
   MODEL_ZOO_VERSION     Model Zoo version (auto-selected based on architecture)
   RESOURCES_PATH        Path to resources symlink
   RESOURCES_ROOT_PATH   Path to resources root (/usr/local/hailo/resources)
-  HAILO_APPS_INFRA_PATH Full path to the repository
+  HAILO_APPS_PATH Full path to the repository
   VIRTUAL_ENV_NAME      Name of the virtual environment
   HAILO_LOG_LEVEL       Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 """
