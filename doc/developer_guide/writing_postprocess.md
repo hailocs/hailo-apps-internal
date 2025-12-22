@@ -11,7 +11,7 @@ The post-process function should read the outputs of the HailoNet element, which
 
 First things first - navigate to this directory:
 ```
-hailo_apps_infra/hailo_cpp_postprocess/cpp
+hailo_apps/postprocess/cpp
 ```
 
 All your new post-processing magic will happen in the `postprocesses/` folder.
