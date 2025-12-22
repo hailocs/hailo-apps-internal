@@ -26,22 +26,32 @@ videos:
     source: s3
     tag:
       - detection
+      - object_detection
       - simple_detection
       - instance_segmentation
       - pose_estimation
       - semantic_segmentation
       - classifier
       - depth
+      - depth_estimation_mono
+      - depth_estimation_stereo
+      - reid_multisource
+      - multisource
   - name: example_640.mp4
     source: s3
     tag:
       - detection
+      - object_detection
       - simple_detection
       - instance_segmentation
       - pose_estimation
       - semantic_segmentation
       - classifier
       - depth
+      - depth_estimation_mono
+      - depth_estimation_stereo
+      - reid_multisource
+      - multisource
   - name: face_recognition.mp4
     source: s3
     tag:
@@ -54,24 +64,33 @@ videos:
     source: s3
     tag:
       - tiling
+      - detection
+      - object_detection
   - name: barcode.mp4
     source: s3
     tag:
       - detection
+      - object_detection
   - name: clip_example.mp4
     source: s3
     tag:
       - clip
+      - classifier
   - name: full_mov_slow.mp4
     source: s3
     tag:
       - detection
+      - object_detection
       - simple_detection
       - instance_segmentation
       - pose_estimation
       - semantic_segmentation
       - classifier
+      - depth
+      - depth_estimation_mono
       - onnxrt_hailo_pipeline
+      - reid_multisource
+      - multisource
   - name: lane_detection.mp4
     source: s3
     tag:
@@ -81,6 +100,7 @@ videos:
     tag:
       - depth
       - depth_estimation_mono
+      - depth_estimation_stereo
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -89,26 +109,42 @@ images:
     url: https://ultralytics.com/images/zidane.jpg
     tag:
       - detection
+      - object_detection
+      - simple_detection
       - instance_segmentation
       - pose_estimation
+      - classifier
+      - semantic_segmentation
   - name: dog_bicycle.jpg
     source: s3
     tag:
       - detection
+      - object_detection
+      - simple_detection
       - instance_segmentation
       - pose_estimation
+      - classifier
+      - semantic_segmentation
   - name: bus.jpg
     source: s3
     tag:
       - detection
+      - object_detection
+      - simple_detection
       - instance_segmentation
       - pose_estimation
+      - classifier
+      - semantic_segmentation
   - name: input_image.png
     source: s3
     tag:
       - detection
+      - object_detection
+      - simple_detection
       - instance_segmentation
       - pose_estimation
+      - classifier
+      - semantic_segmentation
   - name: ocr_img1.png
     source: s3
     tag:
@@ -128,7 +164,9 @@ images:
   - name: apple.jpg
     source: s3
     tag:
+      - depth
       - depth_estimation_mono
+      - depth_estimation_stereo
 
 # Shared JSON config files for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -138,10 +176,13 @@ json:
     tag:
       - tiling
       - detection
+      - object_detection
+      - clip
   - name: scrfd.json
     source: s3
     tag:
       - face_recognition
+      - reid_multisource
   - name: yolov5m_seg.json
     source: s3
     tag:
@@ -158,9 +199,10 @@ json:
     source: s3
     tag:
       - detection
+      - object_detection
 
 
-classifier:
+classifier: &classifier_app
   models:
     hailo8:
       default:
@@ -208,7 +250,7 @@ classifier:
         - name: resnet_v1_50
           source: mz
 
-semantic_segmentation:
+semantic_segmentation: &semantic_segmentation_app
   models:
     hailo8:
       default:
@@ -395,7 +437,7 @@ detection: &detection_app
 # Standalone app uses the same model set and defaults as the pipeline app
 object_detection: *detection_app
 
-simple_detection:
+simple_detection: &simple_detection_app
   models:
     hailo8:
       default:
@@ -410,7 +452,7 @@ simple_detection:
         - name: yolov6n
           source: mz
 
-face_recognition:
+face_recognition: &face_recognition_app
   models:
     hailo8:
       default:
@@ -431,7 +473,7 @@ face_recognition:
         - name: arcface_mobilefacenet
           source: mz
 
-instance_segmentation:
+instance_segmentation: &instance_segmentation_app
   models:
     hailo8:
       default:
@@ -489,7 +531,7 @@ instance_segmentation:
         - name: yolov8s_seg
           source: mz
 
-pose_estimation:
+pose_estimation: &pose_estimation_app
   models:
     hailo8:
       default:
@@ -528,7 +570,7 @@ depth: &depth_app
 # Standalone app uses the same model set and defaults as the pipeline app
 depth_estimation_mono: *depth_app
 
-depth_estimation_stereo:
+depth_estimation_stereo: &depth_estimation_stereo_app
   models:
     hailo8:
       default:
@@ -543,7 +585,7 @@ depth_estimation_stereo:
         - name: stereonet
           source: s3
 
-onnxrt_hailo_pipeline:
+onnxrt_hailo_pipeline: &onnxrt_hailo_pipeline_app
   models:
     hailo8:
       default:
@@ -556,7 +598,7 @@ onnxrt_hailo_pipeline:
     hailo10h:
       default: None
 
-tiling:
+tiling: &tiling_app
   models:
     hailo8:
       default:
@@ -586,7 +628,7 @@ tiling:
         - name: ssd_mobilenet_v1_visdrone
           source: s3
 
-paddle_ocr:
+paddle_ocr: &paddle_ocr_app
   models:
     hailo8:
       default:
@@ -607,7 +649,7 @@ paddle_ocr:
         - name: ocr
           source: s3
 
-lane_detection:
+lane_detection: &lane_detection_app
   models:
     hailo8:
       default:
@@ -620,7 +662,7 @@ lane_detection:
         - name: ufld_v2_tu
           source: s3
 
-super_resolution:
+super_resolution: &super_resolution_app
   models:
     hailo8:
       default:
@@ -635,7 +677,7 @@ super_resolution:
         - name: real_esrgan_x2
           source: mz
 
-oriented_object_detection:
+oriented_object_detection: &oriented_object_detection_app
   models:
     hailo8:
       default:
@@ -650,9 +692,7 @@ oriented_object_detection:
         - name: yolo11s_obb
           source: s3
 
-reid_multisource:
-  # Multi-model app: requires face detection + face recognition models
-  # The pipeline expects: models[0] = detection (scrfd), models[1] = recognition (arcface)
+reid_multisource: &reid_multisource_app
   models:
     hailo8:
       default:
@@ -667,17 +707,20 @@ reid_multisource:
         - name: arcface_mobilefacenet
           source: mz
     hailo10h:
-      default:
+      default: 
         - name: scrfd_10g
           source: mz
         - name: arcface_mobilefacenet
           source: mz
 
+# Multisource pipeline uses detection models
+multisource: *detection_app
+
 ########################################################
 # Gen AI models
 ########################################################
 
-vlm_chat:
+vlm_chat: &vlm_chat_app
   models:
     hailo8:
       default: None
@@ -688,7 +731,7 @@ vlm_chat:
         - name: Qwen2-VL-2B-Instruct
           source: gen-ai-mz
 
-llm_chat:
+llm_chat: &llm_chat_app
   models:
     hailo8:
       default: None
@@ -699,7 +742,7 @@ llm_chat:
         - name: Qwen2.5-1.5B-Instruct
           source: gen-ai-mz
 
-whisper_chat:
+whisper_chat: &whisper_chat_app
   models:
     hailo8:
       default: None
@@ -710,7 +753,21 @@ whisper_chat:
         - name: Whisper-Base
           source: gen-ai-mz
 
-agent:
+# Voice assistant uses whisper for speech recognition and LLM for responses
+voice_assistant:
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        - name: Whisper-Base
+          source: gen-ai-mz
+        - name: Qwen2.5-1.5B-Instruct
+          source: gen-ai-mz
+
+agent: &agent_app
   models:
     hailo8:
       default: None
@@ -721,7 +778,7 @@ agent:
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
 
-clip:
+clip: &clip_app
   models:
     hailo8:
       default:
