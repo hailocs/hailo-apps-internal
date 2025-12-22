@@ -76,7 +76,42 @@ cd hailo_apps/python/gen_ai_apps/vlm_chat/
 python vlm_chat.py
 ```
 
-**📚 See all applications:** [Running Applications Guide](./doc/user_guide/running_applications.md)
+### Standalone Apps (Python & C++)
+
+> Learn HailoRT with hands-on Python and C++ demos — no TAPPAS required.
+
+<details>
+<summary>C++ Standlone Apps — <a href="hailo_apps/cpp">hailo_apps/cpp</a></summary>
+
+| APP                        | Description                                                      |
+|:---------------------------|:-----------------------------------------------------------------|
+| `classification`           | Image classification with models trained on ImageNet             |
+| `depth_estimation`         | Depth estimation using scdepthv3 and stereonet                   |
+| `instance_segmentation`    | Instance segmentation with yolov5_seg and yolov8_seg             |
+| `object_detection`         | Generic and asynchronous object detection                        |
+| `onnxruntime`              | Inference with Hailo device and postprocessing via ONNXRuntime   |
+| `pose_estimation`          | Pose estimation with yolov8                                      |
+| `semantic_segmentation`    | Semantic segmentation with Resnet18_fcn (Cityscapes dataset)     |
+| `zero_shot_classification` | Zero-shot classification with clip_vit_l14                       |
+| `oriented_object_detection`| Oriented object detection using YOLO11 OBB                       |
+
+</details>
+
+<details>
+<summary>Python Standalone Apps — <a href="hailo_apps/python/standalone_apps">hailo_apps/python/standalone_apps</a></summary>
+
+| APP                        | Description                                                        |
+|:---------------------------|:-------------------------------------------------------------------|
+| `object_detection`         | Object detection and tracking with YOLO, SSD, and CenterNet        |
+| `instance_segmentation`    | Instance segmentation with yolov5_seg and yolov8_seg               |
+| `lane_detection`           | Lane detection using UFLDv2                                        |
+| `pose_estimation`          | Pose estimation with yolov8                                        |
+| `speech_recognition`       | Automatic speech recognition with the Whisper model                |
+| `super_resolution`         | Super-resolution with espcnx4 and SRGAN                            |
+| `oriented_object_detection`| Oriented object detection using YOLO11 OBB                         |
+
+</details>
+
 
 ## Documentation
 
@@ -94,29 +129,32 @@ This repository provides three types of applications, each suited for different 
 | App Type | Best For | Examples |
 |----------|----------|----------|
 | **Pipeline Apps** | Production-ready video processing with cameras, RTSP streams, and real-time inference | Object detection, pose estimation, instance segmentation, face recognition |
-| **Standalone Apps** | Supports video and camera input, but specialized for image processing, model validation, and rapid prototyping | Lane detection, super resolution, OCR |
+| **Standalone Apps** | Learning HailoRT API (Python/C++). Quickly install specific apps. Supports images, video, camera | Oriented object detection, stereo depth estimation, OCR |
 | **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents, Whisper speech recognition |
 
-### 📹 Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
-Use pipeline apps when you need **real-time video processing** with:
+### Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
+Use pipeline apps when you need real-time video processing with:
 - Raspberry Pi Camera, USB cameras, or video files
 - RTSP streams for IP cameras
 - Multi-camera and multi-source processing
 - GStreamer-based efficient pipelines
 
-### 🖼️ Standalone Apps (`hailo_apps/python/standalone_apps/`)
+### Standalone Apps (`hailo_apps/python/standalone_apps/`, `hailo_apps/cpp/`)
 Use standalone apps when you need to:
-- Test and validate individual models with images
-- Prototype and experiment quickly
-- Process single images or batches
-- Debug and benchmark model performance
+- Install only specific apps; no TAPPAS required
+- Learn the HailoRT API in Python/C++ (hands-on demos)
+- Work with images, videos, and camera streams
+- Prototype quickly and validate models
 
-### 🤖 GenAI Apps (`hailo_apps/python/gen_ai_apps/`)
+
+### GenAI Apps (`hailo_apps/python/gen_ai_apps/`)
 Use GenAI apps for **Hailo-10H** generative AI features:
 - Voice assistants with speech recognition
 - Vision-Language Models (VLM) chat
 - Voice-to-action AI agents
 - Whisper-based speech recognition
+
+**📚 See all applications:** [Running Applications Guide](./doc/user_guide/running_applications.md)
 
 ## Key Features
 
