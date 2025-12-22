@@ -187,6 +187,9 @@ def main():
         sampled_audio = load_audio(audio_path)
 
         sampled_audio, start_time = improve_input_audio(sampled_audio, vad=True)
+        if start_time is None:
+            print("No speech detected in the audio. Please try recording again with clearer audio.")
+            continue
         chunk_offset = start_time - 0.2
         if chunk_offset < 0:
             chunk_offset = 0
