@@ -608,7 +608,7 @@ def list_networks(app: str) -> None:
     Print the supported networks for a given application.
     
     Note: This is a stub implementation for HACE compatibility.
-    In hailo-apps-infra, use config_manager.get_model_names() instead.
+    In hailo-apps, use config_manager.get_model_names() instead.
     """
     logger.warning(
         f"list_networks() called for app '{app}'. "
@@ -627,7 +627,7 @@ def list_networks(app: str) -> None:
         else:
             logger.info(f"No models found for {app} ({arch})")
     except ImportError:
-        logger.error("Could not import config_manager. Please ensure hailo-apps-infra is properly installed.")
+        logger.error("Could not import config_manager. Please ensure hailo-apps is properly installed.")
 
 
 def list_inputs(app: str) -> None:
@@ -684,7 +684,7 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch:
     Resolve the --net argument into a concrete HEF path.
     
     Note: This is a compatibility function for HACE apps.
-    In hailo-apps-infra, prefer using core.resolve_hef_path() directly.
+    In hailo-apps, prefer using core.resolve_hef_path() directly.
     """
     if net_arg is None:
         logger.error("No --net was provided.")
@@ -707,7 +707,7 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch:
         list_networks(app)
         sys.exit(1)
 
-    # Treat as model name - try to resolve using hailo-apps-infra mechanism
+    # Treat as model name - try to resolve using hailo-apps mechanism
     model_name = net_arg
     existing_hef = dest_path / f"{model_name}.hef"
     
@@ -715,7 +715,7 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch:
         logger.info(f"Using existing HEF: {existing_hef.resolve()}")
         return str(existing_hef.resolve())
     
-    # Try to resolve using hailo-apps-infra's config system
+    # Try to resolve using hailo-apps's config system
     resolved_arch = resolve_arch(arch)
     try:
         from hailo_apps.python.core.common.core import resolve_hef_path
