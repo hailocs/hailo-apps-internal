@@ -47,8 +47,6 @@ def check_ocr_dependencies():
 
 # Check dependencies early
 check_ocr_dependencies()
-
-# Now import OCR-specific modules that require shapely, pyclipper, etc.
 from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
 import uuid
 from collections import defaultdict
@@ -355,8 +353,9 @@ def run_inference_pipeline(
 
     # visualisation postprocess
     vis_postprocess_thread = threading.Thread(
-        target=visualize, args=(vis_output_queue, cap, save_output, output_dir, 
-                                post_process_callback_fn, fps_tracker, True)
+        target=visualize,
+        args=(vis_output_queue, cap, save_output, output_dir,
+              post_process_callback_fn, fps_tracker, True)
     )
 
     det_thread = threading.Thread(
