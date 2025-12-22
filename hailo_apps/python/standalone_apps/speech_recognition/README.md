@@ -26,7 +26,7 @@ Ensure your system matches the following requirements before proceeding:
 
 ## Usage
 
-### Standalone Usage (within hailo-apps-infra repository)
+### Standalone Usage (within hailo-apps repository)
 
 Before running, install the required dependencies:
 
@@ -43,19 +43,19 @@ This will install:
 In addition, download resources:
 
 ```bash
-python3 ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app/download_resources.py --hw-arch <hailo device type>
+python3 ~/hailo-apps/hailo_apps/python/standalone_apps/speech_recognition/app/download_resources.py --hw-arch <hailo device type>
 ```
 
 Direct usage within the repository:
 
 ```bash
-cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
+cd ~/hailo-apps/hailo_apps/python/standalone_apps/speech_recognition/app
 python3 app_hailo_whisper.py
 ```
 
 To see all possible arguments:
 ```bash
-cd ~/hailo-apps-infra/hailo_apps/python/standalone_apps/speech_recognition/app
+cd ~/hailo-apps/hailo_apps/python/standalone_apps/speech_recognition/app
 python3 app_hailo_whisper.py --help
 ```
 

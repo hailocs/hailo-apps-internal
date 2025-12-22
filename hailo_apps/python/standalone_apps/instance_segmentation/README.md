@@ -25,25 +25,32 @@ Supported Models
 - yolov5m_seg_with_nms
 - fast_sam_s
 
-Direct usage within the repository:
------
-```bash
-cd ~/hailo_apps/python/standalone_apps/instance_segmentation
-python instance_segmentation.py
+
+## Installation and Usage
+
+The application supports two usage modes:
+1. Running from an installed `hailo-apps` repository  
+2. Running as a **standalone application** in a separate virtual environment  
+
+
+
+## Option 1: Inside an Installed hailo-apps Repository
+If you installed the main repository:
+```shell script
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
+sudo ./install.sh
+source setup_env.sh
+```
+Then the application is available locally:
+```shell script
+cd hailo-apps/python/standalone_apps/instance_segmentation
+./instance_segmentation.py -n <model_path> -i <input_path> -t <model-type> 
 ```
 
-To see all possible arguments:
-```bash
-cd ~/hailo_apps/python/standalone_apps/instance_segmentation
-python instance_segmentation.py --help
-```
+## Option 2: Standalone Installation
 
-Standalone Usage
------
-
-Usage
------
-To avoid compatibility issues, it's recommended to have a separate venv from the DFC.
+To avoid compatibility issues, it's recommended to use a clean virtual environment.
 
 0. Install PCIe driver and PyHailoRT
     - Download and install the PCIe driver and PyHailoRT from the Hailo website
@@ -64,17 +71,10 @@ To avoid compatibility issues, it's recommended to have a separate venv from the
     pip install -r requirements.txt
     ```
 
-3. Run the script:
+3. Run:
     ```shell script
     ./instance_segmentation.py -n <model_path> -i <input_path> -t <model-type> 
     ```
-
-You can choose between:
-- **Regular instance segmentation**
-- **instance segmentation with tracking** (by adding `--track`)
-
-The output results will be saved under a folder named `output`, or in the directory specified by `--output-dir`.
-
 
 
 Arguments
@@ -141,6 +141,13 @@ Example
 **Inference on a folder of images**
 ```shell script
 ./instance_segmentation.py -n yolov5m_seg_with_nms.hef -i input_folder -t v5
+```
+
+**Output**
+Results are saved to output/ by default
+Override with:
+```shell script
+--output-dir <path>
 ```
 
 🔧 Visualization and Tracking Configuration
