@@ -17,7 +17,7 @@ For scenes with varied object sizes, you can use the `--multi-scale` flag to ena
 
 
 ## Usage Examples
-**Note its very easy to reach a very high fps requirements by using too many tiles.**
+**Note: It's very easy to reach very high FPS requirements by using too many tiles.**
 If you application seems to be slow, try to use less tiles. If you do need to use more tiles, you can reduce the frame rate using the `--frame-rate` flag.
 
 ### Basic Examples

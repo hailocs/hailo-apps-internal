@@ -6,7 +6,7 @@
 
 ## What's New
 
-We're excited to announce version 25.10.0 of the Hailo Applications Infrastructure! This release brings Hailo10 hardware support, Three powerful new applications, and significant improvements across the entire platform.
+We're excited to announce version 25.10.0 of the Hailo Applications Infrastructure! This release brings Hailo10 hardware support, three powerful new applications, and significant improvements across the entire platform.
 
 #### Important: Trixie support for RPi! Bookworm is no longer supported (Use previous release if need to stay on Bookworm).
 
