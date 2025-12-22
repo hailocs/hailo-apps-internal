@@ -7,13 +7,12 @@ from pathlib import Path
 import numpy as np
 import cv2
 import threading
-from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-
 from lane_detection_utils import (UFLDProcessing,
                                   check_process_errors,
                                   compute_scaled_radius)
 
 try:
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
     from hailo_apps.python.core.common.toolbox import (
         resolve_arch,
@@ -25,6 +24,7 @@ try:
 except ImportError:
     core_dir = Path(__file__).resolve().parents[2] / "core"
     sys.path.insert(0, str(core_dir))
+    from common.hailo_logger import get_logger, init_logging, level_from_args
     from common.hailo_inference import HailoInfer
     from common.toolbox import (
         resolve_arch,

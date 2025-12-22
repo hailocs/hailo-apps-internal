@@ -4,10 +4,10 @@ import sys
 import queue
 import threading
 from types import SimpleNamespace
-from post_process.postprocessing import inference_result_handler
 from functools import partial
 from pathlib import Path
 import numpy as np
+from post_process.postprocessing import inference_result_handler
 
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker

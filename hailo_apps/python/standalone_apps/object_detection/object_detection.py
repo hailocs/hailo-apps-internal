@@ -25,6 +25,7 @@ try:
     from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+    from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
 except ImportError:
     core_dir = Path(__file__).resolve().parents[2] / "core"
     sys.path.insert(0, str(core_dir))
@@ -44,7 +45,7 @@ except ImportError:
     from common.core import handle_list_models_flag, resolve_hef_path
     from common.parser import get_standalone_parser
     from common.hailo_logger import get_logger, init_logging, level_from_args
-from object_detection_post_process import inference_result_handler
+    from object_detection_post_process import inference_result_handler
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)

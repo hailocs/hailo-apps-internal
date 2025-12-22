@@ -572,7 +572,8 @@ ${BOLD}OPTIONS:${NC}
     --all                       Download all available models/resources
     -x, --no-install            Skip Python package installation
     --no-system-python          Don't use system site-packages in venv
-    --no-tappas-required        Skip TAPPAS checks, Python TAPPAS install, and pipeline apps
+    --no-tappas-required        Skip TAPPAS checks, Python TAPPAS install, compile, and post_install
+                                (downloads resources directly, no C++ compilation)
     --dry-run                   Show what would be done without executing
     -h, --help                  Show this help message
 
@@ -1154,13 +1155,60 @@ run_post_install() {
     fix_ownership "${RESOURCES_ROOT}"
 
     if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        log_info "Skipping post-installation (--no-tappas-required)"
+        log_info "Running minimal post-installation (--no-tappas-required)"
+        
+        # Create resources symlink
         if ! setup_resources_symlink; then
             log_error "Failed to create resources symlink"
             record_step_result "FAILED" "Symlink creation failed"
             return 1
         fi
-        record_step_result "SKIPPED" "No TAPPAS required"
+        
+        # Build download args
+        local download_args=""
+        if [[ "$DOWNLOAD_GROUP" == "all" ]]; then
+            download_args="--all"
+        elif [[ -n "$DOWNLOAD_GROUP" ]]; then
+            download_args="--group '${DOWNLOAD_GROUP}'"
+        fi
+        
+        if [[ "${DRY_RUN}" == true ]]; then
+            log_dry_run "source ${venv_activate} && hailo-download-resources ${download_args}"
+            record_step_result "SKIPPED" "Dry-run mode"
+            return 0
+        fi
+        
+        # Run download_resources directly (skip compile and full post_install)
+        log_info "Downloading resources (skipping compile and post_install)..."
+        log_info "Download group: ${DOWNLOAD_GROUP}"
+        
+        disable_error_trap
+        local download_exit=0
+        
+        run_as_user bash -c "
+            export PYTHONUNBUFFERED=1 && \
+            source '${venv_activate}' && \
+            cd '${SCRIPT_DIR}' && \
+            stdbuf -oL -eL hailo-download-resources ${download_args} 2>&1
+        " | while IFS= read -r line; do
+            log_debug "  $line"
+            echo "$line"
+        done
+        
+        download_exit=${PIPESTATUS[0]}
+        enable_error_trap
+        
+        if [[ $download_exit -ne 0 ]]; then
+            log_error "Resource download failed (exit code: ${download_exit})"
+            log_info "You can retry manually:"
+            log_info "  source ${SCRIPT_DIR}/setup_env.sh"
+            log_info "  hailo-download-resources ${download_args}"
+            record_step_result "FAILED" "Download failed: ${download_exit}"
+            return 1
+        fi
+        
+        log_success "Resources downloaded (no-tappas mode)"
+        record_step_result "SUCCESS" "Resources downloaded (no-tappas)"
         return 0
     fi
 

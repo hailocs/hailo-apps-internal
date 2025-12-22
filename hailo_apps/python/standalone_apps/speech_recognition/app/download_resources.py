@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 import os, subprocess
 import sys
-from hailo_apps.python.core.common.parser import get_standalone_parser
+from pathlib import Path
+
+try:
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+except ImportError:
+    core_dir = Path(__file__).resolve().parents[3] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.parser import get_standalone_parser
 
 BASE_HEF = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper"
 BASE_ASSETS = "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets"

@@ -5,7 +5,13 @@ import queue
 import threading
 from functools import partial
 from pathlib import Path
-from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+
+try:
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+except ImportError:
+    core_dir = Path(__file__).resolve().parents[2] / "core"
+    sys.path.insert(0, str(core_dir))
+    from common.hailo_logger import get_logger, init_logging, level_from_args
 
 # Check OCR dependencies before importing OCR-specific modules
 def check_ocr_dependencies():
