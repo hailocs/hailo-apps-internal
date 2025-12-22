@@ -85,8 +85,8 @@ class GStreamerClipApp(GStreamerApp):
         self.text_image_matcher = text_image_matcher
         self.text_image_matcher.set_threshold(self.options_menu.detection_threshold)
         self.win = gui.AppWindow(self.options_menu.detection_threshold, self.options_menu.disable_runtime_prompts, self.text_image_matcher, self.json_file)
-        self.detection_batch_size = 2
-        self.clip_batch_size = 2
+        self.detection_batch_size = 8
+        self.clip_batch_size = 8
 
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME, model=CLIP_VIDEO_NAME)

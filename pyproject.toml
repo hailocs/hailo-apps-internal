@@ -61,14 +61,15 @@ speech-rec = [
     "transformers==4.50.1",
     "sounddevice==0.5.1",
     "torch==2.6.0",
+    "torchvision==0.21.0",
     "streamlit",
 ]
 
 # CLIP dependencies - install with: pip install -e ".[clip]"
 clip = [
     "openai-clip",
-    "torch",
-    "torchvision"
+    "torch==2.6.0",
+    "torchvision==0.21.0"
 ]
 
 [project.scripts]
