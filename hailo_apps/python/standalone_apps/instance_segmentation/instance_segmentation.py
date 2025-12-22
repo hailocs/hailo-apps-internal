@@ -184,12 +184,12 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, batch_size, input_queue, width, height)
+        args=(images, cap, None, batch_size, input_queue, width, height)
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
-        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker)
+        args=(output_queue, cap, save_stream_output, output_dir, post_process_callback_fn, fps_tracker, None, None)
     )
 
     infer_thread = threading.Thread(

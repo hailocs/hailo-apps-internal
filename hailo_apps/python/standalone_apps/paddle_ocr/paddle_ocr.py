@@ -342,7 +342,7 @@ def run_inference_pipeline(
 
     # input postprocess
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, batch_size, det_input_queue, width, height)
+        target=preprocess, args=(images, cap, frame_rate, batch_size, det_input_queue, width, height)
     )
 
     # detector output postprocess
@@ -361,7 +361,7 @@ def run_inference_pipeline(
     vis_postprocess_thread = threading.Thread(
         target=visualize,
         args=(vis_output_queue, cap, save_output, output_dir,
-              post_process_callback_fn, fps_tracker, True)
+              post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True)
     )
 
     det_thread = threading.Thread(
