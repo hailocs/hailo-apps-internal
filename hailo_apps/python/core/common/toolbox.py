@@ -371,45 +371,6 @@ def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndar
     return padded_image
 
 
-def oriented_object_detection_preprocess(image: np.ndarray, model_w: int, model_h: int, config_data: dict) -> np.ndarray:
-    """
-    Preprocess image for oriented object detection with letterbox resize.
-    
-    Args:
-        image (np.ndarray): Input image.
-        model_w (int): Model input width.
-        model_h (int): Model input height.
-        config_data (dict): Configuration data (currently unused but kept for API compatibility).
-    
-    Returns:
-        np.ndarray: Preprocessed and padded image.
-    """
-    # run letterbox resize
-    h0, w0 = image.shape[:2]
-    new_w, new_h = model_w, model_h
-    r = min(new_w / w0, new_h / h0)
-    new_unpad = (int(round(w0 * r)), int(round(h0 * r)))
-    dw = (new_w - new_unpad[0]) / 2
-    dh = (new_h - new_unpad[1]) / 2
-    
-    # calculate padding to ensure exact output dimensions
-    top = int(round(dh - 0.1))
-    bottom = int(round(dh + 0.1))
-    left = int(round(dw - 0.1))
-    right = int(round(dw + 0.1))
-    
-    # adjust padding to ensure exact output shape
-    if new_unpad[1] + top + bottom != new_h:
-        bottom = new_h - new_unpad[1] - top
-    if new_unpad[0] + left + right != new_w:
-        right = new_w - new_unpad[0] - left
-    
-    color = (114, 114, 114)
-    resized = cv2.resize(image, new_unpad, interpolation=cv2.INTER_LINEAR)
-    padded_image = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
-    return padded_image
-
-
 ####################################################################
 # Visualization
 ####################################################################
@@ -606,7 +567,7 @@ def resolve_output_resolution_arg(res_arg: Optional[list[str]]) -> Optional[Tupl
 def list_networks(app: str) -> None:
     """
     Print the supported networks for a given application.
-    
+
     Note: This is a stub implementation for HACE compatibility.
     In hailo-apps, use config_manager.get_model_names() instead.
     """
@@ -633,7 +594,7 @@ def list_networks(app: str) -> None:
 def list_inputs(app: str) -> None:
     """
     List predefined inputs for a given application.
-    
+
     Note: This is a stub implementation for HACE compatibility.
     """
     logger.warning(
@@ -682,7 +643,7 @@ def resolve_arch(arch: str | None) -> str:
 def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch: str | None = None) -> str:
     """
     Resolve the --net argument into a concrete HEF path.
-    
+
     Note: This is a compatibility function for HACE apps.
     In hailo-apps, prefer using core.resolve_hef_path() directly.
     """
@@ -710,11 +671,11 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch:
     # Treat as model name - try to resolve using hailo-apps mechanism
     model_name = net_arg
     existing_hef = dest_path / f"{model_name}.hef"
-    
+
     if existing_hef.exists():
         logger.info(f"Using existing HEF: {existing_hef.resolve()}")
         return str(existing_hef.resolve())
-    
+
     # Try to resolve using hailo-apps's config system
     resolved_arch = resolve_arch(arch)
     try:
@@ -736,7 +697,7 @@ def resolve_net_arg(app: str, net_arg: str | None, dest_dir: str = "hefs", arch:
 def resolve_input_arg(app: str, input_arg: str | None) -> str:
     """
     Resolve the --input argument into a concrete input source.
-    
+
     Note: This is a compatibility function for HACE apps.
     """
     # Map standalone app names to their base resource tag names
@@ -744,10 +705,9 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
         "object_detection": "detection",
         "simple_detection": "simple_detection",
         "instance_segmentation": "instance_segmentation",
-        "oriented_object_detection": "oriented_object_detection",
         "super_resolution": "super_resolution",
     }
-    
+
     def resolve_tagged_resource(app_name: str, preferred_name: str | None = None) -> str | None:
         """Resolve a resource listed in resources_config.yaml for this app."""
         try:

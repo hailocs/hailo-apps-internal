@@ -84,10 +84,6 @@ logging:
         default: "./logs/standalone/super_resolution/default"
         extra: "./logs/standalone/super_resolution/extra"
         all: "./logs/standalone/super_resolution/all"
-      oriented_object_detection_standalone:
-        default: "./logs/standalone/oriented_object_detection/default"
-        extra: "./logs/standalone/oriented_object_detection/extra"
-        all: "./logs/standalone/oriented_object_detection/all"
       paddle_ocr_standalone:
         default: "./logs/standalone/paddle_ocr/default"
         extra: "./logs/standalone/paddle_ocr/extra"
@@ -194,10 +190,6 @@ standalone_tests:
       test_suite_mode: "default"
       model_selection: "default"
       description: "Standalone super resolution"
-    oriented_object_detection_standalone:
-      test_suite_mode: "default"
-      model_selection: "default"
-      description: "Standalone oriented object detection"
     paddle_ocr_standalone:
       test_suite_mode: "default"
       model_selection: "default"

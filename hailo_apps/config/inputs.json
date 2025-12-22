@@ -26,24 +26,14 @@
         }
       ]
     },
-    
-    "oriented_object_detection": {
-      "images": [
-        {
-          "name": "dota_image",
-          "description": "Aerial image from DOTA dataset",
-          "path": "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/images/dota_image.png"
-        }
-      ]
-    },
-    
+
     "lane_detection": {
       "videos": [
         {
           "name": "lane_day",
           "description": "Front camera lane driving (day)",
           "path": "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/lane_detection.mp4"
-        }        
+        }
       ]
     },
 
@@ -83,7 +73,7 @@
           "name": "walk_in_office",
           "description": "People are walking inside an office building",
           "path": "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/walk_in_room.mp4"
-        }        
+        }
       ]
     }
   }
