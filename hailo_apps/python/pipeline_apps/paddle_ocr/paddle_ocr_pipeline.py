@@ -39,6 +39,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     USER_CALLBACK_PIPELINE,
     CROPPER_PIPELINE,
     TRACKER_PIPELINE,
+    QUEUE,
 )
 
 hailo_logger = get_logger(__name__)
@@ -75,26 +76,17 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         )
 
         # Set Hailo parameters - use different batch sizes for detection vs recognition
-        # Detection: batch_size=2 for parallel frame processing
         # Recognition: batch_size=8 to accumulate multiple cropped regions before inference
         # This improves hardware utilization and reduces inference overhead
-        if self.batch_size == 1:
-            self.batch_size = 2
-            hailo_logger.info("OCR pipeline: Using batch_size=2 for detection")
 
-        # Recognition batch size - set to 2 for better responsiveness
-        # batch_size=2 processes faster and reduces lag
-        self.recognition_batch_size = 2
-        hailo_logger.info("OCR pipeline: Using batch_size=%d for recognition (will batch up to %d cropped regions)",
+        self.recognition_batch_size = 8
+        hailo_logger.debug("OCR pipeline: Using batch_size=%d for recognition (will batch up to %d cropped regions)",
                          self.recognition_batch_size, self.recognition_batch_size)
 
-        # Set frame rate to 15 FPS for better performance and reduced processing load
-        if self.frame_rate > 15:
-            self.frame_rate = 15
+        # Set frame rate to 10FPS for better performance and reduced processing load
+        if self.frame_rate > 10:
+            self.frame_rate = 10
             hailo_logger.info("OCR pipeline: Frame rate set to %d FPS", self.frame_rate)
-
-        # Architecture is already handled by GStreamerApp parent class
-        # Use self.arch which is set by parent
 
         # Resolve HEF paths for multi-model app (OCR detection + OCR recognition)
         # Uses --hef-path arguments if provided, otherwise uses defaults
@@ -198,7 +190,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
             class_id=-1,
             name="ocr_tracker",
             keep_lost_frames=1,  # Remove lost tracks after 1 frame (faster cleanup)
-            keep_tracked_frames=5,  # Consider tracked instances lost after 5 frames without match (was 15)
+            keep_tracked_frames=2,  # Consider tracked instances lost after 2 frames without match
         )
 
         # 3. OCR Recognition pipeline - recognizes text in cropped regions
@@ -215,16 +207,12 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         )
 
         # 4. Cropper pipeline - crops detected text regions and feeds them to OCR recognition
-        # With recognition batch_size=4, we need adequate queues but not too large
-        # Use leaky='downstream' on bypass queue to drop old frames when recognition is slow
-        # This prevents frame accumulation and the "stop then fast" pattern
         ocr_cropper = CROPPER_PIPELINE(
             inner_pipeline=ocr_rec_pipeline,
             so_path=str(self.post_process_so) if self.post_process_so else None,
             function_name=self.cropper_function,
             internal_offset=True,
-            bypass_max_size_buffers=20,  # Reduced from 40 - batch_size=4 is more responsive
-            bypass_leaky="downstream",  # Drop old frames instead of blocking when recognition is slow
+            bypass_max_size_buffers=16,
             name="ocr_cropper",
         )
 
@@ -237,20 +225,12 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         )
 
         # Full pipeline: Source -> OCR Detection -> Tracker -> Cropper (with OCR Recognition) -> Callback -> Display
-        # Add queues between major stages to prevent back-pressure and handle timeout issues
-        # Use leaky=downstream on queues to prevent blocking when recognition is slow
-        # Note: CROPPER_PIPELINE already includes an input queue, so we don't add one before it
-        from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE
         pipeline_string = (
             f"{source_pipeline} ! "
-            f"{QUEUE(name='ocr_det_input_q', max_size_buffers=10, leaky='downstream')} ! "
             f"{ocr_det_wrapper} ! "
-            f"{QUEUE(name='ocr_tracker_input_q', max_size_buffers=10, leaky='downstream')} ! "
             f"{tracker_pipeline} ! "
             f"{ocr_cropper} ! "
-            f"{QUEUE(name='ocr_callback_input_q', max_size_buffers=10, leaky='downstream')} ! "
             f"{user_callback_pipeline} ! "
-            f"{QUEUE(name='ocr_display_input_q', max_size_buffers=10, leaky='downstream')} ! "
             f"{display_pipeline}"
         )
 

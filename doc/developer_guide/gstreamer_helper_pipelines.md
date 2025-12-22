@@ -311,7 +311,6 @@ Wraps an inner pipeline with hailocropper and hailoaggregator. The cropper will 
 - `internal_offset` (bool): If True, uses internal offsets. Defaults to True.
 - `resize_method` (str): The resize method. Defaults to 'bilinear'.
 - `bypass_max_size_buffers` (int): For the bypass queue. Defaults to 20.
-- `bypass_leaky` (str): Leaky behavior for bypass queue ('no', 'upstream', 'downstream'). Defaults to 'no'.
 - `name` (str): A prefix name for pipeline elements. Defaults to 'cropper_wrapper'.
 
 **Returns:**
@@ -382,7 +381,7 @@ tile_cropper = TILE_CROPPER_PIPELINE(
 Creates a GStreamer pipeline string for the HailoTracker element, which tracks detected objects across video frames.
 
 **Parameters:**
-- `class_id` (int): The class ID to track. Use -1 to track across all classes.
+- `class_id` (int, required): The class ID to track. Use -1 to track across all classes. This parameter is required (no default value).
 - `kalman_dist_thr` (float, optional): Threshold used in Kalman filter to compare Mahalanobis cost matrix. Closer to 1.0 is looser. Defaults to 0.8.
 - `iou_thr` (float, optional): Threshold used in Kalman filter to compare IOU cost matrix. Closer to 1.0 is looser. Defaults to 0.9.
 - `init_iou_thr` (float, optional): Threshold used in Kalman filter to compare IOU cost matrix of newly found instances. Closer to 1.0 is looser. Defaults to 0.7.
@@ -441,7 +440,7 @@ stream = VIDEO_STREAM_PIPELINE(
 Creates a GStreamer pipeline string portion for shared memory video transfer using the shm plugins. Shmsink creates a shared memory segment and socket.
 
 **Parameters:**
-- `socket_path` (str): Socket path for the shared memory segment.
+- `socket_path` (str, optional): Socket path for the shared memory segment. Defaults to None.
 
 **Returns:**
 - `str`: GStreamer pipeline string fragment.
@@ -456,7 +455,7 @@ shm_sink = VIDEO_SHMSINK_PIPELINE(socket_path="/tmp/video_socket")
 Creates a GStreamer pipeline string portion for shared memory video transfer using the shm plugins. Shmsrc connects to that segment and reads video frames.
 
 **Parameters:**
-- `socket_path` (str): Socket path for the shared memory segment.
+- `socket_path` (str, optional): Socket path for the shared memory segment. Defaults to None.
 
 **Returns:**
 - `str`: GStreamer pipeline string fragment.
