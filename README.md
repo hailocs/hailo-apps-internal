@@ -77,11 +77,10 @@ python vlm_chat.py
 ```
 
 ### Standalone Apps (Python & C++)
-
-> Learn HailoRT with hands-on Python and C++ demos — no TAPPAS required.
+> Learn HailoRT with hands-on Python and C++ demos
 
 <details>
-<summary>C++ Standlone Apps — <a href="hailo_apps/cpp">hailo_apps/cpp</a></summary>
+<summary>C++ Standalone Apps — <a href="hailo_apps/cpp">hailo_apps/cpp</a></summary>
 
 | APP                        | Description                                                      |
 |:---------------------------|:-----------------------------------------------------------------|
