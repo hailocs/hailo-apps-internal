@@ -31,7 +31,7 @@ def pipeline():
     return {
         'name': 'face_recognition',
         'module': 'hailo_apps.hailo_app_python.apps.face_recognition.face_recognition',
-        'script': 'hailo_apps_infra/hailo_apps/apps/face_recognition/face_recognition.py',
+        'script': 'hailo_apps/python/pipeline_apps/face_recognition/face_recognition.py',
         'cli': 'hailo-face-recon'
     }
 

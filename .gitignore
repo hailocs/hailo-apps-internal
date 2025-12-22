@@ -9,9 +9,23 @@ resources/*.so
 resources/*.hef
 resources/*.mp4
 
+# Piper TTS models (large files, must be downloaded locally)
+local_resources/piper_models/*.onnx
+local_resources/piper_models/*.onnx.json
+!local_resources/piper_models/.gitkeep
+
 # Logs and temp files
 *.log
 *.tmp
+*.dot
+
+# Audio files (debug recordings, test files, etc.)
+*.wav
+*.mp3
+*.ogg
+
+# User-specific audio device preferences
+local_resources/audio_device_preferences.json
 
 # Packages and dependencies
 *.egg-info/
@@ -23,6 +37,7 @@ dist/
 *.egg
 *.egg-info/
 .cache/
+*.cache
 coverage/
 
 .venv/
@@ -38,3 +53,7 @@ venv_hailo_apps/
 
 resources/
 resources
+
+# IDE configuration files (user-specific)
+.vscode/launch.json
+.cursor/
