@@ -1,0 +1,21 @@
+{
+  "det_bin_thresh": 0.3,
+  "det_box_thresh": 0.15,
+  "det_unclip_ratio": 3.0,
+  "det_max_candidates": 100,
+  "det_min_box_size": 1.0,
+  "det_output_name": "",
+  "det_map_h": 960,
+  "det_map_w": 544,
+  "letterbox_fix": true,
+  "rec_output_name": "",
+  "charset_path": "",
+  "blank_index": 0,
+  "logits_are_softmax": false,
+  "time_major": false,
+  "text_conf_smooth": 0.9,
+  "attach_caption_box": false,
+  "frequency_dict_path": "frequency_dictionary_en_82_765.txt",
+  "max_edit_distance": 2
+}
+
