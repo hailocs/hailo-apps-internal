@@ -33,6 +33,7 @@ apps:
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "input_video_with_labels"
@@ -48,6 +49,7 @@ apps:
     default_test_suites:
       - "basic_show_fps"
       - "basic_input_video"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "basic_input_usb"
@@ -65,6 +67,7 @@ apps:
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "with_labels_json"
@@ -81,6 +84,7 @@ apps:
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "with_batch_size_2"
@@ -96,6 +100,7 @@ apps:
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "pipeline_disable_callback"
@@ -110,6 +115,7 @@ apps:
       - "basic_show_fps"
       - "basic_input_video"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "input_video_with_hef"
     extra_test_suites:
       - "tiling_general_detection"
@@ -129,6 +135,7 @@ apps:
       - "basic_input_video"
       - "input_video_with_hef"
       - "basic_input_usb"
+      - "basic_input_rpi"
     extra_test_suites:
       - "pipeline_disable_sync"
 
@@ -144,6 +151,7 @@ apps:
       - "basic_input_video"
       - "clip_detector_none"
       - "basic_input_usb"
+      - "basic_input_rpi"
       - "clip_detector_person"
     extra_test_suites: []
 
@@ -160,6 +168,7 @@ apps:
     # Note: multisource tests require video device (e.g., /dev/video0)
     default_test_suites:
       - "basic_show_fps"
+      - "basic_input_rpi"
     extra_test_suites:
       - "multisource_single"
       - "multisource_multiple"
