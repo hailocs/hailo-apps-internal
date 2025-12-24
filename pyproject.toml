@@ -24,6 +24,7 @@ dependencies = [
     "pyyaml",
     "Pillow",
     "lancedb",
+    "tokenizers",
     # Dependencies from hace-internal (tracker, etc.)
     "loguru",
     "scipy>=1.9.3",
