@@ -271,6 +271,7 @@ class AudioPlayer:
             block (bool): If True, blocks until this specific audio data is consumed.
                           (NOTE: approximate blocking by checking queue emptiness)
         """
+        self._flush_event.clear()
         input_sr = TARGET_SR
         data = None
 
