@@ -3,7 +3,5 @@
 debug_audio_*.wav
 
 # Context state files (temporary, generated at runtime)
-tools/*/contexts/*.state
-tools/*/contexts/*.meta.json
-tools/*/contexts/*.yaml
-tools/*/contexts/*.cache
+tools/*/contexts/
+
