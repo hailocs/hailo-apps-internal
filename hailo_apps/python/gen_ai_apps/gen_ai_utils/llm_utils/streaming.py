@@ -155,8 +155,14 @@ class StreamingTextFilter:
 
         # If we're inside <text> tag and not inside any suppressed section, output remaining buffer
         if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call and self.buffer:
-            output += self.buffer
-            self.buffer = ""
+            # Avoid splitting potential tags even inside <text>
+            next_tag_start = self.buffer.find('<')
+            if next_tag_start != -1:
+                output += self.buffer[:next_tag_start]
+                self.buffer = self.buffer[next_tag_start:]
+            else:
+                output += self.buffer
+                self.buffer = ""
         elif not self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call:
             # If not inside any tag, the text is still valid for streaming.
             # To avoid printing partial tags, we find the last complete chunk of text.
@@ -291,16 +297,21 @@ def generate_and_stream_response(
 
     # Print any remaining filtered content after streaming completes
     # Skip if showing raw stream (already printed as raw tokens)
-    if not show_raw_stream:
-        remaining = token_filter.get_remaining()
-        if remaining:
-            # Final cleanup: remove any remaining XML tags and partial tags
-            remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
-            remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
-            remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
+    # Process any remaining filtered content after streaming completes
+    remaining = token_filter.get_remaining()
+    if remaining:
+        # Final cleanup: remove any remaining XML tags and partial tags
+        remaining = re.sub(r"</?text>?", "", remaining)  # </text>, </text, <text>, text>
+        remaining = re.sub(r"</?tool_call>?", "", remaining)  # </tool_call>, <tool_call>, etc.
+        remaining = re.sub(r"<\|im_end\|>", "", remaining)  # Special tokens
+
+        # If NOT showing raw stream, we need to print the remaining valid text
+        if not show_raw_stream:
             print(remaining, end="", flush=True)
-            if token_callback:
-                token_callback(remaining)
+
+        # Always send remaining text to callback (might be the last chunk needed for TTS)
+        if token_callback:
+            token_callback(remaining)
 
     print()  # New line after streaming completes
 
