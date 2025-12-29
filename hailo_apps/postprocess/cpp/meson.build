@@ -86,6 +86,9 @@ face_align_deps = [postprocess_dep]
 if opencv_dep.found()
     face_align_deps += opencv_dep
 endif
+if zlib_dep.found()
+    face_align_deps += zlib_dep
+endif
 
 shared_library('vms_face_align',
     face_align_post_sources,
@@ -136,6 +139,9 @@ vms_croppers_sources = [
 vms_croppers_deps = [postprocess_dep]
 if opencv_dep.found()
     vms_croppers_deps += opencv_dep
+endif
+if zlib_dep.found()
+    vms_croppers_deps += zlib_dep
 endif
 
 shared_library('vms_croppers',
@@ -248,6 +254,9 @@ ocr_postprocess_sources = [
 ocr_postprocess_deps = [postprocess_dep]
 if opencv_dep.found()
     ocr_postprocess_deps += opencv_dep
+endif
+if zlib_dep.found()
+    ocr_postprocess_deps += zlib_dep
 endif
 
 shared_library('ocr_postprocess',
