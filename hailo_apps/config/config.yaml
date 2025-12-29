@@ -11,7 +11,7 @@
 # These values are auto-detected during installation and written to .env file.
 # Set to "auto" for automatic detection, or specify a fixed value.
 
-hailort_version: "auto"       # Options: "auto", "4.23.0", "5.1.1"
+hailort_version: "auto"       # Options: "auto", "4.23.0", "5.1.1", "5.2.0"
 tappas_version: "auto"        # Options: "auto", "5.1.0"
 tappas_postproc_path: "auto"  # Path to TAPPAS postprocess libs (auto from pkg-config)
 model_zoo_version: "auto"     # Options: "auto", "v2.17.0" (H8), "v5.1.1" (H10)
@@ -28,6 +28,7 @@ valid_versions:
   hailort:
     - "4.23.0"
     - "5.1.1"
+    - "5.2.0"
   tappas:
     - "5.1.0"
     - "5.2.0"
