@@ -7,6 +7,8 @@
 
 #include <vector>
 #include <cmath>
+#include <map>
+#include <deque>
 
 #include "clip_croppers.hpp"
 
