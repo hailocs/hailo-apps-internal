@@ -146,7 +146,7 @@ class GStreamerClipApp(GStreamerApp):
     def get_pipeline_string(self):
         source_pipeline = SOURCE_PIPELINE(self.video_source, self.video_width, self.video_height, frame_rate=self.frame_rate, sync=self.sync)
 
-        multi_process_service_value = True if getattr(self, 'arch', None) in [HAILO8_ARCH, HAILO8L_ARCH] else None
+        multi_process_service_value = 'true' if getattr(self, 'arch', None) in [HAILO8_ARCH, HAILO8L_ARCH] else None
         detection_pipeline = INFERENCE_PIPELINE(
             hef_path=self.hef_path_detection,
             post_process_so=self.post_process_so_detection,

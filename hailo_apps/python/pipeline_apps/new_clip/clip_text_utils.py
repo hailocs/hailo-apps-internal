@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from tokenizers import Tokenizer
 import numpy as np
-from hailo_platform import VDevice, FormatType
+from hailo_platform import VDevice, FormatType, HailoSchedulingAlgorithm
 from hailo_apps.python.core.common.core import get_resource_path
 from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 from hailo_apps.python.core.common.defines import HAILO_ARCH_KEY, HAILO8_ARCH, HAILO8L_ARCH, RESOURCES_JSON_DIR_NAME, RESOURCES_NPY_DIR_NAME
@@ -468,14 +468,13 @@ def run_text_encoder_inference(text, hef_path,
     params.group_id = "SHARED"
     if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
         params.multi_process_service = True
+        params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
     with VDevice(params) as vdevice:
         infer_model = vdevice.create_infer_model(str(hef_path))
         # Set format types before configuring the infer model
         infer_model.input(input_layer_name).set_format_type(FormatType.FLOAT32)
         infer_model.output(output_layer_name).set_format_type(FormatType.FLOAT32)
         with infer_model.configure() as configured_infer_model:
-            if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
-                configured_infer_model.activate()
             bindings = configured_infer_model.create_bindings()
             input_buffer = np.empty(infer_model.input().shape, dtype=np.float32)
             input_buffer[:] = input_embeddings
@@ -483,8 +482,6 @@ def run_text_encoder_inference(text, hef_path,
             output_buffer = np.empty(infer_model.output().shape, dtype=np.float32)
             bindings.output().set_buffer(output_buffer)
             configured_infer_model.run([bindings], timeout_ms)
-            if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
-                configured_infer_model.deactivate()
         output_buffer = bindings.output().get_buffer()
 
     # ========== STEP 3: POST-PROCESS ==========
