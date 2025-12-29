@@ -1,11 +1,17 @@
 import os
 
+import yaml
+
 from hailo_apps.python.core.common.defines import (
+    CONFIG_ENABLED,
     GST_VIDEO_SINK,
+    HAILO8_ARCH,
+    HAILO8L_ARCH,
     TAPPAS_POSTPROC_PATH_DEFAULT,
     TAPPAS_POSTPROC_PATH_KEY,
     SHARED_VDEVICE_GROUP_ID
 )
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 
 def get_source_type(input_source):
@@ -196,6 +202,14 @@ def INFERENCE_PIPELINE(
     config_str = f" config-path={config_json} " if config_json else ""
     function_name_str = f" function-name={post_function_name} " if post_function_name else ""
     vdevice_group_id_str = f" vdevice-group-id={vdevice_group_id} "
+    arch = detect_hailo_arch()
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../config/config.yaml')
+    config_path = os.path.normpath(config_path)
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    multi_processing = config.get('multi_processing')
+    if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_ENABLED:
+        multi_process_service = 'true'
     multi_process_service_str = (
         f" multi-process-service={str(multi_process_service).lower()} "
         if multi_process_service is not None

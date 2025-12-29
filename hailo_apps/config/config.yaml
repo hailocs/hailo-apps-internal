@@ -17,6 +17,7 @@ tappas_postproc_path: "auto"  # Path to TAPPAS postprocess libs (auto from pkg-c
 model_zoo_version: "auto"     # Options: "auto", "v2.17.0" (H8), "v5.1.1" (H10)
 host_arch: "auto"             # Options: "auto", "x86", "rpi", "arm"
 hailo_arch: "auto"            # Options: "auto", "hailo8", "hailo8l", "hailo10h"
+multi_processing: "enabled"   # Options: "enabled", "disabled"
 
 #-------------------------------------------------------------------------------
 # Version Validation

@@ -104,11 +104,6 @@ def get_args():
         help="Whisper variant to use (default: base)"
     )
     parser.add_argument(
-        "--multi-process-service", 
-        action="store_true", 
-        help="Enable multi-process service to run other models in addition to Whisper"
-    )
-    parser.add_argument(
         "--duration",
         type=int,
         default=10,
@@ -167,7 +162,7 @@ def main():
     encoder_path = get_hef_path(variant, args.arch, "encoder")
     decoder_path = get_hef_path(variant, args.arch, "decoder")
 
-    whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant, multi_process_service=args.multi_process_service)
+    whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant)
     print("Hailo Whisper pipeline initialized.")
     audio_path = "sampled_audio.wav"
     is_nhwc = True

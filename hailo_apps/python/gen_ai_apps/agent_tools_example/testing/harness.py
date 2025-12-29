@@ -144,7 +144,9 @@ class AgentTestHarness:
             raise RuntimeError("Failed to resolve HEF path")
 
         # Initialize VDevice and LLM
-        self._vdevice = VDevice()
+        params = VDevice.create_params()
+        params.group_id = "SHARED"
+        self._vdevice = VDevice(params)
         self._llm = LLM(self._vdevice, str(hef_path))
 
         # Discover and find the tool

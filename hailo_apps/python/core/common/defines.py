@@ -35,6 +35,8 @@ LINUX_SYSTEM_NAME_I = "linux"
 UNKNOWN_NAME_I = "unknown"
 USB_CAMERA = "usb"
 JSON_FILE_EXTENSION = ".json"
+CONFIG_ENABLED = 'enabled'
+CONFIG_DISABLED = 'disabled'
 
 # CLI defaults
 PIP_CMD = "pip3"

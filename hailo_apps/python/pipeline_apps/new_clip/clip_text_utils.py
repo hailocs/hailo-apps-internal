@@ -463,7 +463,7 @@ def run_text_encoder_inference(text, hef_path,
     last_token_positions = prepared['last_token_positions']  # Shape: (batch,)
     
     # ========== STEP 2: RUN HAILO INFERENCE ==========
-    arch = os.getenv(HAILO_ARCH_KEY, detect_hailo_arch())
+    arch = detect_hailo_arch()
     params = VDevice.create_params()
     params.group_id = "SHARED"
     if arch in [HAILO8_ARCH, HAILO8L_ARCH]:
