@@ -9,7 +9,8 @@
 
   
 #include <string>  
-#include <vector>  
+#include <vector>
+#include <unordered_map>  
   
 // OCR Parameters structure  
 struct OcrParams {  
