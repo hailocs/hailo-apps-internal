@@ -79,6 +79,7 @@ class AudioPlayer:
         self._playback_thread = None
         self._stop_event = threading.Event()
         self._reinit_event = threading.Event()
+        self._flush_event = threading.Event()
         self._stream_lock = threading.Lock()
 
         # Suppress stderr at startup and keep it suppressed for this player
@@ -107,6 +108,7 @@ class AudioPlayer:
             audio_data (Union[str, np.ndarray]): Path to WAV file or numpy array.
             block (bool): Ignored in this streaming implementation. Kept for API compatibility.
         """
+        self._flush_event.clear()
         input_sr = TARGET_SR
         data = None
 
@@ -151,25 +153,13 @@ class AudioPlayer:
         Clear the playback queue and stop audio immediately.
         """
         # Clear queue
-        while not self.queue.empty():
-            try:
-                self.queue.get_nowait()
-                self.queue.task_done()
-            except queue.Empty:
-                break
+        with self.queue.mutex:
+            self.queue.queue.clear()
 
-        # Abort stream
-        with self._stream_lock:
-            if self.stream:
-                try:
-                    self.stream.abort()
-                except Exception:
-                    pass
+        # Signal flush to stop current chunk playback
+        self._flush_event.set()
 
-        # Signal reinit
-        self._reinit_event.set()
-
-        # Brief wait for hardware
+        # Brief wait to allow worker to see the event and stop writing
         time.sleep(0.02)
 
     def close(self):
@@ -316,7 +306,7 @@ class AudioPlayer:
                         logger.debug("Playing audio chunk: %d samples", data_len)
 
                         while offset < len(data):
-                            if self._reinit_event.is_set() or self._stop_event.is_set():
+                            if self._reinit_event.is_set() or self._stop_event.is_set() or self._flush_event.is_set():
                                 break
 
                             chunk = data[offset:offset + WRITE_CHUNK_SIZE]
