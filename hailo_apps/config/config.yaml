@@ -21,7 +21,7 @@ hailo_arch: "auto"            # Options: "auto", "hailo8", "hailo8l", "hailo10h"
 #-------------------------------------------------------------------------------
 # Version Validation
 #-------------------------------------------------------------------------------
-# Valid versions for installation validation. The installer will warn if
+# Valid versions for installation validation. The installer will stop if
 # detected versions don't match these values.
 
 valid_versions:
@@ -30,6 +30,7 @@ valid_versions:
     - "5.1.1"
   tappas:
     - "5.1.0"
+    - "5.2.0"
   hailo_arch:
     - "hailo8"
     - "hailo8l"

@@ -316,8 +316,12 @@ validate_versions() {
     fi
 
     if [[ "$valid" != true ]]; then
-        log_warning "Version validation warnings above - installation will continue"
+        log_error "Version validation failed - installation cannot continue"
+        log_error "Please ensure all components match the supported versions listed in config.yaml"
+        return 1
     fi
+    
+    return 0
 }
 
 # Get Model Zoo version for a given Hailo architecture
@@ -776,9 +780,15 @@ check_prerequisites() {
 
     # Validate versions against config (including architecture)
     if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"
+        if ! validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"; then
+            record_step_result "FAILED" "Version validation failed"
+            return 1
+        fi
     else
-        validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"
+        if ! validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"; then
+            record_step_result "FAILED" "Version validation failed"
+            return 1
+        fi
     fi
 
     # Validate Model Zoo version if we have both arch and MZ version
