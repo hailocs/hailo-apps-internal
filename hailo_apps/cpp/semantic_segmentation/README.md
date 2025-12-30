@@ -27,9 +27,8 @@ Usage
 
 1. Clone the repository:
     ```shell script
-    git clone <https://github.com/hailo-ai/Hailo-Application-Code-Examples.git>
-        
-    cd Hailo-Application-Code-Examples/runtime/hailo-8/cpp/semantic_segmentation
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps/hailo_apps/cpp/semantic_segmentation
     ``` 
 
 2. Compile the project on the development machine  
