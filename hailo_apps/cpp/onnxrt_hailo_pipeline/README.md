@@ -63,9 +63,8 @@ Usage
 
 1. Clone the repository:
     ```shell script
-    git clone <https://github.com/hailo-ai/Hailo-Application-Code-Examples.git>
-        
-    cd Hailo-Application-Code-Examples/runtime/hailo-8/cpp/onnxrt_hailo_pipeline
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps/hailo_apps/cpp/onnrt_hailo_pipeline
     ``` 
 
 2. Compile the project on the development machine  
