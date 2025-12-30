@@ -13,6 +13,7 @@ from typing import Optional
 from .audio_diagnostics import check_voice_dependencies
 check_voice_dependencies()
 
+from typing import Optional, Callable
 import numpy as np
 import sounddevice as sd
 
@@ -46,6 +47,7 @@ class AudioRecorder:
         self.debug = debug
         self.recording_counter = 0
         self.stream = None
+        self.external_callback = None
         self.device_sr = TARGET_SR  # Will be updated based on device capabilities
 
         # Select device
@@ -69,10 +71,16 @@ class AudioRecorder:
 
         logger.debug(f"Initialized AudioRecorder with device_id={self.device_id}, sample_rate={self.device_sr}")
 
-    def start(self):
-        """Start recording from the microphone."""
+    def start(self, stream_callback: Optional[Callable[[np.ndarray], None]] = None):
+        """
+        Start recording from the microphone.
+
+        Args:
+            stream_callback: Optional callback function that receives audio chunks (np.ndarray).
+        """
         self.audio_frames = []
         self.is_recording = True
+        self.external_callback = stream_callback
 
         # Calculate chunk size for device sample rate (maintain similar time duration)
         device_chunk_size = int(CHUNK_SIZE * self.device_sr / TARGET_SR)
@@ -200,4 +208,8 @@ class AudioRecorder:
             logger.debug(f"Audio callback status: {status}")
 
         if self.is_recording:
-            self.audio_frames.append(indata.copy())
+            data_copy = indata.copy()
+            self.audio_frames.append(data_copy)
+
+            if self.external_callback:
+                self.external_callback(data_copy)
