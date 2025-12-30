@@ -126,7 +126,11 @@ class AgentApp:
         debug: bool = False,
         no_cache: bool = False,
         multi_turn: bool = False,
+        vad_enabled: bool = False,
+        vad_aggressiveness: int = 3,
+        vad_energy_threshold: float = 0.005,
     ):
+
         """
         Initialize the agent application.
 
@@ -140,12 +144,19 @@ class AgentApp:
             debug: Enable debug mode.
             no_cache: If True, skip loading cached states and rebuild context.
             multi_turn: If True, enabled multi-turn conversation (preserves context).
+            vad_enabled: Enable VAD.
+            vad_aggressiveness: VAD aggressiveness (0-3).
+            vad_energy_threshold: VAD energy threshold.
         """
         self.debug = debug
         self.voice_enabled = voice_enabled
         self.no_tts = no_tts
         self.no_cache = no_cache
         self.multi_turn = multi_turn
+        self.vad_enabled = vad_enabled
+        self.vad_aggressiveness = vad_aggressiveness
+        self.vad_energy_threshold = vad_energy_threshold
+
         self.selected_tool = selected_tool
         self.selected_tool_name = selected_tool.get("name", "")
 
@@ -445,9 +456,19 @@ class AgentApp:
             on_clear_context=self._handle_clear_context,
             on_shutdown=self.close,
             debug=self.debug,
+            vad_enabled=self.vad_enabled,
+            vad_aggressiveness=self.vad_aggressiveness,
+            vad_energy_threshold=self.vad_energy_threshold,
+            vad_inhibit=lambda: self.tts.is_speaking if self.tts else False,
         )
 
+        # Inject interaction into app for handshake control
+        self.interaction = interaction
+
+
+
         interaction.run()
+
 
     def _on_voice_input(self, audio) -> None:
         """
@@ -467,10 +488,21 @@ class AgentApp:
 
         if not user_text:
             print("No speech detected.")
+            # Restart listening immediately if no speech
+            if self.interaction and self.voice_enabled:
+                self.interaction.start_listening()
             return
 
         print(f"\nYou: {user_text}")
         self.process_query(user_text)
+
+        # Restart listening (Handshake)
+        if self.interaction and self.voice_enabled:
+            # Wait for TTS to finish if it's playing
+            if self.tts:
+                self.tts.wait_for_completion()
+            self.interaction.start_listening()
+
 
     def _on_processing_start(self) -> None:
         """Callback when processing starts - interrupt any ongoing TTS."""
@@ -807,6 +839,26 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip loading cached context states and rebuild from scratch",
     )
+    # VAD Arguments
+    parser.add_argument(
+        "--vad",
+        action="store_true",
+        help="Enable Voice Activity Detection (hands-free mode)",
+    )
+    parser.add_argument(
+        "--vad-aggressiveness",
+        type=int,
+        default=3,
+        choices=[0, 1, 2, 3],
+        help="VAD aggressiveness level (0-3). Higher is more aggressive in filtering out non-speech.",
+    )
+    parser.add_argument(
+        "--vad-energy-threshold",
+        type=float,
+        default=0.005,
+        help="Minimum RMS energy threshold for VAD to trigger (0.0-1.0).",
+    )
+
 
     return parser
 
@@ -905,7 +957,11 @@ def main() -> None:
             whisper_hef_path=whisper_hef_path,
             debug=args.debug,
             no_cache=args.no_cache,
+            vad_enabled=args.vad,
+            vad_aggressiveness=args.vad_aggressiveness,
+            vad_energy_threshold=args.vad_energy_threshold,
         )
+
         app.run()
     except Exception as e:
         logger.error("Agent failed: %s", e)
