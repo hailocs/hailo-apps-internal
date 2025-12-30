@@ -273,6 +273,11 @@ class TextToSpeechProcessor:
 
         return buffer
 
+    @property
+    def is_speaking(self) -> bool:
+        """Check if TTS is currently synthesizing or playing audio."""
+        return self.audio_player.is_playing or not self.speech_queue.empty()
+
     def get_current_gen_id(self) -> int:
         """Get the current generation ID."""
         with self._gen_id_lock:
@@ -281,6 +286,27 @@ class TextToSpeechProcessor:
     def clear_interruption(self):
         """Clear the interruption flag."""
         self._interrupted.clear()
+
+    def wait_for_completion(self, timeout: float = 10.0):
+        """
+        Block until all queued speech has been processed and played.
+        Returns gracefully if timeout is reached to prevent hanging.
+        """
+        start_time = time.time()
+
+        # Helper to check if done
+        def is_done():
+            speech_empty = self.speech_queue.empty() and (self.speech_queue.unfinished_tasks == 0)
+            audio_empty = True
+            if self.audio_player:
+                audio_empty = self.audio_player.queue.empty() and (self.audio_player.queue.unfinished_tasks == 0)
+            return speech_empty and audio_empty
+
+        while not is_done():
+            if time.time() - start_time > timeout:
+                logger.warning("Wait for audio completion timed out (%.1fs). Forcing proceed.", timeout)
+                break
+            time.sleep(0.1)
 
     def stop(self):
         """Stop the worker thread and cleanup."""
