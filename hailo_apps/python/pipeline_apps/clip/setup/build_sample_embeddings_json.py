@@ -1,12 +1,10 @@
 import json
 import sys
 from pathlib import Path
-
-from hailo_apps.python.core.common.core import get_resource_path
-from hailo_apps.python.core.common.defines import CLIP_TEXT_ENCODER_PIPELINE, RESOURCES_MODELS_DIR_NAME
-
-# Add parent directory to path to import clip_text_utils
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from hailo_apps.python.core.common.core import resolve_hef_paths
+from hailo_apps.python.core.common.defines import CLIP_PIPELINE
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+sys.path.insert(0, str(Path(__file__).parent.parent))  # Add parent directory to path to import clip_text_utils
 from clip_text_utils import run_text_encoder_inference, DEFAULT_TEXT_PROJECTION_PATH
 
 def create_embeddings_json(text_entries, hef_path, timeout_ms, output_filename):
@@ -65,7 +63,8 @@ def create_embeddings_json(text_entries, hef_path, timeout_ms, output_filename):
 
 if __name__ == '__main__':
     # Configuration
-    hef_path = get_resource_path(pipeline_name=CLIP_TEXT_ENCODER_PIPELINE, resource_type=RESOURCES_MODELS_DIR_NAME)
+    models = resolve_hef_paths(hef_paths=None, app_name=CLIP_PIPELINE, arch=detect_hailo_arch())
+    hef_path = models[2].path
     timeout_ms = 1000
     
     # Text entries for embeddings.json (your main embeddings)

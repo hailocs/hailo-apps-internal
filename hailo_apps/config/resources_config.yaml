@@ -763,27 +763,6 @@ clip: &clip_app
   models:
     hailo8:
       default:
-        - name: clip_resnet_50x4_image_encoder
-          source: mz
-        - name: hailo_yolov8n_4_classes_vga
-          source: s3
-    hailo8l:
-      default:
-        - name: clip_resnet_50x4_image_encoder
-          source: mz
-        - name: hailo_yolov8n_4_classes_vga
-          source: s3
-    hailo10h:
-      default:
-        - name: clip_resnet_50x4_image_encoder
-          source: mz
-        - name: hailo_yolov8n_4_classes_vga
-          source: s3
-
-new_clip: &new_clip_app
-  models:
-    hailo8:
-      default:
         - name: clip_vit_b_32_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga

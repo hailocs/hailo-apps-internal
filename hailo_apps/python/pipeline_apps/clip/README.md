@@ -1,32 +1,6 @@
 # CLIP Application
 
-A real-time zero-shot**With person detection:**
-```bash
-hailo-clip --detector person
-```
-- Detects persons first, then classifies cropped regions
-- Useful for identifying people by description (e.g., "person wearing red shirt")
-
-**With vehicle detection:**
-```bash
-hailo-clip --detector vehicle
-```
-- Detects vehicles first, then classifies cropped regions
-- Useful for identifying vehicles by type/color (e.g., "red car", "pickup truck")
-
-**With face detection:**
-```bash
-hailo-clip --detector face
-```
-- Detects faces first, then classifies facial regions
-- Can identify attributes like "smiling person", "person with glasses"
-
-**With license plate detection:**
-```bash
-hailo-clip --detector license-plate
-```
-- Detects license plates first, then classifies cropped regions
-- Useful for vehicle identification and tracking scenariosfication and object recognition application using OpenAI's CLIP model with Hailo AI acceleration.
+A real-time zero-shot image classification and object recognition application using OpenAI's CLIP model with Hailo AI acceleration.
 
 [![CLIP Application Demo](https://img.youtube.com/vi/XXizBHtCLew/0.jpg)](https://www.youtube.com/watch?v=XXizBHtCLew)
 
@@ -37,17 +11,26 @@ The CLIP application demonstrates zero-shot learning capabilities by matching vi
 **Key Features:**
 - **Zero-shot classification** - No training required for new categories
 - **Runtime text prompts** - Define and modify search terms on-the-fly
-- **Multiple detection modes** - Person, vehicle, face, license plate detection, or direct image analysis
+- **Multiple detection modes** - Person detection, face detection, or direct image analysis
 - **Interactive GUI** - Visual threshold control and confidence visualization
 - **Persistent embeddings** - Save and load text prompt configurations
 
-## Prerequisites
 
-This application requires additional Python dependencies for CLIP:
+## Important Note
 
-```bash
-pip install -e ".[clip]"
-```
+**The scripts to generate the tokenizer, token embedding LUT, and text projection matrix are no longer included in this repository.**
+
+You must obtain the following files yourself and place them in the `setup/` directory:
+- `clip_tokenizer.json` (CLIP tokenizer)
+- `token_embedding_lut.npy` (Token embedding lookup table)
+- `text_projection.npy` (Text projection matrix)
+
+Refer to the official OpenAI CLIP and HuggingFace documentation for instructions on how to generate or download these files:
+- [OpenAI CLIP GitHub](https://github.com/openai/CLIP)
+- [HuggingFace Transformers Documentation](https://huggingface.co/docs/transformers/model_doc/clip)
+- [CLIP Tokenizer Info](https://huggingface.co/openai/clip-vit-base-patch32)
+
+---
 
 ## Usage Examples
 
@@ -76,7 +59,7 @@ hailo-clip --detector person
 ```bash
 hailo-clip --detector face
 ```
-- Detects faces first, then classifies facial features
+- Detects faces first, then classifies facial regions
 - Can identify attributes like "smiling person", "person with glasses"
 
 **With custom embeddings file:**
@@ -169,26 +152,12 @@ Source → Detector → Tracker → Cropper → CLIP → Matching → Display
 - Best for: person identification by clothing/attributes
 - Example prompts: "person in blue shirt", "person carrying backpack"
 
-**`--detector vehicle`**
-- First detects vehicles using YOLOv8
-- Crops and tracks each vehicle
-- Then classifies cropped regions
-- Best for: vehicle identification by type/color/features
-- Example prompts: "red car", "sports car", "delivery truck"
-
 **`--detector face`**
 - First detects faces using YOLOv8
 - Crops and tracks each face
 - Then classifies facial regions
 - Best for: facial attributes, expressions
 - Example prompts: "smiling person", "person with beard", "person with glasses"
-
-**`--detector license-plate`**
-- First detects license plates using YOLOv8
-- Crops and tracks each license plate
-- Then classifies cropped regions
-- Best for: vehicle tracking and identification
-- Example prompts: "blue license plate", "European license plate"
 
 ## GUI Interface
 
@@ -284,10 +253,16 @@ python text_image_matcher.py --texts-json prompts_config.json --output embedding
 
 ### Pre-computed Embeddings
 
-The application includes example files:
+The application includes two example files that are generated during initial setup:
 
-- **`example_embeddings.json`**: Default prompts for demo (snake, desk, etc.)
-- **`embeddings.json`**: Template for custom configurations
+- **`embeddings.json`**: Main embeddings (desk, keyboard, spinner, Raspberry Pi, Unicorn mouse pad, Xenomorph)
+- **`example_embeddings.json`**: Example embeddings (cat, dog, person, car, tree, building)
+
+Both files are created by running:
+```bash
+cd setup
+python3 build_sample_embeddings_json.py
+```
 
 ## Command-Line Arguments
 
@@ -295,8 +270,8 @@ The application includes example files:
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `--detector, -d` | Detection mode: `person`, `vehicle`, `face`, `license-plate`, or `none` | `none` |
-| `--json-path` | Path to JSON embeddings file | `embeddings.json` or `example_embeddings.json` |
+| `--detector, -d` | Detection mode: `person`, `face`, or `none` | `none` |
+| `--json-path` | Path to JSON embeddings file | `example_embeddings.json` |
 | `--detection-threshold` | Similarity threshold for matching (0.0-1.0) | `0.5` |
 | `--disable-runtime-prompts` | Skip CLIP text encoder initialization | `False` |
 
@@ -315,8 +290,8 @@ All standard arguments from the main documentation are supported:
 ### Batch Processing
 
 The application uses batching for efficiency:
-- Detection batch size: 8
-- CLIP batch size: 8
+- Detection batch size: 2
+- CLIP batch size: 2
 
 ### Scheduler Priorities
 
@@ -360,7 +335,7 @@ Pipeline elements are prioritized for optimal performance:
 
 | Component | Model | Input Size | Purpose |
 |-----------|-------|------------|---------|
-| Detection | YOLOv8n-personface | 480×640 | Person/vehicle/face/license plate detection |
+| Detection | YOLOv8n-personface | 480×640 | Person/face detection |
 | CLIP Image | CLIP ResNet-50x4 | 640×640 | Visual feature extraction |
 | CLIP Text | CLIP ResNet-50x4 Text | N/A | Text encoding (CPU) |
 
@@ -368,12 +343,12 @@ Pipeline elements are prioritized for optimal performance:
 
 - **Detection**: `yolov8n_personface` function
 - **CLIP**: `filter` function (normalization)
-- **Cropping**: `person_cropper`, `vehicle_cropper`, `face_cropper`, `license_plate_cropper`, or `object_cropper`
+- **Cropping**: `person_cropper`, `face_cropper`, or `object_cropper`
 
 ### Tracking
 
 Uses `HailoTracker` with:
-- Class-specific filtering (person=1, vehicle=2, face=3, license-plates=4, or all=0)
+- Class-specific filtering (person=1, face=2, or all=0)
 - Past metadata retention for temporal consistency
 - Unique ID assignment for multi-object scenarios
 
@@ -384,14 +359,9 @@ Uses `HailoTracker` with:
 
 **Security & Surveillance:**
 - "person in uniform", "person carrying bag", "vehicle parked"
-- "suspicious vehicle", "parked car", "license plate visible"
 
 **Smart Home:**
 - "person cooking", "person reading", "dog on couch"
-
-**Traffic & Parking:**
-- "red car", "delivery truck", "parked vehicle"
-- "license plate clearly visible", "car entering", "car leaving"
 
 **Content Moderation:**
 - "inappropriate content", "safe content" (with appropriate negative prompts)

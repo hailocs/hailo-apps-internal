@@ -201,22 +201,12 @@ SCRFD_2_5G_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"  # Used for hailo8l
 
 # Clip pipeline defaults
 CLIP_PIPELINE = "clip"
-CLIP_MODEL_NAME = "clip_resnet_50x4_image_encoder"
-CLIP_DETECTION_PIPELINE = "clip_detection"
-CLIP_DETECTION_MODEL_NAME = "hailo_yolov8n_4_classes_vga"
 CLIP_APP_TITLE = "Hailo CLIP App"
 CLIP_VIDEO_NAME = "clip_example.mp4"
 CLIP_POSTPROCESS_SO_FILENAME = 'libclip_postprocess.so'
 CLIP_CROPPER_POSTPROCESS_SO_FILENAME = 'libclip_croppers_postprocess.so'
 CLIP_POSTPROCESS_FUNCTION_NAME = 'filter'
-
-NEW_CLIP_PIPELINE = 'new_clip'
-CLIP_IMAGE_ENCODER_PIPELINE = "clip_image_encoder"
-CLIP_TEXT_ENCODER_PIPELINE = "clip_text_encoder"
-CLIP_IMAGE_ENCODER_MODEL_NAME = "clip_vit_b_32_image_encoder"
-CLIP_TEXT_ENCODER_MODEL_NAME = "clip_vit_b_32_text_encoder"
 CLIP_CUSTOM_POSTPROCESS_FUNCTION_NAME = 'filter_custom_clip'
-
 CLIP_DETECTION_POSTPROCESS_FUNCTION_NAME = 'filter'
 CLIP_CROPPER_PERSON_POSTPROCESS_FUNCTION_NAME = 'person_cropper'
 CLIP_CROPPER_VEHICLE_POSTPROCESS_FUNCTION_NAME = 'vehicle_cropper'

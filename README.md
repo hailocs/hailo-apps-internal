@@ -133,7 +133,7 @@ python vlm_chat.py
 | `onnxruntime`              | Inference with Hailo device and postprocessing via ONNXRuntime   |
 | `pose_estimation`          | Pose estimation with yolov8                                      |
 | `semantic_segmentation`    | Semantic segmentation with Resnet18_fcn (Cityscapes dataset)     |
-| `zero_shot_classification` | Zero-shot classification with clip_vit_l14                       |
+| `zero_shot_classification` | Zero-shot classification with clip_vit_b_32                      |
 
 </details>
 

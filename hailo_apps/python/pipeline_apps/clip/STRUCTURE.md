@@ -1,8 +1,8 @@
 # CLIP Directory Structure
 
-## Main Folder (new_clip/)
+## Main Folder (clip/)
 ```
-new_clip/
+clip/
 ├── README.md                     # Application usage documentation
 ├── README_SETUP.md               # Complete setup documentation
 ├── STRUCTURE.md                  # This file - directory structure guide
