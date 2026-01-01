@@ -37,70 +37,125 @@ TAPPAS_CORE_VERSION=""
 
 
 # Defaults (can be overridden by flags)
-HW_ARCHITECTURE=""               # hailo8 | hailo10h
+HW_ARCHITECTURE=""               # hailo8 | hailo10h (mandatory positional argument)
 VENV_NAME="venv_hailo_apps"
 DOWNLOAD_ONLY="false"
 DRY_RUN="false"
 OUTPUT_DIR_BASE="/usr/local/hailo/resources/packages"
+NO_HAILORT="false"
 
 PY_TAG_OVERRIDE=""
 
 usage() {
   cat <<EOF
-Usage: $0 [options]
+Usage: $0 ARCH [options]
+
+ARCH (mandatory positional argument):
+  hailo8|hailo10h                Target hardware (affects version defaults & folder)
 
 Options:
-  --hailort-version=VER           Override HailoRT version
-  --tappas-core-version=VER       Override TAPPAS Core version
-  --venv-name=NAME                Virtualenv name (install mode only) [default: $VENV_NAME]
-  --hw-arch=hailo8|hailo10h       Target hardware (affects version defaults & folder) [default: $HW_ARCHITECTURE]
-  --download-only                 Only download packages, do NOT install
-  --dry-run                       Show URLs that would be downloaded without downloading
-  --output-dir=DIR                Base output directory for downloads [default: $OUTPUT_DIR_BASE]
-  --py-tag=TAG                    Wheel tag (e.g. cp311-cp311). Useful with --download-only
-  -h|--help                       Show this help
+  -r, --hailort-version VER      Override HailoRT version
+  -t, --tappas-core-version VER  Override TAPPAS Core version
+  -n, --venv-name NAME            Virtualenv name (install mode only) [default: $VENV_NAME]
+  -H, --no-hailort                Skip HailoRT download/install
+  -o, --download-only             Only download packages, do NOT install
+  -y, --dry-run                   Show URLs that would be downloaded without downloading
+  -O, --output-dir DIR           Base output directory for downloads [default: $OUTPUT_DIR_BASE]
+  -p, --py-tag TAG                Wheel tag (e.g. cp311-cp311). Useful with --download-only
+  -h, --help                      Show this help
 EOF
 }
 
 
-# Parse optional command-line flag to override version numbers (e.g., --version=4.20.0)
-# For a more complex versioning scheme, you might also separate HailoRT and TAPPAS versions.
+# Parse arguments
+# First argument is mandatory ARCH (positional)
+if [[ $# -eq 0 ]]; then
+  echo "Error: ARCH argument is required (hailo8|hailo10h)"
+  echo
+  usage
+  exit 1
+fi
+
+# Check if first argument is help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+# First argument must be ARCH
+HW_ARCHITECTURE="$1"
+if [[ "$HW_ARCHITECTURE" != "hailo8" && "$HW_ARCHITECTURE" != "hailo10h" ]]; then
+  echo "Error: Invalid ARCH specified: $HW_ARCHITECTURE"
+  echo "ARCH must be 'hailo8' or 'hailo10h'"
+  echo
+  usage
+  exit 1
+fi
+shift
+
+# Set default versions based on architecture
+if [[ "$HW_ARCHITECTURE" == "hailo8" ]]; then
+    HAILORT_VERSION="$HAILORT_VERSION_H8"
+    TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H8"
+elif [[ "$HW_ARCHITECTURE" == "hailo10h" ]]; then
+    HAILORT_VERSION="$HAILORT_VERSION_H10"
+    TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H10"
+fi
+
+# Parse remaining flags (now using --flag value format)
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --hailort-version=*)
-            HAILORT_VERSION="${1#*=}"
-            ;;
-        --tappas-core-version=*)
-            TAPPAS_CORE_VERSION="${1#*=}"
-            ;;
-        --venv-name=*)
-            VENV_NAME="${1#*=}"
-            ;;
-        --hw-arch=*)
-            HW_ARCHITECTURE="${1#*=}"
-            if [[ "$HW_ARCHITECTURE" != "hailo8" && "$HW_ARCHITECTURE" != "hailo10h" ]]; then
-                echo "Invalid hardware architecture specified. Use 'hailo8' or 'hailo10h'."
+        -r|--hailort-version)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --hailort-version requires a value"
                 exit 1
             fi
-            if [[ "$HW_ARCHITECTURE" == "hailo8" ]]; then
-                HAILORT_VERSION="$HAILORT_VERSION_H8"
-                TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H8"
-            elif [[ "$HW_ARCHITECTURE" == "hailo10h" ]]; then
-                HAILORT_VERSION="$HAILORT_VERSION_H10"
-                TAPPAS_CORE_VERSION="$TAPPAS_CORE_VERSION_H10"
+            HAILORT_VERSION="$2"
+            shift 2
+            ;;
+        -t|--tappas-core-version)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --tappas-core-version requires a value"
+                exit 1
             fi
+            TAPPAS_CORE_VERSION="$2"
+            shift 2
             ;;
-        --download-only)
+        -n|--venv-name)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --venv-name requires a value"
+                exit 1
+            fi
+            VENV_NAME="$2"
+            shift 2
+            ;;
+        -H|--no-hailort)
+            NO_HAILORT="true"
+            shift
+            ;;
+        -o|--download-only)
             DOWNLOAD_ONLY="true"
+            shift
             ;;
-        --dry-run)
+        -y|--dry-run)
             DRY_RUN="true"
+            shift
             ;;
-        --output-dir=*)
-            OUTPUT_DIR_BASE="${1#*=}"
+        -O|--output-dir)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --output-dir requires a value"
+                exit 1
+            fi
+            OUTPUT_DIR_BASE="$2"
+            shift 2
             ;;
-        --py-tag=*)
-            PY_TAG_OVERRIDE="${1#*=}"
+        -p|--py-tag)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --py-tag requires a value"
+                exit 1
+            fi
+            PY_TAG_OVERRIDE="$2"
+            shift 2
             ;;
         -h|--help)
             usage
@@ -108,17 +163,19 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown parameter passed: $1"
+            usage
             exit 1
             ;;
     esac
-    shift
 done
 
-# Validate that hardware architecture is specified
-if [[ -z "$HW_ARCHITECTURE" ]]; then
-    echo "Error: --hw-arch must be specified (hailo8 or hailo10h)"
-    echo
-    usage
+# Ensure versions are set (either from ARCH or manually via --hailort-version/--tappas-core-version)
+if [[ -z "$HAILORT_VERSION" ]]; then
+    echo "Error: HailoRT version is not set. Either specify ARCH or --hailort-version"
+    exit 1
+fi
+if [[ -z "$TAPPAS_CORE_VERSION" ]]; then
+    echo "Error: TAPPAS Core version is not set. Either specify ARCH or --tappas-core-version"
     exit 1
 fi
 
@@ -127,16 +184,6 @@ if [[ "$HW_ARCHITECTURE" == "hailo8" ]]; then
     BASE_URL="http://dev-public.hailo.ai/2025_10"
 elif [[ "$HW_ARCHITECTURE" == "hailo10h" ]]; then
     BASE_URL="http://dev-public.hailo.ai/2025_12"
-fi
-
-# Ensure versions are set (either from --hw-arch or manually via --hailort-version/--tappas-core-version)
-if [[ -z "$HAILORT_VERSION" ]]; then
-    echo "Error: HailoRT version is not set. Either specify --hw-arch or --hailort-version"
-    exit 1
-fi
-if [[ -z "$TAPPAS_CORE_VERSION" ]]; then
-    echo "Error: TAPPAS Core version is not set. Either specify --hw-arch or --tappas-core-version"
-    exit 1
 fi
 
 TARGET_DIR="${OUTPUT_DIR_BASE}/${HW_ARCHITECTURE}"
@@ -288,7 +335,9 @@ ARCH_FILES=()
 case "$ARCH" in
   x86_64|amd64)
     echo "Configuring AMD64 package names..."
-    ARCH_FILES+=("hailort_${HAILORT_VERSION}_amd64.deb")
+    if [[ "$NO_HAILORT" != "true" ]]; then
+      ARCH_FILES+=("hailort_${HAILORT_VERSION}_amd64.deb")
+    fi
     # Select Ubuntu-specific package if available
     if [[ -n "$UBUNTU_VERSION" ]]; then
       if [[ "$UBUNTU_VERSION" == "22.04" ]]; then
@@ -308,12 +357,16 @@ case "$ARCH" in
     ;;
   aarch64|arm64)
     echo "Configuring ARM64 package names..."
-    ARCH_FILES+=("hailort_${HAILORT_VERSION}_arm64.deb")
+    if [[ "$NO_HAILORT" != "true" ]]; then
+      ARCH_FILES+=("hailort_${HAILORT_VERSION}_arm64.deb")
+    fi
     ARCH_FILES+=("hailo-tappas-core_${TAPPAS_CORE_VERSION}_arm64.deb")
     ;;
   rpi)
     echo "Configuring rpi  package names..."
-    ARCH_FILES+=("hailort_${HAILORT_VERSION}_arm64.deb")
+    if [[ "$NO_HAILORT" != "true" ]]; then
+      ARCH_FILES+=("hailort_${HAILORT_VERSION}_arm64.deb")
+    fi
     if [[ "${TAPPAS_CORE_VERSION}" == "5.0.0" ]]; then
       # Special-case naming for 5.0.0
       ARCH_FILES+=("hailo-tappas-core-5.0.0v_5.0.0_arm64.deb")
@@ -367,7 +420,11 @@ fi
 
 echo "Starting installation..."
 install_file "${common_files[0]}"       # PCIe driver
-install_file "${ARCH_FILES[0]}"         # HailoRT deb
-install_file "${ARCH_FILES[1]}"         # Tappas Core deb
+if [[ "$NO_HAILORT" != "true" ]]; then
+  install_file "${ARCH_FILES[0]}"         # HailoRT deb
+fi
+# Tappas Core is at index 0 if HailoRT is skipped, otherwise at index 1
+TAPPAS_INDEX=$([[ "$NO_HAILORT" == "true" ]] && echo "0" || echo "1")
+install_file "${ARCH_FILES[$TAPPAS_INDEX]}"  # Tappas Core deb
 
 echo "Installation complete."
