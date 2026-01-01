@@ -292,7 +292,13 @@ def OVERLAY_PIPELINE(name="hailo_overlay"):
 
 
 def DISPLAY_PIPELINE(
-    video_sink=GST_VIDEO_SINK, sync="true", show_fps="false", name="hailo_display"
+    video_sink=GST_VIDEO_SINK,
+    sync="true",
+    show_fps="false",
+    name="hailo_display",
+    queue_max_size_buffers=None,
+    queue_leaky=None,
+    overlay_so=None,
 ):
     """Creates a GStreamer pipeline string for displaying the video.
     It includes the hailooverlay plugin to draw bounding boxes and labels on the video.
@@ -302,16 +308,23 @@ def DISPLAY_PIPELINE(
         sync (str, optional): The sync property for the video sink. Defaults to 'true'.
         show_fps (str, optional): Whether to show the FPS on the video sink. Should be 'true' or 'false'. Defaults to 'false'.
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'hailo_display'.
+        queue_max_size_buffers (int, optional): Max buffers for internal display queues. Defaults to QUEUE default.
+        queue_leaky (str, optional): Leaky mode for internal display queues. Defaults to QUEUE default.
+        overlay_so (str, optional): Optional overlay filter .so to draw on frames. Defaults to None.
 
     Returns:
         str: A string representing the GStreamer pipeline for displaying the video.
     """
     # Construct the display pipeline string
+    max_size_buffers = queue_max_size_buffers if queue_max_size_buffers is not None else 3
+    leaky = queue_leaky if queue_leaky is not None else "no"
+    overlay_filter = f"hailofilter use-gst-buffer=true so-path={overlay_so} qos=false ! " if overlay_so else ""
     display_pipeline = (
         f"{OVERLAY_PIPELINE(name=f'{name}_overlay')} ! "
-        f"{QUEUE(name=f'{name}_videoconvert_q')} ! "
+        f"{overlay_filter}"
+        f"{QUEUE(name=f'{name}_videoconvert_q', max_size_buffers=max_size_buffers, leaky=leaky)} ! "
         f"videoconvert name={name}_videoconvert n-threads=2 qos=false ! "
-        f"{QUEUE(name=f'{name}_q')} ! "
+        f"{QUEUE(name=f'{name}_q', max_size_buffers=max_size_buffers, leaky=leaky)} ! "
         f"fpsdisplaysink name={name} video-sink={video_sink} sync={sync} text-overlay={show_fps} signal-fps-measurements=true "
     )
 

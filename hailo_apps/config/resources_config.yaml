@@ -204,10 +204,6 @@ json:
     source: s3
     tag:
       - license_plate_recognition
-  - name: yolov8n_relu6_global_lp_det.json
-    source: s3
-    tag:
-      - license_plate_recognition
 
 
 classifier: &classifier_app

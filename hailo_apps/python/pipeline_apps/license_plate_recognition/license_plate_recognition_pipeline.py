@@ -51,7 +51,7 @@ DEFAULT_PLATE_MODEL_NAME = "yolov8n_relu6_global_lp_det"
 
 DEFAULT_YOLO_POSTPROCESS_SO = "libyolo_hailortpp_postprocess.so"
 DEFAULT_VEHICLE_POSTPROCESS_FUNCTION = "yolov5m_vehicles"
-DEFAULT_PLATE_POSTPROCESS_FUNCTION = "yolov8n_relu6_license_plate"
+DEFAULT_PLATE_POSTPROCESS_FUNCTION = "filter"
 
 # LPR uses dedicated croppers that expect vehicle detections (car/vehicle) and nested license_plate detections.
 DEFAULT_LPR_CROPPERS_SO = "liblpr_croppers.so"
@@ -87,6 +87,7 @@ class GStreamerLPRApp(GStreamerApp):
                 "optimized",
                 "optimized_direct",
                 "optimized_direct_display_end",
+                "full",
                 "candidate",
                 "vehicle_and_lp",
                 "vehicle_and_lp_crop",
@@ -399,6 +400,7 @@ class GStreamerLPRApp(GStreamerApp):
             ("optimized", "Full LPR: Parallel display/processing with quality filter"),
             ("optimized_direct", "Full LPR: Parallel display/processing, no quality filter"),
             ("optimized_direct_display_end", "Full LPR: Direct pipeline with display at end, reduced queues"),
+            ("full", "Full LPR: Vehicle + LP + OCR in a single sequential pipeline"),
             ("candidate", "Full LPR: Hardcoded paths (debugging)"),
             ("vehicle_and_lp", "Vehicle + LP detection only (no OCR)"),
             ("vehicle_and_lp_crop", "Vehicle + LP detection with LP crop display + saving (no OCR)"),
@@ -470,6 +472,10 @@ class GStreamerLPRApp(GStreamerApp):
             if not self.print_pipeline_mode:
                 print("Getting lp_and_ocr_direct pipeline string")
             return self.get_pipeline_string_lp_and_ocr_direct()
+        if self.pipeline_type == "full":
+            if not self.print_pipeline_mode:
+                print("Getting full pipeline string")
+            return self.get_pipeline_string_full()
         if not self.print_pipeline_mode:
             print("Getting complex pipeline string")
         return self.get_pipeline_string_complex()
@@ -559,6 +565,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky="no",
         )
@@ -635,6 +642,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync=self.sync,
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -711,6 +719,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1075,6 +1084,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1167,6 +1177,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1210,6 +1221,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1307,6 +1319,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1399,10 +1412,6 @@ class GStreamerLPRApp(GStreamerApp):
         )
 
         ocr_post_function_name = self.ocr_post_function_name
-        if ocr_post_function_name == "paddleocr_recognize":
-            ocr_post_function_name = "paddleocr_recognize_op"
-        elif ocr_post_function_name == "paddleocr_recognize_log":
-            ocr_post_function_name = "paddleocr_recognize_log_op"
 
         ocr_detection = INFERENCE_PIPELINE(
             hef_path=self.ocr_hef_path,
@@ -1426,6 +1435,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1525,10 +1535,6 @@ class GStreamerLPRApp(GStreamerApp):
         )
 
         ocr_post_function_name = self.ocr_post_function_name
-        if ocr_post_function_name == "paddleocr_recognize":
-            ocr_post_function_name = "paddleocr_recognize_op"
-        elif ocr_post_function_name == "paddleocr_recognize_log":
-            ocr_post_function_name = "paddleocr_recognize_log_op"
 
         ocr_detection = INFERENCE_PIPELINE(
             hef_path=self.ocr_hef_path,
@@ -1554,6 +1560,7 @@ class GStreamerLPRApp(GStreamerApp):
             video_sink=self.video_sink,
             sync="false",
             show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
             queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
             queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
         )
@@ -1733,6 +1740,122 @@ class GStreamerLPRApp(GStreamerApp):
             print(pipeline_string)
         return pipeline_string
 
+    def get_pipeline_string_full(self):
+        """
+        Vehicle & LP Detection pipeline: Runs vehicle detection, then license plate detection on vehicle crops.
+        Includes tracking so per-track state (e.g., found_lp) can be maintained in the Python callback.
+        Displays results with bounding boxes for both vehicles and plates.
+        Adds OCR by cropping license plates and running the OCR model.
+        """
+        # 1) Source
+        source_pipeline = SOURCE_PIPELINE(
+            video_source=self.video_source,
+            video_width=self.video_width,
+            video_height=self.video_height,
+            frame_rate=self.frame_rate,
+            sync=self.sync,
+        )
+
+        # 2) Vehicle detection with wrapper (maintains original resolution)
+        vehicle_detection = INFERENCE_PIPELINE(
+            hef_path=self.vehicle_hef_path,
+            post_process_so=self.vehicle_post_process_so,
+            post_function_name=self.vehicle_post_function_name,
+            config_json=self.vehicle_json,
+            additional_params=self.thresholds_str,
+            batch_size=2,
+            scheduler_timeout_ms=100,
+            name="vehicle_detection",
+        )
+        vehicle_detection_wrapper = INFERENCE_PIPELINE_WRAPPER(vehicle_detection)
+
+        # 3) Tracker (enables per-vehicle unique IDs)
+        tracker_pipeline = TRACKER_PIPELINE(
+            class_id=-1,
+            kalman_dist_thr=0.5,
+            iou_thr=0.6,
+            init_iou_thr=0.7,
+            keep_tracked_frames=3,
+            keep_lost_frames=2,
+            keep_past_metadata=True,
+            name="vehicle_tracker",
+        )
+
+        # 4) Plate detection (inner pipeline for cropping detected vehicles)
+        plate_detection = INFERENCE_PIPELINE(
+            hef_path=self.license_det_hef_path,
+            post_process_so=self.license_det_post_process_so,
+            post_function_name=self.license_det_post_function_name,
+            config_json=self.license_json,
+            additional_params=self.thresholds_str,
+            batch_size=8,
+            scheduler_timeout_ms=100,
+            name="plate_detection",
+        )
+
+        # 5) Crop vehicles and run plate detection on each
+        vehicle_cropper = CROPPER_PIPELINE(
+            inner_pipeline=plate_detection,
+            so_path=self.lpr_croppers_so,
+            function_name=self.vehicle_cropper_function,
+            internal_offset=True,
+            name="vehicle_cropper",
+        )
+
+        # 6) OCR (runs on cropped license plates)
+        ocr_detection = INFERENCE_PIPELINE(
+            hef_path=self.ocr_hef_path,
+            post_process_so=self.ocr_post_process_so,
+            post_function_name=self.ocr_post_function_name,
+            batch_size=8,
+            scheduler_timeout_ms=100,
+            name="ocr_detection",
+        )
+
+        # 7) License plate cropper (crops license plates and runs OCR on them)
+        lp_cropper = CROPPER_PIPELINE(
+            inner_pipeline=ocr_detection,
+            so_path=self.lpr_croppers_so,
+            function_name=self.lpr_quality_est_function,
+            internal_offset=True,
+            name="lp_cropper",
+        )
+
+        # 8) User callback (for per-track found_lp, crop saving, etc.)
+        user_callback = "identity name=identity_callback"
+
+        # 9) Display with overlay
+        display_pipeline = DISPLAY_PIPELINE(
+            video_sink=self.video_sink,
+            sync="false",
+            show_fps=self.show_fps,
+            overlay_so=self.lpr_overlay_so,
+            queue_max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE,
+            queue_leaky=DEFAULT_DISPLAY_QUEUE_LEAKY,
+        )
+
+        # Branching pipeline: display stays on vehicle+LP detections, OCR runs on a side branch.
+        pipeline_string = (
+            f"{source_pipeline} ! "
+            f"{vehicle_detection_wrapper} ! "
+            f"{tracker_pipeline} ! "
+            f"{vehicle_cropper} ! "
+            f"tee name=post_lp_tee "
+            f"post_lp_tee. ! {QUEUE('display_q', max_size_buffers=DEFAULT_DISPLAY_QUEUE_SIZE, leaky='downstream')} ! "
+            f"{display_pipeline} "
+            f"post_lp_tee. ! {QUEUE('ocr_q', max_size_buffers=5)} ! "
+            f"{lp_cropper} ! "
+            f"{QUEUE('post_ocr_q', max_size_buffers=5)} ! "
+            f"{user_callback} ! "
+            f"hailofilter use-gst-buffer=true "
+            f"so-path={self.lpr_ocrsink_so} "
+            f"qos=false ! "
+            f"fakesink sync=false async=false"
+        )
+
+        if not self.print_pipeline_mode:
+            print(pipeline_string)
+        return pipeline_string
 
 def main():
     hailo_logger.info("Starting Hailo LPR App...")

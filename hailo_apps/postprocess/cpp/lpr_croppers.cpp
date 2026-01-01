@@ -3,14 +3,12 @@
  * Distributed under the LGPL license (https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt)
  **/
 #include "lpr_croppers.hpp"
+#include "lpr_roi.hpp"
 #include <array>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
-#include <cctype>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <unordered_map>
 #include <mutex>
 #include <vector>
@@ -30,7 +28,6 @@ static constexpr float VEHICLE_TRI_X3 = 1.0f;
 static constexpr float VEHICLE_TRI_Y3 = 1.0f;
 static constexpr float CAMERA_RIGHT_AWAY_DISCARD_TOP_Y = 0.33f;
 
-static constexpr float DEFAULT_VEHICLE_ROI_MIN_INTERSECTION = 1.0f;
 
 // Frame counter for unique filenames
 static std::atomic<int> g_frame_counter{0};
@@ -50,14 +47,6 @@ struct TrackOcrStats
     int ocr_results = 0;
 };
 static std::unordered_map<int, TrackOcrStats> g_track_ocr_stats;
-
-struct VehicleRoiConfig
-{
-    bool enabled = false;
-    HailoBBox roi = HailoBBox(0.0f, 0.0f, 1.0f, 1.0f);
-    float min_intersection_ratio = DEFAULT_VEHICLE_ROI_MIN_INTERSECTION;
-    std::string source;
-};
 
 static void mark_track_lpr(int track_id, const std::string &plate)
 {
@@ -80,158 +69,30 @@ static bool track_has_lpr(int track_id, std::string *plate = nullptr)
     return true;
 }
 
-static bool parse_roi_list(const std::string &value, float &xmin, float &ymin, float &xmax, float &ymax, float &min_intersection)
+static bool point_in_polygon(float x, float y, const std::array<LprRoiPoint, 4> &polygon)
 {
-    std::vector<float> vals;
-    std::stringstream ss(value);
-    std::string token;
-    while (std::getline(ss, token, ','))
+    bool inside = false;
+    size_t count = polygon.size();
+    for (size_t i = 0, j = count - 1; i < count; j = i++)
     {
-        std::stringstream ts(token);
-        float v = 0.0f;
-        if (ts >> v)
-        {
-            vals.push_back(v);
-        }
+        float xi = polygon[i].x;
+        float yi = polygon[i].y;
+        float xj = polygon[j].x;
+        float yj = polygon[j].y;
+        bool intersect = ((yi > y) != (yj > y)) &&
+                         (x < (xj - xi) * (y - yi) / (yj - yi + 1e-6f) + xi);
+        if (intersect)
+            inside = !inside;
     }
-    if (vals.size() < 4)
-        return false;
-    xmin = vals[0];
-    ymin = vals[1];
-    xmax = vals[2];
-    ymax = vals[3];
-    if (vals.size() >= 5)
-        min_intersection = vals[4];
-    return true;
+    return inside;
 }
 
-static bool extract_key_float(const std::string &text, const std::string &key, float &out)
+static bool bbox_fully_inside_polygon(const HailoBBox &bbox, const std::array<LprRoiPoint, 4> &polygon)
 {
-    size_t pos = text.find(key);
-    if (pos == std::string::npos)
-        return false;
-    pos = text.find_first_of(":=", pos + key.size());
-    if (pos == std::string::npos)
-        return false;
-    pos++;
-    while (pos < text.size() && (std::isspace(static_cast<unsigned char>(text[pos])) || text[pos] == '[' || text[pos] == ',' || text[pos] == '"'))
-        pos++;
-    char *end = nullptr;
-    out = std::strtof(text.c_str() + pos, &end);
-    return end != (text.c_str() + pos);
-}
-
-static bool parse_roi_from_text(const std::string &text, VehicleRoiConfig &config)
-{
-    float xmin = 0.0f;
-    float ymin = 0.0f;
-    float xmax = 1.0f;
-    float ymax = 1.0f;
-    float min_intersection = DEFAULT_VEHICLE_ROI_MIN_INTERSECTION;
-    bool has_key = false;
-
-    has_key |= extract_key_float(text, "xmin", xmin);
-    has_key |= extract_key_float(text, "ymin", ymin);
-    has_key |= extract_key_float(text, "xmax", xmax);
-    has_key |= extract_key_float(text, "ymax", ymax);
-    extract_key_float(text, "min_intersection", min_intersection);
-    extract_key_float(text, "min_intersection_ratio", min_intersection);
-
-    if (!has_key)
-    {
-        std::vector<float> nums;
-        const char *p = text.c_str();
-        while (*p != '\0')
-        {
-            if ((*p >= '0' && *p <= '9') || *p == '-' || *p == '.')
-            {
-                char *end = nullptr;
-                float v = std::strtof(p, &end);
-                if (end != p)
-                {
-                    nums.push_back(v);
-                    p = end;
-                    continue;
-                }
-            }
-            p++;
-        }
-        if (nums.size() >= 4)
-        {
-            xmin = nums[0];
-            ymin = nums[1];
-            xmax = nums[2];
-            ymax = nums[3];
-            if (nums.size() >= 5)
-                min_intersection = nums[4];
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    xmin = std::max(0.0f, std::min(1.0f, xmin));
-    ymin = std::max(0.0f, std::min(1.0f, ymin));
-    xmax = std::max(0.0f, std::min(1.0f, xmax));
-    ymax = std::max(0.0f, std::min(1.0f, ymax));
-    if (xmax <= xmin || ymax <= ymin)
-        return false;
-    min_intersection = std::max(0.0f, std::min(1.0f, min_intersection));
-
-    config.enabled = true;
-    config.roi = HailoBBox(xmin, ymin, xmax - xmin, ymax - ymin);
-    config.min_intersection_ratio = min_intersection;
-    return true;
-}
-
-static VehicleRoiConfig get_vehicle_roi_config()
-{
-    static std::atomic<int> initialized{0};
-    static VehicleRoiConfig config;
-    if (initialized.load() == 1)
-        return config;
-
-    VehicleRoiConfig local;
-    const char *env_roi = std::getenv("HAILO_LPR_VEHICLE_ROI");
-    if (env_roi && env_roi[0] != '\0')
-    {
-        float xmin = 0.0f, ymin = 0.0f, xmax = 1.0f, ymax = 1.0f;
-        float min_intersection = DEFAULT_VEHICLE_ROI_MIN_INTERSECTION;
-        if (parse_roi_list(env_roi, xmin, ymin, xmax, ymax, min_intersection))
-        {
-            float cxmin = CLAMP(xmin, 0.0f, 1.0f);
-            float cymin = CLAMP(ymin, 0.0f, 1.0f);
-            float cxmax = CLAMP(xmax, 0.0f, 1.0f);
-            float cymax = CLAMP(ymax, 0.0f, 1.0f);
-            if (cxmax > cxmin && cymax > cymin)
-            {
-                local.enabled = true;
-                local.roi = HailoBBox(cxmin, cymin, cxmax - cxmin, cymax - cymin);
-                local.min_intersection_ratio = CLAMP(min_intersection, 0.0f, 1.0f);
-                local.source = "HAILO_LPR_VEHICLE_ROI";
-            }
-        }
-    }
-
-    const char *env_path = std::getenv("HAILO_LPR_VEHICLE_ROI_CONFIG");
-    if (!local.enabled && env_path && env_path[0] != '\0')
-    {
-        std::ifstream file(env_path);
-        if (file)
-        {
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            if (parse_roi_from_text(buffer.str(), local))
-            {
-                local.source = env_path;
-            }
-        }
-    }
-
-    config = local;
-    initialized.store(1);
-    return config;
+    return point_in_polygon(bbox.xmin(), bbox.ymin(), polygon) &&
+           point_in_polygon(bbox.xmax(), bbox.ymin(), polygon) &&
+           point_in_polygon(bbox.xmax(), bbox.ymax(), polygon) &&
+           point_in_polygon(bbox.xmin(), bbox.ymax(), polygon);
 }
 
 static float intersection_ratio(const HailoBBox &bbox, const HailoBBox &roi)
@@ -252,15 +113,33 @@ static void lpr_dbg(const char *fmt, ...);
 
 static bool vehicle_roi_accepts_bbox(const HailoBBox &bbox)
 {
-    VehicleRoiConfig config = get_vehicle_roi_config();
+    LprRoiConfig config = get_lpr_vehicle_roi_config();
     if (!config.enabled)
         return true;
-    float ratio = intersection_ratio(bbox, config.roi);
+    if (config.polygon_enabled)
+    {
+        bool ok = bbox_fully_inside_polygon(bbox, config.polygon);
+        lpr_dbg("vehicles_without_ocr: ROI polygon bbox=[%.3f,%.3f,%.3f,%.3f] poly=[(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f)] => %s",
+                bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height(),
+                config.polygon[0].x, config.polygon[0].y,
+                config.polygon[1].x, config.polygon[1].y,
+                config.polygon[2].x, config.polygon[2].y,
+                config.polygon[3].x, config.polygon[3].y,
+                ok ? "KEEP" : "DROP");
+        return ok;
+    }
+    HailoBBox roi_bbox(
+        config.rect.xmin,
+        config.rect.ymin,
+        config.rect.xmax - config.rect.xmin,
+        config.rect.ymax - config.rect.ymin
+    );
+    float ratio = intersection_ratio(bbox, roi_bbox);
     bool ok = ratio >= config.min_intersection_ratio;
     lpr_dbg("vehicles_without_ocr: ROI gate ratio=%.3f min=%.3f bbox=[%.3f,%.3f,%.3f,%.3f] roi=[%.3f,%.3f,%.3f,%.3f] => %s",
             ratio, config.min_intersection_ratio,
             bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height(),
-            config.roi.xmin(), config.roi.ymin(), config.roi.width(), config.roi.height(),
+            roi_bbox.xmin(), roi_bbox.ymin(), roi_bbox.width(), roi_bbox.height(),
             ok ? "KEEP" : "DROP");
     return ok;
 }
@@ -411,7 +290,7 @@ static void lpr_log_settings()
     if (logged || !lpr_debug_enabled())
         return;
     logged = 1;
-    VehicleRoiConfig roi_config = get_vehicle_roi_config();
+    LprRoiConfig roi_config = get_lpr_vehicle_roi_config();
     lpr_dbg("settings: HAILO_LPR_SAVE_CROPS=%d crops_dir='%s' OCR_RESULT_LABEL='%s' tri=(%.2f,%.2f)-(%.2f,%.2f)-(%.2f,%.2f)",
             lpr_save_crops_enabled() ? 1 : 0,
             get_crops_dir(),
@@ -424,10 +303,24 @@ static void lpr_log_settings()
             VEHICLE_TRI_Y3);
     if (roi_config.enabled)
     {
-        lpr_dbg("settings: vehicle_roi source='%s' roi=[%.3f,%.3f,%.3f,%.3f] min_intersection=%.3f",
-                roi_config.source.c_str(),
-                roi_config.roi.xmin(), roi_config.roi.ymin(), roi_config.roi.width(), roi_config.roi.height(),
-                roi_config.min_intersection_ratio);
+        if (roi_config.polygon_enabled)
+        {
+            lpr_dbg("settings: vehicle_roi source='%s' polygon=[(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f)]",
+                    roi_config.source.c_str(),
+                    roi_config.polygon[0].x, roi_config.polygon[0].y,
+                    roi_config.polygon[1].x, roi_config.polygon[1].y,
+                    roi_config.polygon[2].x, roi_config.polygon[2].y,
+                    roi_config.polygon[3].x, roi_config.polygon[3].y);
+        }
+        else
+        {
+            lpr_dbg("settings: vehicle_roi source='%s' roi=[%.3f,%.3f,%.3f,%.3f] min_intersection=%.3f",
+                    roi_config.source.c_str(),
+                    roi_config.rect.xmin, roi_config.rect.ymin,
+                    roi_config.rect.xmax - roi_config.rect.xmin,
+                    roi_config.rect.ymax - roi_config.rect.ymin,
+                    roi_config.min_intersection_ratio);
+        }
     }
 }
 
@@ -1229,6 +1122,13 @@ std::vector<HailoROIPtr> vehicles_without_ocr(std::shared_ptr<HailoMat> image, H
         {
             lpr_dbg("vehicles_without_ocr: [%d] SKIP - camera angle rejects top-third vehicle (center_y=%.3f)", 
                     det_idx, (vehicle_bbox.ymin() + vehicle_bbox.ymax()) * 0.5f);
+            det_idx++;
+            continue;
+        }
+
+        if (!vehicle_roi_accepts_bbox(vehicle_bbox))
+        {
+            lpr_dbg("vehicles_without_ocr: [%d] SKIP - ROI gate rejected vehicle", det_idx);
             det_idx++;
             continue;
         }

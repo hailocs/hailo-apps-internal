@@ -4,16 +4,17 @@
  **/
 
 #include <gst/video/video-format.h>
+#include <array>
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
-#include <map>
-#include <typeinfo>
 #include <math.h>
 
 // Hailo includes
 #include "lpr_overlay.hpp"
+#include "lpr_roi.hpp"
 #include "image.hpp"
 #include "hailo_cv_singleton.hpp"
 
@@ -51,6 +52,36 @@ static void lpr_dbg(const char *fmt, ...)
     va_end(args);
     std::fprintf(stderr, "\n");
     std::fflush(stderr);
+}
+
+static void draw_vehicle_roi(cv::Mat &mat)
+{
+    LprRoiConfig config = get_lpr_vehicle_roi_config();
+    std::array<cv::Point, 4> pts;
+    int width = mat.cols;
+    int height = mat.rows;
+    if (width <= 0 || height <= 0)
+        return;
+
+    for (size_t i = 0; i < pts.size(); i++)
+    {
+        float x = lpr_clamp01(config.polygon[i].x) * static_cast<float>(width - 1);
+        float y = lpr_clamp01(config.polygon[i].y) * static_cast<float>(height - 1);
+        pts[i] = cv::Point(static_cast<int>(x), static_cast<int>(y));
+    }
+
+    cv::Scalar color(0, 255, 255);
+    int thickness = 2;
+    for (size_t i = 0; i < pts.size(); i++)
+    {
+        const cv::Point &p1 = pts[i];
+        const cv::Point &p2 = pts[(i + 1) % pts.size()];
+        cv::line(mat, p1, p2, color, thickness, cv::LINE_AA);
+    }
+
+    cv::Point label_pos = pts[3];
+    label_pos.y = std::max(0, label_pos.y - 5);
+    cv::putText(mat, "LP ROI", label_pos, cv::FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv::LINE_AA);
 }
 
 void draw_lpr(cv::Mat &mat)
@@ -145,6 +176,7 @@ void filter(HailoROIPtr roi, GstVideoFrame *frame)
     (void)roi;
     lpr_dbg("lpr_overlay filter: mat=%dx%d type=%d", image_planes.cols, image_planes.rows, image_planes.type());
     draw_lpr(image_planes);
+    draw_vehicle_roi(image_planes);
 
     image_planes.release();
     lpr_dbg("========== lpr_overlay filter: EXIT ==========");
