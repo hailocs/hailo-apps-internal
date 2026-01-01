@@ -268,9 +268,6 @@ class AgentApp:
             try:
                 # TextToSpeechProcessor handles device selection internally
                 self.tts = TextToSpeechProcessor()
-            except PiperModelNotFoundError:
-                logger.warning("Piper TTS model not found, continuing without TTS")
-                self.tts = None
             except Exception as e:
                 logger.warning("Failed to initialize TTS: %s", e)
                 self.tts = None
