@@ -101,6 +101,10 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: lpr_video.mp4
+    source: s3
+    tag:
+      - license_plate_recognition
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -196,6 +200,14 @@ json:
     tag:
       - detection
       - object_detection
+  - name: yolov5m_vehicle.json
+    source: s3
+    tag:
+      - license_plate_recognition
+  - name: yolov8n_relu6_global_lp_det.json
+    source: s3
+    tag:
+      - license_plate_recognition
 
 
 classifier: &classifier_app
@@ -623,6 +635,27 @@ tiling: &tiling_app
           source: mz
         - name: ssd_mobilenet_v1_visdrone
           source: s3
+
+license_plate_recognition:
+  models:
+    hailo8:
+      default:
+        - name: yolov5m_vehicles
+          source: mz
+        - name: yolov8n_relu6_global_lp_det
+          source: s3
+        - name: ocr
+          source: s3
+    hailo8l:
+      default:
+        - name: yolov5m_vehicles
+          source: mz
+        - name: yolov8n_relu6_global_lp_det
+          source: s3
+        - name: ocr
+          source: s3
+    hailo10h:
+      default: None
 
 paddle_ocr: &paddle_ocr_app
   models:

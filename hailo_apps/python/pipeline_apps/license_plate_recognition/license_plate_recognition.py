@@ -1,0 +1,439 @@
+# Standard library imports
+import os
+import sys
+import threading
+import queue
+import re
+from pathlib import Path
+from datetime import datetime
+
+# Third-party imports
+import gi
+
+gi.require_version("Gst", "1.0")
+
+import hailo
+try:
+    from hailo import HailoTracker
+except Exception:  # pragma: no cover
+    HailoTracker = None
+import cv2
+from PIL import Image
+
+# Local application-specific imports
+from hailo_apps.python.pipeline_apps.license_plate_recognition.license_plate_recognition_pipeline import (
+    GStreamerLPRApp,
+)
+
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer_efficient
+from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
+
+hailo_logger = get_logger(__name__)
+
+
+def lpr_debug_enabled() -> bool:
+    val = os.getenv("HAILO_LPR_DEBUG")
+    if val is None:
+        return False
+    return val == "1"
+
+
+def lpr_dbg(msg: str, *args) -> None:
+    if not lpr_debug_enabled():
+        return
+    text = msg % args if args else msg
+    print(f"[lpr_py] {text}")
+
+
+class user_app_callback_class(app_callback_class):
+    def __init__(self):
+        super().__init__()
+        self.output_file = "ocr_results.txt"
+        self.save_ocr_results = True  # Enable/disable OCR result saving
+        self.save_vehicle_crops = True
+        self.save_lp_crops = True
+        self.crops_dir = "lpr_crops"
+        self.disable_found_lp_gate = False
+
+        # Per-track state
+        self.found_lp_tracks: set[int] = set()
+        self.vehicle_tracks: dict[int, dict] = {}
+        self.ocr_results: dict[int, list] = {}  # track_id -> list of (plate_text, confidence, frame_num, timestamp)
+        self._start_time = datetime.now()
+
+        # Async saver (avoid blocking the GStreamer thread)
+        self._save_queue = queue.Queue(maxsize=256)
+        self._save_thread = threading.Thread(target=self._save_worker, daemon=True)
+        self._save_thread.start()
+        
+        # Initialize OCR results file with header
+        if self.save_ocr_results:
+            with open(self.output_file, "w", encoding="utf-8") as f:
+                f.write(f"# LPR OCR Results - Started at {self._start_time.isoformat()}\n")
+                f.write("# Format: Frame | Timestamp | Track_ID | Plate_Text | Confidence\n")
+                f.write("-" * 80 + "\n")
+
+    def _save_worker(self):
+        while True:
+            item = self._save_queue.get()
+            if item is None:
+                return
+            path_str, frame = item
+            try:
+                path = Path(path_str)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                Image.fromarray(frame).save(path, format="JPEG", quality=90)
+            except Exception as e:
+                hailo_logger.debug("Failed saving crop to %s: %s", path_str, e)
+            finally:
+                self._save_queue.task_done()
+
+    def enqueue_crop_save(self, frame, path: Path) -> None:
+        try:
+            self._save_queue.put_nowait((str(path), frame))
+        except queue.Full:
+            # Drop if the system can't keep up
+            pass
+
+    def write_ocr_text(self, text: str, confidence: float | None = None, track_id: int | None = None) -> None:
+        if not self.save_ocr_results:
+            return
+            
+        frame_num = self.get_count()
+        elapsed = (datetime.now() - self._start_time).total_seconds()
+        timestamp = f"{elapsed:.2f}s"
+        track_str = str(track_id) if track_id is not None else "N/A"
+        conf_str = f"{confidence:.2f}" if confidence is not None else "N/A"
+        
+        # Store in memory for potential later use
+        if track_id is not None:
+            if track_id not in self.ocr_results:
+                self.ocr_results[track_id] = []
+            self.ocr_results[track_id].append((text, confidence, frame_num, elapsed))
+        
+        # Write to file
+        with open(self.output_file, "a", encoding="utf-8") as f:
+            f.write(f"Frame {frame_num:6d} | {timestamp:>8s} | Track {track_str:>4s} | {text:<20s} | Conf: {conf_str}\n")
+
+    @staticmethod
+    def _crop_from_bbox(frame, bbox, width: int, height: int, pad_frac: float = 0.0):
+        x_min = max(0.0, min(bbox.xmin() - pad_frac, 1.0))
+        y_min = max(0.0, min(bbox.ymin() - pad_frac, 1.0))
+        x_max = max(0.0, min(bbox.xmax() + pad_frac, 1.0))
+        y_max = max(0.0, min(bbox.ymax() + pad_frac, 1.0))
+        x_min_i = int(x_min * width)
+        y_min_i = int(y_min * height)
+        x_max_i = int(x_max * width)
+        y_max_i = int(y_max * height)
+        if x_max_i <= x_min_i or y_max_i <= y_min_i:
+            return None
+        return frame[y_min_i:y_max_i, x_min_i:x_max_i]
+
+
+def _iter_classifications(roi):
+    """Iterate through all classifications in the ROI hierarchy.
+    
+    The LPR hierarchy is:
+      ROI → Vehicle Detection → License Plate Detection → Classification (OCR result)
+    
+    This function yields (parent_detection, classification) tuples at all levels.
+    """
+    if roi is None:
+        return
+
+    # Top-level detections (vehicles)
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    for det in detections:
+        # Classifications directly on vehicle detection
+        for cls in det.get_objects_typed(hailo.HAILO_CLASSIFICATION):
+            yield det, cls
+        
+        # Nested detections (license plates inside vehicles)
+        nested_detections = det.get_objects_typed(hailo.HAILO_DETECTION)
+        for nested_det in nested_detections:
+            # Classifications on nested detection (OCR results on license plates)
+            for cls in nested_det.get_objects_typed(hailo.HAILO_CLASSIFICATION):
+                yield nested_det, cls
+
+    # Classifications directly on ROI
+    for cls in roi.get_objects_typed(hailo.HAILO_CLASSIFICATION):
+        yield None, cls
+
+
+def app_callback(element, buffer, user_data):
+    lpr_dbg("callback: ENTER frame=%s", getattr(user_data, "get_count", lambda: "n/a")())
+    if buffer is None:
+        lpr_dbg("callback: buffer is None => EXIT")
+        return
+
+    roi = hailo.get_roi_from_buffer(buffer)
+    if roi is None:
+        lpr_dbg("callback: roi is None => EXIT")
+        return
+
+    # Track vehicles and mark found_lp per tracker ID.
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    vehicles = []
+    plates = []
+    nested_plates_by_track: dict[int, list] = {}
+    for det in detections:
+        label = det.get_label() or ""
+        if label == "car":
+            uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+            track_id = uid[0].get_id() if uid else 0
+            vehicles.append((track_id, det))
+        elif label == "license_plate":
+            plates.append(det)
+
+    # Plates can be nested under vehicle detections depending on the cropper/aggregator
+    for _, vdet in vehicles:
+        uid = vdet.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        track_id = uid[0].get_id() if uid else 0
+        for nested in vdet.get_objects_typed(hailo.HAILO_DETECTION):
+            if (nested.get_label() or "") == "license_plate":
+                nested_plates_by_track.setdefault(track_id, []).append(nested)
+                plates.append(nested)
+    lpr_dbg(
+        "callback: detections=%d vehicles=%d plates=%d nested_tracks=%d",
+        len(detections),
+        len(vehicles),
+        len(plates),
+        len(nested_plates_by_track),
+    )
+
+    # Build a quick index from plate -> best-matching vehicle (center-in-bbox)
+    newly_found_tracks: set[int] = set()
+    # Prefer direct association when plates are nested under a vehicle detection.
+    if nested_plates_by_track:
+        for track_id, plate_list in nested_plates_by_track.items():
+            if track_id in getattr(user_data, "found_lp_tracks", set()):
+                continue
+            if not plate_list:
+                continue
+            newly_found_tracks.add(track_id)
+
+    elif vehicles and plates:
+        for plate in plates:
+            pb = plate.get_bbox()
+            pcx = (pb.xmin() + pb.xmax()) / 2.0
+            pcy = (pb.ymin() + pb.ymax()) / 2.0
+            best_track = None
+            best_area = None
+            for track_id, vdet in vehicles:
+                vb = vdet.get_bbox()
+                if vb.xmin() <= pcx <= vb.xmax() and vb.ymin() <= pcy <= vb.ymax():
+                    area = vb.width() * vb.height()
+                    if best_area is None or area < best_area:
+                        best_area = area
+                        best_track = track_id
+            if best_track is None:
+                continue
+            if best_track in getattr(user_data, "found_lp_tracks", set()):
+                continue
+            newly_found_tracks.add(best_track)
+
+    if newly_found_tracks:
+        lpr_dbg("callback: newly_found_tracks=%s", sorted(newly_found_tracks))
+
+    # Update per-track vehicle info and optionally save vehicle crops (until LP is found)
+    for track_id, vdet in vehicles:
+        vb = vdet.get_bbox()
+        conf = vdet.get_confidence()
+        found = (track_id in getattr(user_data, "found_lp_tracks", set())) or (track_id in newly_found_tracks)
+        user_data.vehicle_tracks[track_id] = {
+            "bbox": (vb.xmin(), vb.ymin(), vb.xmax(), vb.ymax()),
+            "confidence": float(conf),
+            "last_seen_frame": int(user_data.get_count()),
+            "found_lp": bool(found),
+        }
+
+    # If we found a plate for a track, mark it as found_lp and gate further LP runs for that track
+    if (newly_found_tracks or getattr(user_data, "found_lp_tracks", set())) and not getattr(
+        user_data, "disable_found_lp_gate", False
+    ):
+        try:
+            tracker = HailoTracker.get_instance() if HailoTracker is not None else None
+            tracker_names = tracker.get_trackers_list() if tracker is not None else []
+            tracker_name = tracker_names[0] if tracker_names else None
+        except Exception:
+            tracker = None
+            tracker_name = None
+
+        # 1) Mark newly-found tracks
+        for track_id in newly_found_tracks:
+            user_data.found_lp_tracks.add(track_id)
+
+        # 2) Ensure gating metadata is present for all found tracks (idempotent)
+        for track_id, vdet in vehicles:
+            if track_id not in user_data.found_lp_tracks:
+                continue
+
+            existing = vdet.get_objects_typed(hailo.HAILO_CLASSIFICATION)
+            existing_types = {c.get_classification_type() for c in existing}
+
+            # Gate the vehicle cropper (vehicles_without_ocr) by attaching a "text_region" classification type.
+            # The cropper checks for classification_type=="text_region" and skips cropping in that case.
+            if "text_region" not in existing_types:
+                gate_cls = hailo.HailoClassification(type="text_region", label="", confidence=1.0)
+                vdet.add_object(gate_cls)
+                if tracker and tracker_name:
+                    try:
+                        tracker.remove_classifications_from_track(tracker_name, track_id, "text_region")
+                        tracker.add_object_to_track(tracker_name, track_id, gate_cls)
+                    except Exception:
+                        pass
+        lpr_dbg(
+            "callback: gating found_lp_tracks=%d disable_found_lp_gate=%s",
+            len(user_data.found_lp_tracks),
+            getattr(user_data, "disable_found_lp_gate", False),
+        )
+
+    # Process OCR results - iterate through all classifications to find text_region (OCR results)
+    PLATE_DIGIT_LENGTHS = {7, 8}
+    
+    vehicles_by_track = {track_id: vdet for track_id, vdet in vehicles}
+    try:
+        tracker = HailoTracker.get_instance() if HailoTracker is not None else None
+        tracker_names = tracker.get_trackers_list() if tracker is not None else []
+        tracker_name = tracker_names[0] if tracker_names else None
+    except Exception:
+        tracker = None
+        tracker_name = None
+
+    accepted_ocr = 0
+    for det, cls in _iter_classifications(roi):
+        cls_type = cls.get_classification_type() if hasattr(cls, 'get_classification_type') else ""
+        label = cls.get_label()
+        if not label:
+            continue
+        
+        # Only process OCR results (text_region classification type)
+        if cls_type != "text_region":
+            continue
+
+        raw_label = label.strip()
+        digits_label = re.sub(r"\D", "", raw_label)
+        confidence = cls.get_confidence()
+        track_id = None
+        if det is not None:
+            uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+            if uid:
+                track_id = uid[0].get_id()
+        track_str = f"Track {track_id}" if track_id is not None else "No Track"
+        print(f"[LPR] OCR Raw: '{label}' (Confidence: {confidence:.2f}, {track_str})")
+        if len(digits_label) not in PLATE_DIGIT_LENGTHS:
+            continue
+        
+        # Print to console
+        print(f"[LPR] OCR Result: '{digits_label}' (Confidence: {confidence:.2f}, {track_str})")
+        accepted_ocr += 1
+
+        # Attach the accepted plate text to the detection and tracker.
+        if det is not None:
+            try:
+                existing_cls = det.get_objects_typed(hailo.HAILO_CLASSIFICATION)
+                for ec in existing_cls:
+                    if ec.get_classification_type() == "found_lp":
+                        det.remove_object(ec)
+                plate_cls = hailo.HailoClassification(type="found_lp", label=digits_label, confidence=float(confidence))
+                det.add_object(plate_cls)
+                if tracker and tracker_name and track_id is not None:
+                    try:
+                        tracker.remove_classifications_from_track(tracker_name, track_id, "found_lp")
+                        tracker.add_object_to_track(tracker_name, track_id, plate_cls)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # Replace the "yes/100%" overlay with the actual plate text when vehicles exist.
+        if track_id is not None and track_id in vehicles_by_track:
+            vdet = vehicles_by_track[track_id]
+            try:
+                existing_cls = vdet.get_objects_typed(hailo.HAILO_CLASSIFICATION)
+                for ec in existing_cls:
+                    if ec.get_classification_type() == "found_lp":
+                        vdet.remove_object(ec)
+                vehicle_cls = hailo.HailoClassification(type="found_lp", label=digits_label, confidence=float(confidence))
+                vdet.add_object(vehicle_cls)
+            except Exception:
+                pass
+        
+        # Save to file
+        try:
+            user_data.write_ocr_text(digits_label, confidence, track_id)
+        except Exception as e:
+            hailo_logger.debug(f"Failed writing OCR text: {e}")
+
+    lpr_dbg("callback: accepted_ocr=%d", accepted_ocr)
+    return
+
+
+def print_ocr_summary(user_data):
+    """Print a summary of all OCR results at the end of the run."""
+    if os.getenv("HAILO_LPR_SILENT", "0").lower() not in ("", "0", "false", "no"):
+        return
+    if not hasattr(user_data, 'ocr_results') or not user_data.ocr_results:
+        print("\n" + "=" * 60)
+        print("LPR Summary: No license plates detected")
+        print("=" * 60)
+        return
+    
+    print("\n" + "=" * 60)
+    print("LPR Summary - Detected License Plates")
+    print("=" * 60)
+    
+    total_detections = 0
+    unique_plates = set()
+    
+    for track_id, results in user_data.ocr_results.items():
+        if results:
+            # Get the most confident result for this track
+            best_result = max(results, key=lambda x: x[1] if x[1] else 0)
+            plate_text, confidence, frame_num, elapsed = best_result
+            unique_plates.add(plate_text)
+            total_detections += len(results)
+            print(f"  Track {track_id:4d}: {plate_text:<15s} (Best conf: {confidence:.2f}, First seen: frame {frame_num})")
+    
+    print("-" * 60)
+    print(f"Total unique tracks with LP: {len(user_data.ocr_results)}")
+    print(f"Total unique plate texts:    {len(unique_plates)}")
+    print(f"Total OCR detections:        {total_detections}")
+    print(f"Results saved to:            {user_data.output_file}")
+    print("=" * 60)
+    
+    # Also append summary to the output file
+    if user_data.save_ocr_results:
+        with open(user_data.output_file, "a", encoding="utf-8") as f:
+            f.write("\n" + "-" * 80 + "\n")
+            f.write(f"# Summary - {datetime.now().isoformat()}\n")
+            f.write(f"# Unique tracks with LP: {len(user_data.ocr_results)}\n")
+            f.write(f"# Unique plate texts: {len(unique_plates)}\n")
+            f.write(f"# Total OCR detections: {total_detections}\n")
+            if unique_plates:
+                f.write(f"# Unique plates: {', '.join(sorted(unique_plates))}\n")
+
+
+def main():
+    hailo_logger.info("Starting Hailo LPR App...")
+    user_data = None
+    try:
+        user_data = user_app_callback_class()
+        app = GStreamerLPRApp(app_callback, user_data)
+        app.run()
+    except KeyboardInterrupt:
+        hailo_logger.info("Interrupted by user")
+        print("\nInterrupted by user")
+    except Exception as e:
+        hailo_logger.error(f"Error in main: {e}", exc_info=True)
+        print(f"Error: {e}", file=sys.stderr)
+        raise
+    finally:
+        # Print summary on exit
+        if user_data is not None:
+            print_ocr_summary(user_data)
+
+
+if __name__ == "__main__":
+    main()

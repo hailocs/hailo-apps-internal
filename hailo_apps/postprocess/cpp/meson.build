@@ -153,6 +153,53 @@ shared_library('vms_croppers',
 )
 
 ################################################
+# LPR CROPPERS / OVERLAY / OCR SINK SOURCES
+################################################
+lpr_croppers_sources = [
+    'lpr_croppers.cpp',
+]
+shared_library('lpr_croppers',
+    lpr_croppers_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+lpr_overlay_sources = [
+    'lpr_overlay.cpp',
+]
+shared_library('lpr_overlay',
+    lpr_overlay_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+lpr_ocrsink_sources = [
+    'lpr_ocrsink.cpp',
+]
+shared_library('lpr_ocrsink',
+    lpr_ocrsink_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+lp_crop_saver_sources = [
+    'lp_crop_saver.cpp',
+]
+shared_library('lp_crop_saver',
+    lp_crop_saver_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
 # REPVGG REID POST SOURCES
 ################################################
 

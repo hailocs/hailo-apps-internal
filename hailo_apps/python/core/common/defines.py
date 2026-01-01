@@ -300,4 +300,21 @@ OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
 OCR_CROPPER_FUNCTION = "crop_text_regions"
 OCR_VIDEO_NAME = "ocr.mp4"
 
+# License Plate Recognition pipeline defaults
+LPR_APP_TITLE = "Hailo LPR App"
+LPR_PIPELINE = "license_plate_recognition"
+LPR_VEHICLE_MODEL_NAME = "yolov5m_vehicles"
+LPR_PLATE_MODEL_NAME = "yolov8n_relu6_global_lp_det"
+LPR_YOLO_POSTPROCESS_SO_FILENAME = "libyolo_hailortpp_postprocess.so"
+LPR_VEHICLE_POSTPROCESS_FUNCTION = "yolov5m_vehicles"
+LPR_PLATE_POSTPROCESS_FUNCTION = "yolov8n_relu6_license_plate"
+LPR_CROPPERS_SO_FILENAME = "liblpr_croppers.so"
+LPR_VEHICLE_CROPPER_FUNCTION = "vehicles_without_ocr"
+LPR_LP_CROPPER_FUNCTION = "license_plate_no_quality"
+LPR_LP_FULLFRAME_CROPPER_FUNCTION = "license_plate_fullframe"
+LPR_OVERLAY_SO_FILENAME = "liblpr_overlay.so"
+LPR_OCRSINK_SO_FILENAME = "liblpr_ocrsink.so"
+LPR_LP_CROPSINK_SO_FILENAME = "liblp_crop_saver.so"
+LPR_VIDEO_NAME = "lpr_video.mp4"
+
 DEFAULT_COCO_LABELS_PATH = str(REPO_ROOT / "local_resources" / "coco.txt")
