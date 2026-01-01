@@ -1047,10 +1047,11 @@ install_python_packages() {
 
     # Install Hailo Python packages if needed
     if [[ "${INSTALL_HAILORT}" == true ]]; then
-        local install_script="${SCRIPT_DIR}/scripts/hailo_python_installation.sh"
+        local install_script="${SCRIPT_DIR}/scripts/hailo_installer_python.sh"
 
         if [[ -f "$install_script" ]]; then
             log_info "Installing Hailo Python packages..."
+            local arch_arg=""
             local flags=""
 
             if [[ -z "${HAILO_ARCH:-}" || "${HAILO_ARCH}" == "unknown" ]]; then
@@ -1060,8 +1061,8 @@ install_python_packages() {
             fi
 
             case "${HAILO_ARCH}" in
-                hailo8|hailo8l) flags="${flags} --arch=hailo8" ;;
-                hailo10h) flags="${flags} --arch=hailo10h" ;;
+                hailo8|hailo8l) arch_arg="hailo8" ;;
+                hailo10h) arch_arg="hailo10h" ;;
                 *)
                     log_error "Unsupported HAILO_ARCH value: ${HAILO_ARCH}. Expected hailo8/hailo8l/hailo10h."
                     record_step_result "FAILED" "Unsupported HAILO_ARCH"
@@ -1070,15 +1071,15 @@ install_python_packages() {
             esac
 
             if [[ "${INSTALL_HAILORT}" == true && -n "${HAILORT_VERSION}" && "${HAILORT_VERSION}" != "-1" ]]; then
-                flags="${flags} --hailort-version=${HAILORT_VERSION}"
+                flags="${flags} --hailort-version ${HAILORT_VERSION}"
                 log_debug "Installing HailoRT version: ${HAILORT_VERSION}"
             fi
             if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
                 flags="${flags} --no-tappas"
             fi
 
-            log_debug "Running: ${install_script} ${flags}"
-            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${flags}"; then
+            log_debug "Running: ${install_script} ${arch_arg} ${flags}"
+            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${arch_arg} ${flags}"; then
                 log_warning "Hailo Python package installation had issues"
                 log_info "Continuing with installation - packages may be available from system"
             fi
