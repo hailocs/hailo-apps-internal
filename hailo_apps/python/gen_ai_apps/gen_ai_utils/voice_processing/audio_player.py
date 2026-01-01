@@ -159,8 +159,12 @@ class AudioPlayer:
         Clear the playback queue and stop audio immediately.
         """
         # Clear queue
-        with self.queue.mutex:
-            self.queue.queue.clear()
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+                self.queue.task_done()
+            except queue.Empty:
+                break
 
         # Signal flush to stop current chunk playback
         self._flush_event.set()
@@ -172,6 +176,9 @@ class AudioPlayer:
         """Shutdown the player and release resources."""
         self._stop_event.set()
         self._reinit_event.set()
+
+        # Unblock the worker thread if it's waiting on queue.get()
+        self.queue.put(None)
 
         with self._stream_lock:
             if self.stream:
@@ -341,6 +348,11 @@ class AudioPlayer:
                                     logger.warning(f"Error closing stream: {e}")
                                 self.stream = None
                         continue
+
+                    # Check for sentinel value to exit
+                    if data is None:
+                        self.queue.task_done()
+                        break
 
                     # We have data! Ensure stream is open.
                     if not self.stream:

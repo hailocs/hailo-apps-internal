@@ -628,6 +628,26 @@ def run_auto_configure(args):
     print("     and ensure USB device profile is set to 'Pro Audio' or 'Analog Stereo Duplex'")
 
 
+def run_tts_installation(args):
+    """Run Piper TTS model installation."""
+    print_header("Piper TTS Model Installation")
+
+    print(f"This will download and install the default Piper TTS model.")
+    if not args.yes:
+        if input("Continue? [y/N]: ").lower() != 'y':
+            print("Cancelled.")
+            return
+
+    print("\nInstalling model...")
+    success, msg = AudioDiagnostics.install_piper_model()
+
+    if success:
+        print(f"\n✅ Success: {msg}")
+    else:
+        print(f"\n❌ Failed: {msg}")
+
+    print("\n" + "="*60)
+
 def main():
     parser = argparse.ArgumentParser(
         description="Hailo Audio Troubleshooting Tool",
@@ -639,6 +659,7 @@ def main():
     parser.add_argument("--input-device", type=int, metavar="ID", help="Set input device ID (use with --select-devices)")
     parser.add_argument("--output-device", type=int, metavar="ID", help="Set output device ID (use with --select-devices)")
     parser.add_argument("--auto-fix", action="store_true", help="Automatically fix issues (requires sudo)")
+    parser.add_argument("--install-tts", action="store_true", help="Install default Piper TTS voice model")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompts")
     args = parser.parse_args()
 
@@ -646,6 +667,8 @@ def main():
     try:
         if args.configure:
             run_auto_configure(args)
+        elif args.install_tts:
+            run_tts_installation(args)
         elif args.select_devices or args.input_device is not None or args.output_device is not None:
             run_device_selection(args)
         else:

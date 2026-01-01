@@ -11,7 +11,7 @@ class VoiceActivityDetector:
 
     def __init__(self, sample_rate: int, chunk_size: int, aggressiveness: int = 3,
                  min_speech_duration_ms: int = 200, min_silence_duration_ms: int = 500,
-                 energy_threshold: float = 0.05):
+                 energy_threshold: float = 0.05, warmup_chunks: int = 10):
         """
         Args:
             sample_rate: Audio sample rate.
@@ -44,7 +44,11 @@ class VoiceActivityDetector:
         self.min_speech_chunks = max(1, int(min_speech_duration_ms / incoming_chunk_ms))
         self.min_silence_chunks = max(1, int(min_silence_duration_ms / incoming_chunk_ms))
 
-        logger.info(f"VAD initialized: rate={sample_rate}, aggr={aggressiveness}, threshold={energy_threshold}")
+        # Warmup logic
+        self.warmup_chunks = warmup_chunks
+        self.warmup_counter = self.warmup_chunks
+
+        logger.info(f"VAD initialized: rate={sample_rate}, aggr={aggressiveness}, threshold={energy_threshold}, warmup={warmup_chunks}")
 
     def process(self, audio_chunk: np.ndarray):
         """
@@ -58,6 +62,15 @@ class VoiceActivityDetector:
         """
         if len(audio_chunk) == 0:
             return self.is_speech, 0.0
+
+        # Warmup check
+        if self.warmup_counter > 0:
+            self.warmup_counter -= 1
+            # During warmup, we can calculate energy just for debugging/visuals if we wanted,
+            # but to ensure we don't trigger, we assume silence.
+            # We can still return actual energy so visualizer works, OR return 0.0 to prevent confusion.
+            # Returning 0.0 ensures no visual "red bar" during warmup.
+            return False, 0.0
 
         # 1. Calculate Energy (RMS) on the full chunk
         energy = np.sqrt(np.mean(audio_chunk**2))
@@ -137,3 +150,4 @@ class VoiceActivityDetector:
         self.consecutive_speech_chunks = 0
         self.consecutive_silence_chunks = 0
         self.buffer = b""
+        self.warmup_counter = self.warmup_chunks

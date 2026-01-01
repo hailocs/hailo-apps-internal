@@ -58,7 +58,11 @@ class VoiceAssistantApp:
             # 4. TTS
             self.tts = None
             if not no_tts:
-                self.tts = TextToSpeechProcessor()
+                try:
+                    self.tts = TextToSpeechProcessor()
+                except PiperModelNotFoundError:
+                    # Warning handled by TextToSpeechProcessor
+                    self.tts = None
 
         self.interaction = None
 
@@ -185,13 +189,7 @@ def main():
         print("TTS disabled: Running in low-resource mode.")
 
     # Initialize the app
-    try:
-        app = VoiceAssistantApp(debug=debug_mode, no_tts=args.no_tts)
-    except PiperModelNotFoundError as e:
-        # Piper model not found - exit with error message
-        print("ERROR: TTS model not found. Use --no-tts to run without TTS, or install the Piper model.")
-        print(str(e))
-        return 1
+    app = VoiceAssistantApp(debug=debug_mode, no_tts=args.no_tts)
 
     # Initialize the interaction manager
     interaction = VoiceInteractionManager(
