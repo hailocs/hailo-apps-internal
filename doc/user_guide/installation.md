@@ -86,7 +86,11 @@ Note that also on the x86_64 Ubuntu, the gi library is installed on the system (
 3.  **Install Hailo Python packages**
     This script will install the HailoRT and TAPPAS-CORE python bindings.
     ```bash
-    ./scripts/hailo_python_installation.sh
+    ./scripts/hailo_installer_python.sh hailo8
+    ```
+    Or for Hailo10:
+    ```bash
+    ./scripts/hailo_installer_python.sh hailo10h
     ```
 4.  **Install repository**
     ```bash
@@ -228,32 +232,36 @@ http://dev-public.hailo.ai/<date>/<Hailo8|Hailo10>/
 
 ```bash
 chmod +x scripts/hailo_installer.sh
-sudo ./scripts/hailo_installer.sh [options]
+sudo ./scripts/hailo_installer.sh ARCH [options]
 ```
+
+ARCH (mandatory positional argument):
+- `hailo8` or `hailo10h` - Target hardware platform
 
 #### Common Options
 
 | Option                      | Description                                                                       |                                     |
 | --------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
-| `--hw-arch=`           | hailo10h,hailo8                                                                         | Target hardware platform. Required. |
-| `--venv-name=NAME`          | Name of the Python virtual environment (default: `hailo_venv`).                   |                                     |
+| `--hailort-version VER`     | Override HailoRT version                                                         |                                     |
+| `--tappas-core-version VER`| Override TAPPAS Core version                                                      |                                     |
+| `--venv-name NAME`          | Name of the Python virtual environment (default: `venv_hailo_apps`).              |                                     |
 | `--download-only`           | Only download the packages without installing them.                               |                                     |
-| `--output-dir=DIR`          | Change where packages are saved (default: `/usr/local/hailo/resources/packages`). |                                     |
-| `--py-tag=TAG`              | Manually specify Python wheel tag (e.g., `cp311-cp311`).                          |                                     |
-| `-h                         | --help`                                                                           | Show help menu.                     |
+| `--output-dir DIR`          | Change where packages are saved (default: `/usr/local/hailo/resources/packages`). |                                     |
+| `--py-tag TAG`              | Manually specify Python wheel tag (e.g., `cp311-cp311`).                          |                                     |
+| `-h, --help`                | Show help menu.                                                                   |                                     |
 
 ### Examples
 
 #### Install for Hailo-8 on Ubuntu 24.04
 
 ```bash
-sudo ./scripts/hailo_installer.sh --hw-arch=hailo8
+sudo ./scripts/hailo_installer.sh hailo8
 ```
 
 #### Download Only (No Installation)
 
 ```bash
-./scripts/hailo_installer.sh --hw-arch=hailo10h --download-only
+./scripts/hailo_installer.sh hailo10h --download-only
 ```
 
 Packages will be saved under:
