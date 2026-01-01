@@ -679,7 +679,7 @@ class ResourceDownloader:
             name=json_name
         )
         self._tasks.add(task)
-
+    
     def _add_npy_task(self, npy_entry):
         """Add a NPY download task from a NPY entry."""
         if is_none_value(npy_entry):
@@ -830,7 +830,7 @@ class ResourceDownloader:
         if "npy" in self.config:
             for npy_entry in self.config["npy"]:
                 self._add_npy_task(npy_entry)
-
+    
     def collect_models_for_app(
         self,
         app_name: str,
