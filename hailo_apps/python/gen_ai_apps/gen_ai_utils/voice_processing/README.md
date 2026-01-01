@@ -320,10 +320,16 @@ pip install -e ".[gen-ai]"
 
 ### Piper TTS Model Not Found
 
+### Piper TTS Model Not Found
+
 If you see an error about missing Piper TTS model files:
-1. Follow the [Piper TTS Model Installation](#piper-tts-model-installation) instructions above
-2. Ensure model files are in `local_resources/piper_models/`
-3. Verify the model name matches `TTS_MODEL_NAME` in `hailo_apps/python/core/common/defines.py`
+1. Run the automatic installer:
+   ```bash
+   hailo-audio-troubleshoot --install-tts
+   ```
+2. Or manually follow the [Piper TTS Model Installation](#piper-tts-model-installation) instructions above
+3. Ensure model files are in `local_resources/piper_models/`
+4. Verify the model name matches `TTS_MODEL_NAME` in `hailo_apps/python/core/common/defines.py`
 
 ### No Audio Input/Output Detected
 

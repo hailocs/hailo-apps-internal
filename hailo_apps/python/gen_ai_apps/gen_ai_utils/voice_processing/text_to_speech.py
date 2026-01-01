@@ -16,6 +16,11 @@ from contextlib import redirect_stderr
 from io import StringIO
 from typing import Optional
 
+
+# Check dependencies before importing them
+from .audio_diagnostics import check_voice_dependencies
+check_voice_dependencies(required_deps=['piper', 'sounddevice', 'numpy'])
+
 import numpy as np
 from piper import PiperVoice
 from piper.voice import SynthesisConfig
@@ -71,17 +76,15 @@ def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str =
         if not json_exists:
             missing_files.append(json_path)
 
-        error_msg = f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                     PIPER TTS MODEL NOT FOUND                                ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-Please install the Piper TTS model before running this application.
-For detailed installation instructions, see:
-  hailo_apps/python/core/gen_ai_utils/voice_processing/README.md
+        print("\033[91m" + "="*70)
+        print("⚠️  Piper TTS model not found")
+        print("="*70)
+        print("To fix this, run:")
+        print("  hailo-audio-troubleshoot --install-tts")
+        print("\nContinuing without TTS support.")
+        print("="*70 + "\033[0m")
 
-Missing files:
-{chr(10).join(f'  - {f}' for f in missing_files)}
-"""
+        error_msg = f"Missing Piper TTS model files: {missing_files}"
         raise PiperModelNotFoundError(error_msg)
 
     return True
@@ -207,6 +210,7 @@ class TextToSpeechProcessor:
         while not self.speech_queue.empty():
             try:
                 self.speech_queue.get_nowait()
+                self.speech_queue.task_done()
                 drained += 1
             except queue.Empty:
                 continue

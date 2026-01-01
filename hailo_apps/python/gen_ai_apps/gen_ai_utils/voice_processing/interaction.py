@@ -82,7 +82,8 @@ class VoiceInteractionManager:
             self.vad = VoiceActivityDetector(
                 sample_rate=sample_rate,
                 chunk_size=CHUNK_SIZE,
-                aggressiveness=self.vad_aggressiveness
+                aggressiveness=self.vad_aggressiveness,
+                warmup_chunks=10  # Ignore first ~0.6s to avoid startup clicks/pops
             )
             logger.info(f"VAD enabled with sample rate {sample_rate} Hz, aggressiveness {vad_aggressiveness}")
 
@@ -147,15 +148,15 @@ class VoiceInteractionManager:
 
     def start_listening(self):
         """Starts the active listening loop (VAD or regular recording)."""
-        if self.is_recording:
-            return
+        with self.lock:
+            if self.is_recording:
+                return
 
-        if self.vad_enabled:
-             print("\n🎤 Listening for speech...")
-             self._start_vad_mode()
-        else:
-             print("\n🔴 Recording... Press SPACE to stop.")
-             self.start_recording()
+            if self.vad_enabled:
+                 print("\n🎤 Listening for speech...")
+                 self._start_vad_mode()
+            else:
+                 print("\nPress SPACE to start recording.")
 
     def _start_vad_mode(self):
         """Internal method to start VAD monitoring."""
