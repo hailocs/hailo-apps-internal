@@ -2,6 +2,7 @@ import os
 
 import yaml
 
+from hailo_apps.config import get_main_config
 from hailo_apps.python.core.common.defines import (
     CONFIG_ENABLED,
     GST_VIDEO_SINK,
@@ -203,10 +204,7 @@ def INFERENCE_PIPELINE(
     function_name_str = f" function-name={post_function_name} " if post_function_name else ""
     vdevice_group_id_str = f" vdevice-group-id={vdevice_group_id} "
     arch = detect_hailo_arch()
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../config/config.yaml')
-    config_path = os.path.normpath(config_path)
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    config = get_main_config()
     multi_processing = config.get('multi_processing')
     # Validate user's multi_process_service request against arch and config
     if multi_process_service == 'true':
