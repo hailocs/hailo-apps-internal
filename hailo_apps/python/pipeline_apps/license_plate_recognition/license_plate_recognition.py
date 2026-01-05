@@ -1,10 +1,11 @@
 # Standard library imports
 import os
 import sys
-import threading
-import queue
 import re
-from pathlib import Path
+import json
+import time
+import threading
+import shutil
 from datetime import datetime
 
 # Third-party imports
@@ -17,16 +18,13 @@ try:
     from hailo import HailoTracker
 except Exception:  # pragma: no cover
     HailoTracker = None
-import cv2
-from PIL import Image
 
 # Local application-specific imports
 from hailo_apps.python.pipeline_apps.license_plate_recognition.license_plate_recognition_pipeline import (
     GStreamerLPRApp,
 )
-
+from hailo_apps.python.core.common.db_handler import LPRDatabaseHandler
 from hailo_apps.python.core.common.hailo_logger import get_logger
-from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer_efficient
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 hailo_logger = get_logger(__name__)
@@ -35,8 +33,8 @@ hailo_logger = get_logger(__name__)
 def lpr_debug_enabled() -> bool:
     val = os.getenv("HAILO_LPR_DEBUG")
     if val is None:
-        return False
-    return val == "1"
+        return True  # default ON for now
+    return val.strip().lower() not in ("0", "false", "no", "off")
 
 
 def lpr_dbg(msg: str, *args) -> None:
@@ -46,26 +44,59 @@ def lpr_dbg(msg: str, *args) -> None:
     print(f"[lpr_py] {text}")
 
 
+def init_lpr_db():
+    """Initialize the LPR DB + JSON mirror once at app start."""
+    lpr_db_dir = os.path.join(os.path.dirname(__file__), "lpr_database")
+    os.makedirs(lpr_db_dir, exist_ok=True)
+    lpr_db_json = os.path.join(lpr_db_dir, "lpr_tracks.jsonl")
+    # Clean previous run artifacts (files only)
+    for stale_path in (
+        os.path.join(lpr_db_dir, "lpr.db"),
+        lpr_db_json,
+    ):
+        try:
+            if os.path.isfile(stale_path):
+                os.remove(stale_path)
+            elif os.path.isdir(stale_path):
+                # Remove directory and its contents to ensure clean start
+                shutil.rmtree(stale_path, ignore_errors=False)
+        except Exception as exc:  # pragma: no cover - defensive
+            hailo_logger.warning("Failed to remove stale LPR DB path %s: %s", stale_path, exc)
+    try:
+        handler = LPRDatabaseHandler(
+            db_name="lpr.db",
+            table_name="lpr_tracks",
+            database_dir=lpr_db_dir,
+            json_export_path=lpr_db_json,
+        )
+        hailo_logger.info("LPR DB initialized at %s (JSON: %s)", lpr_db_dir, lpr_db_json)
+        return handler, lpr_db_json
+    except Exception as exc:  # pragma: no cover - defensive logging
+        hailo_logger.error("Failed to init LPR DB: %s", exc)
+        return None, None
+
+
 class user_app_callback_class(app_callback_class):
-    def __init__(self):
+    def __init__(self, lpr_db=None, lpr_db_json=None):
         super().__init__()
         self.output_file = "ocr_results.txt"
         self.save_ocr_results = True  # Enable/disable OCR result saving
-        self.save_vehicle_crops = True
-        self.save_lp_crops = True
-        self.crops_dir = "lpr_crops"
         self.disable_found_lp_gate = False
+
+        # LPR DB + JSON mirror (for C++ consumption)
+        self.lpr_db = lpr_db
+        self.lpr_db_json = lpr_db_json
+        self.lpr_tracks_state: dict[int, dict] = {}
+        self._jsonl_tailer_thread = None
+        self._jsonl_tailer_stop = False
+        if self.lpr_db_json:
+            self._start_jsonl_tailer()
 
         # Per-track state
         self.found_lp_tracks: set[int] = set()
         self.vehicle_tracks: dict[int, dict] = {}
         self.ocr_results: dict[int, list] = {}  # track_id -> list of (plate_text, confidence, frame_num, timestamp)
         self._start_time = datetime.now()
-
-        # Async saver (avoid blocking the GStreamer thread)
-        self._save_queue = queue.Queue(maxsize=256)
-        self._save_thread = threading.Thread(target=self._save_worker, daemon=True)
-        self._save_thread.start()
         
         # Initialize OCR results file with header
         if self.save_ocr_results:
@@ -73,28 +104,6 @@ class user_app_callback_class(app_callback_class):
                 f.write(f"# LPR OCR Results - Started at {self._start_time.isoformat()}\n")
                 f.write("# Format: Frame | Timestamp | Track_ID | Plate_Text | Confidence\n")
                 f.write("-" * 80 + "\n")
-
-    def _save_worker(self):
-        while True:
-            item = self._save_queue.get()
-            if item is None:
-                return
-            path_str, frame = item
-            try:
-                path = Path(path_str)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                Image.fromarray(frame).save(path, format="JPEG", quality=90)
-            except Exception as e:
-                hailo_logger.debug("Failed saving crop to %s: %s", path_str, e)
-            finally:
-                self._save_queue.task_done()
-
-    def enqueue_crop_save(self, frame, path: Path) -> None:
-        try:
-            self._save_queue.put_nowait((str(path), frame))
-        except queue.Full:
-            # Drop if the system can't keep up
-            pass
 
     def write_ocr_text(self, text: str, confidence: float | None = None, track_id: int | None = None) -> None:
         if not self.save_ocr_results:
@@ -116,19 +125,104 @@ class user_app_callback_class(app_callback_class):
         with open(self.output_file, "a", encoding="utf-8") as f:
             f.write(f"Frame {frame_num:6d} | {timestamp:>8s} | Track {track_str:>4s} | {text:<20s} | Conf: {conf_str}\n")
 
-    @staticmethod
-    def _crop_from_bbox(frame, bbox, width: int, height: int, pad_frac: float = 0.0):
-        x_min = max(0.0, min(bbox.xmin() - pad_frac, 1.0))
-        y_min = max(0.0, min(bbox.ymin() - pad_frac, 1.0))
-        x_max = max(0.0, min(bbox.xmax() + pad_frac, 1.0))
-        y_max = max(0.0, min(bbox.ymax() + pad_frac, 1.0))
-        x_min_i = int(x_min * width)
-        y_min_i = int(y_min * height)
-        x_max_i = int(x_max * width)
-        y_max_i = int(y_max * height)
-        if x_max_i <= x_min_i or y_max_i <= y_min_i:
-            return None
-        return frame[y_min_i:y_max_i, x_min_i:x_max_i]
+    def _start_jsonl_tailer(self) -> None:
+        if not self.lpr_db_json:
+            return
+
+        def tailer():
+            position = 0
+            while not getattr(self, "_jsonl_tailer_stop", False):
+                try:
+                    with open(self.lpr_db_json, "r", encoding="utf-8") as f:
+                        f.seek(position)
+                        for line in f:
+                            position = f.tell()
+                            line = line.strip()
+                            if not line:
+                                continue
+                            try:
+                                event = json.loads(line)
+                                self._apply_jsonl_event(event)
+                            except Exception as exc:  # pragma: no cover
+                                hailo_logger.debug("Failed to parse LPR JSONL line: %s", exc)
+                    time.sleep(0.2)
+                except FileNotFoundError:
+                    time.sleep(0.5)
+                except Exception as exc:  # pragma: no cover
+                    hailo_logger.debug("LPR JSONL tailer error: %s", exc)
+                    time.sleep(0.5)
+
+        self._jsonl_tailer_thread = threading.Thread(target=tailer, daemon=True)
+        self._jsonl_tailer_thread.start()
+
+    def _apply_jsonl_event(self, event: dict) -> None:
+        evt = event.get("event")
+        if evt not in {"upsert", "delete", "clear"}:
+            return
+        if evt == "clear":
+            self.lpr_tracks_state.clear()
+            return
+        track_id = event.get("track_id")
+        if track_id is None:
+            return
+        try:
+            track_id_int = int(track_id)
+        except (TypeError, ValueError):
+            return
+
+        if evt == "delete":
+            self.lpr_tracks_state.pop(track_id_int, None)
+            return
+
+        has_lpr = bool(event.get("has_lpr", False))
+        lpr_result = event.get("lpr_result") or ""
+        ts = event.get("timestamp", 0)
+
+        self.lpr_tracks_state[track_id_int] = {
+            "has_lpr": has_lpr,
+            "lpr_result": lpr_result,
+            "timestamp": ts,
+        }
+
+        # Optionally mirror into LanceDB without re-emitting JSON
+        if self.lpr_db:
+            try:
+                self.lpr_db.upsert_track(
+                    track_id=track_id_int,
+                    has_lpr=has_lpr,
+                    lpr_result=lpr_result,
+                    emit_json=False,
+                )
+            except Exception as exc:  # pragma: no cover
+                hailo_logger.debug("Failed to mirror JSONL event to LanceDB: %s", exc)
+
+    def record_track_seen(self, track_id: int) -> None:
+        """Ensure track exists in LPR DB with has_lpr flag False."""
+        if not hasattr(self, "lpr_db") or self.lpr_db is None:
+            return
+        try:
+            self.lpr_db.upsert_track(track_id=track_id, has_lpr=False)
+        except Exception as exc:  # pragma: no cover - keep callback resilient
+            hailo_logger.debug("LPR DB upsert failed for track %s: %s", track_id, exc)
+
+    def record_plate_result(self, track_id: int, plate_text: str) -> None:
+        """Persist an accepted plate result to LPR DB + JSON mirror."""
+        if track_id is None:
+            return
+        if not hasattr(self, "lpr_db") or self.lpr_db is None:
+            return
+        try:
+            self.lpr_db.mark_plate_found(track_id=track_id, lpr_result=plate_text)
+        except Exception as exc:  # pragma: no cover - keep callback resilient
+            hailo_logger.debug("LPR DB mark_plate_found failed for track %s: %s", track_id, exc)
+
+    def reset_state(self) -> None:
+        """Reset per-run state when the pipeline restarts (e.g., video loops)."""
+        self.found_lp_tracks.clear()
+        self.vehicle_tracks.clear()
+        self.ocr_results.clear()
+        self._start_time = datetime.now()
+
 
 
 def _iter_classifications(roi):
@@ -161,6 +255,45 @@ def _iter_classifications(roi):
         yield None, cls
 
 
+def _parse_bool_env(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _parse_int_env(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
+def _parse_int_set_env(name: str, default: set[int]) -> set[int]:
+    val = os.getenv(name)
+    if not val:
+        return default
+    out: set[int] = set()
+    for token in val.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            out.add(int(token))
+        except ValueError:
+            continue
+    return out or default
+
+
+def _normalize_ocr_label(raw_label: str, allow_alpha: bool) -> str:
+    if allow_alpha:
+        return re.sub(r"[^0-9A-Za-z]", "", raw_label).upper()
+    return re.sub(r"\D", "", raw_label)
+
+
 def app_callback(element, buffer, user_data):
     lpr_dbg("callback: ENTER frame=%s", getattr(user_data, "get_count", lambda: "n/a")())
     if buffer is None:
@@ -171,6 +304,20 @@ def app_callback(element, buffer, user_data):
     if roi is None:
         lpr_dbg("callback: roi is None => EXIT")
         return
+
+    # Tracks that already have an accepted LP (either from this run or from DB mirror)
+    try:
+        db_tracks_with_lp = {
+            tid
+            for tid, info in getattr(user_data, "lpr_tracks_state", {}).items()
+            if info.get("has_lpr") and info.get("lpr_result")
+        }
+    except Exception:
+        db_tracks_with_lp = set()
+    in_memory_found = getattr(user_data, "found_lp_tracks", set())
+    skip_lp_tracks: set[int] = set(in_memory_found) | db_tracks_with_lp
+    if skip_lp_tracks:
+        lpr_dbg("callback: skip_lp_tracks (already have LP)=%s", sorted(skip_lp_tracks))
 
     # Track vehicles and mark found_lp per tracker ID.
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
@@ -207,7 +354,7 @@ def app_callback(element, buffer, user_data):
     # Prefer direct association when plates are nested under a vehicle detection.
     if nested_plates_by_track:
         for track_id, plate_list in nested_plates_by_track.items():
-            if track_id in getattr(user_data, "found_lp_tracks", set()):
+            if track_id in skip_lp_tracks:
                 continue
             if not plate_list:
                 continue
@@ -229,14 +376,19 @@ def app_callback(element, buffer, user_data):
                         best_track = track_id
             if best_track is None:
                 continue
-            if best_track in getattr(user_data, "found_lp_tracks", set()):
+            if best_track in skip_lp_tracks:
                 continue
             newly_found_tracks.add(best_track)
 
     if newly_found_tracks:
         lpr_dbg("callback: newly_found_tracks=%s", sorted(newly_found_tracks))
+        for track_id in newly_found_tracks:
+            try:
+                user_data.record_track_seen(track_id)
+            except Exception:
+                hailo_logger.debug("Failed to record track %s in LPR DB", track_id)
 
-    # Update per-track vehicle info and optionally save vehicle crops (until LP is found)
+    # Update per-track vehicle info
     for track_id, vdet in vehicles:
         vb = vdet.get_bbox()
         conf = vdet.get_confidence()
@@ -248,49 +400,11 @@ def app_callback(element, buffer, user_data):
             "found_lp": bool(found),
         }
 
-    # If we found a plate for a track, mark it as found_lp and gate further LP runs for that track
-    if (newly_found_tracks or getattr(user_data, "found_lp_tracks", set())) and not getattr(
-        user_data, "disable_found_lp_gate", False
-    ):
-        try:
-            tracker = HailoTracker.get_instance() if HailoTracker is not None else None
-            tracker_names = tracker.get_trackers_list() if tracker is not None else []
-            tracker_name = tracker_names[0] if tracker_names else None
-        except Exception:
-            tracker = None
-            tracker_name = None
-
-        # 1) Mark newly-found tracks
-        for track_id in newly_found_tracks:
-            user_data.found_lp_tracks.add(track_id)
-
-        # 2) Ensure gating metadata is present for all found tracks (idempotent)
-        for track_id, vdet in vehicles:
-            if track_id not in user_data.found_lp_tracks:
-                continue
-
-            existing = vdet.get_objects_typed(hailo.HAILO_CLASSIFICATION)
-            existing_types = {c.get_classification_type() for c in existing}
-
-            # Gate the vehicle cropper (vehicles_without_ocr) by attaching a "text_region" classification type.
-            # The cropper checks for classification_type=="text_region" and skips cropping in that case.
-            if "text_region" not in existing_types:
-                gate_cls = hailo.HailoClassification(type="text_region", label="", confidence=1.0)
-                vdet.add_object(gate_cls)
-                if tracker and tracker_name:
-                    try:
-                        tracker.remove_classifications_from_track(tracker_name, track_id, "text_region")
-                        tracker.add_object_to_track(tracker_name, track_id, gate_cls)
-                    except Exception:
-                        pass
-        lpr_dbg(
-            "callback: gating found_lp_tracks=%d disable_found_lp_gate=%s",
-            len(user_data.found_lp_tracks),
-            getattr(user_data, "disable_found_lp_gate", False),
-        )
-
     # Process OCR results - iterate through all classifications to find text_region (OCR results)
-    PLATE_DIGIT_LENGTHS = {7, 8}
+    min_len = max(1, _parse_int_env("HAILO_LPR_MIN_LEN", 3))
+    max_len = max(min_len, _parse_int_env("HAILO_LPR_MAX_LEN", 10))
+    preferred_lens = _parse_int_set_env("HAILO_LPR_PREFERRED_LENS", {7, 8})
+    allow_alpha = _parse_bool_env("HAILO_LPR_ALLOW_ALPHA", False)
     
     vehicles_by_track = {track_id: vdet for track_id, vdet in vehicles}
     try:
@@ -302,6 +416,7 @@ def app_callback(element, buffer, user_data):
         tracker_name = None
 
     accepted_ocr = 0
+    best_by_track: dict[int | None, dict] = {}
     for det, cls in _iter_classifications(roi):
         cls_type = cls.get_classification_type() if hasattr(cls, 'get_classification_type') else ""
         label = cls.get_label()
@@ -313,7 +428,7 @@ def app_callback(element, buffer, user_data):
             continue
 
         raw_label = label.strip()
-        digits_label = re.sub(r"\D", "", raw_label)
+        normalized_label = _normalize_ocr_label(raw_label, allow_alpha)
         confidence = cls.get_confidence()
         track_id = None
         if det is not None:
@@ -321,13 +436,59 @@ def app_callback(element, buffer, user_data):
             if uid:
                 track_id = uid[0].get_id()
         track_str = f"Track {track_id}" if track_id is not None else "No Track"
-        print(f"[LPR] OCR Raw: '{label}' (Confidence: {confidence:.2f}, {track_str})")
-        if len(digits_label) not in PLATE_DIGIT_LENGTHS:
+        if track_id is not None and track_id in skip_lp_tracks:
             continue
-        
+        print(f"[LPR] OCR Raw: '{label}' (Confidence: {confidence:.2f}, {track_str})")
+        if not (min_len <= len(normalized_label) <= max_len):
+            continue
+        score = (len(normalized_label) in preferred_lens, len(normalized_label))
+        existing = best_by_track.get(track_id)
+        if existing is None or score > existing["score"]:
+            best_by_track[track_id] = {
+                "score": score,
+                "label": normalized_label,
+                "confidence": float(confidence),
+                "track_id": track_id,
+                "det": det,
+            }
+            lpr_dbg(
+                "callback: candidate track=%s raw='%s' norm='%s' conf=%.3f score=%s",
+                track_id if track_id is not None else "None",
+                raw_label,
+                normalized_label,
+                float(confidence),
+                score,
+            )
+
+    for candidate in best_by_track.values():
+        normalized_label = candidate["label"]
+        confidence = candidate["confidence"]
+        track_id = candidate["track_id"]
+        det = candidate["det"]
+        track_str = f"Track {track_id}" if track_id is not None else "No Track"
+
+        if track_id is not None and track_id in skip_lp_tracks:
+            continue
+
         # Print to console
-        print(f"[LPR] OCR Result: '{digits_label}' (Confidence: {confidence:.2f}, {track_str})")
+        print(f"[LPR] OCR Result: '{normalized_label}' (Confidence: {confidence:.2f}, {track_str})")
+        lpr_dbg(
+            "callback: accepted track=%s plate='%s' conf=%.3f",
+            track_id if track_id is not None else "None",
+            normalized_label,
+            float(confidence),
+        )
         accepted_ocr += 1
+        try:
+            user_data.record_plate_result(track_id=track_id, plate_text=normalized_label)
+        except Exception:
+            hailo_logger.debug("Failed to persist LPR result for track %s", track_id)
+
+        if track_id is not None:
+            user_data.found_lp_tracks.add(track_id)
+            skip_lp_tracks.add(track_id)
+            if track_id in user_data.vehicle_tracks:
+                user_data.vehicle_tracks[track_id]["found_lp"] = True
 
         # Attach the accepted plate text to the detection and tracker.
         if det is not None:
@@ -336,7 +497,7 @@ def app_callback(element, buffer, user_data):
                 for ec in existing_cls:
                     if ec.get_classification_type() == "found_lp":
                         det.remove_object(ec)
-                plate_cls = hailo.HailoClassification(type="found_lp", label=digits_label, confidence=float(confidence))
+                plate_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
                 det.add_object(plate_cls)
                 if tracker and tracker_name and track_id is not None:
                     try:
@@ -355,14 +516,28 @@ def app_callback(element, buffer, user_data):
                 for ec in existing_cls:
                     if ec.get_classification_type() == "found_lp":
                         vdet.remove_object(ec)
-                vehicle_cls = hailo.HailoClassification(type="found_lp", label=digits_label, confidence=float(confidence))
+                vehicle_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
                 vdet.add_object(vehicle_cls)
             except Exception:
                 pass
+
+            if not getattr(user_data, "disable_found_lp_gate", False):
+                existing_types = {
+                    c.get_classification_type() for c in vdet.get_objects_typed(hailo.HAILO_CLASSIFICATION)
+                }
+                if "text_region" not in existing_types:
+                    gate_cls = hailo.HailoClassification(type="text_region", label="", confidence=1.0)
+                    vdet.add_object(gate_cls)
+                    if tracker and tracker_name and track_id is not None:
+                        try:
+                            tracker.remove_classifications_from_track(tracker_name, track_id, "text_region")
+                            tracker.add_object_to_track(tracker_name, track_id, gate_cls)
+                        except Exception:
+                            pass
         
         # Save to file
         try:
-            user_data.write_ocr_text(digits_label, confidence, track_id)
+            user_data.write_ocr_text(normalized_label, confidence, track_id)
         except Exception as e:
             hailo_logger.debug(f"Failed writing OCR text: {e}")
 
@@ -419,7 +594,8 @@ def main():
     hailo_logger.info("Starting Hailo LPR App...")
     user_data = None
     try:
-        user_data = user_app_callback_class()
+        lpr_db, lpr_db_json = init_lpr_db()
+        user_data = user_app_callback_class(lpr_db=lpr_db, lpr_db_json=lpr_db_json)
         app = GStreamerLPRApp(app_callback, user_data)
         app.run()
     except KeyboardInterrupt:

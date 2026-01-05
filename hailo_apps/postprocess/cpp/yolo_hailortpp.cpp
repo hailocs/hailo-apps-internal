@@ -18,6 +18,7 @@ static const std::string DEFAULT_YOLOV5M_VEHICLES_OUTPUT_LAYER = "yolov5m_vehicl
 static const std::string DEFAULT_YOLOV8S_OUTPUT_LAYER = "yolov8s/yolov8_nms_postprocess";
 static const std::string DEFAULT_YOLOV8M_OUTPUT_LAYER = "yolov8m/yolov8_nms_postprocess";
 static const std::string DEFAULT_YOLOV8N_OUTPUT_LAYER = "hailo_yolov8n_480_640/yolov8_nms_postprocess";
+static const std::string DEFAULT_YOLOV8N_LP_OUTPUT_LAYER = "yolov8n_relu6_global_lp_det_v8/yolov8_nms_postprocess";
 
 #if __GNUC__ > 8
 #include <filesystem>
@@ -108,7 +109,7 @@ void free_resources(void *params_void_ptr)
 
 static std::map<uint8_t, std::string> yolo_vehicles_labels = {
     {0, "unlabeled"},
-    {1, "car"}};
+    {1, "vehicle"}};
 
 static std::map<uint8_t, std::string> yolo_personface_labels = {
     {0, "unlabeled"},
@@ -121,6 +122,10 @@ static std::map<uint8_t, std::string> yolo8n_personface_labels = {
     {2, "vehicle"},
     {3, "face"},
     {4, "license-plates"}};
+
+static std::map<uint8_t, std::string> yolo_lp_labels = {
+    {0, "unlabeled"},
+    {1, "license_plate"}};
 
 void yolov8n_personface(HailoROIPtr roi)
 {
@@ -175,6 +180,10 @@ void yolov5(HailoROIPtr roi)
 
 void yolov5m_vehicles(HailoROIPtr roi)
 {
+    if (!roi->has_tensors())
+    {
+        return;
+    }
     auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV5M_VEHICLES_OUTPUT_LAYER), yolo_vehicles_labels);
     auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
     hailo_common::add_detections(roi, detections);
@@ -251,6 +260,17 @@ void yolov5_no_persons(HailoROIPtr roi)
             ++it;
         }
     }
+    hailo_common::add_detections(roi, detections);
+}
+
+void yolov8n_license_plate(HailoROIPtr roi)
+{
+    if (!roi->has_tensors())
+    {
+        return;
+    }
+    auto post = HailoNMSDecode(roi->get_tensor(DEFAULT_YOLOV8N_LP_OUTPUT_LAYER), yolo_lp_labels);
+    auto detections = post.decode<float32_t, common::hailo_bbox_float32_t>();
     hailo_common::add_detections(roi, detections);
 }
 

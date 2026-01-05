@@ -32,13 +32,7 @@
 
 static bool lpr_debug_enabled()
 {
-    static int enabled = -1;
-    if (enabled == -1)
-    {
-        const char *val = std::getenv("HAILO_LPR_DEBUG");
-        enabled = (!val || val[0] == '\0' || val[0] != '0') ? 1 : 0;
-    }
-    return enabled == 1;
+    return false;
 }
 
 static void lpr_dbg(const char *fmt, ...)

@@ -44,7 +44,14 @@ static bool lpr_debug_enabled()
     if (enabled == -1)
     {
         const char *val = std::getenv("HAILO_LPR_DEBUG");
-        enabled = (val && val[0] != '\0' && val[0] != '0') ? 1 : 0;
+        if (!val || val[0] == '\0')
+            enabled = 0;
+        else if (val[0] == '1' || val[0] == 't' || val[0] == 'T' || val[0] == 'y' || val[0] == 'Y')
+            enabled = 1;
+        else if (val[0] == '0' || val[0] == 'f' || val[0] == 'F' || val[0] == 'n' || val[0] == 'N')
+            enabled = 0;
+        else
+            enabled = 1;
     }
     return enabled == 1;
 }
@@ -138,6 +145,26 @@ static bool normalize_ocr_label_for_country(const std::string &country, const st
 
 void catalog_nv12_mat(std::string text, std::vector<cv::Mat> &mat)
 {
+    if (mat.size() < 2 || mat[0].empty() || mat[1].empty())
+    {
+        if (lpr_debug_enabled())
+        {
+            std::fprintf(stderr, "[lpr_ocrsink] catalog_nv12_mat: empty input (size=%zu y_empty=%d uv_empty=%d)\n",
+                         mat.size(),
+                         mat.size() > 0 ? mat[0].empty() : 1,
+                         mat.size() > 1 ? mat[1].empty() : 1);
+            std::fflush(stderr);
+        }
+        return;
+    }
+    if (lpr_debug_enabled())
+    {
+        std::fprintf(stderr,
+                     "[lpr_ocrsink] catalog_nv12_mat: pre-resize y=%dx%d uv=%dx%d y_type=%d uv_type=%d\n",
+                     mat[0].cols, mat[0].rows, mat[1].cols, mat[1].rows,
+                     mat[0].type(), mat[1].type());
+        std::fflush(stderr);
+    }
     // Resize the mat to a presentable size, add padding
     int target_h = 114;
     int target_w = 300;
@@ -175,6 +202,21 @@ void catalog_nv12_mat(std::string text, std::vector<cv::Mat> &mat)
 
 void catalog_yuy2_mat(std::string text, cv::Mat &mat)
 {
+    if (mat.empty())
+    {
+        if (lpr_debug_enabled())
+        {
+            std::fprintf(stderr, "[lpr_ocrsink] catalog_yuy2_mat: empty input\n");
+            std::fflush(stderr);
+        }
+        return;
+    }
+    if (lpr_debug_enabled())
+    {
+        std::fprintf(stderr, "[lpr_ocrsink] catalog_yuy2_mat: pre-resize %dx%d type=%d\n",
+                     mat.cols, mat.rows, mat.type());
+        std::fflush(stderr);
+    }
     // Resize the mat to a presentable size, add padding
     cv::Mat padded_yuy2;
     cv::Mat resized_yuy2 = cv::Mat(75, 150, CV_8UC4);
@@ -195,6 +237,21 @@ void catalog_yuy2_mat(std::string text, cv::Mat &mat)
 
 void catalog_rgb_mat(std::string text, cv::Mat &mat)
 {
+    if (mat.empty())
+    {
+        if (lpr_debug_enabled())
+        {
+            std::fprintf(stderr, "[lpr_ocrsink] catalog_rgb_mat: empty input\n");
+            std::fflush(stderr);
+        }
+        return;
+    }
+    if (lpr_debug_enabled())
+    {
+        std::fprintf(stderr, "[lpr_ocrsink] catalog_rgb_mat: pre-resize %dx%d type=%d\n",
+                     mat.cols, mat.rows, mat.type());
+        std::fflush(stderr);
+    }
     // Resize the mat to a presentable size, add padding
     cv::Mat resized_image;
     cv::Mat padded_image;
@@ -413,6 +470,12 @@ void ocr_sink(HailoROIPtr roi, std::shared_ptr<HailoMat> hmat)
             {
                 confidence = cls_conf;
                 license_plate_ocr_label = cls_label;
+                if (lpr_debug_enabled())
+                {
+                    std::printf("[LPR_OCSINK] OCR Raw: '%s' (Confidence: %.2f, Track %d)\n",
+                                license_plate_ocr_label.c_str(), confidence, track_id);
+                    std::fflush(stdout);
+                }
                 lpr_dbg("ocr_sink: [veh %d][lp %d] OCR raw text='%s' conf=%.3f", 
                         veh_idx, lp_idx, license_plate_ocr_label.c_str(), confidence);
 
@@ -425,6 +488,12 @@ void ocr_sink(HailoROIPtr roi, std::shared_ptr<HailoMat> hmat)
                     lpr_dbg("ocr_sink: [veh %d][lp %d] REJECT OCR - expected 7 or 8 digits", veh_idx, lp_idx);
                     lp_idx++;
                     continue;
+                }
+                if (lpr_debug_enabled())
+                {
+                    std::printf("[LPR_OCSINK] OCR Result: '%s' (Confidence: %.2f, Track %d)\n",
+                                normalized_label.c_str(), confidence, track_id);
+                    std::fflush(stdout);
                 }
                 
                 // Prominent debug print for detected license plate - easy to grep

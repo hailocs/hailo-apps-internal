@@ -4,56 +4,383 @@
  **/
 #include "lpr_croppers.hpp"
 #include "lpr_roi.hpp"
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <cmath>
+#include <fstream>
 #include <iostream>
-#include <unordered_map>
 #include <mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <sys/stat.h>
-#include <atomic>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+#if __GNUC__ > 8
+#include <filesystem>
+namespace fs = std::filesystem;
+#else
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#endif
 
+#define VEHICLE_LABEL "vehicle"
 #define LICENSE_PLATE_LABEL "license_plate"
 #define OCR_RESULT_LABEL "lpr_result"
 
-static constexpr std::array<const char *, 2> VEHICLE_LABELS = {"car", "vehicle"};
-static constexpr float FULLFRAME_PAD_RATIO = 0.1f;
-static constexpr float VEHICLE_TRI_X1 = 0.0f;
-static constexpr float VEHICLE_TRI_Y1 = 0.75f;
-static constexpr float VEHICLE_TRI_X2 = 1.0f;
-static constexpr float VEHICLE_TRI_Y2 = 0.33f;
-static constexpr float VEHICLE_TRI_X3 = 1.0f;
-static constexpr float VEHICLE_TRI_Y3 = 1.0f;
-static constexpr float CAMERA_RIGHT_AWAY_DISCARD_TOP_Y = 0.33f;
+static constexpr float DEFAULT_MIN_VEHICLE_AREA = 0.01f;  // 1% of frame area
 
+// LP Quality Check Defaults
+static constexpr float DEFAULT_LP_MIN_WIDTH_PX = 20.0f;       // Minimum LP width in pixels
+static constexpr float DEFAULT_LP_MIN_HEIGHT_PX = 8.0f;      // Minimum LP height in pixels
+static constexpr float DEFAULT_LP_MAX_WIDTH_PX = 800.0f;      // Maximum LP width in pixels
+static constexpr float DEFAULT_LP_MAX_HEIGHT_PX = 300.0f;     // Maximum LP height in pixels
+static constexpr float DEFAULT_LP_MIN_ASPECT = 1.1f;          // Min aspect ratio (width/height) - typical LP is 2-5
+static constexpr float DEFAULT_LP_MAX_ASPECT = 8.0f;          // Max aspect ratio
+static constexpr float DEFAULT_LP_BLUR_THRESHOLD = 50.0f;     // Laplacian variance threshold (lower = blurry)
+static constexpr float DEFAULT_LP_MIN_BRIGHTNESS = 20.0f;     // Min mean brightness (0-255), below = too dark
+static constexpr float DEFAULT_LP_MAX_BRIGHTNESS = 235.0f;    // Max mean brightness (0-255), above = too bright
+static constexpr float DEFAULT_LP_MIN_CONTRAST = 30.0f;       // Min std deviation of brightness
+static constexpr float DEFAULT_LP_MIN_EDGE_DENSITY = 0.05f;   // Min edge pixel ratio (0-1)
+static constexpr float DEFAULT_LP_PAD_X = 0.1f;
+static constexpr float DEFAULT_LP_PAD_TOP = 0.2f;
+static constexpr float DEFAULT_LP_PAD_BOTTOM = 0.5f;
+static constexpr float MIN_LP_REL_AREA = 0.001f;  // Minimum LP area relative to vehicle area (0.1%)
 
-// Frame counter for unique filenames
-static std::atomic<int> g_frame_counter{0};
+static void lpr_dbg(const char *fmt, ...);
+
+// Quality check result reasons
+enum class LpQualityRejectReason
+{
+    PASSED = 0,
+    TOO_SMALL,
+    TOO_LARGE,
+    BAD_ASPECT_RATIO,
+    TOO_BLURRY,
+    TOO_DARK,
+    TOO_BRIGHT,
+    LOW_CONTRAST,
+    LOW_EDGE_DENSITY,
+    OUTSIDE_ROI,
+    EMPTY_CROP
+};
+
+static const char* quality_reason_str(LpQualityRejectReason reason)
+{
+    switch (reason)
+    {
+    case LpQualityRejectReason::PASSED: return "passed";
+    case LpQualityRejectReason::TOO_SMALL: return "too_small";
+    case LpQualityRejectReason::TOO_LARGE: return "too_large";
+    case LpQualityRejectReason::BAD_ASPECT_RATIO: return "bad_aspect_ratio";
+    case LpQualityRejectReason::TOO_BLURRY: return "too_blurry";
+    case LpQualityRejectReason::TOO_DARK: return "too_dark";
+    case LpQualityRejectReason::TOO_BRIGHT: return "too_bright";
+    case LpQualityRejectReason::LOW_CONTRAST: return "low_contrast";
+    case LpQualityRejectReason::LOW_EDGE_DENSITY: return "low_edge_density";
+    case LpQualityRejectReason::OUTSIDE_ROI: return "outside_roi";
+    case LpQualityRejectReason::EMPTY_CROP: return "empty_crop";
+    default: return "unknown";
+    }
+}
+
+struct LpQualityConfig
+{
+    // Size thresholds (in pixels)
+    float min_width_px;
+    float min_height_px;
+    float max_width_px;
+    float max_height_px;
+
+    // Aspect ratio (width/height)
+    float min_aspect;
+    float max_aspect;
+
+    // Blur detection (Laplacian variance)
+    float blur_threshold;
+    bool blur_check_enabled;
+
+    // Exposure checks (brightness 0-255)
+    float min_brightness;
+    float max_brightness;
+    bool exposure_check_enabled;
+
+    // Contrast check (std deviation of brightness)
+    float min_contrast;
+    bool contrast_check_enabled;
+
+    // Edge density check
+    float min_edge_density;
+    bool edge_check_enabled;
+
+    // ROI check
+    bool roi_check_enabled;
+
+    // Padding for OCR
+    float pad_x;
+    float pad_top;
+    float pad_bottom;
+
+    // Master enable
+    bool enabled;
+};
+
+struct LpQualityResult
+{
+    bool passed;
+    LpQualityRejectReason reason;
+    float blur_score;
+    float brightness;
+    float contrast;
+    float edge_density;
+    float aspect_ratio;
+    int width_px;
+    int height_px;
+};
+
+// Frame counters for unique filenames
 static std::atomic<int> g_vehicle_crop_counter{0};
 static std::atomic<int> g_lp_crop_counter{0};
-static std::unordered_map<int, int> g_vehicle_track_seen;
-static constexpr int VEHICLE_WARMUP_FRAMES = 5;
-static std::unordered_map<int, int> g_lp_track_age;
-static constexpr int LP_TRACK_COOLDOWN_FRAMES = 3;
-static constexpr float MIN_LP_REL_AREA = 0.01f;
+static std::atomic<int> g_lp_frame_counter{0};
+
 static std::unordered_map<int, std::string> g_lp_db; // track_id -> plate text
 static std::mutex g_lp_db_mutex;
-struct TrackOcrStats
-{
-    int vehicle_crops = 0;
-    int lp_to_ocr = 0;
-    int ocr_results = 0;
-};
-static std::unordered_map<int, TrackOcrStats> g_track_ocr_stats;
+static std::unordered_set<int> g_lp_tracks_seen;
+static bool g_lp_state_loaded = false;
+static std::streamoff g_lpr_json_pos = 0;
+static std::mutex g_lpr_json_read_mutex;
+static std::string g_lpr_json_path;
 
-static void mark_track_lpr(int track_id, const std::string &plate)
+static std::string json_escape(const std::string &in)
+{
+    std::string out;
+    out.reserve(in.size());
+    for (char c : in)
+    {
+        if (c == '"' || c == '\\')
+            out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+
+static std::string get_lpr_json_path()
+{
+    static std::once_flag init_flag;
+    std::call_once(init_flag, []() {
+        const char *env_path = std::getenv("HAILO_LPR_JSON");
+        if (env_path && std::strlen(env_path) > 0)
+        {
+            g_lpr_json_path = env_path;
+        }
+        else
+        {
+            g_lpr_json_path = "hailo_apps/python/pipeline_apps/license_plate_recognition/lpr_database/lpr_tracks.jsonl";
+        }
+        try
+        {
+            fs::create_directories(fs::path(g_lpr_json_path).parent_path());
+        }
+        catch (...)
+        {
+        }
+    });
+    return g_lpr_json_path;
+}
+
+static void append_track_event(int track_id, bool has_lpr, const std::string &plate)
 {
     if (track_id < 0)
         return;
-    std::lock_guard<std::mutex> lock(g_lp_db_mutex);
-    g_lp_db[track_id] = plate;
+    const std::string path = get_lpr_json_path();
+    if (path.empty())
+        return;
+
+    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0)
+        return;
+
+    if (flock(fd, LOCK_EX) != 0)
+    {
+        ::close(fd);
+        return;
+    }
+
+    FILE *f = fdopen(fd, "a");
+    if (!f)
+    {
+        flock(fd, LOCK_UN);
+        ::close(fd);
+        return;
+    }
+
+    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+    std::string escaped_plate = json_escape(plate);
+    std::fprintf(f,
+                 R"({"event":"upsert","track_id":%d,"has_lpr":%s,"lpr_result":"%s","timestamp":%lld})"
+                 "\n",
+                 track_id,
+                 has_lpr ? "true" : "false",
+                 escaped_plate.c_str(),
+                 static_cast<long long>(now_ms));
+    std::fflush(f);
+    ::fsync(fileno(f));
+    flock(fd, LOCK_UN);
+    std::fclose(f); // closes fd
+}
+
+static bool parse_jsonl_int(const std::string &line, const std::string &key, int &out)
+{
+    auto pos = line.find("\"" + key + "\"");
+    if (pos == std::string::npos)
+        return false;
+    pos = line.find(":", pos);
+    if (pos == std::string::npos)
+        return false;
+    pos++;
+    while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
+        pos++;
+    char *end = nullptr;
+    long val = std::strtol(line.c_str() + pos, &end, 10);
+    if (end == line.c_str() + pos)
+        return false;
+    out = static_cast<int>(val);
+    return true;
+}
+
+static bool parse_jsonl_bool(const std::string &line, const std::string &key, bool &out)
+{
+    auto pos = line.find("\"" + key + "\"");
+    if (pos == std::string::npos)
+        return false;
+    pos = line.find(":", pos);
+    if (pos == std::string::npos)
+        return false;
+    pos++;
+    while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])))
+        pos++;
+    if (line.compare(pos, 4, "true") == 0)
+    {
+        out = true;
+        return true;
+    }
+    if (line.compare(pos, 5, "false") == 0)
+    {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_jsonl_string(const std::string &line, const std::string &key, std::string &out)
+{
+    auto pos = line.find("\"" + key + "\"");
+    if (pos == std::string::npos)
+        return false;
+    pos = line.find(":", pos);
+    if (pos == std::string::npos)
+        return false;
+    pos = line.find("\"", pos);
+    if (pos == std::string::npos)
+        return false;
+    pos++;
+    auto end = line.find("\"", pos);
+    if (end == std::string::npos)
+        return false;
+    out = line.substr(pos, end - pos);
+    return true;
+}
+
+static void apply_jsonl_event(const std::string &line)
+{
+    std::string evt;
+    if (!parse_jsonl_string(line, "event", evt))
+        return;
+
+    if (evt == "clear")
+    {
+        std::lock_guard<std::mutex> lock(g_lp_db_mutex);
+        g_lp_db.clear();
+        g_lp_tracks_seen.clear();
+        return;
+    }
+
+    int track_id = -1;
+    if (!parse_jsonl_int(line, "track_id", track_id))
+        return;
+
+    if (evt == "delete")
+    {
+        std::lock_guard<std::mutex> lock(g_lp_db_mutex);
+        g_lp_db.erase(track_id);
+        g_lp_tracks_seen.erase(track_id);
+        return;
+    }
+
+    if (evt == "upsert")
+    {
+        bool has_lpr = false;
+        parse_jsonl_bool(line, "has_lpr", has_lpr);
+        std::string plate;
+        parse_jsonl_string(line, "lpr_result", plate);
+        std::lock_guard<std::mutex> lock(g_lp_db_mutex);
+        g_lp_tracks_seen.insert(track_id);
+        if (has_lpr)
+        {
+            g_lp_db[track_id] = plate;
+        }
+        return;
+    }
+}
+
+static void load_lpr_state_from_jsonl()
+{
+    if (g_lp_state_loaded)
+        return;
+    g_lp_state_loaded = true;
+    const std::string path = get_lpr_json_path();
+    std::ifstream f(path);
+    if (!f.is_open())
+        return;
+    std::string line;
+    while (std::getline(f, line))
+    {
+        apply_jsonl_event(line);
+    }
+}
+
+static void refresh_lpr_state_from_jsonl()
+{
+    const std::string path = get_lpr_json_path();
+    std::lock_guard<std::mutex> lock(g_lpr_json_read_mutex);
+    std::ifstream f(path);
+    if (!f.is_open())
+        return;
+    if (g_lpr_json_pos > 0)
+    {
+        f.seekg(g_lpr_json_pos);
+    }
+    std::string line;
+    while (std::getline(f, line))
+    {
+        apply_jsonl_event(line);
+    }
+    std::streamoff pos = f.tellg();
+    if (pos != -1)
+    {
+        g_lpr_json_pos = pos;
+    }
 }
 
 static bool track_has_lpr(int track_id, std::string *plate = nullptr)
@@ -67,6 +394,24 @@ static bool track_has_lpr(int track_id, std::string *plate = nullptr)
     if (plate)
         *plate = it->second;
     return true;
+}
+
+static bool track_seen(int track_id)
+{
+    std::lock_guard<std::mutex> lock(g_lp_db_mutex);
+    return g_lp_tracks_seen.find(track_id) != g_lp_tracks_seen.end();
+}
+
+static void mark_track_seen(int track_id)
+{
+    if (track_id < 0)
+        return;
+    std::lock_guard<std::mutex> lock(g_lp_db_mutex);
+    auto inserted = g_lp_tracks_seen.insert(track_id);
+    if (inserted.second)
+    {
+        append_track_event(track_id, false, "");
+    }
 }
 
 static bool point_in_polygon(float x, float y, const std::array<LprRoiPoint, 4> &polygon)
@@ -95,53 +440,12 @@ static bool bbox_fully_inside_polygon(const HailoBBox &bbox, const std::array<Lp
            point_in_polygon(bbox.xmin(), bbox.ymax(), polygon);
 }
 
-static float intersection_ratio(const HailoBBox &bbox, const HailoBBox &roi)
-{
-    float ixmin = std::max(bbox.xmin(), roi.xmin());
-    float iymin = std::max(bbox.ymin(), roi.ymin());
-    float ixmax = std::min(bbox.xmax(), roi.xmax());
-    float iymax = std::min(bbox.ymax(), roi.ymax());
-    float iw = std::max(0.0f, ixmax - ixmin);
-    float ih = std::max(0.0f, iymax - iymin);
-    float area = bbox.width() * bbox.height();
-    if (area <= 0.0f)
-        return 0.0f;
-    return (iw * ih) / area;
-}
-
-static void lpr_dbg(const char *fmt, ...);
-
-static bool vehicle_roi_accepts_bbox(const HailoBBox &bbox)
+static bool vehicle_inside_roi(const HailoBBox &vehicle_bbox)
 {
     LprRoiConfig config = get_lpr_vehicle_roi_config();
     if (!config.enabled)
         return true;
-    if (config.polygon_enabled)
-    {
-        bool ok = bbox_fully_inside_polygon(bbox, config.polygon);
-        lpr_dbg("vehicles_without_ocr: ROI polygon bbox=[%.3f,%.3f,%.3f,%.3f] poly=[(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f)] => %s",
-                bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height(),
-                config.polygon[0].x, config.polygon[0].y,
-                config.polygon[1].x, config.polygon[1].y,
-                config.polygon[2].x, config.polygon[2].y,
-                config.polygon[3].x, config.polygon[3].y,
-                ok ? "KEEP" : "DROP");
-        return ok;
-    }
-    HailoBBox roi_bbox(
-        config.rect.xmin,
-        config.rect.ymin,
-        config.rect.xmax - config.rect.xmin,
-        config.rect.ymax - config.rect.ymin
-    );
-    float ratio = intersection_ratio(bbox, roi_bbox);
-    bool ok = ratio >= config.min_intersection_ratio;
-    lpr_dbg("vehicles_without_ocr: ROI gate ratio=%.3f min=%.3f bbox=[%.3f,%.3f,%.3f,%.3f] roi=[%.3f,%.3f,%.3f,%.3f] => %s",
-            ratio, config.min_intersection_ratio,
-            bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height(),
-            roi_bbox.xmin(), roi_bbox.ymin(), roi_bbox.width(), roi_bbox.height(),
-            ok ? "KEEP" : "DROP");
-    return ok;
+    return bbox_fully_inside_polygon(vehicle_bbox, lpr_rect_to_polygon(config.rect));
 }
 
 static bool lpr_debug_enabled()
@@ -150,7 +454,15 @@ static bool lpr_debug_enabled()
     if (enabled == -1)
     {
         const char *val = std::getenv("HAILO_LPR_DEBUG");
-        enabled = (val && val[0] != '\0' && val[0] != '0') ? 1 : 0;
+        // Default OFF unless explicitly enabled
+        if (!val || val[0] == '\0')
+            enabled = 0;
+        else if (val[0] == '1' || val[0] == 't' || val[0] == 'T' || val[0] == 'y' || val[0] == 'Y')
+            enabled = 1;
+        else if (val[0] == '0' || val[0] == 'f' || val[0] == 'F' || val[0] == 'n' || val[0] == 'N')
+            enabled = 0;
+        else
+            enabled = 1;
     }
     return enabled == 1;
 }
@@ -175,14 +487,385 @@ static int lpr_debug_every_n()
     return every_n;
 }
 
-static bool lpr_save_crops_enabled()
+static float get_min_vehicle_area()
 {
-    return true;
+    static float min_area = -1.0f;
+    if (min_area < 0.0f)
+    {
+        const char *val = std::getenv("HAILO_LPR_MIN_VEHICLE_AREA");
+        if (val && val[0] != '\0')
+        {
+            char *end = nullptr;
+            float parsed = std::strtof(val, &end);
+            min_area = (end != val && parsed >= 0.0f) ? parsed : DEFAULT_MIN_VEHICLE_AREA;
+        }
+        else
+        {
+            min_area = DEFAULT_MIN_VEHICLE_AREA;
+        }
+    }
+    return min_area;
 }
 
-static const char* get_crops_dir()
+static float parse_env_float(const char *env_name, float default_val)
 {
-    static const char* dir = nullptr;
+    const char *val = std::getenv(env_name);
+    if (val && val[0] != '\0')
+    {
+        char *end = nullptr;
+        float parsed = std::strtof(val, &end);
+        if (end != val)
+            return parsed;
+    }
+    return default_val;
+}
+
+static bool parse_env_bool(const char *env_name, bool default_val)
+{
+    const char *val = std::getenv(env_name);
+    if (val && val[0] != '\0')
+    {
+        if (val[0] == '1' || val[0] == 't' || val[0] == 'T' || val[0] == 'y' || val[0] == 'Y')
+            return true;
+        if (val[0] == '0' || val[0] == 'f' || val[0] == 'F' || val[0] == 'n' || val[0] == 'N')
+            return false;
+    }
+    return default_val;
+}
+
+static LpQualityConfig get_lp_quality_config()
+{
+    static bool initialized = false;
+    static LpQualityConfig config;
+    if (!initialized)
+    {
+        // Size thresholds
+        config.min_width_px = parse_env_float("HAILO_LP_MIN_WIDTH_PX", DEFAULT_LP_MIN_WIDTH_PX);
+        config.min_height_px = parse_env_float("HAILO_LP_MIN_HEIGHT_PX", DEFAULT_LP_MIN_HEIGHT_PX);
+        config.max_width_px = parse_env_float("HAILO_LP_MAX_WIDTH_PX", DEFAULT_LP_MAX_WIDTH_PX);
+        config.max_height_px = parse_env_float("HAILO_LP_MAX_HEIGHT_PX", DEFAULT_LP_MAX_HEIGHT_PX);
+
+        // Aspect ratio
+        config.min_aspect = parse_env_float("HAILO_LP_MIN_ASPECT", DEFAULT_LP_MIN_ASPECT);
+        config.max_aspect = parse_env_float("HAILO_LP_MAX_ASPECT", DEFAULT_LP_MAX_ASPECT);
+
+        // Blur detection
+        config.blur_threshold = parse_env_float("HAILO_LP_BLUR_THRESHOLD", DEFAULT_LP_BLUR_THRESHOLD);
+        config.blur_check_enabled = parse_env_bool("HAILO_LP_BLUR_CHECK", true);
+
+        // Exposure checks
+        config.min_brightness = parse_env_float("HAILO_LP_MIN_BRIGHTNESS", DEFAULT_LP_MIN_BRIGHTNESS);
+        config.max_brightness = parse_env_float("HAILO_LP_MAX_BRIGHTNESS", DEFAULT_LP_MAX_BRIGHTNESS);
+        config.exposure_check_enabled = parse_env_bool("HAILO_LP_EXPOSURE_CHECK", true);
+
+        // Contrast check
+        config.min_contrast = parse_env_float("HAILO_LP_MIN_CONTRAST", DEFAULT_LP_MIN_CONTRAST);
+        config.contrast_check_enabled = parse_env_bool("HAILO_LP_CONTRAST_CHECK", true);
+
+        // Edge density check
+        config.min_edge_density = parse_env_float("HAILO_LP_MIN_EDGE_DENSITY", DEFAULT_LP_MIN_EDGE_DENSITY);
+        config.edge_check_enabled = parse_env_bool("HAILO_LP_EDGE_CHECK", true);
+
+        // ROI check
+        config.roi_check_enabled = parse_env_bool("HAILO_LP_ROI_CHECK", true);
+
+        // Padding
+        config.pad_x = parse_env_float("HAILO_LP_PAD_X", DEFAULT_LP_PAD_X);
+        config.pad_top = parse_env_float("HAILO_LP_PAD_TOP", DEFAULT_LP_PAD_TOP);
+        config.pad_bottom = parse_env_float("HAILO_LP_PAD_BOTTOM", DEFAULT_LP_PAD_BOTTOM);
+
+        // Master enable - defaults to true now
+        config.enabled = parse_env_bool("HAILO_LP_QUALITY_ENABLED", true);
+
+        initialized = true;
+    }
+    return config;
+}
+
+// ============================================================================
+// LP Quality Check Functions
+// ============================================================================
+
+/**
+ * Calculate blur score using Laplacian variance.
+ * Higher value = sharper image, lower value = blurry.
+ */
+static float calculate_blur_score(const cv::Mat &gray_image)
+{
+    if (gray_image.empty())
+        return 0.0f;
+
+    cv::Mat laplacian;
+    cv::Laplacian(gray_image, laplacian, CV_64F);
+
+    cv::Scalar mean, stddev;
+    cv::meanStdDev(laplacian, mean, stddev);
+
+    // Variance of Laplacian
+    return static_cast<float>(stddev[0] * stddev[0]);
+}
+
+/**
+ * Calculate mean brightness (0-255).
+ */
+static float calculate_brightness(const cv::Mat &gray_image)
+{
+    if (gray_image.empty())
+        return 0.0f;
+
+    cv::Scalar mean = cv::mean(gray_image);
+    return static_cast<float>(mean[0]);
+}
+
+/**
+ * Calculate contrast as standard deviation of pixel values.
+ */
+static float calculate_contrast(const cv::Mat &gray_image)
+{
+    if (gray_image.empty())
+        return 0.0f;
+
+    cv::Scalar mean, stddev;
+    cv::meanStdDev(gray_image, mean, stddev);
+    return static_cast<float>(stddev[0]);
+}
+
+/**
+ * Calculate edge density using Canny edge detection.
+ * Returns ratio of edge pixels to total pixels (0-1).
+ */
+static float calculate_edge_density(const cv::Mat &gray_image)
+{
+    if (gray_image.empty())
+        return 0.0f;
+
+    cv::Mat edges;
+    cv::Canny(gray_image, edges, 50, 150);
+
+    int edge_pixels = cv::countNonZero(edges);
+    int total_pixels = gray_image.rows * gray_image.cols;
+
+    if (total_pixels == 0)
+        return 0.0f;
+
+    return static_cast<float>(edge_pixels) / static_cast<float>(total_pixels);
+}
+
+/**
+ * Convert image crop to grayscale for quality analysis.
+ */
+static cv::Mat get_gray_crop(std::shared_ptr<HailoMat> image, const HailoBBox &bbox)
+{
+    cv::Mat gray;
+    if (!image)
+        return gray;
+
+    const float xmin = std::max(0.0f, std::min(1.0f, bbox.xmin()));
+    const float ymin = std::max(0.0f, std::min(1.0f, bbox.ymin()));
+    const float xmax = std::max(xmin, std::min(1.0f, bbox.xmax()));
+    const float ymax = std::max(ymin, std::min(1.0f, bbox.ymax()));
+
+    if (xmax <= xmin || ymax <= ymin)
+        return gray;
+
+    try
+    {
+        auto crop_roi = std::make_shared<HailoROI>(HailoBBox(xmin, ymin, (xmax - xmin), (ymax - ymin)));
+        std::vector<cv::Mat> cropped = image->crop(crop_roi);
+        if (cropped.empty() || cropped[0].empty())
+            return gray;
+
+        cv::Mat bgr_crop;
+        switch (image->get_type())
+        {
+        case HAILO_MAT_RGB:
+            cv::cvtColor(cropped[0], bgr_crop, cv::COLOR_RGB2BGR);
+            break;
+        case HAILO_MAT_YUY2:
+            cv::cvtColor(cropped[0], bgr_crop, cv::COLOR_YUV2BGR_YUY2);
+            break;
+        case HAILO_MAT_NV12:
+            if (cropped.size() < 2)
+                return gray;
+            cv::cvtColorTwoPlane(cropped[0], cropped[1], bgr_crop, cv::COLOR_YUV2BGR_NV12);
+            break;
+        default:
+            bgr_crop = cropped[0];
+            break;
+        }
+
+        cv::cvtColor(bgr_crop, gray, cv::COLOR_BGR2GRAY);
+    }
+    catch (const std::exception &e)
+    {
+        lpr_dbg("get_gray_crop exception: %s", e.what());
+    }
+
+    return gray;
+}
+
+/**
+ * Check if LP bounding box is inside the configured ROI.
+ */
+static bool lp_inside_roi(const HailoBBox &lp_bbox)
+{
+    LprRoiConfig config = get_lpr_vehicle_roi_config();
+    if (!config.enabled)
+        return true;
+
+    // Check if LP center is inside ROI
+    float cx = lp_bbox.xmin() + 0.5f * lp_bbox.width();
+    float cy = lp_bbox.ymin() + 0.5f * lp_bbox.height();
+
+    return point_in_polygon(cx, cy, lpr_rect_to_polygon(config.rect));
+}
+
+/**
+ * Perform comprehensive quality check on a license plate crop.
+ */
+static LpQualityResult check_lp_quality(
+    std::shared_ptr<HailoMat> image,
+    const HailoBBox &lp_bbox,
+    const LpQualityConfig &config)
+{
+    LpQualityResult result = {};
+    result.passed = false;
+    result.reason = LpQualityRejectReason::PASSED;
+    result.blur_score = 0.0f;
+    result.brightness = 0.0f;
+    result.contrast = 0.0f;
+    result.edge_density = 0.0f;
+    result.aspect_ratio = 0.0f;
+    result.width_px = 0;
+    result.height_px = 0;
+
+    if (!image)
+    {
+        result.reason = LpQualityRejectReason::EMPTY_CROP;
+        return result;
+    }
+
+    // Calculate pixel dimensions
+    result.width_px = static_cast<int>(lp_bbox.width() * image->width());
+    result.height_px = static_cast<int>(lp_bbox.height() * image->height());
+
+    // Size check
+    if (result.width_px < config.min_width_px || result.height_px < config.min_height_px)
+    {
+        result.reason = LpQualityRejectReason::TOO_SMALL;
+        return result;
+    }
+
+    if (result.width_px > config.max_width_px || result.height_px > config.max_height_px)
+    {
+        result.reason = LpQualityRejectReason::TOO_LARGE;
+        return result;
+    }
+
+    // Aspect ratio check
+    if (result.height_px > 0)
+    {
+        result.aspect_ratio = static_cast<float>(result.width_px) / static_cast<float>(result.height_px);
+        if (result.aspect_ratio < config.min_aspect || result.aspect_ratio > config.max_aspect)
+        {
+            result.reason = LpQualityRejectReason::BAD_ASPECT_RATIO;
+            return result;
+        }
+    }
+
+    // ROI check
+    if (config.roi_check_enabled && !lp_inside_roi(lp_bbox))
+    {
+        result.reason = LpQualityRejectReason::OUTSIDE_ROI;
+        return result;
+    }
+
+    // Get grayscale crop for image quality checks
+    cv::Mat gray = get_gray_crop(image, lp_bbox);
+    if (gray.empty())
+    {
+        result.reason = LpQualityRejectReason::EMPTY_CROP;
+        return result;
+    }
+
+    // Blur check
+    if (config.blur_check_enabled)
+    {
+        result.blur_score = calculate_blur_score(gray);
+        if (result.blur_score < config.blur_threshold)
+        {
+            result.reason = LpQualityRejectReason::TOO_BLURRY;
+            return result;
+        }
+    }
+
+    // Exposure check (brightness)
+    if (config.exposure_check_enabled)
+    {
+        result.brightness = calculate_brightness(gray);
+        if (result.brightness < config.min_brightness)
+        {
+            result.reason = LpQualityRejectReason::TOO_DARK;
+            return result;
+        }
+        if (result.brightness > config.max_brightness)
+        {
+            result.reason = LpQualityRejectReason::TOO_BRIGHT;
+            return result;
+        }
+    }
+
+    // Contrast check
+    if (config.contrast_check_enabled)
+    {
+        result.contrast = calculate_contrast(gray);
+        if (result.contrast < config.min_contrast)
+        {
+            result.reason = LpQualityRejectReason::LOW_CONTRAST;
+            return result;
+        }
+    }
+
+    // Edge density check
+    if (config.edge_check_enabled)
+    {
+        result.edge_density = calculate_edge_density(gray);
+        if (result.edge_density < config.min_edge_density)
+        {
+            result.reason = LpQualityRejectReason::LOW_EDGE_DENSITY;
+            return result;
+        }
+    }
+
+    // All checks passed
+    result.passed = true;
+    result.reason = LpQualityRejectReason::PASSED;
+    return result;
+}
+
+static void log_quality_result(const char *prefix, int veh_idx, int lp_idx, int track_id,
+                                const LpQualityResult &result, const HailoBBox &bbox)
+{
+    lpr_dbg("%s veh=%d lp=%d track_id=%d reason=%s size_px=%dx%d aspect=%.2f "
+            "blur=%.1f bright=%.1f contrast=%.1f edges=%.3f bbox=[%.3f,%.3f,%.3f,%.3f]",
+            prefix, veh_idx, lp_idx, track_id,
+            quality_reason_str(result.reason),
+            result.width_px, result.height_px, result.aspect_ratio,
+            result.blur_score, result.brightness, result.contrast, result.edge_density,
+            bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height());
+}
+
+static bool lpr_save_crops_enabled()
+{
+    const char *val = std::getenv("HAILO_LPR_SAVE_CROPS");
+    if (!val || val[0] == '\0')
+        return false;
+    return val[0] != '0';
+}
+
+static const char *get_crops_dir()
+{
+    static const char *dir = nullptr;
     if (dir == nullptr)
     {
         dir = std::getenv("HAILO_LPR_CROPS_DIR");
@@ -192,7 +875,7 @@ static const char* get_crops_dir()
     return dir;
 }
 
-static void ensure_dir_exists(const std::string& path)
+static void ensure_dir_exists(const std::string &path)
 {
     mkdir(path.c_str(), 0755);
 }
@@ -215,123 +898,35 @@ static void lpr_dbg(const char *fmt, ...)
     std::fflush(stderr);
 }
 
-static void track_ocr_debug(int track_id, const char *event, const char *extra = nullptr)
-{
-    if (track_id < 0 || !lpr_debug_enabled())
-        return;
-    auto &stats = g_track_ocr_stats[track_id];
-    if (extra && extra[0] != '\0')
-    {
-        lpr_dbg("track_debug: track_id=%d event=%s %s vehicle_crops=%d lp_to_ocr=%d ocr_results=%d",
-                track_id, event, extra, stats.vehicle_crops, stats.lp_to_ocr, stats.ocr_results);
-    }
-    else
-    {
-        lpr_dbg("track_debug: track_id=%d event=%s vehicle_crops=%d lp_to_ocr=%d ocr_results=%d",
-                track_id, event, stats.vehicle_crops, stats.lp_to_ocr, stats.ocr_results);
-    }
-}
-
-static void track_ocr_vehicle_crop(int track_id)
-{
-    if (track_id < 0 || !lpr_debug_enabled())
-        return;
-    auto &stats = g_track_ocr_stats[track_id];
-    stats.vehicle_crops++;
-    track_ocr_debug(track_id, "vehicle_crop->lp");
-}
-
-static void track_ocr_lp_to_ocr(int track_id)
-{
-    if (track_id < 0 || !lpr_debug_enabled())
-        return;
-    auto &stats = g_track_ocr_stats[track_id];
-    stats.lp_to_ocr++;
-    track_ocr_debug(track_id, "lp_crop->ocr");
-}
-
-static void track_ocr_check_missing(int track_id, const char *context)
-{
-    if (track_id < 0 || !lpr_debug_enabled())
-        return;
-    auto it = g_track_ocr_stats.find(track_id);
-    if (it == g_track_ocr_stats.end())
-        return;
-    const auto &stats = it->second;
-    if (stats.vehicle_crops > stats.lp_to_ocr)
-    {
-        lpr_dbg("track_debug: track_id=%d event=%s missing_lp_to_ocr=%d vehicle_crops=%d lp_to_ocr=%d ocr_results=%d",
-                track_id, context, stats.vehicle_crops - stats.lp_to_ocr,
-                stats.vehicle_crops, stats.lp_to_ocr, stats.ocr_results);
-    }
-}
-
-static void track_ocr_result(int track_id, const std::string &plate)
-{
-    if (track_id < 0 || !lpr_debug_enabled())
-        return;
-    auto &stats = g_track_ocr_stats[track_id];
-    stats.ocr_results++;
-    if (!plate.empty())
-    {
-        std::string extra = "plate='" + plate + "'";
-        track_ocr_debug(track_id, "ocr_result", extra.c_str());
-    }
-    else
-    {
-        track_ocr_debug(track_id, "ocr_result");
-    }
-    track_ocr_check_missing(track_id, "ocr_result");
-}
-
 static void lpr_log_settings()
 {
     static int logged = 0;
     if (logged || !lpr_debug_enabled())
         return;
     logged = 1;
-    LprRoiConfig roi_config = get_lpr_vehicle_roi_config();
-    lpr_dbg("settings: HAILO_LPR_SAVE_CROPS=%d crops_dir='%s' OCR_RESULT_LABEL='%s' tri=(%.2f,%.2f)-(%.2f,%.2f)-(%.2f,%.2f)",
+    lpr_dbg("settings: HAILO_LPR_SAVE_CROPS=%d crops_dir='%s' OCR_RESULT_LABEL='%s'",
             lpr_save_crops_enabled() ? 1 : 0,
             get_crops_dir(),
-            OCR_RESULT_LABEL,
-            VEHICLE_TRI_X1,
-            VEHICLE_TRI_Y1,
-            VEHICLE_TRI_X2,
-            VEHICLE_TRI_Y2,
-            VEHICLE_TRI_X3,
-            VEHICLE_TRI_Y3);
-    if (roi_config.enabled)
-    {
-        if (roi_config.polygon_enabled)
-        {
-            lpr_dbg("settings: vehicle_roi source='%s' polygon=[(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f),(%.3f,%.3f)]",
-                    roi_config.source.c_str(),
-                    roi_config.polygon[0].x, roi_config.polygon[0].y,
-                    roi_config.polygon[1].x, roi_config.polygon[1].y,
-                    roi_config.polygon[2].x, roi_config.polygon[2].y,
-                    roi_config.polygon[3].x, roi_config.polygon[3].y);
-        }
-        else
-        {
-            lpr_dbg("settings: vehicle_roi source='%s' roi=[%.3f,%.3f,%.3f,%.3f] min_intersection=%.3f",
-                    roi_config.source.c_str(),
-                    roi_config.rect.xmin, roi_config.rect.ymin,
-                    roi_config.rect.xmax - roi_config.rect.xmin,
-                    roi_config.rect.ymax - roi_config.rect.ymin,
-                    roi_config.min_intersection_ratio);
-        }
-    }
+            OCR_RESULT_LABEL);
+}
+
+static void track_ocr_vehicle_crop(int track_id)
+{
+    if (track_id < 0 || !lpr_debug_enabled())
+        return;
+    lpr_dbg("track_debug: track_id=%d event=vehicle_crop->lp", track_id);
+}
+
+static void track_ocr_lp_to_ocr(int track_id)
+{
+    if (track_id < 0 || !lpr_debug_enabled())
+        return;
+    lpr_dbg("track_debug: track_id=%d event=lp_crop->ocr", track_id);
 }
 
 static bool is_vehicle_label(const std::string &label)
 {
-    for (const auto *vehicle_label : VEHICLE_LABELS)
-    {
-        if (label == vehicle_label)
-            return true;
-    }
-    return false;
+    return label == VEHICLE_LABEL;
 }
 
 static int get_tracking_id(const HailoDetectionPtr &detection)
@@ -362,39 +957,48 @@ static void attach_tracking_id_if_missing(const HailoDetectionPtr &detection, in
     detection->add_object(std::make_shared<HailoUniqueID>(track_id, TRACKING_ID));
 }
 
-static bool camera_angle_accepts_vehicle(const HailoBBox &bbox)
-{
-    // Base camera: camera on right side of road, vehicles moving away.
-    // Discard detections whose center is in the top third of the frame.
-    float center_y = (bbox.ymin() + bbox.ymax()) * 0.5f;
-    return center_y >= CAMERA_RIGHT_AWAY_DISCARD_TOP_Y;
-}
-
-/**
- * @brief Save a crop image to disk for debugging
- */
-static void save_crop_image(std::shared_ptr<HailoMat> image, const HailoBBox& bbox, 
-                            const std::string& prefix, int id, int track_id)
+static void save_crop_image(std::shared_ptr<HailoMat> image, const HailoBBox &bbox,
+                            const std::string &prefix, int id, int track_id)
 {
     if (!lpr_save_crops_enabled() || !image)
         return;
-    
+
     try
     {
+        lpr_dbg("save_crop_image: prefix='%s' track_id=%d img=%dx%d type=%d bbox=[%.4f,%.4f,%.4f,%.4f]",
+                prefix.c_str(), track_id, image->width(), image->height(), static_cast<int>(image->get_type()),
+                bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height());
         const float xmin = std::max(0.0f, std::min(1.0f, bbox.xmin()));
         const float ymin = std::max(0.0f, std::min(1.0f, bbox.ymin()));
         const float xmax = std::max(xmin, std::min(1.0f, bbox.xmax()));
         const float ymax = std::max(ymin, std::min(1.0f, bbox.ymax()));
 
         if (xmax <= xmin || ymax <= ymin)
+        {
+            lpr_dbg("save_crop_image: invalid bbox after clamp (xmin=%.3f xmax=%.3f ymin=%.3f ymax=%.3f)", xmin, xmax, ymin, ymax);
             return;
+        }
 
         auto crop_roi = std::make_shared<HailoROI>(HailoBBox(xmin, ymin, (xmax - xmin), (ymax - ymin)));
         std::vector<cv::Mat> cropped_image_vec = image->crop(crop_roi);
         if (cropped_image_vec.empty() || cropped_image_vec[0].empty())
+        {
+            if (lpr_debug_enabled())
+            {
+                std::fprintf(stderr,
+                             "[lpr_croppers] save_crop_image: EMPTY crop vec_size=%zu image_type=%d bbox=[%.4f,%.4f,%.4f,%.4f] img=%dx%d\n",
+                             cropped_image_vec.size(), static_cast<int>(image->get_type()),
+                             xmin, ymin, (xmax - xmin), (ymax - ymin), image->width(), image->height());
+                std::fflush(stderr);
+            }
             return;
+        }
+        lpr_dbg("save_crop_image: cropped mats=%zu first=%dx%d type=%d",
+                cropped_image_vec.size(),
+                cropped_image_vec[0].cols,
+                cropped_image_vec[0].rows,
+                cropped_image_vec[0].type());
 
-        // Convert to BGR if needed for saving
         cv::Mat bgr_crop;
         switch (image->get_type())
         {
@@ -413,8 +1017,7 @@ static void save_crop_image(std::shared_ptr<HailoMat> image, const HailoBBox& bb
             bgr_crop = cropped_image_vec[0];
             break;
         }
-        
-        // Create output directory
+
         std::string base_dir = get_crops_dir();
         ensure_dir_exists(base_dir);
         std::string prefix_dir = base_dir + "/" + prefix;
@@ -425,910 +1028,1046 @@ static void save_crop_image(std::shared_ptr<HailoMat> image, const HailoBBox& bb
             sub_dir = prefix_dir + "/track_" + std::to_string(track_id);
             ensure_dir_exists(sub_dir);
         }
-        
-        // Save image
+
         char filename[512];
         std::snprintf(filename, sizeof(filename), "%s/%s_%05d.jpg", sub_dir.c_str(), prefix.c_str(), id);
         cv::imwrite(filename, bgr_crop);
-        
+
         lpr_dbg("SAVED: %s (%dx%d)", filename, bgr_crop.cols, bgr_crop.rows);
     }
-    catch (const std::exception& e)
+    catch (const std::exception &e)
     {
         lpr_dbg("Failed to save crop: %s", e.what());
     }
 }
 
-/**
- * @brief Returns the calculate the variance of edges.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoBBox
- *        The ROI to read from the image
- *
- * @param crop_ratio  -  float
- *        The percent of the image to crop in from the edges (default 10%).
- *
- * @return float
- *         The variance of edges in the image.
- */
-float quality_estimation(std::shared_ptr<HailoMat> hailo_mat, const HailoBBox &roi, const float crop_ratio = 0.1)
+static void attach_crop_meta(const HailoDetectionPtr &detection, int crop_id, int frame_id)
 {
-    lpr_dbg("  quality_estimation: roi=[%.3f,%.3f,%.3f,%.3f] crop_ratio=%.2f", 
-            roi.xmin(), roi.ymin(), roi.width(), roi.height(), crop_ratio);
-    
-    // Crop the center of the roi from the image, avoid cropping out of bounds
-    float roi_width = roi.width();
-    float roi_height = roi.height();
-    float roi_xmin = roi.xmin();
-    float roi_ymin = roi.ymin();
-    float roi_xmax = roi.xmax();
-    float roi_ymax = roi.ymax();
-    float x_offset = roi_width * crop_ratio;
-    float y_offset = roi_height * crop_ratio;
-    float cropped_xmin = CLAMP(roi_xmin + x_offset, 0, 1);
-    float cropped_ymin = CLAMP(roi_ymin + y_offset, 0, 1);
-    float cropped_xmax = CLAMP(roi_xmax - x_offset, cropped_xmin, 1);
-    float cropped_ymax = CLAMP(roi_ymax - y_offset, cropped_ymin, 1);
-    float cropped_width_n = cropped_xmax - cropped_xmin;
-    float cropped_height_n = cropped_ymax - cropped_ymin;
-    int cropped_width = int(cropped_width_n * hailo_mat->native_width());
-    int cropped_height = int(cropped_height_n * hailo_mat->native_height());
-    
-    lpr_dbg("  quality_estimation: crop size=%dx%d (limits: w>%d, h>%d)", 
-            cropped_width, cropped_height, CROP_WIDTH_LIMIT, CROP_HEIGHT_LIMIT);
-
-    // If the cropepd image is too small then quality is zero
-    if (cropped_width <= CROP_WIDTH_LIMIT || cropped_height <= CROP_HEIGHT_LIMIT)
-    {
-        lpr_dbg("  quality_estimation: FAIL - crop too small => returning -1.0");
-        return -1.0;
-    }
-
-    // If it is not too small then we can make the crop
-    HailoROIPtr crop_roi = std::make_shared<HailoROI>(HailoBBox(cropped_xmin, cropped_ymin, cropped_width_n, cropped_height_n));
-    std::vector<cv::Mat> cropped_image_vec = hailo_mat->crop(crop_roi);
-    if (cropped_image_vec.empty())
-    {
-        lpr_dbg("  quality_estimation: FAIL - empty crop => returning -1.0");
-        return -1.0f;
-    }
-
-    // Convert image to BGR
-    cv::Mat bgr_image;
-    switch (hailo_mat->get_type())
-    {
-    case HAILO_MAT_YUY2:
-    {
-        cv::Mat cropped_image = cropped_image_vec[0];
-        cv::Mat yuy2_image = cv::Mat(cropped_image.rows, cropped_image.cols * 2, CV_8UC2, (char *)cropped_image.data, cropped_image.step);
-        cv::cvtColor(yuy2_image, bgr_image, cv::COLOR_YUV2BGR_YUY2);
-        break;
-    }
-    case HAILO_MAT_NV12:
-    {
-        cv::Mat full_mat = cv::Mat(cropped_image_vec[0].rows + cropped_image_vec[1].rows, cropped_image_vec[0].cols, CV_8UC1);
-        memcpy(full_mat.data, cropped_image_vec[0].data, cropped_image_vec[0].rows * cropped_image_vec[0].cols);
-        memcpy(full_mat.data + cropped_image_vec[0].rows * cropped_image_vec[0].cols, cropped_image_vec[1].data, cropped_image_vec[1].rows * cropped_image_vec[1].cols);
-        cv::cvtColor(full_mat, bgr_image, cv::COLOR_YUV2BGR_NV12);
-
-        break;
-    }
-    default:
-        bgr_image = cropped_image_vec[0];
-        break;
-    }
-
-    if (bgr_image.empty() || bgr_image.cols <= 0 || bgr_image.rows <= 0)
-    {
-        lpr_dbg("  quality_estimation: FAIL - empty bgr_image => returning -1.0");
-        return -1.0f;
-    }
-
-    // Resize the frame
-    cv::Mat resized_image;
-    cv::resize(bgr_image, resized_image, cv::Size(200, 40), 0, 0, cv::INTER_AREA);
-
-    // Gaussian Blur
-    cv::Mat gaussian_image;
-    cv::GaussianBlur(resized_image, gaussian_image, cv::Size(3, 3), 0);
-
-    // Convert to grayscale
-    cv::Mat gray_image;
-    cv::Mat gray_image_normalized;
-    cv::cvtColor(gaussian_image, gray_image, cv::COLOR_BGR2GRAY);
-    cv::normalize(gray_image, gray_image_normalized, 255, 0, cv::NORM_INF);
-
-    // Compute the Laplacian of the gray image
-    cv::Mat laplacian_image;
-    cv::Laplacian(gray_image_normalized, laplacian_image, CV_64F);
-
-    // Calculate the variance of edges
-    cv::Scalar mean, stddev;
-    cv::meanStdDev(laplacian_image, mean, stddev, cv::Mat());
-    float variance = stddev.val[0] * stddev.val[0];
-    return variance;
+    if (!detection)
+        return;
+    std::string label = "crop_id=" + std::to_string(crop_id) + " frame=" + std::to_string(frame_id);
+    detection->add_object(std::make_shared<HailoClassification>("lp_crop_meta", label, 1.0f));
 }
 
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize.
- *        Specific to LPR pipelines, this function assumes that
- *        license plate ROIs are nested inside vehicle detection ROIs.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
-std::vector<HailoROIPtr> license_plate_quality_estimation(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
+static bool is_nonempty_crop(std::shared_ptr<HailoMat> image, const HailoBBox &bbox)
+{
+    if (!image)
+        return false;
+
+    const float xmin = std::max(0.0f, std::min(1.0f, bbox.xmin()));
+    const float ymin = std::max(0.0f, std::min(1.0f, bbox.ymin()));
+    const float xmax = std::max(xmin, std::min(1.0f, bbox.xmax()));
+    const float ymax = std::max(ymin, std::min(1.0f, bbox.ymax()));
+    if (xmax <= xmin || ymax <= ymin)
+        return false;
+
+    auto crop_roi = std::make_shared<HailoROI>(HailoBBox(xmin, ymin, (xmax - xmin), (ymax - ymin)));
+    std::vector<cv::Mat> cropped = image->crop(crop_roi);
+    if (cropped.empty() || cropped[0].empty())
+        return false;
+    if (cropped[0].cols <= 0 || cropped[0].rows <= 0)
+        return false;
+    if (image->get_type() == HAILO_MAT_NV12)
+    {
+        if (cropped.size() < 2 || cropped[1].empty() || cropped[1].cols <= 0 || cropped[1].rows <= 0)
+            return false;
+    }
+    return true;
+}
+
+static bool get_crop_dims(std::shared_ptr<HailoMat> image, const HailoBBox &bbox, int &w, int &h)
+{
+    w = 0;
+    h = 0;
+    if (!image)
+        return false;
+
+    const float xmin = std::max(0.0f, std::min(1.0f, bbox.xmin()));
+    const float ymin = std::max(0.0f, std::min(1.0f, bbox.ymin()));
+    const float xmax = std::max(xmin, std::min(1.0f, bbox.xmax()));
+    const float ymax = std::max(ymin, std::min(1.0f, bbox.ymax()));
+    if (xmax <= xmin || ymax <= ymin)
+        return false;
+
+    auto crop_roi = std::make_shared<HailoROI>(HailoBBox(xmin, ymin, (xmax - xmin), (ymax - ymin)));
+    std::vector<cv::Mat> cropped = image->crop(crop_roi);
+    if (cropped.empty() || cropped[0].empty())
+        return false;
+    if (cropped[0].cols <= 0 || cropped[0].rows <= 0)
+        return false;
+    if (image->get_type() == HAILO_MAT_NV12)
+    {
+        if (cropped.size() < 2 || cropped[1].empty() || cropped[1].cols <= 0 || cropped[1].rows <= 0)
+            return false;
+    }
+    w = cropped[0].cols;
+    h = cropped[0].rows;
+    return true;
+}
+
+static bool clamp_bbox_to_pixels(const HailoBBox &in, int img_w, int img_h,
+                                 HailoBBox &out, int &w_px, int &h_px)
+{
+    if (img_w <= 0 || img_h <= 0)
+        return false;
+
+    float xmin_f = std::max(0.0f, std::min(1.0f, in.xmin()));
+    float ymin_f = std::max(0.0f, std::min(1.0f, in.ymin()));
+    float xmax_f = std::max(xmin_f, std::min(1.0f, in.xmax()));
+    float ymax_f = std::max(ymin_f, std::min(1.0f, in.ymax()));
+
+    int xmin_px = std::max(0, std::min(img_w - 1, static_cast<int>(std::floor(xmin_f * img_w))));
+    int ymin_px = std::max(0, std::min(img_h - 1, static_cast<int>(std::floor(ymin_f * img_h))));
+    int xmax_px = std::max(0, std::min(img_w, static_cast<int>(std::ceil(xmax_f * img_w))));
+    int ymax_px = std::max(0, std::min(img_h, static_cast<int>(std::ceil(ymax_f * img_h))));
+
+    w_px = xmax_px - xmin_px;
+    h_px = ymax_px - ymin_px;
+    if (w_px <= 0 || h_px <= 0)
+        return false;
+
+    // Ensure even-sized crops to avoid NV12 resize issues.
+    if ((w_px % 2) != 0)
+        w_px -= 1;
+    if ((h_px % 2) != 0)
+        h_px -= 1;
+    if (w_px <= 0 || h_px <= 0)
+        return false;
+
+    out = HailoBBox(static_cast<float>(xmin_px) / img_w,
+                    static_cast<float>(ymin_px) / img_h,
+                    static_cast<float>(w_px) / img_w,
+                    static_cast<float>(h_px) / img_h);
+    return true;
+}
+
+static HailoBBox apply_lp_padding(const HailoBBox &lp_bbox, const LpQualityConfig &config)
+{
+    float w = lp_bbox.width();
+    float h = lp_bbox.height();
+
+    float pad_left = w * config.pad_x;
+    float pad_right = w * config.pad_x;
+    float pad_top = h * config.pad_top;
+    float pad_bottom = h * config.pad_bottom;
+
+    float xmin = std::max(0.0f, lp_bbox.xmin() - pad_left);
+    float ymin = std::max(0.0f, lp_bbox.ymin() - pad_top);
+    float xmax = std::min(1.0f, lp_bbox.xmax() + pad_right);
+    float ymax = std::min(1.0f, lp_bbox.ymax() + pad_bottom);
+
+    return HailoBBox(xmin, ymin, xmax - xmin, ymax - ymin);
+}
+
+std::vector<HailoROIPtr> vehicles_roi_cropper(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
 {
     std::vector<HailoROIPtr> crop_rois;
-    float variance;
-    lpr_log_settings();
-    lpr_dbg("========== license_plate_quality_estimation: ENTER ==========");
     if (!image || !roi)
     {
-        lpr_dbg("license_plate_quality_estimation: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
         return crop_rois;
     }
-    lpr_dbg("license_plate_quality_estimation: image size=%dx%d, QUALITY_THRESHOLD=%.1f", 
-            image->width(), image->height(), QUALITY_THRESHOLD);
-    
-    // Get all detections.
+
+    load_lpr_state_from_jsonl();
+    refresh_lpr_state_from_jsonl();
+    std::vector<HailoDetectionPtr> detections_ptrs = hailo_common::get_hailo_detections(roi);
+    int det_idx = 0;
+    for (HailoDetectionPtr &detection : detections_ptrs)
+    {
+        std::string label = detection->get_label();
+
+        if (!is_vehicle_label(label))
+        {
+            det_idx++;
+            continue;
+        }
+
+        HailoBBox vehicle_bbox = detection->get_bbox();
+
+        if (!vehicle_inside_roi(vehicle_bbox))
+        {
+            det_idx++;
+            continue;
+        }
+
+        if ((vehicle_bbox.xmin() < 0.0) ||
+            (vehicle_bbox.xmax() > 1.0) ||
+            (vehicle_bbox.ymin() < 0.0) ||
+            (vehicle_bbox.ymax() > 1.0))
+        {
+            det_idx++;
+            continue;
+        }
+
+        float vxmin = std::max(0.0f, std::min(1.0f, vehicle_bbox.xmin()));
+        float vymin = std::max(0.0f, std::min(1.0f, vehicle_bbox.ymin()));
+        float vxmax = std::max(vxmin, std::min(1.0f, vehicle_bbox.xmax()));
+        float vymax = std::max(vymin, std::min(1.0f, vehicle_bbox.ymax()));
+        HailoBBox clamped_vehicle_bbox(vxmin, vymin, vxmax - vxmin, vymax - vymin);
+        const float v_w_px = clamped_vehicle_bbox.width() * image->width();
+        const float v_h_px = clamped_vehicle_bbox.height() * image->height();
+        if (v_w_px < 10.0f || v_h_px < 10.0f)
+        {
+            lpr_dbg("vehicles_roi_cropper: SKIP tiny vehicle bbox px=%.2fx%.2f", v_w_px, v_h_px);
+            det_idx++;
+            continue;
+        }
+        if (!is_nonempty_crop(image, clamped_vehicle_bbox))
+        {
+            lpr_dbg("vehicles_roi_cropper: SKIP empty crop bbox=[%.3f,%.3f,%.3f,%.3f]",
+                    clamped_vehicle_bbox.xmin(), clamped_vehicle_bbox.ymin(),
+                    clamped_vehicle_bbox.width(), clamped_vehicle_bbox.height());
+            det_idx++;
+            continue;
+        }
+
+        detection->set_bbox(clamped_vehicle_bbox);
+        detection->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+
+        float vehicle_area = vehicle_bbox.width() * vehicle_bbox.height();
+        float min_area = get_min_vehicle_area();
+        if (vehicle_area < min_area)
+        {
+            det_idx++;
+            continue;
+        }
+
+        int track_id = get_tracking_id(detection);
+        if (track_id >= 0)
+        {
+            if (!track_seen(track_id))
+            {
+                mark_track_seen(track_id);
+            }
+            else
+            {
+                std::string plate;
+                if (track_has_lpr(track_id, &plate))
+                {
+                    det_idx++;
+                    continue;
+                }
+            }
+        }
+
+        int crop_id = g_vehicle_crop_counter.fetch_add(1);
+        track_ocr_vehicle_crop(track_id);
+        save_crop_image(image, vehicle_bbox, "vehicle_to_lp_det", crop_id, track_id);
+
+        crop_rois.emplace_back(detection);
+        det_idx++;
+    }
+
+    return crop_rois;
+}
+
+std::vector<HailoROIPtr> license_plate_with_quality(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
+{
+    lpr_log_settings();
+    std::vector<HailoROIPtr> crop_rois;
+    LpQualityConfig config = get_lp_quality_config();
+    const bool debug = lpr_debug_enabled();
+    const int frame_id = g_lp_frame_counter.fetch_add(1);
+    const char *crop_name = "lp_quality_ocr";
+    const char *sent_prefix = "SENT_lp_quality_ocr";
+    const char *reject_prefix = "REJECT_lp_quality_ocr";
+
+    if (debug)
+    {
+        std::cout << "[LP_QUALITY] ========== ENTER ==========" << std::endl;
+        std::cout << "[LP_QUALITY] Config: enabled=" << config.enabled
+                  << " blur_check=" << config.blur_check_enabled << " (thresh=" << config.blur_threshold << ")"
+                  << " exposure_check=" << config.exposure_check_enabled
+                  << " (min_bright=" << config.min_brightness << ", max_bright=" << config.max_brightness << ")"
+                  << " contrast_check=" << config.contrast_check_enabled << " (min=" << config.min_contrast << ")"
+                  << " edge_check=" << config.edge_check_enabled << " (min=" << config.min_edge_density << ")"
+                  << " roi_check=" << config.roi_check_enabled
+                  << " size_px=[" << config.min_width_px << "-" << config.max_width_px << "]x["
+                  << config.min_height_px << "-" << config.max_height_px << "]"
+                  << " aspect=[" << config.min_aspect << "-" << config.max_aspect << "]"
+                  << std::endl << std::flush;
+    }
+
+    if (!image || !roi)
+    {
+        if (debug)
+        {
+            std::cout << "[LP_QUALITY] ERROR: null image or roi => EXIT" << std::endl << std::flush;
+        }
+        return crop_rois;
+    }
+    if (debug)
+    {
+        std::cout << "[LP_QUALITY] Image size: " << image->width() << "x" << image->height() << std::endl << std::flush;
+    }
+
     std::vector<HailoDetectionPtr> vehicle_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("license_plate_quality_estimation: total detections=%zu (looking for vehicles)", vehicle_ptrs.size());
-    
+    std::vector<HailoDetectionPtr> top_lp_ptrs;
+    for (auto &det : vehicle_ptrs)
+    {
+        if (det && det->get_label() == LICENSE_PLATE_LABEL)
+        {
+            top_lp_ptrs.push_back(det);
+        }
+    }
+    if (debug)
+    {
+        std::cout << "[LP_QUALITY] Found " << vehicle_ptrs.size() << " top-level detections, "
+                  << top_lp_ptrs.size() << " standalone LPs" << std::endl << std::flush;
+    }
+
     int veh_idx = 0;
     for (HailoDetectionPtr &vehicle : vehicle_ptrs)
     {
         std::string veh_label = vehicle->get_label();
-        lpr_dbg("license_plate_quality_estimation: [veh %d] label='%s' conf=%.3f", 
-                veh_idx, veh_label.c_str(), vehicle->get_confidence());
-        
+        if (debug)
+        {
+            std::cout << "[LP_QUALITY] [" << veh_idx << "] label='" << veh_label << "'" << std::endl << std::flush;
+        }
+
         if (!is_vehicle_label(veh_label))
         {
-            lpr_dbg("license_plate_quality_estimation: [veh %d] SKIP - not a vehicle", veh_idx);
+            if (debug)
+            {
+                std::cout << "[LP_QUALITY] [" << veh_idx << "] SKIP - not vehicle" << std::endl << std::flush;
+            }
             veh_idx++;
             continue;
         }
-        
-        // For each detection, check the inner detections
+
+        int track_id = get_tracking_id(vehicle);
+
         std::vector<HailoDetectionPtr> license_plate_ptrs = hailo_common::get_hailo_detections(vehicle);
-        lpr_dbg("license_plate_quality_estimation: [veh %d] nested detections=%zu (looking for LICENSE_PLATE_LABEL='%s')", 
-                veh_idx, license_plate_ptrs.size(), LICENSE_PLATE_LABEL);
-        
+        if (license_plate_ptrs.empty() && !top_lp_ptrs.empty())
+        {
+            HailoBBox v_bbox = hailo_common::create_flattened_bbox(vehicle->get_bbox(), vehicle->get_scaling_bbox());
+            for (auto &lp_det : top_lp_ptrs)
+            {
+                if (lp_det->get_label() != LICENSE_PLATE_LABEL)
+                    continue;
+                HailoBBox lp_flat = hailo_common::create_flattened_bbox(lp_det->get_bbox(), lp_det->get_scaling_bbox());
+                float cx = lp_flat.xmin() + 0.5f * lp_flat.width();
+                float cy = lp_flat.ymin() + 0.5f * lp_flat.height();
+                bool center_inside = (cx >= v_bbox.xmin() && cx <= v_bbox.xmax() && cy >= v_bbox.ymin() && cy <= v_bbox.ymax());
+                if (center_inside)
+                {
+                    license_plate_ptrs.push_back(lp_det);
+                    break;
+                }
+            }
+        }
+        if (debug)
+        {
+            std::cout << "[LP_QUALITY] [" << veh_idx << "] Found " << license_plate_ptrs.size() << " LP detections" << std::endl << std::flush;
+        }
+
         int lp_idx = 0;
         for (HailoDetectionPtr &license_plate : license_plate_ptrs)
         {
             std::string lp_label = license_plate->get_label();
             float lp_conf = license_plate->get_confidence();
-            HailoBBox lp_bbox = license_plate->get_bbox();
-            
-            lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] label='%s' conf=%.3f bbox=[%.3f,%.3f,%.3f,%.3f]", 
-                    veh_idx, lp_idx, lp_label.c_str(), lp_conf,
-                    lp_bbox.xmin(), lp_bbox.ymin(), lp_bbox.width(), lp_bbox.height());
-            
+
+            HailoBBox lp_flat_bbox = hailo_common::create_flattened_bbox(
+                license_plate->get_bbox(),
+                license_plate->get_scaling_bbox());
+
+            if (debug)
+            {
+                std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] label='" << lp_label
+                          << "' conf=" << lp_conf << std::endl << std::flush;
+            }
+
             if (LICENSE_PLATE_LABEL != lp_label)
             {
-                lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] SKIP - label mismatch (got '%s', expected '%s')", 
-                        veh_idx, lp_idx, lp_label.c_str(), LICENSE_PLATE_LABEL);
+                if (debug)
+                {
+                    std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] SKIP - not LP" << std::endl << std::flush;
+                }
+                lpr_dbg("%s REJECT reason=label veh=%d lp=%d label='%s'", crop_name, veh_idx, lp_idx, lp_label.c_str());
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, lp_flat_bbox, reject_prefix, crop_id, track_id);
                 lp_idx++;
                 continue;
             }
-            
-            HailoBBox license_plate_box = hailo_common::create_flattened_bbox(license_plate->get_bbox(), license_plate->get_scaling_bbox());
-            lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] flattened bbox=[%.3f,%.3f,%.3f,%.3f]", 
-                    veh_idx, lp_idx, license_plate_box.xmin(), license_plate_box.ymin(), 
-                    license_plate_box.width(), license_plate_box.height());
 
-            // Get the variance of the image, only add ROIs that are above threshold.
-            variance = quality_estimation(image, license_plate_box, CROP_RATIO);
-            lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] quality variance=%.3f (threshold=%.1f)", 
-                    veh_idx, lp_idx, variance, QUALITY_THRESHOLD);
+            // Apply padding before quality checks
+            HailoBBox padded_bbox = apply_lp_padding(lp_flat_bbox, config);
 
-            if (variance >= QUALITY_THRESHOLD)
+            // Perform comprehensive quality check if enabled
+            if (config.enabled)
             {
-                lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] KEEP - good quality, sending to OCR", veh_idx, lp_idx);
-                int track_id = get_tracking_id(vehicle);
-                int crop_id = g_lp_crop_counter.fetch_add(1);
-                save_crop_image(image, license_plate_box, "lp_to_ocr", crop_id, track_id);
-                track_ocr_lp_to_ocr(track_id);
-                crop_rois.emplace_back(license_plate);
+                LpQualityResult quality = check_lp_quality(image, lp_flat_bbox, config);
+
+                if (!quality.passed)
+                {
+                    if (debug)
+                    {
+                        std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] REJECTED: "
+                                  << quality_reason_str(quality.reason)
+                                  << " (size=" << quality.width_px << "x" << quality.height_px
+                                  << " aspect=" << quality.aspect_ratio
+                                  << " blur=" << quality.blur_score
+                                  << " bright=" << quality.brightness
+                                  << " contrast=" << quality.contrast
+                                  << " edges=" << quality.edge_density << ")"
+                                  << std::endl << std::flush;
+                    }
+                    log_quality_result((std::string(crop_name) + " REJECT").c_str(),
+                                       veh_idx, lp_idx, track_id, quality, lp_flat_bbox);
+                    int crop_id = g_lp_crop_counter.fetch_add(1);
+                    save_crop_image(image, padded_bbox, reject_prefix, crop_id, track_id);
+                    lp_idx++;
+                    continue;
+                }
+
+                if (debug)
+                {
+                    std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] PASSED quality checks"
+                              << " (size=" << quality.width_px << "x" << quality.height_px
+                              << " aspect=" << quality.aspect_ratio
+                              << " blur=" << quality.blur_score
+                              << " bright=" << quality.brightness
+                              << " contrast=" << quality.contrast
+                              << " edges=" << quality.edge_density << ")"
+                              << std::endl << std::flush;
+                }
             }
-            else
+
+            // Basic size check even if quality disabled
+            const float lp_px_w = padded_bbox.width() * image->width();
+            const float lp_px_h = padded_bbox.height() * image->height();
+            if (padded_bbox.width() <= 0.0f || padded_bbox.height() <= 0.0f ||
+                lp_px_w < 35.0f || lp_px_h < 20.0f)
             {
-                lpr_dbg("license_plate_quality_estimation: [veh %d][lp %d] REMOVE - quality too low (%.3f < %.1f)", 
-                        veh_idx, lp_idx, variance, QUALITY_THRESHOLD);
-                vehicle->remove_object(license_plate); // If it is not a good license plate, then remove it!
+                if (debug)
+                {
+                    std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] SKIP - LP too small after padding ("
+                             << lp_px_w << "x" << lp_px_h << " px)" << std::endl << std::flush;
+                }
+                lpr_dbg("%s REJECT reason=too_small_padded veh=%d lp=%d size_px=%.1fx%.1f bbox=[%.3f,%.3f,%.3f,%.3f]",
+                        crop_name, veh_idx, lp_idx, lp_px_w, lp_px_h,
+                        padded_bbox.xmin(), padded_bbox.ymin(), padded_bbox.width(), padded_bbox.height());
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, padded_bbox, reject_prefix, crop_id, track_id);
+                lp_idx++;
+                continue;
+            }
+
+            if (debug)
+            {
+                std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] SENDING TO OCR - padded=["
+                          << padded_bbox.xmin() << "," << padded_bbox.ymin()
+                          << "," << padded_bbox.width() << "," << padded_bbox.height() << "]" << std::endl << std::flush;
+            }
+
+            license_plate->set_bbox(padded_bbox);
+            license_plate->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+            attach_tracking_id_if_missing(license_plate, track_id);
+            lpr_dbg("%s SEND veh=%d lp=%d track_id=%d bbox=[%.3f,%.3f,%.3f,%.3f] size_px=%.1fx%.1f",
+                    crop_name, veh_idx, lp_idx, track_id,
+                    padded_bbox.xmin(), padded_bbox.ymin(), padded_bbox.width(), padded_bbox.height(),
+                    lp_px_w, lp_px_h);
+
+            int crop_id = g_lp_crop_counter.fetch_add(1);
+            save_crop_image(image, padded_bbox, sent_prefix, crop_id, track_id);
+            attach_crop_meta(license_plate, crop_id, frame_id);
+            crop_rois.emplace_back(license_plate);
+
+            if (debug)
+            {
+                std::cout << "[LP_QUALITY] [" << veh_idx << "][" << lp_idx << "] ADDED (total=" << crop_rois.size() << ")" << std::endl << std::flush;
             }
             lp_idx++;
         }
+
+        if (license_plate_ptrs.empty())
+        {
+            if (debug)
+            {
+                std::cout << "[LP_QUALITY] [" << veh_idx << "] No nested LP detections" << std::endl << std::flush;
+            }
+        }
         veh_idx++;
     }
-    lpr_dbg("license_plate_quality_estimation: result crop_rois=%zu (plates to send to OCR)", crop_rois.size());
-    lpr_dbg("========== license_plate_quality_estimation: EXIT ==========");
+
+    if (debug)
+    {
+        std::cout << "[LP_QUALITY] RESULT: " << crop_rois.size() << " LP(s) to OCR" << std::endl << std::flush;
+        std::cout << "[LP_QUALITY] ========== EXIT ==========" << std::endl << std::flush;
+    }
     return crop_rois;
 }
 
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize - all license plates
- *        without any quality filtering. This is a simplified version of
- *        license_plate_quality_estimation that sends all detected plates to OCR.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
 std::vector<HailoROIPtr> license_plate_no_quality(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
 {
     lpr_log_settings();
     std::vector<HailoROIPtr> crop_rois;
-    lpr_dbg("========== license_plate_no_quality: ENTER ==========");
+    const char *crop_name = "lp_no_quality_ocr";
+    const char *sent_prefix = "SENT_lp_no_quality_ocr";
+    const char *reject_prefix = "REJECT_lp_no_quality_ocr";
+    const int frame_id = g_lp_frame_counter.fetch_add(1);
+
+    load_lpr_state_from_jsonl();
+    refresh_lpr_state_from_jsonl();
+
     if (!image || !roi)
     {
-        lpr_dbg("license_plate_no_quality: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
+        lpr_dbg("%s REJECT reason=null_input", crop_name);
         return crop_rois;
     }
-    lpr_dbg("license_plate_no_quality: image size=%dx%d", image->width(), image->height());
 
-    for (auto &entry : g_lp_track_age)
+    const int img_w = image->width();
+    const int img_h = image->height();
+    if (img_w <= 0 || img_h <= 0)
     {
-        entry.second++;
+        lpr_dbg("%s REJECT reason=invalid_image_size size=%dx%d", crop_name, img_w, img_h);
+        return crop_rois;
     }
 
-    // Get all detections (vehicles).
-    std::vector<HailoDetectionPtr> vehicle_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("license_plate_no_quality: total detections=%zu (looking for vehicles)", vehicle_ptrs.size());
-    
-    int veh_idx = 0;
-    for (HailoDetectionPtr &vehicle : vehicle_ptrs)
+    std::vector<HailoDetectionPtr> detections = hailo_common::get_hailo_detections(roi);
+    std::vector<HailoDetectionPtr> vehicles;
+    std::vector<HailoDetectionPtr> top_lp_ptrs;
+    for (auto &det : detections)
     {
-        std::string veh_label = vehicle->get_label();
-        lpr_dbg("license_plate_no_quality: [veh %d] label='%s' conf=%.3f", 
-                veh_idx, veh_label.c_str(), vehicle->get_confidence());
-        
-        if (!is_vehicle_label(veh_label))
+        if (!det)
+            continue;
+        if (is_vehicle_label(det->get_label()))
+            vehicles.push_back(det);
+        if (det->get_label() == LICENSE_PLATE_LABEL)
+            top_lp_ptrs.push_back(det);
+    }
+
+    int veh_idx = 0;
+    for (HailoDetectionPtr &vehicle : vehicles)
+    {
+        if (!vehicle)
         {
-            lpr_dbg("license_plate_no_quality: [veh %d] SKIP - not a vehicle", veh_idx);
+            veh_idx++;
+            continue;
+        }
+
+        HailoBBox vehicle_bbox = vehicle->get_bbox();
+        if (!vehicle_inside_roi(vehicle_bbox))
+        {
+            lpr_dbg("%s REJECT reason=vehicle_outside_roi veh=%d", crop_name, veh_idx);
             veh_idx++;
             continue;
         }
 
         int track_id = get_tracking_id(vehicle);
-        int track_age = LP_TRACK_COOLDOWN_FRAMES;
+
+        // Skip if this track already has an LPR result
         if (track_id >= 0)
         {
             std::string plate;
             if (track_has_lpr(track_id, &plate))
             {
-                lpr_dbg("license_plate_no_quality: [veh %d] SKIP - track_id=%d already has LP '%s'", veh_idx, track_id, plate.c_str());
+                lpr_dbg("%s SKIP veh=%d track_id=%d already has LP '%s'",
+                        crop_name, veh_idx, track_id, plate.c_str());
                 veh_idx++;
                 continue;
             }
+        }
 
-            // If tracker carried forward a final LP classification, honor it once and skip.
-            bool tracker_has_lp = false;
-            for (HailoClassificationPtr &cls : hailo_common::get_hailo_classifications(vehicle))
+        HailoBBox v_bbox = vehicle->get_bbox();
+        float vehicle_area = v_bbox.width() * v_bbox.height();
+
+        std::vector<HailoDetectionPtr> license_plate_ptrs = hailo_common::get_hailo_detections(vehicle);
+        if (license_plate_ptrs.empty() && !top_lp_ptrs.empty())
+        {
+            for (auto &lp_det : top_lp_ptrs)
             {
-                if (cls && cls->get_classification_type() == OCR_RESULT_LABEL)
+                if (!lp_det || lp_det->get_label() != LICENSE_PLATE_LABEL)
+                    continue;
+                HailoBBox lp_bbox = lp_det->get_bbox();
+                float cx = lp_bbox.xmin() + 0.5f * lp_bbox.width();
+                float cy = lp_bbox.ymin() + 0.5f * lp_bbox.height();
+                bool center_inside = (cx >= v_bbox.xmin() && cx <= v_bbox.xmax() &&
+                                      cy >= v_bbox.ymin() && cy <= v_bbox.ymax());
+                if (center_inside)
                 {
-                    mark_track_lpr(track_id, cls->get_label());
-                    track_ocr_result(track_id, cls->get_label());
-                    lpr_dbg("license_plate_no_quality: [veh %d] SKIP - vehicle already classified with LP '%s'", veh_idx, cls->get_label().c_str());
-                    tracker_has_lp = true;
+                    license_plate_ptrs.push_back(lp_det);
                     break;
                 }
             }
-            if (tracker_has_lp)
-            {
-                veh_idx++;
-                continue;
-            }
-
-            auto it_age = g_lp_track_age.find(track_id);
-            track_age = (it_age != g_lp_track_age.end()) ? it_age->second : LP_TRACK_COOLDOWN_FRAMES;
-            if (track_age < LP_TRACK_COOLDOWN_FRAMES)
-            {
-                lpr_dbg("license_plate_no_quality: [veh %d] SKIP - cooldown not met (age=%d/%d) for track_id=%d",
-                        veh_idx, track_age, LP_TRACK_COOLDOWN_FRAMES, track_id);
-                veh_idx++;
-                continue;
-            }
         }
 
-        float vehicle_area = vehicle->get_bbox().width() * vehicle->get_bbox().height();
+        // Find the best plate for this vehicle based on relative area
         HailoDetectionPtr best_plate;
-        HailoBBox best_flat_bbox(0.0f, 0.0f, 0.0f, 0.0f);
-        float best_blur = -1.0f;
+        HailoBBox best_clamped_bbox(0.0f, 0.0f, 0.0f, 0.0f);
         float best_rel_area = 0.0f;
+        int best_crop_w = 0;
+        int best_crop_h = 0;
 
-        // For each vehicle, get all nested detections (license plates)
-        std::vector<HailoDetectionPtr> license_plate_ptrs = hailo_common::get_hailo_detections(vehicle);
-        lpr_dbg("license_plate_no_quality: [veh %d] nested detections=%zu (looking for LICENSE_PLATE_LABEL='%s')", 
-                veh_idx, license_plate_ptrs.size(), LICENSE_PLATE_LABEL);
-        
         int lp_idx = 0;
         for (HailoDetectionPtr &license_plate : license_plate_ptrs)
         {
-            std::string lp_label = license_plate->get_label();
-            float lp_conf = license_plate->get_confidence();
-            HailoBBox lp_bbox = license_plate->get_bbox();
-            
-            lpr_dbg("license_plate_no_quality: [veh %d][lp %d] label='%s' conf=%.3f bbox=[%.3f,%.3f,%.3f,%.3f]", 
-                    veh_idx, lp_idx, lp_label.c_str(), lp_conf,
-                    lp_bbox.xmin(), lp_bbox.ymin(), lp_bbox.width(), lp_bbox.height());
-            
-            if (LICENSE_PLATE_LABEL != lp_label)
+            if (!license_plate)
             {
-                lpr_dbg("license_plate_no_quality: [veh %d][lp %d] SKIP - label mismatch (got '%s', expected '%s')", 
-                        veh_idx, lp_idx, lp_label.c_str(), LICENSE_PLATE_LABEL);
                 lp_idx++;
                 continue;
             }
 
-            HailoBBox lp_flat_bbox = hailo_common::create_flattened_bbox(lp_bbox, license_plate->get_scaling_bbox());
-            float lp_area = lp_flat_bbox.width() * lp_flat_bbox.height();
+            std::string lp_label = license_plate->get_label();
+            if (LICENSE_PLATE_LABEL != lp_label)
+            {
+                lpr_dbg("%s REJECT reason=label veh=%d lp=%d label='%s'", crop_name, veh_idx, lp_idx, lp_label.c_str());
+                lp_idx++;
+                continue;
+            }
+
+            HailoBBox lp_flat = license_plate->get_bbox();
+
+            HailoBBox clamped_bbox(0.0f, 0.0f, 0.0f, 0.0f);
+            int w_px = 0;
+            int h_px = 0;
+            if (!clamp_bbox_to_pixels(lp_flat, img_w, img_h, clamped_bbox, w_px, h_px))
+            {
+                lpr_dbg("%s REJECT reason=invalid_bbox veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            int crop_w = 0;
+            int crop_h = 0;
+            if (!get_crop_dims(image, clamped_bbox, crop_w, crop_h))
+            {
+                lpr_dbg("%s REJECT reason=empty_crop veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            if (crop_w < 10 || crop_h < 5)
+            {
+                lpr_dbg("%s REJECT reason=too_small_px veh=%d lp=%d size_px=%dx%d",
+                        crop_name, veh_idx, lp_idx, crop_w, crop_h);
+                lp_idx++;
+                continue;
+            }
+
+            if (!vehicle_inside_roi(clamped_bbox))
+            {
+                lpr_dbg("%s REJECT reason=outside_roi veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, track_id);
+                lp_idx++;
+                continue;
+            }
+
+            float cx = clamped_bbox.xmin() + 0.5f * clamped_bbox.width();
+            float cy = clamped_bbox.ymin() + 0.5f * clamped_bbox.height();
+            bool inside_vehicle = (cx >= v_bbox.xmin() && cx <= v_bbox.xmax() &&
+                                   cy >= v_bbox.ymin() && cy <= v_bbox.ymax());
+            if (!inside_vehicle)
+            {
+                lpr_dbg("%s REJECT reason=outside_vehicle veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, track_id);
+                lp_idx++;
+                continue;
+            }
+
+            // Calculate relative area and check minimum threshold
+            float lp_area = clamped_bbox.width() * clamped_bbox.height();
             float rel_area = (vehicle_area > 0.0f) ? (lp_area / vehicle_area) : 0.0f;
             if (rel_area < MIN_LP_REL_AREA)
             {
-                lpr_dbg("license_plate_no_quality: [veh %d][lp %d] SKIP - plate too small relative to vehicle (rel_area=%.4f < %.4f)",
-                        veh_idx, lp_idx, rel_area, MIN_LP_REL_AREA);
+                lpr_dbg("%s REJECT reason=too_small_rel veh=%d lp=%d rel_area=%.4f < %.4f",
+                        crop_name, veh_idx, lp_idx, rel_area, MIN_LP_REL_AREA);
                 lp_idx++;
                 continue;
             }
 
-            float blur_score = quality_estimation(image, lp_flat_bbox, CROP_RATIO);
-            if (blur_score < QUALITY_THRESHOLD)
-            {
-                lpr_dbg("license_plate_no_quality: [veh %d][lp %d] SKIP - blur variance too low (%.3f < %.1f)", 
-                        veh_idx, lp_idx, blur_score, QUALITY_THRESHOLD);
-                lp_idx++;
-                continue;
-            }
-
-            bool better_candidate = (blur_score > best_blur) || ((blur_score == best_blur) && (rel_area > best_rel_area));
-            if (better_candidate)
+            // Keep track of the best plate (largest relative area)
+            if (rel_area > best_rel_area)
             {
                 best_plate = license_plate;
-                best_flat_bbox = lp_flat_bbox;
-                best_blur = blur_score;
+                best_clamped_bbox = clamped_bbox;
                 best_rel_area = rel_area;
+                best_crop_w = crop_w;
+                best_crop_h = crop_h;
             }
             lp_idx++;
         }
 
+        // Send the best plate to OCR
         if (best_plate)
         {
-            lpr_dbg("license_plate_no_quality: [veh %d] KEEP best LP - blur=%.3f rel_area=%.4f track_age=%d track_id=%d", 
-                    veh_idx, best_blur, best_rel_area, track_age, track_id);
+            best_plate->set_bbox(best_clamped_bbox);
+            best_plate->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
             attach_tracking_id_if_missing(best_plate, track_id);
 
+            lpr_dbg("%s SEND veh=%d track_id=%d rel_area=%.4f bbox=[%.3f,%.3f,%.3f,%.3f] size_px=%dx%d img=%dx%d",
+                    crop_name, veh_idx, track_id, best_rel_area,
+                    best_clamped_bbox.xmin(), best_clamped_bbox.ymin(), best_clamped_bbox.width(), best_clamped_bbox.height(),
+                    best_crop_w, best_crop_h, img_w, img_h);
+
             int crop_id = g_lp_crop_counter.fetch_add(1);
-            save_crop_image(image, best_flat_bbox, "lp_to_ocr", crop_id, track_id);
+            save_crop_image(image, best_clamped_bbox, sent_prefix, crop_id, track_id);
+            attach_crop_meta(best_plate, crop_id, frame_id);
             track_ocr_lp_to_ocr(track_id);
             crop_rois.emplace_back(best_plate);
-
-            if (track_id >= 0)
-                g_lp_track_age[track_id] = 0;
-        }
-        else if (track_id >= 0 && g_lp_track_age.find(track_id) == g_lp_track_age.end())
-        {
-            track_ocr_check_missing(track_id, "no_lp_to_ocr");
-            // Track was seen but had no valid LP - start its age so it can be revisited.
-            g_lp_track_age[track_id] = LP_TRACK_COOLDOWN_FRAMES;
         }
         veh_idx++;
     }
-    lpr_dbg("license_plate_no_quality: result crop_rois=%zu (plates to send to OCR)", crop_rois.size());
-    lpr_dbg("========== license_plate_no_quality: EXIT ==========");
+
+    // Fallback: if no plates found via vehicles, try top-level LPs
+    if (crop_rois.empty() && !top_lp_ptrs.empty())
+    {
+        int lp_idx = 0;
+        for (auto &lp_det : top_lp_ptrs)
+        {
+            if (!lp_det || lp_det->get_label() != LICENSE_PLATE_LABEL)
+            {
+                lp_idx++;
+                continue;
+            }
+            HailoBBox lp_flat = lp_det->get_bbox();
+            HailoBBox clamped_bbox(0.0f, 0.0f, 0.0f, 0.0f);
+            int w_px = 0;
+            int h_px = 0;
+            if (!clamp_bbox_to_pixels(lp_flat, img_w, img_h, clamped_bbox, w_px, h_px))
+            {
+                lpr_dbg("%s REJECT reason=invalid_bbox lp=%d", crop_name, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            int crop_w = 0;
+            int crop_h = 0;
+            if (!get_crop_dims(image, clamped_bbox, crop_w, crop_h))
+            {
+                lpr_dbg("%s REJECT reason=empty_crop lp=%d", crop_name, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            if (crop_w < 10 || crop_h < 5)
+            {
+                lpr_dbg("%s REJECT reason=too_small_px lp=%d size_px=%dx%d",
+                        crop_name, lp_idx, crop_w, crop_h);
+                lp_idx++;
+                continue;
+            }
+            if (!vehicle_inside_roi(clamped_bbox))
+            {
+                lpr_dbg("%s REJECT reason=outside_roi lp=%d", crop_name, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, -1);
+                lp_idx++;
+                continue;
+            }
+            lp_det->set_bbox(clamped_bbox);
+            lp_det->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+            int track_id = get_tracking_id(lp_det);
+            lpr_dbg("%s SEND lp=%d track_id=%d bbox=[%.3f,%.3f,%.3f,%.3f] size_px=%dx%d img=%dx%d",
+                    crop_name, lp_idx, track_id,
+                    clamped_bbox.xmin(), clamped_bbox.ymin(),
+                    clamped_bbox.width(), clamped_bbox.height(),
+                    crop_w, crop_h, img_w, img_h);
+            int crop_id = g_lp_crop_counter.fetch_add(1);
+            save_crop_image(image, clamped_bbox, sent_prefix, crop_id, track_id);
+            attach_crop_meta(lp_det, crop_id, frame_id);
+            track_ocr_lp_to_ocr(track_id);
+            crop_rois.emplace_back(lp_det);
+            lp_idx++;
+        }
+    }
+
     return crop_rois;
 }
 
-std::vector<HailoROIPtr> license_plate_no_quality_op(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    return license_plate_no_quality(image, roi);
-}
-
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize - all license plates
- *        without cooldown or blur filtering. Intended for debug runs where every
- *        possible LP crop should reach OCR.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
-std::vector<HailoROIPtr> license_plate_no_quality_no_gates(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
+std::vector<HailoROIPtr> license_plate_no_quality_two_best(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
 {
     lpr_log_settings();
     std::vector<HailoROIPtr> crop_rois;
-    lpr_dbg("========== license_plate_no_quality_no_gates: ENTER ==========");
+    const char *crop_name = "lp_no_quality_two_best_ocr";
+    const char *sent_prefix = "SENT_lp_no_quality_two_best_ocr";
+    const char *reject_prefix = "REJECT_lp_no_quality_two_best_ocr";
+    const int frame_id = g_lp_frame_counter.fetch_add(1);
+
+    load_lpr_state_from_jsonl();
+    refresh_lpr_state_from_jsonl();
+
     if (!image || !roi)
     {
-        lpr_dbg("license_plate_no_quality_no_gates: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
+        lpr_dbg("%s REJECT reason=null_input", crop_name);
         return crop_rois;
     }
-    lpr_dbg("license_plate_no_quality_no_gates: image size=%dx%d", image->width(), image->height());
 
-    // Get all detections (vehicles).
-    std::vector<HailoDetectionPtr> vehicle_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("license_plate_no_quality_no_gates: total detections=%zu (looking for vehicles)", vehicle_ptrs.size());
+    const int img_w = image->width();
+    const int img_h = image->height();
+    if (img_w <= 0 || img_h <= 0)
+    {
+        lpr_dbg("%s REJECT reason=invalid_image_size size=%dx%d", crop_name, img_w, img_h);
+        return crop_rois;
+    }
+
+    std::vector<HailoDetectionPtr> detections = hailo_common::get_hailo_detections(roi);
+    std::vector<HailoDetectionPtr> vehicles;
+    std::vector<HailoDetectionPtr> top_lp_ptrs;
+    for (auto &det : detections)
+    {
+        if (!det)
+            continue;
+        if (is_vehicle_label(det->get_label()))
+            vehicles.push_back(det);
+        if (det->get_label() == LICENSE_PLATE_LABEL)
+            top_lp_ptrs.push_back(det);
+    }
 
     int veh_idx = 0;
-    for (HailoDetectionPtr &vehicle : vehicle_ptrs)
+    for (HailoDetectionPtr &vehicle : vehicles)
     {
-        std::string veh_label = vehicle->get_label();
-        lpr_dbg("license_plate_no_quality_no_gates: [veh %d] label='%s' conf=%.3f",
-                veh_idx, veh_label.c_str(), vehicle->get_confidence());
-
-        if (!is_vehicle_label(veh_label))
+        if (!vehicle)
         {
-            lpr_dbg("license_plate_no_quality_no_gates: [veh %d] SKIP - not a vehicle", veh_idx);
+            veh_idx++;
+            continue;
+        }
+
+        HailoBBox vehicle_bbox = vehicle->get_bbox();
+        if (!vehicle_inside_roi(vehicle_bbox))
+        {
+            lpr_dbg("%s REJECT reason=vehicle_outside_roi veh=%d", crop_name, veh_idx);
             veh_idx++;
             continue;
         }
 
         int track_id = get_tracking_id(vehicle);
+
+        // Skip if this track already has an LPR result
         if (track_id >= 0)
         {
             std::string plate;
             if (track_has_lpr(track_id, &plate))
             {
-                lpr_dbg("license_plate_no_quality_no_gates: [veh %d] SKIP - track_id=%d already has LP '%s'",
-                        veh_idx, track_id, plate.c_str());
+                lpr_dbg("%s SKIP veh=%d track_id=%d already has LP '%s'",
+                        crop_name, veh_idx, track_id, plate.c_str());
                 veh_idx++;
                 continue;
             }
         }
 
-        float vehicle_area = vehicle->get_bbox().width() * vehicle->get_bbox().height();
-        HailoDetectionPtr best_plate;
-        HailoBBox best_flat_bbox(0.0f, 0.0f, 0.0f, 0.0f);
-        float best_rel_area = 0.0f;
+        HailoBBox v_bbox = vehicle->get_bbox();
+        float vehicle_area = v_bbox.width() * v_bbox.height();
 
-        // For each vehicle, get all nested detections (license plates)
         std::vector<HailoDetectionPtr> license_plate_ptrs = hailo_common::get_hailo_detections(vehicle);
-        lpr_dbg("license_plate_no_quality_no_gates: [veh %d] nested detections=%zu (looking for LICENSE_PLATE_LABEL='%s')",
-                veh_idx, license_plate_ptrs.size(), LICENSE_PLATE_LABEL);
+        if (license_plate_ptrs.empty() && !top_lp_ptrs.empty())
+        {
+            for (auto &lp_det : top_lp_ptrs)
+            {
+                if (!lp_det || lp_det->get_label() != LICENSE_PLATE_LABEL)
+                    continue;
+                HailoBBox lp_bbox = lp_det->get_bbox();
+                float cx = lp_bbox.xmin() + 0.5f * lp_bbox.width();
+                float cy = lp_bbox.ymin() + 0.5f * lp_bbox.height();
+                bool center_inside = (cx >= v_bbox.xmin() && cx <= v_bbox.xmax() &&
+                                      cy >= v_bbox.ymin() && cy <= v_bbox.ymax());
+                if (center_inside)
+                {
+                    license_plate_ptrs.push_back(lp_det);
+                }
+            }
+        }
+
+        // Candidate structure for tracking best two plates
+        struct LpCandidate
+        {
+            HailoDetectionPtr plate;
+            HailoBBox clamped_bbox;
+            float rel_area;
+            int crop_w;
+            int crop_h;
+        };
+        std::vector<LpCandidate> valid_candidates;
 
         int lp_idx = 0;
         for (HailoDetectionPtr &license_plate : license_plate_ptrs)
         {
-            std::string lp_label = license_plate->get_label();
-            float lp_conf = license_plate->get_confidence();
-            HailoBBox lp_bbox = license_plate->get_bbox();
-
-            lpr_dbg("license_plate_no_quality_no_gates: [veh %d][lp %d] label='%s' conf=%.3f bbox=[%.3f,%.3f,%.3f,%.3f]",
-                    veh_idx, lp_idx, lp_label.c_str(), lp_conf,
-                    lp_bbox.xmin(), lp_bbox.ymin(), lp_bbox.width(), lp_bbox.height());
-
-            if (LICENSE_PLATE_LABEL != lp_label)
+            if (!license_plate)
             {
-                lpr_dbg("license_plate_no_quality_no_gates: [veh %d][lp %d] SKIP - label mismatch (got '%s', expected '%s')",
-                        veh_idx, lp_idx, lp_label.c_str(), LICENSE_PLATE_LABEL);
                 lp_idx++;
                 continue;
             }
 
-            HailoBBox lp_flat_bbox = hailo_common::create_flattened_bbox(lp_bbox, license_plate->get_scaling_bbox());
-            float lp_area = lp_flat_bbox.width() * lp_flat_bbox.height();
+            std::string lp_label = license_plate->get_label();
+            if (LICENSE_PLATE_LABEL != lp_label)
+            {
+                lpr_dbg("%s REJECT reason=label veh=%d lp=%d label='%s'", crop_name, veh_idx, lp_idx, lp_label.c_str());
+                lp_idx++;
+                continue;
+            }
+
+            HailoBBox lp_flat = license_plate->get_bbox();
+
+            HailoBBox clamped_bbox(0.0f, 0.0f, 0.0f, 0.0f);
+            int w_px = 0;
+            int h_px = 0;
+            if (!clamp_bbox_to_pixels(lp_flat, img_w, img_h, clamped_bbox, w_px, h_px))
+            {
+                lpr_dbg("%s REJECT reason=invalid_bbox veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            int crop_w = 0;
+            int crop_h = 0;
+            if (!get_crop_dims(image, clamped_bbox, crop_w, crop_h))
+            {
+                lpr_dbg("%s REJECT reason=empty_crop veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            if (crop_w < 10 || crop_h < 5)
+            {
+                lpr_dbg("%s REJECT reason=too_small_px veh=%d lp=%d size_px=%dx%d",
+                        crop_name, veh_idx, lp_idx, crop_w, crop_h);
+                lp_idx++;
+                continue;
+            }
+
+            if (!vehicle_inside_roi(clamped_bbox))
+            {
+                lpr_dbg("%s REJECT reason=outside_roi veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, track_id);
+                lp_idx++;
+                continue;
+            }
+
+            float cx = clamped_bbox.xmin() + 0.5f * clamped_bbox.width();
+            float cy = clamped_bbox.ymin() + 0.5f * clamped_bbox.height();
+            bool inside_vehicle = (cx >= v_bbox.xmin() && cx <= v_bbox.xmax() &&
+                                   cy >= v_bbox.ymin() && cy <= v_bbox.ymax());
+            if (!inside_vehicle)
+            {
+                lpr_dbg("%s REJECT reason=outside_vehicle veh=%d lp=%d", crop_name, veh_idx, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, track_id);
+                lp_idx++;
+                continue;
+            }
+
+            // Calculate relative area and check minimum threshold
+            float lp_area = clamped_bbox.width() * clamped_bbox.height();
             float rel_area = (vehicle_area > 0.0f) ? (lp_area / vehicle_area) : 0.0f;
             if (rel_area < MIN_LP_REL_AREA)
             {
-                lpr_dbg("license_plate_no_quality_no_gates: [veh %d][lp %d] SKIP - plate too small relative to vehicle (rel_area=%.4f < %.4f)",
-                        veh_idx, lp_idx, rel_area, MIN_LP_REL_AREA);
+                lpr_dbg("%s REJECT reason=too_small_rel veh=%d lp=%d rel_area=%.4f < %.4f",
+                        crop_name, veh_idx, lp_idx, rel_area, MIN_LP_REL_AREA);
                 lp_idx++;
                 continue;
             }
 
-            bool better_candidate = rel_area > best_rel_area;
-            if (better_candidate)
-            {
-                best_plate = license_plate;
-                best_flat_bbox = lp_flat_bbox;
-                best_rel_area = rel_area;
-            }
+            // Add to valid candidates
+            valid_candidates.push_back({license_plate, clamped_bbox, rel_area, crop_w, crop_h});
             lp_idx++;
         }
 
-        if (best_plate)
+        // Sort candidates by relative area (descending) and take top 2
+        std::sort(valid_candidates.begin(), valid_candidates.end(),
+                  [](const LpCandidate &a, const LpCandidate &b) { return a.rel_area > b.rel_area; });
+
+        size_t num_to_send = std::min(valid_candidates.size(), static_cast<size_t>(2));
+        for (size_t i = 0; i < num_to_send; i++)
         {
-            lpr_dbg("license_plate_no_quality_no_gates: [veh %d] KEEP best LP - rel_area=%.4f track_id=%d",
-                    veh_idx, best_rel_area, track_id);
-            attach_tracking_id_if_missing(best_plate, track_id);
+            LpCandidate &candidate = valid_candidates[i];
+
+            candidate.plate->set_bbox(candidate.clamped_bbox);
+            candidate.plate->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+            attach_tracking_id_if_missing(candidate.plate, track_id);
+
+            lpr_dbg("%s SEND veh=%d rank=%zu track_id=%d rel_area=%.4f bbox=[%.3f,%.3f,%.3f,%.3f] size_px=%dx%d img=%dx%d",
+                    crop_name, veh_idx, i + 1, track_id, candidate.rel_area,
+                    candidate.clamped_bbox.xmin(), candidate.clamped_bbox.ymin(),
+                    candidate.clamped_bbox.width(), candidate.clamped_bbox.height(),
+                    candidate.crop_w, candidate.crop_h, img_w, img_h);
 
             int crop_id = g_lp_crop_counter.fetch_add(1);
-            save_crop_image(image, best_flat_bbox, "lp_to_ocr", crop_id, track_id);
+            save_crop_image(image, candidate.clamped_bbox, sent_prefix, crop_id, track_id);
+            attach_crop_meta(candidate.plate, crop_id, frame_id);
             track_ocr_lp_to_ocr(track_id);
-            crop_rois.emplace_back(best_plate);
+            crop_rois.emplace_back(candidate.plate);
         }
         veh_idx++;
     }
-    lpr_dbg("license_plate_no_quality_no_gates: result crop_rois=%zu (plates to send to OCR)", crop_rois.size());
-    lpr_dbg("========== license_plate_no_quality_no_gates: EXIT ==========");
-    return crop_rois;
-}
 
-std::vector<HailoROIPtr> license_plate_no_quality_no_gates_op(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    return license_plate_no_quality_no_gates(image, roi);
-}
-
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize.
- *        Specific to LP-only pipelines, this function uses top-level
- *        license plate detections (no vehicles required).
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
-std::vector<HailoROIPtr> license_plate_fullframe(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    lpr_log_settings();
-    std::vector<HailoROIPtr> crop_rois;
-    lpr_dbg("========== license_plate_fullframe: ENTER ==========");
-    if (!image || !roi)
+    // Fallback: if no plates found via vehicles, try top-level LPs (send up to 2)
+    if (crop_rois.empty() && !top_lp_ptrs.empty())
     {
-        lpr_dbg("license_plate_fullframe: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
-        return crop_rois;
-    }
-    lpr_dbg("license_plate_fullframe: image size=%dx%d", image->width(), image->height());
-
-    // Top-level detections are expected to be license plates.
-    std::vector<HailoDetectionPtr> detections_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("license_plate_fullframe: total detections=%zu", detections_ptrs.size());
-
-    int lp_idx = 0;
-    for (HailoDetectionPtr &license_plate : detections_ptrs)
-    {
-        std::string lp_label = license_plate->get_label();
-        float lp_conf = license_plate->get_confidence();
-        HailoBBox lp_bbox = license_plate->get_bbox();
-
-        lpr_dbg("license_plate_fullframe: [lp %d] label='%s' conf=%.3f bbox=[%.3f,%.3f,%.3f,%.3f]",
-                lp_idx, lp_label.c_str(), lp_conf,
-                lp_bbox.xmin(), lp_bbox.ymin(), lp_bbox.width(), lp_bbox.height());
-
-        if (LICENSE_PLATE_LABEL != lp_label)
+        struct LpCandidate
         {
-            lpr_dbg("license_plate_fullframe: [lp %d] SKIP - label mismatch (got '%s', expected '%s')",
-                    lp_idx, lp_label.c_str(), LICENSE_PLATE_LABEL);
+            HailoDetectionPtr plate;
+            HailoBBox clamped_bbox;
+            int crop_w;
+            int crop_h;
+        };
+        std::vector<LpCandidate> valid_top_lps;
+
+        int lp_idx = 0;
+        for (auto &lp_det : top_lp_ptrs)
+        {
+            if (!lp_det || lp_det->get_label() != LICENSE_PLATE_LABEL)
+            {
+                lp_idx++;
+                continue;
+            }
+            HailoBBox lp_flat = lp_det->get_bbox();
+            HailoBBox clamped_bbox(0.0f, 0.0f, 0.0f, 0.0f);
+            int w_px = 0;
+            int h_px = 0;
+            if (!clamp_bbox_to_pixels(lp_flat, img_w, img_h, clamped_bbox, w_px, h_px))
+            {
+                lpr_dbg("%s REJECT reason=invalid_bbox lp=%d", crop_name, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            int crop_w = 0;
+            int crop_h = 0;
+            if (!get_crop_dims(image, clamped_bbox, crop_w, crop_h))
+            {
+                lpr_dbg("%s REJECT reason=empty_crop lp=%d", crop_name, lp_idx);
+                lp_idx++;
+                continue;
+            }
+            if (crop_w < 10 || crop_h < 5)
+            {
+                lpr_dbg("%s REJECT reason=too_small_px lp=%d size_px=%dx%d",
+                        crop_name, lp_idx, crop_w, crop_h);
+                lp_idx++;
+                continue;
+            }
+            if (!vehicle_inside_roi(clamped_bbox))
+            {
+                lpr_dbg("%s REJECT reason=outside_roi lp=%d", crop_name, lp_idx);
+                int crop_id = g_lp_crop_counter.fetch_add(1);
+                save_crop_image(image, clamped_bbox, reject_prefix, crop_id, -1);
+                lp_idx++;
+                continue;
+            }
+            valid_top_lps.push_back({lp_det, clamped_bbox, crop_w, crop_h});
             lp_idx++;
-            continue;
         }
 
-        int track_id = get_tracking_id(license_plate);
-        std::string plate_text;
-        if (track_has_lpr(track_id, &plate_text))
-        {
-            lpr_dbg("license_plate_fullframe: [lp %d] SKIP - track_id=%d already has LP '%s'", lp_idx, track_id, plate_text.c_str());
-            lp_idx++;
-            continue;
-        }
+        // Sort by crop size (area) descending and take top 2
+        std::sort(valid_top_lps.begin(), valid_top_lps.end(),
+                  [](const LpCandidate &a, const LpCandidate &b) {
+                      return (a.crop_w * a.crop_h) > (b.crop_w * b.crop_h);
+                  });
 
-        bool has_found_lp = false;
-        for (auto &obj : license_plate->get_objects_typed(HAILO_CLASSIFICATION))
+        size_t num_to_send = std::min(valid_top_lps.size(), static_cast<size_t>(2));
+        for (size_t i = 0; i < num_to_send; i++)
         {
-            auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
-            if (cls && cls->get_classification_type() == "found_lp")
-            {
-                has_found_lp = true;
-                break;
-            }
+            LpCandidate &candidate = valid_top_lps[i];
+            candidate.plate->set_bbox(candidate.clamped_bbox);
+            candidate.plate->set_scaling_bbox(HailoBBox(0.0f, 0.0f, 1.0f, 1.0f));
+            int track_id = get_tracking_id(candidate.plate);
+            lpr_dbg("%s SEND lp=%zu track_id=%d bbox=[%.3f,%.3f,%.3f,%.3f] size_px=%dx%d img=%dx%d",
+                    crop_name, i, track_id,
+                    candidate.clamped_bbox.xmin(), candidate.clamped_bbox.ymin(),
+                    candidate.clamped_bbox.width(), candidate.clamped_bbox.height(),
+                    candidate.crop_w, candidate.crop_h, img_w, img_h);
+            int crop_id = g_lp_crop_counter.fetch_add(1);
+            save_crop_image(image, candidate.clamped_bbox, sent_prefix, crop_id, track_id);
+            attach_crop_meta(candidate.plate, crop_id, frame_id);
+            track_ocr_lp_to_ocr(track_id);
+            crop_rois.emplace_back(candidate.plate);
         }
-        if (has_found_lp)
-        {
-            lpr_dbg("license_plate_fullframe: [lp %d] SKIP - already has found_lp", lp_idx);
-            lp_idx++;
-            continue;
-        }
-
-        float pad_x = lp_bbox.width() * FULLFRAME_PAD_RATIO;
-        float pad_y = lp_bbox.height() * FULLFRAME_PAD_RATIO;
-        float xmin = std::max(0.0f, lp_bbox.xmin() - pad_x);
-        float ymin = std::max(0.0f, lp_bbox.ymin() - pad_y);
-        float xmax = std::min(1.0f, lp_bbox.xmax() + pad_x);
-        float ymax = std::min(1.0f, lp_bbox.ymax() + pad_y);
-        float padded_w = std::max(0.0f, xmax - xmin);
-        float padded_h = std::max(0.0f, ymax - ymin);
-        HailoBBox padded_bbox = HailoBBox(xmin, ymin, padded_w, padded_h);
-        license_plate->set_bbox(padded_bbox);
-        lpr_dbg(
-            "license_plate_fullframe: [lp %d] padded bbox=[%.3f,%.3f,%.3f,%.3f]",
-            lp_idx, padded_bbox.xmin(), padded_bbox.ymin(), padded_bbox.width(), padded_bbox.height());
-        track_id = get_tracking_id(license_plate);
-        int crop_id = g_lp_crop_counter.fetch_add(1);
-        save_crop_image(image, padded_bbox, "lp_fullframe", crop_id, track_id);
-        track_ocr_lp_to_ocr(track_id);
-        crop_rois.emplace_back(license_plate);
-        lp_idx++;
     }
 
-    lpr_dbg("license_plate_fullframe: result crop_rois=%zu (plates to send to OCR)", crop_rois.size());
-    lpr_dbg("========== license_plate_fullframe: EXIT ==========");
-    return crop_rois;
-}
-
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize.
- *        Specific to LPR pipelines, this function searches if
- *        a detected vehicle has an OCR classification. If not,
- *        then it is submitted for cropping.
- *        This function also throws out car detections that are not yet
- *        fully in the image.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
-std::vector<HailoROIPtr> vehicles_without_ocr(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    std::vector<HailoROIPtr> crop_rois;
-    bool has_ocr = false;
-    lpr_log_settings();
-    lpr_dbg("========== vehicles_without_ocr: ENTER ==========");
-    if (!image || !roi)
-    {
-        lpr_dbg("vehicles_without_ocr: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
-        return crop_rois;
-    }
-    lpr_dbg("vehicles_without_ocr: image size=%dx%d", image->width(), image->height());
-    
-    // Get all detections.
-    std::vector<HailoDetectionPtr> detections_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("vehicles_without_ocr: total detections=%zu", detections_ptrs.size());
-    
-    int det_idx = 0;
-    for (HailoDetectionPtr &detection : detections_ptrs)
-    {
-        std::string label = detection->get_label();
-        
-        if (!is_vehicle_label(label))
-        {
-            det_idx++;
-            continue;
-        }
-        
-        HailoBBox vehicle_bbox = detection->get_bbox();
-
-        if (!camera_angle_accepts_vehicle(vehicle_bbox))
-        {
-            lpr_dbg("vehicles_without_ocr: [%d] SKIP - camera angle rejects top-third vehicle (center_y=%.3f)", 
-                    det_idx, (vehicle_bbox.ymin() + vehicle_bbox.ymax()) * 0.5f);
-            det_idx++;
-            continue;
-        }
-
-        if (!vehicle_roi_accepts_bbox(vehicle_bbox))
-        {
-            lpr_dbg("vehicles_without_ocr: [%d] SKIP - ROI gate rejected vehicle", det_idx);
-            det_idx++;
-            continue;
-        }
-
-        // If the bbox is not yet in the image, then throw it out
-        if ((vehicle_bbox.xmin() < 0.0) ||
-            (vehicle_bbox.xmax() > 1.0) ||
-            (vehicle_bbox.ymin() < 0.0) ||
-            (vehicle_bbox.ymax() > 1.0))
-        {
-            lpr_dbg("vehicles_without_ocr: [%d] SKIP - bbox out of bounds [xmin=%.3f,xmax=%.3f,ymin=%.3f,ymax=%.3f]", 
-                    det_idx, vehicle_bbox.xmin(), vehicle_bbox.xmax(), vehicle_bbox.ymin(), vehicle_bbox.ymax());
-            det_idx++;
-            continue;
-        }
-
-        int track_id = get_tracking_id(detection);
-        if (track_id >= 0)
-        {
-            std::string plate;
-            if (track_has_lpr(track_id, &plate))
-            {
-                lpr_dbg("vehicles_without_ocr: [%d] SKIP - track_id=%d already has LP '%s'", det_idx, track_id, plate.c_str());
-                det_idx++;
-                continue;
-            }
-
-            int seen = ++g_vehicle_track_seen[track_id];
-            if (seen <= VEHICLE_WARMUP_FRAMES)
-            {
-                lpr_dbg("vehicles_without_ocr: [%d] SKIP - warmup frame %d/%d for track_id=%d",
-                        det_idx, seen, VEHICLE_WARMUP_FRAMES, track_id);
-                det_idx++;
-                continue;
-            }
-        }
-
-        has_ocr = false;
-        // For each detection, check the classifications
-        std::vector<HailoClassificationPtr> vehicle_classifications = hailo_common::get_hailo_classifications(detection);
-        
-        for (HailoClassificationPtr &classification : vehicle_classifications)
-        {
-            std::string cls_type = classification->get_classification_type();
-            if (OCR_RESULT_LABEL == cls_type)
-            {
-                mark_track_lpr(track_id, classification->get_label());
-                track_ocr_result(track_id, classification->get_label());
-                has_ocr = true;
-                break;
-            }
-        }
-        
-        if (!has_ocr)
-        {
-            lpr_dbg("vehicles_without_ocr: [%d] ENQUEUE - vehicle needs LP detection", det_idx);
-            
-            // Save vehicle crop for debugging (before it goes to LP detection)
-            int crop_id = g_vehicle_crop_counter.fetch_add(1);
-            track_ocr_vehicle_crop(track_id);
-            save_crop_image(image, vehicle_bbox, "vehicle_to_lp_det", crop_id, track_id);
-            
-            crop_rois.emplace_back(detection);
-        }
-        else
-        {
-        }
-        det_idx++;
-    }
-    lpr_dbg("vehicles_without_ocr: result crop_rois=%zu", crop_rois.size());
-    lpr_dbg("========== vehicles_without_ocr: EXIT ==========");
-    return crop_rois;
-}
-
-std::vector<HailoROIPtr> vehicles_without_ocr_op(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    return vehicles_without_ocr(image, roi);
-}
-
-/**
- * @brief Returns a vector of HailoROIPtr to crop and resize.
- *        Same as vehicles_without_ocr, but also gates vehicles by a configurable ROI.
- *
- * @param image  -  cv::Mat
- *        The original image.
- *
- * @param roi  -  HailoROIPtr
- *        The main ROI of this picture.
- *
- * @return std::vector<HailoROIPtr>
- *         vector of ROI's to crop and resize.
- */
-std::vector<HailoROIPtr> vehicles_without_ocr_roi(std::shared_ptr<HailoMat> image, HailoROIPtr roi)
-{
-    std::vector<HailoROIPtr> crop_rois;
-    bool has_ocr = false;
-    lpr_log_settings();
-    lpr_dbg("========== vehicles_without_ocr_roi: ENTER ==========");
-    if (!image || !roi)
-    {
-        lpr_dbg("vehicles_without_ocr_roi: null image=%d roi=%d => EXIT", image ? 1 : 0, roi ? 1 : 0);
-        return crop_rois;
-    }
-    lpr_dbg("vehicles_without_ocr_roi: image size=%dx%d", image->width(), image->height());
-
-    // Get all detections.
-    std::vector<HailoDetectionPtr> detections_ptrs = hailo_common::get_hailo_detections(roi);
-    lpr_dbg("vehicles_without_ocr_roi: total detections=%zu", detections_ptrs.size());
-
-    int det_idx = 0;
-    for (HailoDetectionPtr &detection : detections_ptrs)
-    {
-        std::string label = detection->get_label();
-
-        if (!is_vehicle_label(label))
-        {
-            det_idx++;
-            continue;
-        }
-
-        HailoBBox vehicle_bbox = detection->get_bbox();
-
-        if (!camera_angle_accepts_vehicle(vehicle_bbox))
-        {
-            lpr_dbg("vehicles_without_ocr_roi: [%d] SKIP - camera angle rejects top-third vehicle (center_y=%.3f)",
-                    det_idx, (vehicle_bbox.ymin() + vehicle_bbox.ymax()) * 0.5f);
-            det_idx++;
-            continue;
-        }
-
-        if (!vehicle_roi_accepts_bbox(vehicle_bbox))
-        {
-            lpr_dbg("vehicles_without_ocr_roi: [%d] SKIP - ROI gate rejected vehicle", det_idx);
-            det_idx++;
-            continue;
-        }
-
-        // If the bbox is not yet in the image, then throw it out
-        if ((vehicle_bbox.xmin() < 0.0) ||
-            (vehicle_bbox.xmax() > 1.0) ||
-            (vehicle_bbox.ymin() < 0.0) ||
-            (vehicle_bbox.ymax() > 1.0))
-        {
-            lpr_dbg("vehicles_without_ocr_roi: [%d] SKIP - bbox out of bounds [xmin=%.3f,xmax=%.3f,ymin=%.3f,ymax=%.3f]",
-                    det_idx, vehicle_bbox.xmin(), vehicle_bbox.xmax(), vehicle_bbox.ymin(), vehicle_bbox.ymax());
-            det_idx++;
-            continue;
-        }
-
-        int track_id = get_tracking_id(detection);
-        if (track_id >= 0)
-        {
-            std::string plate;
-            if (track_has_lpr(track_id, &plate))
-            {
-                lpr_dbg("vehicles_without_ocr_roi: [%d] SKIP - track_id=%d already has LP '%s'", det_idx, track_id, plate.c_str());
-                det_idx++;
-                continue;
-            }
-
-            int seen = ++g_vehicle_track_seen[track_id];
-            if (seen <= VEHICLE_WARMUP_FRAMES)
-            {
-                lpr_dbg("vehicles_without_ocr_roi: [%d] SKIP - warmup frame %d/%d for track_id=%d",
-                        det_idx, seen, VEHICLE_WARMUP_FRAMES, track_id);
-                det_idx++;
-                continue;
-            }
-        }
-
-        has_ocr = false;
-        // For each detection, check the classifications
-        std::vector<HailoClassificationPtr> vehicle_classifications = hailo_common::get_hailo_classifications(detection);
-
-        for (HailoClassificationPtr &classification : vehicle_classifications)
-        {
-            std::string cls_type = classification->get_classification_type();
-            if (OCR_RESULT_LABEL == cls_type)
-            {
-                mark_track_lpr(track_id, classification->get_label());
-                track_ocr_result(track_id, classification->get_label());
-                has_ocr = true;
-                break;
-            }
-        }
-
-        if (!has_ocr)
-        {
-            lpr_dbg("vehicles_without_ocr_roi: [%d] ENQUEUE - vehicle needs LP detection", det_idx);
-
-            // Save vehicle crop for debugging (before it goes to LP detection)
-            int crop_id = g_vehicle_crop_counter.fetch_add(1);
-            track_ocr_vehicle_crop(track_id);
-            save_crop_image(image, vehicle_bbox, "vehicle_to_lp_det", crop_id, track_id);
-
-            crop_rois.emplace_back(detection);
-        }
-        det_idx++;
-    }
-    lpr_dbg("vehicles_without_ocr_roi: result crop_rois=%zu", crop_rois.size());
-    lpr_dbg("========== vehicles_without_ocr_roi: EXIT ==========");
     return crop_rois;
 }

@@ -35,11 +35,12 @@ inline float lpr_clamp01(float value)
 
 inline std::array<LprRoiPoint, 4> lpr_default_vehicle_roi_polygon()
 {
+    // Default ROI: full frame
     return {
-        LprRoiPoint{0.05f, 0.25f},
-        LprRoiPoint{0.75f, 0.1f},
-        LprRoiPoint{0.75f, 0.9f},
-        LprRoiPoint{0.0f, 0.9f},
+        LprRoiPoint{0.0f, 0.0f},
+        LprRoiPoint{1.0f, 0.0f},
+        LprRoiPoint{1.0f, 1.0f},
+        LprRoiPoint{0.0f, 1.0f},
     };
 }
 
@@ -174,7 +175,6 @@ inline bool lpr_parse_roi_from_text(const std::string &text, float &xmin, float 
 struct LprRoiConfig
 {
     bool enabled = true;
-    bool polygon_enabled = true;
     float min_intersection_ratio = LPR_ROI_DEFAULT_MIN_INTERSECTION;
     std::array<LprRoiPoint, 4> polygon = lpr_default_vehicle_roi_polygon();
     LprRoiRect rect = lpr_polygon_bounds(polygon);
@@ -192,52 +192,46 @@ inline LprRoiConfig get_lpr_vehicle_roi_config()
     local.polygon = lpr_default_vehicle_roi_polygon();
     local.rect = lpr_polygon_bounds(local.polygon);
     local.min_intersection_ratio = LPR_ROI_DEFAULT_MIN_INTERSECTION;
-    local.polygon_enabled = true;
     local.enabled = true;
     local.source = "default";
 
-    const char *env_roi = std::getenv("HAILO_LPR_VEHICLE_ROI");
-    if (env_roi && env_roi[0] != '\0')
+    // Four env vars control the ROI rectangle. Defaults: full frame [0,1] x [0,1].
+    float env_xmin = local.rect.xmin;
+    float env_ymin = local.rect.ymin;
+    float env_xmax = local.rect.xmax;
+    float env_ymax = local.rect.ymax;
+    bool any_env = false;
+    if (const char *v = std::getenv("HAILO_X_MIN"))
     {
-        float xmin = 0.0f, ymin = 0.0f, xmax = 1.0f, ymax = 1.0f;
-        float min_intersection = LPR_ROI_DEFAULT_MIN_INTERSECTION;
-        if (lpr_parse_roi_list(env_roi, xmin, ymin, xmax, ymax, min_intersection))
-        {
-            float cxmin = lpr_clamp01(xmin);
-            float cymin = lpr_clamp01(ymin);
-            float cxmax = lpr_clamp01(xmax);
-            float cymax = lpr_clamp01(ymax);
-            if (cxmax > cxmin && cymax > cymin)
-            {
-                local.enabled = true;
-                local.polygon_enabled = false;
-                local.rect = LprRoiRect{cxmin, cymin, cxmax, cymax};
-                local.polygon = lpr_rect_to_polygon(local.rect);
-                local.min_intersection_ratio = lpr_clamp01(min_intersection);
-                local.source = "HAILO_LPR_VEHICLE_ROI";
-            }
-        }
+        env_xmin = std::strtof(v, nullptr);
+        any_env = true;
     }
-
-    const char *env_path = std::getenv("HAILO_LPR_VEHICLE_ROI_CONFIG");
-    if (local.source == "default" && env_path && env_path[0] != '\0')
+    if (const char *v = std::getenv("HAILO_Y_MIN"))
     {
-        std::ifstream file(env_path);
-        if (file)
+        env_ymin = std::strtof(v, nullptr);
+        any_env = true;
+    }
+    if (const char *v = std::getenv("HAILO_X_MAX"))
+    {
+        env_xmax = std::strtof(v, nullptr);
+        any_env = true;
+    }
+    if (const char *v = std::getenv("HAILO_Y_MAX"))
+    {
+        env_ymax = std::strtof(v, nullptr);
+        any_env = true;
+    }
+    if (any_env)
+    {
+        env_xmin = lpr_clamp01(env_xmin);
+        env_ymin = lpr_clamp01(env_ymin);
+        env_xmax = lpr_clamp01(env_xmax);
+        env_ymax = lpr_clamp01(env_ymax);
+        if (env_xmax > env_xmin && env_ymax > env_ymin)
         {
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            float xmin = 0.0f, ymin = 0.0f, xmax = 1.0f, ymax = 1.0f;
-            float min_intersection = LPR_ROI_DEFAULT_MIN_INTERSECTION;
-            if (lpr_parse_roi_from_text(buffer.str(), xmin, ymin, xmax, ymax, min_intersection))
-            {
-                local.enabled = true;
-                local.polygon_enabled = false;
-                local.rect = LprRoiRect{xmin, ymin, xmax, ymax};
-                local.polygon = lpr_rect_to_polygon(local.rect);
-                local.min_intersection_ratio = lpr_clamp01(min_intersection);
-                local.source = env_path;
-            }
+            local.rect = LprRoiRect{env_xmin, env_ymin, env_xmax, env_ymax};
+            local.polygon = lpr_rect_to_polygon(local.rect);
+            local.source = "HAILO_X/Y_*";
         }
     }
 

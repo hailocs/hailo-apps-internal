@@ -16,6 +16,7 @@
 #include <vector>
 #include <sstream>
 #include <cctype>
+#include <cstdlib>
 
 // RapidJSON for optional config
 #include "rapidjson/document.h"
@@ -30,6 +31,108 @@ namespace fs = std::filesystem;
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #endif
+
+// ---------------------------
+// Country-specific OCR filtering
+// ---------------------------
+static std::string get_lpr_country()
+{
+    const char *env = std::getenv("HAILO_LPR_COUNTRY");
+    if (env && env[0] != '\0')
+        return std::string(env);
+    return std::string("IL");
+}
+
+static bool ocr_debug_enabled()
+{
+    const char *env = std::getenv("HAILO_OCR_DEBUG");
+    if (!env || env[0] == '\0')
+        return false; // default OFF
+    if (env[0] == '1' || env[0] == 't' || env[0] == 'T' || env[0] == 'y' || env[0] == 'Y')
+        return true;
+    if (env[0] == '0' || env[0] == 'f' || env[0] == 'F' || env[0] == 'n' || env[0] == 'N')
+        return false;
+    return true;
+}
+
+static std::string keep_alnum_upper(const std::string &input)
+{
+    std::string out;
+    out.reserve(input.size());
+    for (unsigned char ch : input)
+    {
+        if (std::isalnum(ch))
+            out.push_back(static_cast<char>(std::toupper(ch)));
+    }
+    return out;
+}
+
+static bool normalize_by_country(const std::string &country, const std::string &raw, std::string &normalized)
+{
+    normalized = keep_alnum_upper(raw);
+    const size_t n = normalized.size();
+
+    if (country == "IL")
+    {
+        // Israel: digits only, 7-8 digits
+        for (char c : normalized)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(c)))
+                return false;
+        }
+        return (n == 7 || n == 8);
+    }
+    if (country == "US")
+    {
+        // US: alnum, length 5-8
+        return (n >= 5 && n <= 8);
+    }
+    if (country == "EU")
+    {
+        // EU (generic): alnum, length 5-8, must include at least one letter and one digit
+        bool has_letter = false;
+        bool has_digit = false;
+        for (char c : normalized)
+        {
+            if (std::isalpha(static_cast<unsigned char>(c)))
+                has_letter = true;
+            else if (std::isdigit(static_cast<unsigned char>(c)))
+                has_digit = true;
+        }
+        return (n >= 5 && n <= 8 && has_letter && has_digit);
+    }
+
+    // default: keep anything alnum length 5-8
+    return (n >= 5 && n <= 8);
+}
+
+static void ocr_dbg(const std::string &raw,
+                    const std::string &corrected,
+                    const std::string &normalized,
+                    const std::string &country,
+                    float conf,
+                    bool accepted)
+{
+    if (!ocr_debug_enabled())
+        return;
+    std::fprintf(stderr,
+                 "[ocr_postprocess] raw='%s' corrected='%s' normalized='%s' country='%s' conf=%.3f accepted=%d\n",
+                 raw.c_str(), corrected.c_str(), normalized.c_str(), country.c_str(), conf, accepted ? 1 : 0);
+    std::fflush(stderr);
+}
+
+static void ocr_dbg_msg(const char *fmt, ...)
+{
+    if (!ocr_debug_enabled())
+        return;
+    std::fprintf(stderr, "[ocr_postprocess] ");
+    va_list args;
+    va_start(args, fmt);
+    std::vfprintf(stderr, fmt, args);
+    va_end(args);
+    std::fprintf(stderr, "\n");
+    std::fflush(stderr);
+}
 
 // ---------------------------
 // JSON helpers
@@ -765,6 +868,7 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
 {
     if (!roi->has_tensors())
     {
+        ocr_dbg_msg("recognize: ROI has no tensors");
         return;
     }
     auto *p = reinterpret_cast<OcrParams *>(params_void_ptr);
@@ -780,6 +884,12 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
     const size_t N = shape[0];
     const size_t D1 = shape[1];
     const size_t D2 = shape[2];
+    if (ocr_debug_enabled())
+    {
+        ocr_dbg_msg("recognize: tensor name='%s' shape=[%zu,%zu,%zu] blank_index=%d time_major=%d charset=%zu logits_softmax=%d",
+                    t->name().c_str(), N, D1, D2, p->blank_index, p->time_major ? 1 : 0, p->charset.size(),
+                    p->logits_are_softmax ? 1 : 0);
+    }
     if (N != 1)
         throw std::runtime_error("Recognizer expects N=1");
     if (D1 == 0 || D2 == 0)
@@ -915,6 +1025,14 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
     std::string corrected_text = correct_text(out_text, *p);
     std::string text_to_attach = (!corrected_text.empty() && corrected_text != out_text) ? corrected_text : out_text;
 
+    // Country-aware filter/normalize before attaching OCR result
+    std::string normalized_label;
+    std::string country = get_lpr_country();
+    bool accepted = normalize_by_country(country, text_to_attach, normalized_label) && !normalized_label.empty();
+    ocr_dbg(out_text, corrected_text, normalized_label, country, conf, accepted);
+    // Always attach something for debug: if not accepted, fall back to raw text
+    std::string label_to_attach = accepted ? normalized_label : text_to_attach;
+
     // Find detection - cropper returns ROI with detection inside
     HailoDetectionPtr target_detection = nullptr;
     auto detection_roi = std::dynamic_pointer_cast<HailoDetection>(roi);
@@ -933,6 +1051,15 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
 
     if (target_detection)
     {
+        auto existing_meta = target_detection->get_objects_typed(HAILO_CLASSIFICATION);
+        for (auto &obj : existing_meta)
+        {
+            auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
+            if (cls && cls->get_classification_type() == "lp_crop_meta")
+            {
+                ocr_dbg_msg("recognize: crop_meta %s", cls->get_label().c_str());
+            }
+        }
         // Remove existing classifications
         auto existing = target_detection->get_objects_typed(HAILO_CLASSIFICATION);
         for (auto &cls : existing)
@@ -941,8 +1068,25 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
         }
 
         // Add new classification with recognized text
-        auto classification = std::make_shared<HailoClassification>("text_region", text_to_attach, conf);
+        auto classification = std::make_shared<HailoClassification>("text_region", label_to_attach, conf);
         target_detection->add_object(classification);
+        if (accepted && normalized_label != label_to_attach)
+        {
+            auto norm_cls = std::make_shared<HailoClassification>("text_region_norm", normalized_label, conf);
+            target_detection->add_object(norm_cls);
+        }
+
+        // Debug print for final attached OCR text
+        if (ocr_debug_enabled())
+        {
+            std::fprintf(stderr,
+                         "[ocr_postprocess] FINAL text_region label='%s' norm='%s' conf=%.3f accepted=%d\n",
+                         label_to_attach.c_str(),
+                         normalized_label.c_str(),
+                         conf,
+                         accepted ? 1 : 0);
+            std::fflush(stderr);
+        }
     }
 }
 
@@ -984,8 +1128,8 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
     // MAX_TEXT_REGIONS: Limits regions processed per frame to avoid overload
     // Note: Recognition batch_size is 8, but we limit to 2 per frame for better performance
     // Regions that already have classifications are skipped (don't send for recognition)
-    constexpr int MAX_TEXT_REGIONS = 8;
-    constexpr float MIN_CONFIDENCE = 0.12f; // Increased from 0.09 to avoid processing low-quality detections
+    constexpr int MAX_TEXT_REGIONS = 16;
+    constexpr float MIN_CONFIDENCE = 0.10f; // Keep more candidates for OCR
     constexpr float MIN_W_PX = 4.0f;
     constexpr float MIN_H_PX = 2.0f;
 
@@ -996,6 +1140,12 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
 
     auto clamp01 = [](float v)
     { return std::max(0.0f, std::min(1.0f, v)); };
+
+    int skipped_no_label = 0;
+    int skipped_existing_cls = 0;
+    int skipped_low_conf = 0;
+    int skipped_small = 0;
+    int skipped_count_limit = 0;
 
     // Return individual detection ROIs with padded boxes for cropping
     // The parent ROI keeps original boxes for display
@@ -1011,25 +1161,31 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
         if (!detection)
             continue;
         if (detection->get_label() != "text_region")
+        {
+            skipped_no_label++;
             continue;
+        }
 
         // FIRST: Skip detections that already have classifications (already recognized)
         // This prevents reprocessing tracked detections that were already recognized
         auto existing_classifications = detection->get_objects_typed(HAILO_CLASSIFICATION);
         if (!existing_classifications.empty())
         {
+            skipped_existing_cls++;
             continue; // Detection already has OCR result, skip it
         }
 
         // SECOND: Filter by confidence threshold to reduce processing load
         if (detection->get_confidence() < MIN_CONFIDENCE)
         {
+            skipped_low_conf++;
             continue; // Skip low-confidence detections
         }
 
         // THIRD: Check count limit AFTER we know we're going to process this detection
         if (count >= MAX_TEXT_REGIONS)
         {
+            skipped_count_limit++;
             break; // Reached limit, stop processing more detections this frame
         }
 
@@ -1041,7 +1197,10 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
 
         // Filter by minimum size
         if (w_px < MIN_W_PX || h_px < MIN_H_PX)
+        {
+            skipped_small++;
             continue;
+        }
 
         // Create padded bbox for cropping (OCR needs context around text)
         float pad_x = nw * PAD_X_RATIO;
@@ -1071,6 +1230,13 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
         // When aggregator merges, it will preserve the classifications on the detection
         out_rois.push_back(crop_roi);
         ++count;
+    }
+
+    if (ocr_debug_enabled())
+    {
+        ocr_dbg_msg("crop_text_regions: total_dets=%zu accepted=%zu skipped(no_label=%d existing=%d low_conf=%d small=%d count_limit=%d)",
+                    detections.size(), out_rois.size(), skipped_no_label, skipped_existing_cls, skipped_low_conf,
+                    skipped_small, skipped_count_limit);
     }
 
     return out_rois;
