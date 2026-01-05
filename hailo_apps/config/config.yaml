@@ -84,6 +84,7 @@ resources:
     - "videos"
     - "images"
     - "json"
+    - "npy"
     - "so"
     - "packages"
 

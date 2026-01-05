@@ -208,8 +208,17 @@ def INFERENCE_PIPELINE(
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     multi_processing = config.get('multi_processing')
-    if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_ENABLED:
-        multi_process_service = 'true'
+    # Validate user's multi_process_service request against arch and config
+    if multi_process_service == 'true':
+        # User wants it enabled, but check if it's supported
+        if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_ENABLED:
+            # Valid: keep it as 'true'
+            pass
+        else:
+            # Invalid: architecture or config doesn't support it
+            multi_process_service = None  # Disable it
+            # Optionally log a warning
+            print(f"Warning: multi-process-service not supported on {arch} or disabled in config")
     multi_process_service_str = (
         f" multi-process-service={str(multi_process_service).lower()} "
         if multi_process_service is not None
