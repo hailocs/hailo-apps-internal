@@ -85,7 +85,6 @@ class AudioPlayer:
         self._playback_thread = None
         self._stop_event = threading.Event()
         self._stream_lock = threading.Lock()
-        self._is_writing = False
 
         # Suppress stderr at startup
         self._devnull_fd = None
@@ -271,7 +270,6 @@ class AudioPlayer:
             block (bool): If True, blocks until this specific audio data is consumed.
                           (NOTE: approximate blocking by checking queue emptiness)
         """
-        self._flush_event.clear()
         input_sr = TARGET_SR
         data = None
 
