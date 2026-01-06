@@ -10,7 +10,7 @@ class VoiceActivityDetector:
     """
 
     def __init__(self, sample_rate: int, chunk_size: int, aggressiveness: int = 3,
-                 min_speech_duration_ms: int = 200, min_silence_duration_ms: int = 500,
+                 min_speech_duration_ms: int = 200, min_silence_duration_ms: int = 1000,
                  energy_threshold: float = 0.05, warmup_chunks: int = 10):
         """
         Args:
