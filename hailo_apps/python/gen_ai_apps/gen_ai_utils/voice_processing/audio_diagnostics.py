@@ -322,9 +322,8 @@ class AudioDiagnostics:
         if device.is_default:
             score += 100
 
-        # Penalize "default", "sysdefault", "dmix" virtual devices to prefer hardware names
-        # But only if we have other options. For now, let's just prefer hardware-looking names
         name_lower = device.name.lower()
+
 
         if "usb" in name_lower:
             score += 50  # Prefer USB devices (likely the plugged in mic/speaker)
