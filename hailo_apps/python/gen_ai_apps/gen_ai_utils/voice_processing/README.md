@@ -49,7 +49,7 @@ sudo apt-get install portaudio19-dev
 - **`AudioRecorder`**: Handles microphone recording using `sounddevice` with automatic device detection and preference support. Supports resampling and debug audio saving.
 - **`SpeechToTextProcessor`**: Wraps Hailo's Speech2Text API (Whisper model) for audio transcription with language support.
 - **`TextToSpeechProcessor`**: Handles speech synthesis using Piper TTS with streaming playback, interruption support, and text cleaning for optimal quality.
-- **`AudioPlayer`**: Cross-platform audio playback using `sounddevice` with persistent streaming and automatic device selection.
+- **`AudioPlayer`**: Cross-platform audio playback using `sounddevice` with persistent streaming (supporting gapless playback) and automatic device selection.
 - **`AudioDiagnostics`**: Tools for device enumeration, testing, troubleshooting, and preference management. Provides platform-specific guidance.
 
 ## Files
