@@ -10,6 +10,7 @@ from hailo_apps.python.core.common.defines import LLM_PROMPT_PREFIX, SHARED_VDEV
 from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, init_logging, level_from_args
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import add_vad_args
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import (
     TextToSpeechProcessor,
@@ -139,11 +140,12 @@ class VoiceAssistantApp:
         print() # New line after streaming
 
         # 5. Handshake: Wait for TTS to finish, then restart listening
-        if self.tts:
-            self.tts.wait_for_completion()
-
         if self.interaction:
-            self.interaction.start_listening()
+            try:
+                self.interaction.restart_after_tts()
+            except Exception as e:
+                # If interaction somehow fails or isn't set up
+                pass
 
     def on_clear_context(self):
         self.llm.clear_context()
@@ -170,12 +172,9 @@ def main():
     add_logging_cli_args(parser)
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
-    parser.add_argument('--vad', action='store_true',
-                        help='Enable Voice Activity Detection (hands-free mode).')
-    parser.add_argument("--vad-aggressiveness", type=int, default=3, choices=[0, 1, 2, 3],
-                        help="VAD aggressiveness level (0-3). Higher is more aggressive in filtering out non-speech.")
-    parser.add_argument("--vad-energy-threshold", type=float, default=0.005,
-                        help="Minimum RMS energy threshold for VAD to trigger (0.0-1.0). Reduces sensitivity to background noise.")
+
+    # Add VAD arguments
+    add_vad_args(parser)
 
     args = parser.parse_args()
 
@@ -203,7 +202,7 @@ def main():
         vad_enabled=args.vad,
         vad_aggressiveness=args.vad_aggressiveness,
         vad_energy_threshold=args.vad_energy_threshold,
-        vad_inhibit=lambda: app.tts.is_speaking if app.tts else False
+        tts=app.tts,  # Pass TTS for automatic inhibition and handshake
     )
 
     # Inject interaction into app for handshake control
