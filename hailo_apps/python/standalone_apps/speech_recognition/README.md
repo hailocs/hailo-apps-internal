@@ -91,7 +91,6 @@ The following command line options are available:
 - **--reuse-audio**: Reloads the audio from the previous run.
 - **--hw-arch**: Selects the Whisper models compiled for the target architecture (*hailo8* / *hailo8l / hailo10h*). If not specified, the *hailo8* architecture is selected.
 - **--variant**: Variant of the Whisper model to use (*tiny* / *base*). If not specified, the *base* model is used.
-- **--multi-process-service**: Enables the multi-process service, to run other models on the same chip in addition to Whisper
 
 ## Usage from GUI
 1. Activate the virtual environment from the repository root folder:

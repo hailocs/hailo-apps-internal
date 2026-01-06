@@ -35,6 +35,8 @@ LINUX_SYSTEM_NAME_I = "linux"
 UNKNOWN_NAME_I = "unknown"
 USB_CAMERA = "usb"
 JSON_FILE_EXTENSION = ".json"
+CONFIG_ENABLED = 'enabled'
+CONFIG_DISABLED = 'disabled'
 
 # CLI defaults
 PIP_CMD = "pip3"
@@ -133,6 +135,7 @@ RESOURCES_VIDEOS_DIR_NAME = "videos"
 RESOURCES_SO_DIR_NAME = "so"
 RESOURCES_PHOTOS_DIR_NAME = "images"  # Changed from "photos" to match actual directory name
 RESOURCES_JSON_DIR_NAME = "json"
+RESOURCES_NPY_DIR_NAME = "npy"
 
 # Depth pipeline defaults
 DEPTH_APP_TITLE = "Hailo Depth App"
@@ -198,14 +201,12 @@ SCRFD_2_5G_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"  # Used for hailo8l
 
 # Clip pipeline defaults
 CLIP_PIPELINE = "clip"
-CLIP_MODEL_NAME = "clip_resnet_50x4_image_encoder"
-CLIP_DETECTION_PIPELINE = "clip_detection"
-CLIP_DETECTION_MODEL_NAME = "hailo_yolov8n_4_classes_vga"
 CLIP_APP_TITLE = "Hailo CLIP App"
 CLIP_VIDEO_NAME = "clip_example.mp4"
 CLIP_POSTPROCESS_SO_FILENAME = 'libclip_postprocess.so'
 CLIP_CROPPER_POSTPROCESS_SO_FILENAME = 'libclip_croppers_postprocess.so'
 CLIP_POSTPROCESS_FUNCTION_NAME = 'filter'
+CLIP_CUSTOM_POSTPROCESS_FUNCTION_NAME = 'filter_custom_clip'
 CLIP_DETECTION_POSTPROCESS_FUNCTION_NAME = 'filter'
 CLIP_CROPPER_PERSON_POSTPROCESS_FUNCTION_NAME = 'person_cropper'
 CLIP_CROPPER_VEHICLE_POSTPROCESS_FUNCTION_NAME = 'vehicle_cropper'
