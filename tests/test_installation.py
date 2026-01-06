@@ -39,6 +39,7 @@ try:
         RESOURCES_VIDEOS_DIR_NAME,
         RESOURCES_SO_DIR_NAME,
         RESOURCES_JSON_DIR_NAME,
+        RESOURCES_NPY_DIR_NAME,
         RESOURCES_PHOTOS_DIR_NAME,
         HAILO8_ARCH,
         HAILO8L_ARCH,
@@ -54,6 +55,7 @@ except ImportError:
     RESOURCES_VIDEOS_DIR_NAME = "videos"
     RESOURCES_SO_DIR_NAME = "so"
     RESOURCES_JSON_DIR_NAME = "json"
+    RESOURCES_NPY_DIR_NAME = "npy"
     RESOURCES_PHOTOS_DIR_NAME = "photos"
     HAILO8_ARCH = "hailo8"
     HAILO8L_ARCH = "hailo8l"
@@ -134,6 +136,25 @@ def is_valid_json_file(filepath: Path) -> bool:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return False
 
+def is_valid_npy_file(filepath: Path) -> bool:
+    """Check if a file is valid NPY.
+    
+    Args:
+        filepath: Path to the file to check
+        
+    Returns:
+        True if the file is valid NPY
+    """
+    if not filepath.exists() or filepath.stat().st_size == 0:
+        return False
+
+    try:
+        with open(filepath, 'rb') as f:
+            # Check NPY magic number
+            magic = f.read(6)
+            return magic == b'\x93NUMPY'
+    except Exception:
+        return False
 
 def is_valid_video_file(filepath: Path) -> bool:
     """Check if a file appears to be a valid video file.
@@ -228,6 +249,11 @@ class TestDirectoryStructure:
         assert json_dir.exists(), f"JSON directory does not exist: {json_dir}"
         logger.info(f"JSON directory exists: {json_dir}")
 
+    def test_npy_directory_exists(self, resources_root_path):
+        """Verify NPY directory exists."""
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        assert npy_dir.exists(), f"NPY directory does not exist: {npy_dir}"
+        logger.info(f"NPY directory exists: {npy_dir}")
 
 # ============================================================================
 # SECTION 2: MODEL FILES TESTS
@@ -673,6 +699,61 @@ class TestIntegrationSmoke:
             pytest.skip("hailo_platform not available")
         except Exception as e:
             pytest.fail(f"Failed to load HEF file {test_hef.name}: {e}")
+
+# ============================================================================
+# SECTION 9: NPY CONFIG FILES TESTS
+# ============================================================================
+
+@pytest.mark.installation
+@pytest.mark.resources
+class TestNpyConfigFiles:
+    """Tests for downloaded NPY configuration files."""
+
+    def test_expected_npy_files_downloaded(self, resources_root_path, expected_npy_files):
+        """Verify expected NPY config files are downloaded."""
+        if not expected_npy_files:
+            pytest.skip("No NPY files defined in resources_config.yaml")
+
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        if not npy_dir.exists():
+            pytest.fail(f"NPY directory does not exist: {npy_dir}")
+
+        missing_npy = []
+        found_npy = []
+
+        for npy_name in expected_npy_files:
+            npy_path = npy_dir / npy_name
+            if npy_path.exists():
+                found_npy.append(npy_name)
+            else:
+                missing_npy.append(npy_name)
+
+        if found_npy:
+            logger.info(f"Found {len(found_npy)}/{len(expected_npy_files)} expected NPY files")
+
+        if missing_npy:
+            logger.warning(f"Missing NPY files: {missing_npy}")
+
+    def test_npy_files_valid(self, resources_root_path, expected_npy_files):
+        """Verify NPY files are valid NPY."""
+        if not expected_npy_files:
+            pytest.skip("No NPY files defined in resources_config.yaml")
+
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        if not npy_dir.exists():
+            pytest.skip(f"NPY directory does not exist: {npy_dir}")
+
+        invalid_npy = []
+
+        for npy_name in expected_npy_files:
+            npy_path = npy_dir / npy_name
+            if npy_path.exists() and not is_valid_npy_file(npy_path):
+                invalid_npy.append(npy_name)
+
+        if invalid_npy:
+            pytest.fail(f"Invalid NPY files found: {invalid_npy}")
+
+        logger.info("All NPY files are valid")
 
 
 # ============================================================================

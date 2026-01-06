@@ -14,14 +14,9 @@ class AppWindow(Gtk.Window):
         self.fullscreen_mode = False
         self.max_entries = 6
         self.build_ui(self.detection_threshold)
+        self.on_load_button_clicked(None)
         if self.disable_runtime_prompts:
             self.disable_text_boxes()
-            self.on_load_button_clicked(None)
-        else:
-            self.text_image_matcher.init_clip()
-        if self.text_image_matcher.model_runtime is not None:
-            self.on_load_button_clicked(None)
-        self.update_text_boxes()
 
     def build_ui(self, detection_threshold):
         ui_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -153,7 +148,6 @@ class AppWindow(Gtk.Window):
 
     def on_text_box_updated(self, widget, event, idx):
         """Callback function for text box updates."""
-        text = widget.get_text()
         self.text_image_matcher.add_text(widget.get_text(), idx)
 
     def on_track_id_update(self, widget):
