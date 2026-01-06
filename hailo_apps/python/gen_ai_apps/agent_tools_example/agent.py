@@ -68,6 +68,7 @@ from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import (
     tool_parsing,
     tool_selection,
 )
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import add_vad_args
 
 # Local imports
 try:
@@ -456,7 +457,7 @@ class AgentApp:
             vad_enabled=self.vad_enabled,
             vad_aggressiveness=self.vad_aggressiveness,
             vad_energy_threshold=self.vad_energy_threshold,
-            vad_inhibit=lambda: self.tts.is_speaking if self.tts else False,
+            tts=self.tts,
         )
 
         # Inject interaction into app for handshake control
@@ -495,10 +496,8 @@ class AgentApp:
 
         # Restart listening (Handshake)
         if self.interaction and self.voice_enabled:
-            # Wait for TTS to finish if it's playing
-            if self.tts:
-                self.tts.wait_for_completion()
-            self.interaction.start_listening()
+            # Wait for TTS to finish if it's playing and restart listening
+            self.interaction.restart_after_tts()
 
 
     def _on_processing_start(self) -> None:
@@ -837,24 +836,8 @@ def create_parser() -> argparse.ArgumentParser:
         help="Skip loading cached context states and rebuild from scratch",
     )
     # VAD Arguments
-    parser.add_argument(
-        "--vad",
-        action="store_true",
-        help="Enable Voice Activity Detection (hands-free mode)",
-    )
-    parser.add_argument(
-        "--vad-aggressiveness",
-        type=int,
-        default=3,
-        choices=[0, 1, 2, 3],
-        help="VAD aggressiveness level (0-3). Higher is more aggressive in filtering out non-speech.",
-    )
-    parser.add_argument(
-        "--vad-energy-threshold",
-        type=float,
-        default=0.005,
-        help="Minimum RMS energy threshold for VAD to trigger (0.0-1.0).",
-    )
+    # VAD Arguments
+    add_vad_args(parser)
 
 
     return parser

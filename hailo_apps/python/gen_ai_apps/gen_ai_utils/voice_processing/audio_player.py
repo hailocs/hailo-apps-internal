@@ -85,6 +85,7 @@ class AudioPlayer:
         self._playback_thread = None
         self._stop_event = threading.Event()
         self._stream_lock = threading.Lock()
+        self._is_writing = False
 
         # Suppress stderr at startup
         self._devnull_fd = None
@@ -107,7 +108,7 @@ class AudioPlayer:
     @property
     def is_playing(self) -> bool:
         """Check if audio is currently being played."""
-        return not self.queue.empty()
+        return not self.queue.empty() or self._is_writing
 
     def _create_stream(self):
         """Create a new output stream."""
@@ -227,7 +228,11 @@ class AudioPlayer:
                              pass
 
                         # Write (blocking if buffer full)
-                        self.stream.write(data)
+                        self._is_writing = True
+                        try:
+                            self.stream.write(data)
+                        finally:
+                            self._is_writing = False
 
                     self.queue.task_done()
 

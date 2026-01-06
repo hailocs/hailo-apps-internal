@@ -151,3 +151,31 @@ class VoiceActivityDetector:
         self.consecutive_silence_chunks = 0
         self.buffer = b""
         self.warmup_counter = self.warmup_chunks
+
+
+def add_vad_args(parser):
+    """
+    Add VAD-related arguments to an argparse parser.
+
+    Args:
+        parser: argparse.ArgumentParser or legacy optparse (duck typed).
+                Must have add_argument method.
+    """
+    parser.add_argument(
+        "--vad",
+        action="store_true",
+        help="Enable Voice Activity Detection (hands-free mode)",
+    )
+    parser.add_argument(
+        "--vad-aggressiveness",
+        type=int,
+        default=3,
+        choices=[0, 1, 2, 3],
+        help="VAD aggressiveness level (0-3). Higher is more aggressive in filtering out non-speech.",
+    )
+    parser.add_argument(
+        "--vad-energy-threshold",
+        type=float,
+        default=0.005,
+        help="Minimum RMS energy threshold for VAD to trigger (0.0-1.0).",
+    )
