@@ -291,10 +291,13 @@ class TextToSpeechProcessor:
         """Clear the interruption flag."""
         self._interrupted.clear()
 
-    def wait_for_completion(self, timeout: float = 10.0):
+    def wait_for_completion(self, timeout: float = 30.0):
         """
         Block until all queued speech has been processed and played.
         Returns gracefully if timeout is reached to prevent hanging.
+
+        Args:
+            timeout (float): Maximum time to wait in seconds. Defaults to 30.0.
         """
         start_time = time.time()
 
@@ -303,13 +306,15 @@ class TextToSpeechProcessor:
             speech_empty = self.speech_queue.empty() and (self.speech_queue.unfinished_tasks == 0)
             audio_empty = True
             if self.audio_player:
-                audio_empty = self.audio_player.queue.empty() and (self.audio_player.queue.unfinished_tasks == 0)
+                audio_empty = self.audio_player.queue.empty() and (self.audio_player.queue.unfinished_tasks == 0) and not self.audio_player.is_playing
             return speech_empty and audio_empty
 
         while not is_done():
-            if time.time() - start_time > timeout:
+            current_time = time.time()
+            if current_time - start_time > timeout:
                 logger.warning("Wait for audio completion timed out (%.1fs). Forcing proceed.", timeout)
                 break
+
             time.sleep(0.1)
 
     def stop(self):

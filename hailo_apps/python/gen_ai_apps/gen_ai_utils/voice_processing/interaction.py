@@ -1,7 +1,7 @@
 import logging
 import threading
 import traceback
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -37,6 +37,7 @@ class VoiceInteractionManager:
         vad_aggressiveness: int = 1,
         vad_energy_threshold: float = 0.2,
         vad_inhibit: Optional[Callable[[], bool]] = None,
+        tts: Optional[Any] = None,
     ):
         """
         Args:
@@ -50,6 +51,7 @@ class VoiceInteractionManager:
             vad_enabled (bool): Enable Voice Activity Detection for hands-free operation.
             vad_aggressiveness (int): VAD aggressiveness (0-3).
             vad_energy_threshold (float): Minimum energy to trigger speech detection.
+            tts (Optional): TextToSpeechProcessor instance for automatic inhibition and handshake.
         """
         self.title = title
         self.on_audio_ready = on_audio_ready
@@ -61,7 +63,13 @@ class VoiceInteractionManager:
         self.vad_enabled = vad_enabled
         self.vad_aggressiveness = vad_aggressiveness
         self.vad_energy_threshold = vad_energy_threshold
-        self.vad_inhibit = vad_inhibit
+        self.tts = tts
+
+        # Default inhibition using TTS if provided
+        if self.tts and vad_inhibit is None:
+             self.vad_inhibit = lambda: self.tts.is_speaking
+        else:
+             self.vad_inhibit = vad_inhibit
 
         self.recorder = AudioRecorder(debug=debug)
         self.is_recording = False
@@ -319,3 +327,12 @@ class VoiceInteractionManager:
                 self.on_shutdown()
             except Exception as e:
                 logger.error("Failed during shutdown callback: %s", e)
+
+    def restart_after_tts(self):
+        """
+        Wait for TTS to finish (if active) and then restart listening.
+        This handles the VAD-TTS handshake to prevent self-triggering.
+        """
+        if self.tts:
+            self.tts.wait_for_completion()
+        self.start_listening()
