@@ -190,9 +190,8 @@ class AudioPlayer:
                                 # Threshold: 4000 frames is ~0.25s at 16k.
                                 # If we have fewer than 4000 frames available to WRITE,
                                 # it means we have > (Buffer_Size - 0.25s) FULL of audio.
-                                # Let's assume Buffer is ~8000 frames (0.5s).
-                                # So if available < 4000, we have > 4000 frames (0.25s) of audio buffered.
                                 # Safe to wait for next chunk.
+
 
                                 if available < 4000:
                                     time.sleep(0.02)

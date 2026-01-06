@@ -126,7 +126,7 @@ def clean_text_for_tts(text: str) -> str:
     # This regex keeps "word characters", spaces, and listed punctuation.
     # \w includes alphanumeric + underscore, but we stripped underscore above if it was markdown.
     # We allow underscore inside words if any remain, or we can be stricter.
-    # Let's be permissive with \w but strip specific problematic symbols.
+    # Strip specific problematic symbols.
 
     # Common symbols causing noise: ~ @ ^ | \ < > { } [ ] #
     text = re.sub(r"[~@^|\\<>{}\[\]#]", " ", text)
@@ -382,12 +382,8 @@ class TextToSpeechProcessor:
             # Convert WAV buffer to numpy array for playback
             wav_buffer.seek(0)
 
-            # We can use soundfile or wave to read it back, or just use wave manually
-            # Since AudioPlayer has _read_wav logic, let's just re-implement simple parsing here or use a helper
-            # Actually, AudioPlayer.play supports reading from file path, but not bytes buffer directly yet.
-            # But wait, AudioPlayer supports numpy array.
-
             # Parse WAV from buffer
+
             with wave.open(wav_buffer, 'rb') as wf:
                 n_frames = wf.getnframes()
                 data = wf.readframes(n_frames)
