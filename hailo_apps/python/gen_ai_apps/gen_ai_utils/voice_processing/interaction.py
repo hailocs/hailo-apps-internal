@@ -83,6 +83,7 @@ class VoiceInteractionManager:
                 sample_rate=sample_rate,
                 chunk_size=CHUNK_SIZE,
                 aggressiveness=self.vad_aggressiveness,
+                energy_threshold=self.vad_energy_threshold,
                 warmup_chunks=10  # Ignore first ~0.6s to avoid startup clicks/pops
             )
             logger.info(f"VAD enabled with sample rate {sample_rate} Hz, aggressiveness {vad_aggressiveness}")
@@ -198,10 +199,6 @@ class VoiceInteractionManager:
                 ).astype(np.float32)
 
             is_speech, energy = self.vad.process(chunk)
-
-            # Energy Gate: If energy is too low, ignore VAD speech trigger
-            if is_speech and energy < self.vad_energy_threshold:
-                is_speech = False
 
             # --- ASCII Visualizer ---
             status_symbol = "🗣️ " if self.vad_speech_active else "👂"
