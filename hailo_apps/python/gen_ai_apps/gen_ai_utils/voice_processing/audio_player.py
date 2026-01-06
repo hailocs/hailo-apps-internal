@@ -85,6 +85,7 @@ class AudioPlayer:
         self._playback_thread = None
         self._stop_event = threading.Event()
         self._stream_lock = threading.Lock()
+        self._is_writing = False
 
         # Suppress stderr at startup
         self._devnull_fd = None

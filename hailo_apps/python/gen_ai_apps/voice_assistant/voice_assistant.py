@@ -174,12 +174,9 @@ def main():
     add_logging_cli_args(parser)
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
-    parser.add_argument('--vad', action='store_true',
-                        help='Enable Voice Activity Detection (hands-free mode).')
-    parser.add_argument("--vad-aggressiveness", type=int, default=3, choices=[0, 1, 2, 3],
-                        help="VAD aggressiveness level (0-3). Higher is more aggressive in filtering out non-speech.")
-    parser.add_argument("--vad-energy-threshold", type=float, default=0.005,
-                        help="Minimum RMS energy threshold for VAD to trigger (0.0-1.0). Reduces sensitivity to background noise.")
+
+    # Add VAD arguments
+    add_vad_args(parser)
 
     # Add VAD arguments
     add_vad_args(parser)
