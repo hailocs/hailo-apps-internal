@@ -201,6 +201,10 @@ json:
     tag:
       - detection
       - object_detection
+  - name: clip_tokenizer.json
+    source: s3
+    tag:
+      - clip
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)
