@@ -185,13 +185,9 @@ class AgentApp:
 
         # Initialize Hailo VDevice
         try:
-            if voice_enabled:
-                # Shared VDevice for multiple models
-                params = VDevice.create_params()
-                params.group_id = SHARED_VDEVICE_GROUP_ID
-                self.vdevice = VDevice(params)
-            else:
-                self.vdevice = VDevice()
+            params = VDevice.create_params()
+            params.group_id = SHARED_VDEVICE_GROUP_ID
+            self.vdevice = VDevice(params)
         except Exception as e:
             logger.error("Failed to create VDevice: %s", e)
             raise
