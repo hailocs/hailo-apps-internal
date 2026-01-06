@@ -37,6 +37,7 @@ from .defines import (
     POSE_ESTIMATION_PIPELINE,
     RESOURCES_JSON_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
+    RESOURCES_NPY_DIR_NAME,
     # for get_resource_path
     RESOURCES_PHOTOS_DIR_NAME,
     RESOURCES_ROOT_PATH_DEFAULT,
@@ -44,10 +45,7 @@ from .defines import (
     RESOURCES_VIDEOS_DIR_NAME,
     SIMPLE_DETECTION_MODEL_NAME,
     SIMPLE_DETECTION_PIPELINE,
-    CLIP_PIPELINE,
-    CLIP_MODEL_NAME,
-    CLIP_DETECTION_PIPELINE,
-    CLIP_DETECTION_MODEL_NAME
+
 )
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
@@ -129,22 +127,12 @@ def get_model_name(pipeline_name: str, arch: str) -> str:
     is_h8 = arch in (HAILO8_ARCH, HAILO10H_ARCH)
     pipeline_map = {
         DEPTH_PIPELINE: DEPTH_MODEL_NAME,
-        CLIP_PIPELINE: CLIP_MODEL_NAME,
-        CLIP_DETECTION_PIPELINE: CLIP_DETECTION_MODEL_NAME,
         SIMPLE_DETECTION_PIPELINE: SIMPLE_DETECTION_MODEL_NAME,
         DETECTION_PIPELINE: DETECTION_MODEL_NAME_H8 if is_h8 else DETECTION_MODEL_NAME_H8L,
-        INSTANCE_SEGMENTATION_PIPELINE: INSTANCE_SEGMENTATION_MODEL_NAME_H8
-        if is_h8
-        else INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
-        POSE_ESTIMATION_PIPELINE: POSE_ESTIMATION_MODEL_NAME_H8
-        if is_h8
-        else POSE_ESTIMATION_MODEL_NAME_H8L,
-        FACE_DETECTION_PIPELINE: FACE_DETECTION_MODEL_NAME_H8
-        if is_h8
-        else FACE_DETECTION_MODEL_NAME_H8L,
-        FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8
-        if is_h8
-        else FACE_RECOGNITION_MODEL_NAME_H8L
+        INSTANCE_SEGMENTATION_PIPELINE: INSTANCE_SEGMENTATION_MODEL_NAME_H8 if is_h8 else INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
+        POSE_ESTIMATION_PIPELINE: POSE_ESTIMATION_MODEL_NAME_H8 if is_h8 else POSE_ESTIMATION_MODEL_NAME_H8L,
+        FACE_DETECTION_PIPELINE: FACE_DETECTION_MODEL_NAME_H8 if is_h8 else FACE_DETECTION_MODEL_NAME_H8L,
+        FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8 if is_h8 else FACE_RECOGNITION_MODEL_NAME_H8L,
     }
     name = pipeline_map[pipeline_name]
     hailo_logger.debug(f"Resolved model name: {name}")
@@ -175,6 +163,8 @@ def get_resource_path(
         return root / RESOURCES_PHOTOS_DIR_NAME / model
     if resource_type == RESOURCES_JSON_DIR_NAME and model:
         return root / RESOURCES_JSON_DIR_NAME / model
+    if resource_type == RESOURCES_NPY_DIR_NAME and model:
+        return root / RESOURCES_NPY_DIR_NAME / model
     if resource_type == DEFAULT_LOCAL_RESOURCES_PATH and model:
         return root / DEFAULT_LOCAL_RESOURCES_PATH / model
 
