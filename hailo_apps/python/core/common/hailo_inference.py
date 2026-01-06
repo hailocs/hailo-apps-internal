@@ -6,6 +6,10 @@ import numpy as np
 
 from hailo_platform import (HEF, VDevice,FormatType, HailoSchedulingAlgorithm)
 from hailo_platform.pyhailort.pyhailort import FormatOrder
+import yaml
+from hailo_apps.config.config_manager import get_main_config
+from hailo_apps.python.core.common.defines import HAILO8_ARCH, HAILO8L_ARCH, CONFIG_ENABLED, CONFIG_DISABLED, DEFAULT_CONFIG_PATH
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 
 class HailoInfer:
@@ -28,6 +32,8 @@ class HailoInfer:
         # Set the scheduling algorithm to round-robin to activate the scheduler
         params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
         params.group_id = "SHARED"
+        if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_ENABLED:
+            params.multi_process_service = True
         vDevice = VDevice(params)
 
         self.target = vDevice
@@ -45,6 +51,8 @@ class HailoInfer:
         self.configured_model.set_scheduler_priority(priority)
         self.last_infer_job = None
 
+        if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_DISABLED:
+            self.configured_model.activate()
 
     def _set_input_type(self, input_type: Optional[str] = None) -> None:
         """
