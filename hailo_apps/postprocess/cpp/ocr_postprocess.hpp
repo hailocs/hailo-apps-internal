@@ -60,8 +60,10 @@ std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> image,
                                            bool internal_offset,
                                            const std::string &resize_method); 
 
-void crop_text_regions_filter(HailoROIPtr roi, void *params_void_ptr);  
+void crop_text_regions_filter(HailoROIPtr roi, void *params_void_ptr);
 
-  
+// LPR-specific post-processing (calls paddleocr_recognize + LPR logic)
+void lpr_post_process(HailoROIPtr roi, void *params_void_ptr);
+
 __END_DECLS
 

@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <iostream>
 #include <iomanip>
+#include <mutex>
+#include <atomic>
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -17,6 +19,20 @@
 #include <sstream>
 #include <cctype>
 #include <cstdlib>
+#include "hailo_tracker.hpp"
+
+// ---------------------------
+// LPR Cache structures
+// ---------------------------
+struct LprCacheEntry {
+    std::string text;
+    float confidence;
+};
+
+static std::mutex g_lpr_cache_mutex;
+static std::unordered_map<int, LprCacheEntry> g_lpr_cache;
+static std::atomic<int> g_ocr_pp_invocations{0};
+static std::atomic<int> g_ocr_pp_classification_logs{0};
 
 // RapidJSON for optional config
 #include "rapidjson/document.h"
@@ -54,6 +70,27 @@ static bool ocr_debug_enabled()
         return false;
     return true;
 }
+
+// Dedicated debug for lpr_post_process - controlled by HAILO_LPR_PP_DEBUG
+static bool lpr_pp_debug_enabled()
+{
+    static int enabled = -1;
+    if (enabled == -1)
+    {
+        const char *env = std::getenv("HAILO_LPR_PP_DEBUG");
+        if (!env || env[0] == '\0')
+            enabled = 0; // default OFF
+        else if (env[0] == '1' || env[0] == 't' || env[0] == 'T' || env[0] == 'y' || env[0] == 'Y')
+            enabled = 1;
+        else if (env[0] == '0' || env[0] == 'f' || env[0] == 'F' || env[0] == 'n' || env[0] == 'N')
+            enabled = 0;
+        else
+            enabled = 1;
+    }
+    return enabled == 1;
+}
+
+static std::atomic<int> g_lpr_pp_call_count{0};
 
 static std::string keep_alnum_upper(const std::string &input)
 {
@@ -1051,13 +1088,23 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
 
     if (target_detection)
     {
+        const int invoke_id = g_ocr_pp_invocations.fetch_add(1) + 1;
         auto existing_meta = target_detection->get_objects_typed(HAILO_CLASSIFICATION);
+        const int cls_log_id = g_ocr_pp_classification_logs.fetch_add(1) + 1;
         for (auto &obj : existing_meta)
         {
             auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
             if (cls && cls->get_classification_type() == "lp_crop_meta")
             {
                 ocr_dbg_msg("recognize: crop_meta %s", cls->get_label().c_str());
+            }
+            if (ocr_debug_enabled())
+            {
+                std::cout << "[lpr_ocr_pp][pre_cls] log_id=" << cls_log_id
+                          << " type='" << (cls ? cls->get_classification_type() : "n/a") << "'"
+                          << " label='" << (cls ? cls->get_label() : "n/a") << "'"
+                          << " conf=" << (cls ? cls->get_confidence() : 0.0f)
+                          << std::endl;
             }
         }
         // Remove existing classifications
@@ -1070,10 +1117,31 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
         // Add new classification with recognized text
         auto classification = std::make_shared<HailoClassification>("text_region", label_to_attach, conf);
         target_detection->add_object(classification);
+        if (ocr_debug_enabled())
+        {
+            std::cout << "[lpr_ocr_pp][post_cls] log_id=" << cls_log_id
+                      << " attach type='text_region'"
+                      << " label='" << label_to_attach << "'"
+                      << " conf=" << std::fixed << std::setprecision(3) << conf
+                      << " stream_id='" << roi->get_stream_id() << "'"
+                      << std::endl;
+            std::cout << "[lpr_ocr_pp][emit] text_region label='" << label_to_attach
+                      << "' conf=" << std::fixed << std::setprecision(3) << conf
+                      << " invoke=" << invoke_id << std::endl;
+        }
         if (accepted && normalized_label != label_to_attach)
         {
             auto norm_cls = std::make_shared<HailoClassification>("text_region_norm", normalized_label, conf);
             target_detection->add_object(norm_cls);
+            if (ocr_debug_enabled())
+            {
+                std::cout << "[lpr_ocr_pp][post_cls] log_id=" << cls_log_id
+                          << " attach type='text_region_norm'"
+                          << " label='" << normalized_label << "'"
+                          << " conf=" << std::fixed << std::setprecision(3) << conf
+                          << " stream_id='" << roi->get_stream_id() << "'"
+                          << std::endl;
+            }
         }
 
         // Debug print for final attached OCR text
@@ -1089,6 +1157,461 @@ extern "C" void paddleocr_recognize(HailoROIPtr roi, void *params_void_ptr)
         }
     }
 }
+
+// ---------------------------
+// LPR Helper Functions
+// ---------------------------
+
+/**
+ * @brief Ensure the detection has a tracking ID, or create one
+ */
+static int ensure_tracking_id(HailoROIPtr roi, HailoDetectionPtr detection)
+{
+    if (!detection)
+        return -1;
+
+    // Try to get existing tracking ID from unique_ids
+    auto unique_ids = detection->get_objects_typed(HAILO_UNIQUE_ID);
+    for (auto &obj : unique_ids)
+    {
+        auto uid = std::dynamic_pointer_cast<HailoUniqueID>(obj);
+        if (uid)
+        {
+            return static_cast<int>(uid->get_id());
+        }
+    }
+
+    // Also check ROI's unique IDs
+    if (roi)
+    {
+        auto roi_ids = roi->get_objects_typed(HAILO_UNIQUE_ID);
+        for (auto &obj : roi_ids)
+        {
+            auto uid = std::dynamic_pointer_cast<HailoUniqueID>(obj);
+            if (uid)
+            {
+                return static_cast<int>(uid->get_id());
+            }
+        }
+    }
+
+    return -1;  // No tracking ID found
+}
+
+/**
+ * @brief Check if text looks like a license plate based on country rules
+ * Supports IL (Israel), US, EU formats
+ */
+static bool looks_like_license(const std::string &text)
+{
+    if (text.empty())
+        return false;
+
+    // Normalize: keep only alphanumeric, convert to upper
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (unsigned char ch : text)
+    {
+        if (std::isalnum(ch))
+            normalized.push_back(static_cast<char>(std::toupper(ch)));
+    }
+
+    const size_t n = normalized.size();
+    if (n == 0)
+        return false;
+
+    std::string country = get_lpr_country();
+
+    if (country == "IL")
+    {
+        // Israel: digits only, 7-8 digits
+        for (char c : normalized)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(c)))
+                return false;
+        }
+        return (n == 7 || n == 8);
+    }
+
+    if (country == "US")
+    {
+        // US: alphanumeric, length 5-8
+        return (n >= 5 && n <= 8);
+    }
+
+    if (country == "EU")
+    {
+        // EU (generic): alphanumeric, length 5-8, must include at least one letter and one digit
+        bool has_letter = false;
+        bool has_digit = false;
+        for (char c : normalized)
+        {
+            if (std::isalpha(static_cast<unsigned char>(c)))
+                has_letter = true;
+            else if (std::isdigit(static_cast<unsigned char>(c)))
+                has_digit = true;
+        }
+        return (n >= 5 && n <= 8 && has_letter && has_digit);
+    }
+
+    // Default: alphanumeric, length 5-10
+    return (n >= 5 && n <= 10);
+}
+
+/**
+ * @brief Ensure the detection has the proper text classification attached
+ */
+static void ensure_text_classification(HailoDetectionPtr detection, const LprCacheEntry &entry)
+{
+    if (!detection)
+        return;
+
+    // Remove existing text_region classifications
+    auto existing = detection->get_objects_typed(HAILO_CLASSIFICATION);
+    for (auto &cls : existing)
+    {
+        auto classification = std::dynamic_pointer_cast<HailoClassification>(cls);
+        if (classification && classification->get_classification_type() == "text_region")
+        {
+            detection->remove_object(cls);
+        }
+    }
+
+    // Add the cached classification
+    auto classification = std::make_shared<HailoClassification>("text_region", entry.text, entry.confidence);
+    detection->add_object(classification);
+}
+
+/**
+ * @brief Add plate to tracker system (placeholder for external tracker integration)
+ */
+static std::vector<std::string> tracker_names_for_stream(const std::string &stream_id)
+{
+    std::vector<std::string> names;
+    const std::vector<std::string> base_names = {"vehicle_tracker", "hailo_tracker"};
+    for (const auto &base : base_names)
+    {
+        if (!stream_id.empty())
+        {
+            names.push_back(base + "_" + stream_id);
+        }
+        names.push_back(base);
+    }
+    return names;
+}
+
+static void add_plate_to_tracker(const std::string &stream_id, int track_id, const LprCacheEntry &entry)
+{
+    if (track_id < 0)
+        return;
+
+    auto lpr_cls = std::make_shared<HailoClassification>("lpr_result", entry.text, entry.confidence);
+    for (const auto &name : tracker_names_for_stream(stream_id))
+    {
+        try
+        {
+            HailoTracker::GetInstance().add_object_to_track(name, track_id, lpr_cls);
+        }
+        catch (const std::exception &)
+        {
+            if (ocr_debug_enabled())
+            {
+                std::fprintf(stderr,
+                             "[lpr_post_process] add_to_tracker failed name='%s' track_id=%d plate='%s'\n",
+                             name.c_str(), track_id, entry.text.c_str());
+                std::fflush(stderr);
+            }
+        }
+    }
+}
+
+// ---------------------------
+// LPR Post-process Function
+// ---------------------------
+extern "C" void lpr_post_process(HailoROIPtr roi, void *params_void_ptr)
+{
+    const int call_id = g_lpr_pp_call_count.fetch_add(1) + 1;
+    const bool pp_debug = lpr_pp_debug_enabled();
+    
+    if (!roi) return;
+    
+    bool has_tensors = roi->has_tensors();
+    if (!has_tensors) return;
+    
+    auto *p = reinterpret_cast<OcrParams *>(params_void_ptr);
+    if (!p) return;
+    
+    HailoTensorPtr t = get_tensor_by_name_or_fallback(roi, p->rec_output_name);
+    if (!t) return;
+    const auto &shape = t->shape();
+    if (shape.size() != 3) throw std::runtime_error("Unexpected recognizer rank (expected 3)");  
+    
+    const uint8_t *u8 = reinterpret_cast<const uint8_t*>(t->data());  
+    if (!u8) throw std::runtime_error("Recognizer tensor not UINT8");  
+    const size_t N = shape[0];
+    const size_t D1 = shape[1];
+    const size_t D2 = shape[2];
+    if (N != 1) throw std::runtime_error("Recognizer expects N=1");  
+    
+    // Determine layout: NTC (batch, time, channels) or NCT (batch, channels, time)
+    size_t C, T;
+    bool layout_is_NCT;
+    if (p->time_major) {
+        C = D1; T = D2; layout_is_NCT = true;
+    } else {
+        T = D1; C = D2; layout_is_NCT = false;
+    }
+    
+    
+    // Build probs[T][C]
+    std::vector<std::vector<float>> probs(T, std::vector<float>(C));
+    const uint8_t *base = u8;
+    if (layout_is_NCT) {
+        for (size_t c=0; c<C; ++c) {
+            for (size_t t0=0; t0<T; ++t0) {
+                float v = base[c*T + t0] * (1.0f/255.0f);
+                probs[t0][c] = p->logits_are_softmax ? v : v;
+            }
+        }
+    } else {
+        for (size_t t0=0; t0<T; ++t0) {
+            for (size_t c=0; c<C; ++c) {
+                float v = base[t0*C + c] * (1.0f/255.0f);
+                probs[t0][c] = p->logits_are_softmax ? v : v;
+            }
+        }
+    }
+    
+    if (!p->logits_are_softmax) {
+        for (size_t t0=0; t0<T; ++t0) softmax1d(probs[t0]);
+    }
+    
+    // Python-style CTC decode matching ocr_eval_postprocess()
+    // Step 1: Get argmax indices and max probabilities for each time step
+    std::vector<int> text_index(T);
+    std::vector<float> text_prob(T);
+    
+    for (size_t t0=0; t0<T; ++t0) {
+        auto &row = probs[t0];
+        auto it = std::max_element(row.begin(), row.end());
+        text_index[t0] = int(std::distance(row.begin(), it));
+        text_prob[t0] = *it;
+    }
+    
+    // Step 2: Create selection mask (Python: selection[1:] = text_index[1:] != text_index[:-1])
+    // This removes consecutive duplicates (CTC collapse)
+    std::vector<bool> selection(T, true);
+    for (size_t i=1; i<T; ++i) {
+        selection[i] = (text_index[i] != text_index[i-1]);
+    }
+    
+    // Step 3: Filter out blank tokens (ignored_tokens = [0])
+    for (size_t i=0; i<T; ++i) {
+        if (text_index[i] == p->blank_index) {
+            selection[i] = false;
+        }
+    }
+    
+    // Step 4: Build output text and confidence from selected tokens
+    std::string out_text;
+    out_text.reserve(T);
+    std::vector<float> conf_list;
+    conf_list.reserve(T);
+    
+    int blank_count = 0;
+    int repeat_count = 0;
+    
+    for (size_t i=0; i<T; ++i) {
+        if (selection[i]) {
+            int idx = text_index[i];
+            if (idx >= 0 && idx < (int)p->charset.size()) {
+                out_text += p->charset[idx];
+                conf_list.push_back(text_prob[i]);
+            } else {
+                out_text += "?";
+                conf_list.push_back(0.0f);
+            }
+        } else {
+            if (text_index[i] == p->blank_index) {
+                blank_count++;
+            } else if (i > 0 && text_index[i] == text_index[i-1]) {
+                repeat_count++;
+            }
+        }
+    }
+    
+    // Step 5: Compute mean confidence (matching Python: np.mean(conf_list))
+    float conf = 0.0f;
+    if (conf_list.empty()) {
+        conf_list.push_back(0.0f);
+    }
+    float conf_sum = 0.0f;
+    for (float c : conf_list) {
+        conf_sum += c;
+    }
+    conf = conf_sum / (float)conf_list.size();
+    
+    // Attach classification to detection - simple and clean approach
+    if (out_text.empty() || out_text == " ") {
+        return;
+    }
+    
+    // Output OCR result (only when we have text)
+    if (pp_debug) {
+        std::cerr << "[OCR] '" << out_text << "' conf=" << std::fixed << std::setprecision(2) << conf << "\n" << std::flush;
+    }
+    
+    // Apply spell correction
+    std::string corrected_text = correct_text(out_text, *p);
+    std::string text_to_attach = (!corrected_text.empty() && corrected_text != out_text) ? corrected_text : out_text;
+
+    // Country-aware filter/normalize before attaching OCR result
+    std::string normalized_label;
+    std::string country = get_lpr_country();
+    bool accepted = normalize_by_country(country, text_to_attach, normalized_label) && !normalized_label.empty();
+    ocr_dbg(out_text, corrected_text, normalized_label, country, conf, accepted);
+    // Always attach something for debug: if not accepted, fall back to raw text
+    std::string label_to_attach = accepted ? normalized_label : text_to_attach;
+    
+    if (pp_debug) {
+        std::cout << "[lpr_pp] call_id=" << call_id << " corrected='" << corrected_text 
+                  << "' normalized='" << normalized_label << "' accepted=" << (accepted ? "yes" : "no") << std::endl;
+    }
+    
+    // Find detection - cropper returns ROI with detection inside
+    HailoDetectionPtr target_detection = nullptr;
+    auto detection_roi = std::dynamic_pointer_cast<HailoDetection>(roi);
+    if (detection_roi) {
+        target_detection = detection_roi;
+    } else {
+        auto detections = hailo_common::get_hailo_detections(roi);
+        if (!detections.empty()) {
+            target_detection = detections[0];
+        }
+    }
+    
+    if (pp_debug) {
+        std::cout << "[lpr_pp] call_id=" << call_id << " target_detection=" << (target_detection ? "found" : "NOT_FOUND") << std::endl;
+    }
+
+    int track_id = ensure_tracking_id(roi, target_detection);
+    const int invoke_id = g_ocr_pp_invocations.fetch_add(1) + 1;
+    if (ocr_debug_enabled())
+    {
+        std::cout << "[lpr_ocr_pp][ocr] begin invoke=" << invoke_id
+                  << " track_id=" << track_id
+                  << " stream_id='" << roi->get_stream_id() << "' "
+                  << "raw='" << out_text << "' corrected='" << corrected_text
+                  << "' normalized='" << normalized_label << "' accepted=" << (accepted ? "yes" : "no")
+                  << " conf=" << std::fixed << std::setprecision(3) << conf
+                  << std::endl;
+    }
+
+    // If we already have a plate for this track, reattach and skip.
+    {
+        std::lock_guard<std::mutex> lock(g_lpr_cache_mutex);
+        auto it = g_lpr_cache.find(track_id);
+        if (track_id >= 0 && it != g_lpr_cache.end())
+        {
+            ensure_text_classification(target_detection, it->second);
+            add_plate_to_tracker(roi->get_stream_id(), track_id, it->second);
+            if (ocr_debug_enabled())
+            {
+                std::cout << "[lpr_ocr_pp][ocr] cache_hit invoke=" << invoke_id
+                          << " track_id=" << track_id
+                          << " plate='" << it->second.text << "' -> skip decode" << std::endl;
+            }
+            std::cout << "[lpr_post_process] text='" << it->second.text
+                      << "' conf=" << std::fixed << std::setprecision(3) << it->second.confidence
+                      << " track_id=" << track_id
+                      << " stream_id='" << roi->get_stream_id() << "' cache=hit" << std::endl;
+            return;
+        }
+        if (track_id >= 0)
+        {
+            if (ocr_debug_enabled())
+            {
+                std::cout << "[lpr_ocr_pp][ocr] cache_miss invoke=" << invoke_id
+                          << " track_id=" << track_id << " -> run decode" << std::endl;
+            }
+        }
+        else
+        {
+            if (ocr_debug_enabled())
+            {
+                std::cout << "[lpr_ocr_pp][ocr] no_track_id invoke=" << invoke_id << " -> run decode" << std::endl;
+            }
+        }
+    }
+
+    if (target_detection) {
+        // Remove existing classifications
+        auto existing = target_detection->get_objects_typed(HAILO_CLASSIFICATION);
+        if (pp_debug) {
+            std::cout << "[lpr_pp] call_id=" << call_id << " removing " << existing.size() << " existing classifications" << std::endl;
+        }
+        for (auto &cls : existing) {
+            target_detection->remove_object(cls);
+        }
+        
+        // Add new classification with recognized text
+        auto classification = std::make_shared<HailoClassification>("text_region", text_to_attach, conf);
+        target_detection->add_object(classification);
+        if (pp_debug) {
+            std::cout << "[lpr_pp] call_id=" << call_id << " ATTACHED text_region='" << text_to_attach 
+                      << "' conf=" << std::fixed << std::setprecision(3) << conf << std::endl;
+        }
+        if (ocr_debug_enabled())
+        {
+            std::cout << "[lpr_ocr_pp][ocr] attach text_region "
+                      << "invoke=" << invoke_id
+                      << " track_id=" << track_id
+                      << " stream_id='" << roi->get_stream_id() << "' "
+                      << "text='" << text_to_attach << "' conf=" << std::fixed << std::setprecision(3) << conf
+                      << std::endl;
+        }
+    } else {
+        if (pp_debug) {
+            std::cout << "[lpr_pp] call_id=" << call_id << " WARNING: no target_detection, cannot attach classification" << std::endl;
+        }
+    }
+
+    // If it looks like a license and we have a track id, cache and update tracker.
+    bool valid_lp = looks_like_license(text_to_attach);
+    if (valid_lp && track_id >= 0)
+    {
+        LprCacheEntry entry{text_to_attach, conf};
+        {
+            std::lock_guard<std::mutex> lock(g_lpr_cache_mutex);
+            g_lpr_cache[track_id] = entry;
+        }
+        ensure_text_classification(target_detection, entry);
+        add_plate_to_tracker(roi->get_stream_id(), track_id, entry);
+        if (ocr_debug_enabled())
+        {
+            std::cout << "[lpr_ocr_pp][ocr] cache_store invoke=" << invoke_id
+                      << " track_id=" << track_id
+                      << " plate='" << entry.text << "' conf=" << std::fixed << std::setprecision(2) << entry.confidence
+                      << std::endl;
+        }
+    }
+    else
+    {
+        if (ocr_debug_enabled())
+        {
+            std::cout << "[lpr_ocr_pp][ocr] not_cached invoke=" << invoke_id
+                      << " track_id=" << track_id
+                      << " valid_lp=" << (valid_lp ? "yes" : "no") << " text='" << text_to_attach << "'" << std::endl;
+        }
+    }
+    
+    // Final OCR result output
+    std::cerr << "[OCR_RESULT] t=" << track_id << " '" << label_to_attach 
+              << "' c=" << std::fixed << std::setprecision(2) << conf
+              << (accepted ? " OK" : " REJ") << "\n" << std::flush;
+}  
+
+
 
 // ---------------------------
 // Cropper Functions
@@ -1126,10 +1649,10 @@ extern "C" std::vector<HailoROIPtr> crop_text_regions(std::shared_ptr<HailoMat> 
     const int img_w = image->width();
     const int img_h = image->height();
     // MAX_TEXT_REGIONS: Limits regions processed per frame to avoid overload
-    // Note: Recognition batch_size is 8, but we limit to 2 per frame for better performance
+    // Note: Recognition batch_size is 8, keep the cap aligned to avoid excess crops
     // Regions that already have classifications are skipped (don't send for recognition)
-    constexpr int MAX_TEXT_REGIONS = 16;
-    constexpr float MIN_CONFIDENCE = 0.10f; // Keep more candidates for OCR
+    constexpr int MAX_TEXT_REGIONS = 8;
+    constexpr float MIN_CONFIDENCE = 0.12f;
     constexpr float MIN_W_PX = 4.0f;
     constexpr float MIN_H_PX = 2.0f;
 

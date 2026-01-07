@@ -53,7 +53,7 @@ fi
 echo "Building project with Ninja..."
 ninja -j$(nproc)
 
-# Install the project (optional)
+# Install the project
 echo "Installing project..."
 ninja install
 

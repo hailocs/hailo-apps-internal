@@ -53,6 +53,7 @@ venv_hailo_apps/
 
 resources/
 resources
+logs/
 
 # IDE configuration files (user-specific)
 .vscode/launch.json

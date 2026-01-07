@@ -15,6 +15,12 @@
 __BEGIN_DECLS
 std::vector<HailoROIPtr> vehicles_roi_cropper(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
 std::vector<HailoROIPtr> license_plate_with_quality(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> license_plate_quality_estimation(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
 std::vector<HailoROIPtr> license_plate_no_quality(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> license_plate_no_quality_simple(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> lp_simple_cropper(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
 std::vector<HailoROIPtr> license_plate_no_quality_two_best(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> license_plate_no_quality_four_best(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> license_plate_minimal(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
+std::vector<HailoROIPtr> license_plate_vehicle_crop(std::shared_ptr<HailoMat> image, HailoROIPtr roi);
 __END_DECLS

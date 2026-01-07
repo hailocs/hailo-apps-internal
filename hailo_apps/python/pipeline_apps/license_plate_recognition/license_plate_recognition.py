@@ -33,7 +33,7 @@ hailo_logger = get_logger(__name__)
 def lpr_debug_enabled() -> bool:
     val = os.getenv("HAILO_LPR_DEBUG")
     if val is None:
-        return True  # default ON for now
+        return False
     return val.strip().lower() not in ("0", "false", "no", "off")
 
 
@@ -262,6 +262,20 @@ def _parse_bool_env(name: str, default: bool = False) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "y", "on")
 
 
+def _no_skip_enabled() -> bool:
+    return _parse_bool_env("HAILO_LPR_NO_SKIP", False)
+
+
+def _should_hide_lp_overlay() -> bool:
+    """Check if LP overlay should be hidden (only draw vehicles, not license plates)."""
+    return _parse_bool_env("HAILO_LPR_HIDE_LP", False)
+
+
+def _should_update_track_labels() -> bool:
+    """Check if track labels should be updated when a valid plate is found."""
+    return _parse_bool_env("HAILO_LPR_UPDATE_LABELS", True)
+
+
 def _parse_int_env(name: str, default: int) -> int:
     val = os.getenv(name)
     if val is None:
@@ -294,8 +308,72 @@ def _normalize_ocr_label(raw_label: str, allow_alpha: bool) -> str:
     return re.sub(r"\D", "", raw_label)
 
 
+def _is_plate_valid(normalized_label: str, min_len: int, max_len: int, preferred_lens: set[int], 
+                     allow_alpha: bool, country: str, confidence: float) -> bool:
+    """Check if a license plate is valid based on length, format, and country-specific rules.
+    
+    Args:
+        normalized_label: The normalized plate text
+        min_len: Minimum acceptable length
+        max_len: Maximum acceptable length
+        preferred_lens: Set of preferred lengths (e.g., {7, 8})
+        allow_alpha: Whether alphabetic characters are allowed
+        country: Country code (e.g., "IL", "US", "EU")
+        confidence: OCR confidence score
+        
+    Returns:
+        True if the plate is considered valid, False otherwise
+    """
+    # Basic length check
+    if not (min_len <= len(normalized_label) <= max_len):
+        return False
+    
+    # Country-specific validation
+    if country == "IL" or country == "IS":
+        # Israel: digits only, 7-8 digits
+        if not normalized_label.isdigit():
+            return False
+        if len(normalized_label) not in {7, 8}:
+            return False
+    elif country == "US":
+        # US: alphanumeric, length 5-8
+        if len(normalized_label) < 5 or len(normalized_label) > 8:
+            return False
+    elif country == "EU":
+        # EU: alphanumeric, length 5-8, must include at least one letter and one digit
+        if len(normalized_label) < 5 or len(normalized_label) > 8:
+            return False
+        has_letter = any(c.isalpha() for c in normalized_label)
+        has_digit = any(c.isdigit() for c in normalized_label)
+        if not (has_letter and has_digit):
+            return False
+    
+    # Check if length is in preferred set (bonus validation)
+    if preferred_lens and len(normalized_label) not in preferred_lens:
+        # Still valid, but not preferred - you might want to be stricter here
+        pass
+    
+    # Additional validation: check for obviously invalid patterns
+    # Reject if all characters are the same (e.g., "1111111")
+    if len(set(normalized_label)) == 1:
+        return False
+    
+    # Reject if too many repeated characters (e.g., "1111222")
+    if len(normalized_label) > 4:
+        char_counts = {}
+        for char in normalized_label:
+            char_counts[char] = char_counts.get(char, 0) + 1
+        max_repeat = max(char_counts.values())
+        if max_repeat > len(normalized_label) * 0.6:  # More than 60% same character
+            return False
+    
+    return True
+
+
 def app_callback(element, buffer, user_data):
+    frame_count = user_data.get_count() if hasattr(user_data, "get_count") else "n/a"
     lpr_dbg("callback: ENTER frame=%s", getattr(user_data, "get_count", lambda: "n/a")())
+    frame_tag = f"Frame {frame_count} " if (lpr_debug_enabled() or _no_skip_enabled()) else ""
     if buffer is None:
         lpr_dbg("callback: buffer is None => EXIT")
         return
@@ -315,9 +393,14 @@ def app_callback(element, buffer, user_data):
     except Exception:
         db_tracks_with_lp = set()
     in_memory_found = getattr(user_data, "found_lp_tracks", set())
-    skip_lp_tracks: set[int] = set(in_memory_found) | db_tracks_with_lp
-    if skip_lp_tracks:
-        lpr_dbg("callback: skip_lp_tracks (already have LP)=%s", sorted(skip_lp_tracks))
+    skip_tracks_enabled = not _no_skip_enabled()
+    if skip_tracks_enabled:
+        skip_lp_tracks = set(in_memory_found) | db_tracks_with_lp
+        if skip_lp_tracks:
+            lpr_dbg("callback: skip_lp_tracks (already have LP)=%s", sorted(skip_lp_tracks))
+    else:
+        skip_lp_tracks = set()
+        lpr_dbg("callback: skip disabled (HAILO_LPR_NO_SKIP=1)")
 
     # Track vehicles and mark found_lp per tracker ID.
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
@@ -326,7 +409,7 @@ def app_callback(element, buffer, user_data):
     nested_plates_by_track: dict[int, list] = {}
     for det in detections:
         label = det.get_label() or ""
-        if label == "car":
+        if label == "vehicle":
             uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
             track_id = uid[0].get_id() if uid else 0
             vehicles.append((track_id, det))
@@ -341,6 +424,37 @@ def app_callback(element, buffer, user_data):
             if (nested.get_label() or "") == "license_plate":
                 nested_plates_by_track.setdefault(track_id, []).append(nested)
                 plates.append(nested)
+    
+    # Collect all classifications for debugging and processing
+    all_classifications = list(_iter_classifications(roi))
+    ocr_results = [(det, cls) for det, cls in all_classifications 
+                   if (cls.get_classification_type() if hasattr(cls, 'get_classification_type') else "") == "text_region"]
+    
+    # DEBUG: Print frame summary (opt-in via HAILO_LPR_DEBUG)
+    if lpr_debug_enabled():
+        vehicle_tracks = [t for t, _ in vehicles]
+        print(
+            f"[DEBUG] Frame {frame_count}: vehicles={len(vehicles)} (tracks={vehicle_tracks}), "
+            f"plates={len(plates)}, nested_plates={sum(len(v) for v in nested_plates_by_track.values())}, "
+            f"OCR_results={len(ocr_results)}"
+        )
+
+        # DEBUG: Show all classifications found (including non-OCR)
+        for det, cls in all_classifications:
+            cls_type = cls.get_classification_type() if hasattr(cls, 'get_classification_type') else ""
+            label = cls.get_label() or ""
+            conf = cls.get_confidence() if hasattr(cls, 'get_confidence') else 0.0
+            det_label = det.get_label() if det else "no_det"
+            track_id = None
+            if det:
+                uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+                if uid:
+                    track_id = uid[0].get_id()
+            print(
+                f"[DEBUG]   Classification: type='{cls_type}' label='{label}' "
+                f"conf={conf:.3f} det='{det_label}' track={track_id}"
+            )
+    
     lpr_dbg(
         "callback: detections=%d vehicles=%d plates=%d nested_tracks=%d",
         len(detections),
@@ -401,10 +515,26 @@ def app_callback(element, buffer, user_data):
         }
 
     # Process OCR results - iterate through all classifications to find text_region (OCR results)
+    country_env = os.getenv("HAILO_LPR_COUNTRY")
+    country = country_env.strip().upper() if country_env else "IL"
+    min_len_env = os.getenv("HAILO_LPR_MIN_LEN")
+    max_len_env = os.getenv("HAILO_LPR_MAX_LEN")
+    preferred_env = os.getenv("HAILO_LPR_PREFERRED_LENS")
+    allow_alpha_env = os.getenv("HAILO_LPR_ALLOW_ALPHA")
+
     min_len = max(1, _parse_int_env("HAILO_LPR_MIN_LEN", 3))
     max_len = max(min_len, _parse_int_env("HAILO_LPR_MAX_LEN", 10))
     preferred_lens = _parse_int_set_env("HAILO_LPR_PREFERRED_LENS", {7, 8})
     allow_alpha = _parse_bool_env("HAILO_LPR_ALLOW_ALPHA", False)
+
+    if country in {"IL", "IS"}:
+        if min_len_env is None and max_len_env is None:
+            min_len = 7
+            max_len = 8
+        if preferred_env is None:
+            preferred_lens = {7, 8}
+        if allow_alpha_env is None:
+            allow_alpha = False
     
     vehicles_by_track = {track_id: vdet for track_id, vdet in vehicles}
     try:
@@ -417,7 +547,7 @@ def app_callback(element, buffer, user_data):
 
     accepted_ocr = 0
     best_by_track: dict[int | None, dict] = {}
-    for det, cls in _iter_classifications(roi):
+    for det, cls in all_classifications:
         cls_type = cls.get_classification_type() if hasattr(cls, 'get_classification_type') else ""
         label = cls.get_label()
         if not label:
@@ -429,6 +559,8 @@ def app_callback(element, buffer, user_data):
 
         raw_label = label.strip()
         normalized_label = _normalize_ocr_label(raw_label, allow_alpha)
+        digits_label = re.sub(r"\D", "", raw_label)
+        simple_ok = len(digits_label) in {7, 8}
         confidence = cls.get_confidence()
         track_id = None
         if det is not None:
@@ -438,8 +570,16 @@ def app_callback(element, buffer, user_data):
         track_str = f"Track {track_id}" if track_id is not None else "No Track"
         if track_id is not None and track_id in skip_lp_tracks:
             continue
-        print(f"[LPR] OCR Raw: '{label}' (Confidence: {confidence:.2f}, {track_str})")
+        print(
+            f"[LPR] {frame_tag}OCR Raw: '{label}' (digits='{digits_label}' simple_ok={int(simple_ok)}) "
+            f"(Confidence: {confidence:.2f}, {track_str})"
+        )
         if not (min_len <= len(normalized_label) <= max_len):
+            print(
+                f"[LPR] {frame_tag}OCR Reject (len): norm='{normalized_label}' "
+                f"len={len(normalized_label)} range=[{min_len},{max_len}] "
+                f"(Confidence: {confidence:.2f}, {track_str})"
+            )
             continue
         score = (len(normalized_label) in preferred_lens, len(normalized_label))
         existing = best_by_track.get(track_id)
@@ -470,8 +610,29 @@ def app_callback(element, buffer, user_data):
         if track_id is not None and track_id in skip_lp_tracks:
             continue
 
+        # Validate the plate before processing
+        is_valid = _is_plate_valid(
+            normalized_label=normalized_label,
+            min_len=min_len,
+            max_len=max_len,
+            preferred_lens=preferred_lens,
+            allow_alpha=allow_alpha,
+            country=country,
+            confidence=confidence
+        )
+        
+        if not is_valid:
+            print(
+                f"[LPR] {frame_tag}OCR Reject (validation): norm='{normalized_label}' "
+                f"(Confidence: {confidence:.2f}, {track_str})"
+            )
+            continue
+
         # Print to console
-        print(f"[LPR] OCR Result: '{normalized_label}' (Confidence: {confidence:.2f}, {track_str})")
+        print(
+            f"[LPR] {frame_tag}OCR Result (VALID): '{normalized_label}' "
+            f"(Confidence: {confidence:.2f}, {track_str})"
+        )
         lpr_dbg(
             "callback: accepted track=%s plate='%s' conf=%.3f",
             track_id if track_id is not None else "None",
@@ -499,6 +660,23 @@ def app_callback(element, buffer, user_data):
                         det.remove_object(ec)
                 plate_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
                 det.add_object(plate_cls)
+                
+                # Optionally change the detection label to indicate it has a valid plate
+                if _should_update_track_labels():
+                    try:
+                        current_label = det.get_label()
+                        if current_label == "license_plate":
+                            # Change label to indicate validated plate (optional)
+                            # You can customize this label as needed
+                            det.set_label(f"license_plate_validated")
+                        elif current_label and "license_plate" in current_label.lower():
+                            # Already has some plate-related label, update it
+                            det.set_label(f"license_plate_validated")
+                    except Exception:
+                        # set_label might not be available in Python API, skip silently
+                        lpr_dbg("callback: set_label not available for detection, skipping label update")
+                        pass
+                
                 if tracker and tracker_name and track_id is not None:
                     try:
                         tracker.remove_classifications_from_track(tracker_name, track_id, "found_lp")
@@ -518,6 +696,25 @@ def app_callback(element, buffer, user_data):
                         vdet.remove_object(ec)
                 vehicle_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
                 vdet.add_object(vehicle_cls)
+                
+                # Always print what OCR is added to vehicle classification
+                print(
+                    f"[LPR_PYTHON] {frame_tag}Added classification to vehicle: type='found_lp' OCR='{normalized_label}' "
+                    f"confidence={confidence:.2f} track_id={track_id}"
+                )
+                
+                # Optionally change the vehicle detection label to indicate it has a validated plate
+                if _should_update_track_labels():
+                    try:
+                        current_label = vdet.get_label()
+                        if current_label == "vehicle":
+                            # Change label to indicate vehicle with validated plate
+                            # You can customize this label as needed (e.g., "vehicle_with_plate", "vehicle_lpr")
+                            vdet.set_label("vehicle_with_plate")
+                    except Exception:
+                        # set_label might not be available in Python API, skip silently
+                        lpr_dbg("callback: set_label not available for vehicle detection, skipping label update")
+                        pass
             except Exception:
                 pass
 
@@ -542,6 +739,22 @@ def app_callback(element, buffer, user_data):
             hailo_logger.debug(f"Failed writing OCR text: {e}")
 
     lpr_dbg("callback: accepted_ocr=%d", accepted_ocr)
+
+    # If HAILO_LPR_HIDE_LP is set, remove license plate detections from ROI
+    # so they won't be drawn by hailooverlay (only vehicles will be visible)
+    if _should_hide_lp_overlay():
+        # Remove top-level license plate detections
+        for det in list(roi.get_objects_typed(hailo.HAILO_DETECTION)):
+            if (det.get_label() or "") == "license_plate":
+                roi.remove_object(det)
+
+        # Remove nested license plate detections from vehicles
+        for det in roi.get_objects_typed(hailo.HAILO_DETECTION):
+            if (det.get_label() or "") == "vehicle":
+                for nested in list(det.get_objects_typed(hailo.HAILO_DETECTION)):
+                    if (nested.get_label() or "") == "license_plate":
+                        det.remove_object(nested)
+
     return
 
 

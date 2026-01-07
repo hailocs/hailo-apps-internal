@@ -86,7 +86,7 @@ static bool lpr_save_crops_enabled()
 {
     const char *val = std::getenv("HAILO_LPR_SAVE_CROPS");
     if (!val || val[0] == '\0')
-        return false;
+        return true;  // Enabled by default for debugging - set HAILO_LPR_SAVE_CROPS=0 to disable
     return val[0] != '0';
 }
 

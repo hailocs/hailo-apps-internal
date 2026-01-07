@@ -67,6 +67,10 @@ def SOURCE_PIPELINE(
     sync=True,
     video_format="RGB",
     mirror_image=True,
+    decode_queue_max_size_buffers=3,
+    decode_queue_max_size_bytes=0,
+    decode_queue_max_size_time=0,
+    decodebin_video_only=False,
 ):
     """Creates a GStreamer pipeline string for the video source with a separate fps caps
     for frame rate control.
@@ -78,6 +82,10 @@ def SOURCE_PIPELINE(
         video_format (str, optional): The video format. Defaults to 'RGB'.
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'source'.
         mirror_image (bool, optional): Whether to horizontally mirror the image (for camera sources). Defaults to True.
+        decode_queue_max_size_buffers (int, optional): Max buffers for the decode queue. Defaults to 3.
+        decode_queue_max_size_bytes (int, optional): Max bytes for the decode queue. Defaults to 0.
+        decode_queue_max_size_time (int, optional): Max time for the decode queue. Defaults to 0.
+        decodebin_video_only (bool, optional): Limit decodebin output to raw video. Defaults to False.
 
     Returns:
         str: A string representing the GStreamer pipeline for the video source.
@@ -100,8 +108,8 @@ def SOURCE_PIPELINE(
             width, height = get_camera_resolution(video_width, video_height)
             source_element = (
                 f'v4l2src device={video_source} name={name} ! image/jpeg, framerate=30/1, width={width}, height={height} ! '
-                f'{QUEUE(name=f"{name}_queue_decode")} ! '
-                f'decodebin name={name}_decodebin ! '
+                f'{QUEUE(name=f"{name}_queue_decode", max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=decode_queue_max_size_bytes, max_size_time=decode_queue_max_size_time)} ! '
+                f'decodebin name={name}_decodebin{" caps=video/x-raw" if decodebin_video_only else ""} ! '
                 f'{videoflip_str}'
             )
     elif source_type == "rpi":
@@ -123,14 +131,14 @@ def SOURCE_PIPELINE(
     elif source_type == 'rtsp':  # RTSP stream handling
         source_element = (
             f'rtspsrc location="{video_source}" name={name} ! '
-            f'{QUEUE(name=f"{name}_queue_decode")} ! '
-            f'decodebin name={name}_decodebin ! '
+            f'{QUEUE(name=f"{name}_queue_decode", max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=decode_queue_max_size_bytes, max_size_time=decode_queue_max_size_time)} ! '
+            f'decodebin name={name}_decodebin{" caps=video/x-raw" if decodebin_video_only else ""} ! '
         )
     else:
         source_element = (
             f'filesrc location="{video_source}" name={name} ! '
-            f"{QUEUE(name=f'{name}_queue_decode')} ! "
-            f"decodebin name={name}_decodebin ! "
+            f"{QUEUE(name=f'{name}_queue_decode', max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=decode_queue_max_size_bytes, max_size_time=decode_queue_max_size_time)} ! "
+            f"decodebin name={name}_decodebin{' caps=video/x-raw' if decodebin_video_only else ''} ! "
         )
 
     # Set up the fps caps.
@@ -163,6 +171,7 @@ def INFERENCE_PIPELINE(
     post_function_name=None,
     additional_params="",
     name="inference",
+    frame_rate=None,
     # Extra hailonet parameters
     scheduler_timeout_ms=None,
     scheduler_priority=None,
@@ -181,6 +190,7 @@ def INFERENCE_PIPELINE(
         post_function_name (str or None): Function name in the .so postprocess.
         additional_params (str): Additional parameters appended to hailonet.
         name (str): Prefix name for pipeline elements (default='inference').
+        frame_rate (int or None): If set, enforce a framerate using videorate/capsfilter.
 
         # Extra hailonet parameters
         Run `gst-inspect-1.0 hailonet` for more information.
@@ -226,6 +236,15 @@ def INFERENCE_PIPELINE(
         f"{QUEUE(name=f'{name}_convert_q')} ! "
         f"video/x-raw, pixel-aspect-ratio=1/1 ! "
         f"videoconvert name={name}_videoconvert n-threads=2 ! "
+    )
+
+    if frame_rate is not None:
+        inference_pipeline += (
+            f"videorate name={name}_videorate ! "
+            f'capsfilter name={name}_fps_caps caps="video/x-raw, framerate={frame_rate}/1" ! '
+        )
+
+    inference_pipeline += (
         f"{QUEUE(name=f'{name}_hailonet_q')} ! "
         f"{hailonet_str} ! "
     )
@@ -538,6 +557,298 @@ def VIDEO_STREAM_PIPELINE(port=5004, host="127.0.0.1", bitrate=2048):
         f"rtph264pay config-interval=1 pt=96 ! "
         f"udpsink host={host} port={port} sync=false async=false"
     )
+
+
+def SOURCE_PIPELINE_OPTIMIZED(
+    video_source,
+    video_width=640,
+    video_height=640,
+    name="source",
+    no_webcam_compression=False,
+    frame_rate=30,
+    sync=True,
+    video_format="RGB",
+    mirror_image=True,
+):
+    """Creates an optimized GStreamer pipeline string for the video source with:
+    - Larger decode queue (10 buffers, ~10 frames at 30fps)
+    - Video-only decodebin output (fixes audio memory leak)
+    - Enforced framerate output
+    - Optimized multiqueue settings (16MB, 1s time limit)
+
+    Args:
+        video_source (str): The path or device name of the video source.
+        video_width (int, optional): The width of the video. Defaults to 640.
+        video_height (int, optional): The height of the video. Defaults to 640.
+        video_format (str, optional): The video format. Defaults to 'RGB'.
+        name (str, optional): The prefix name for the pipeline elements. Defaults to 'source'.
+        frame_rate (int, optional): The frame rate. Defaults to 30.
+        sync (bool, optional): Whether to sync to clock. Defaults to True.
+        mirror_image (bool, optional): Whether to horizontally mirror the image. Defaults to True.
+
+    Returns:
+        str: A string representing the optimized GStreamer pipeline for the video source.
+    """
+    source_type = get_source_type(video_source)
+
+    # Optimized queue settings: 10 buffers, ~333ms (10 frames at 30fps)
+    decode_queue_max_size_buffers = 10
+    decode_queue_max_size_time = 333333333  # ~10 frames at 30fps in nanoseconds
+
+    # Build videoflip element string conditionally
+    videoflip_str = f'videoflip name=videoflip_{name} video-direction=horiz ! ' if mirror_image else ''
+
+    # Decodebin with optimized multiqueue settings:
+    # - caps=video/x-raw: Only output video (drops audio, fixes memory leak)
+    # - max-size-bytes=16777216 (16MB, increased from default 8MB)
+    # - max-size-time=1000000000 (1 second buffer)
+    # - max-size-buffers=0 (unlimited, let time/bytes control)
+    decodebin_props = (
+        f"caps=video/x-raw "
+        f"max-size-bytes=16777216 "
+        f"max-size-time=1000000000 "
+        f"max-size-buffers=0"
+    )
+
+    if source_type == "usb":
+        if no_webcam_compression:
+            source_element = (
+                f'v4l2src device={video_source} name={name} ! '
+                f'video/x-raw, width=640, height=480 ! '
+                f'{videoflip_str}'
+            )
+        else:
+            width, height = get_camera_resolution(video_width, video_height)
+            source_element = (
+                f'v4l2src device={video_source} name={name} ! image/jpeg, framerate=30/1, width={width}, height={height} ! '
+                f'{QUEUE(name=f"{name}_queue_decode", max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=0, max_size_time=decode_queue_max_size_time)} ! '
+                f'decodebin name={name}_decodebin {decodebin_props} ! '
+                f'{videoflip_str}'
+            )
+    elif source_type == "rpi":
+        rpi_videoflip_str = "videoflip name=videoflip video-direction=horiz ! " if mirror_image else ""
+        source_element = (
+            f"appsrc name=app_source is-live=true leaky-type=downstream max-buffers=3 ! "
+            f"{rpi_videoflip_str}"
+            f"video/x-raw, format={video_format}, width={video_width}, height={video_height} ! "
+        )
+    elif source_type == "libcamera":
+        source_element = (
+            f"libcamerasrc name={name} ! "
+            f"video/x-raw, format={video_format}, width=1536, height=864 ! "
+        )
+    elif source_type == "ximage":
+        source_element = (
+            f"ximagesrc xid={video_source} ! {QUEUE(name=f'{name}queue_scale_')} ! videoscale ! "
+        )
+    elif source_type == 'rtsp':
+        source_element = (
+            f'rtspsrc location="{video_source}" name={name} latency=500 ! '
+            f'{QUEUE(name=f"{name}_queue_decode", max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=0, max_size_time=decode_queue_max_size_time)} ! '
+            f'decodebin name={name}_decodebin {decodebin_props} ! '
+        )
+    else:
+        # File source with video-only decodebin (fixes audio memory leak)
+        source_element = (
+            f'filesrc location="{video_source}" name={name} ! '
+            f"{QUEUE(name=f'{name}_queue_decode', max_size_buffers=decode_queue_max_size_buffers, max_size_bytes=0, max_size_time=decode_queue_max_size_time)} ! "
+            f"decodebin name={name}_decodebin {decodebin_props} ! "
+        )
+
+    # Always enforce framerate for optimized pipeline
+    fps_caps = f"video/x-raw, framerate={frame_rate}/1"
+
+    source_pipeline = (
+        f"{source_element} "
+        f"{QUEUE(name=f'{name}_scale_q')} ! "
+        f"videoscale name={name}_videoscale n-threads=2 ! "
+        f"{QUEUE(name=f'{name}_convert_q')} ! "
+        f"videoconvert n-threads=3 name={name}_convert qos=false ! "
+        f"video/x-raw, pixel-aspect-ratio=1/1, format={video_format}, "
+        f"width={video_width}, height={video_height} ! "
+        f'videorate name={name}_videorate ! capsfilter name={name}_fps_caps caps="{fps_caps}" '
+    )
+
+    return source_pipeline
+
+
+def INFERENCE_PIPELINE_OPTIMIZED(
+    hef_path,
+    post_process_so=None,
+    batch_size=1,
+    config_json=None,
+    post_function_name=None,
+    additional_params="",
+    name="inference",
+    frame_rate=30,  # Kept for API compatibility but not used
+    queue_leaky="downstream",
+    queue_max_size_buffers=5,
+    queue_max_size_time=166666667,  # ~5 frames at 30fps
+    # Extra hailonet parameters
+    scheduler_timeout_ms=None,
+    scheduler_priority=None,
+    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,
+    multi_process_service=None,
+):
+    """Creates an optimized GStreamer pipeline string for inference with:
+    - Leaky queues (drop old frames if full)
+    - Configurable queue sizes per branch
+    - No videorate (framerate is enforced at source only to preserve timestamps)
+
+    Args:
+        hef_path (str): Path to the HEF file.
+        post_process_so (str or None): Path to the post-processing .so file.
+        batch_size (int): Batch size for hailonet (default=1).
+        config_json (str or None): Config JSON for post-processing.
+        post_function_name (str or None): Function name in the .so postprocess.
+        additional_params (str): Additional parameters appended to hailonet.
+        name (str): Prefix name for pipeline elements (default='inference').
+        frame_rate (int): Framerate (kept for API compatibility, not used).
+        queue_leaky (str): Queue leaky mode ('no', 'upstream', 'downstream'). Default='downstream'.
+        queue_max_size_buffers (int): Max buffers per queue. Default=5.
+        queue_max_size_time (int): Max time per queue in ns. Default=~5 frames at 30fps.
+        vdevice_group_id (int): hailonet vdevice-group-id. Default=1.
+        scheduler_timeout_ms (int or None): hailonet scheduler-timeout-ms.
+        scheduler_priority (int or None): hailonet scheduler-priority.
+        multi_process_service (bool or None): hailonet multi-process-service.
+
+    Returns:
+        str: A string representing the optimized GStreamer pipeline for inference.
+    """
+    config_str = f" config-path={config_json} " if config_json else ""
+    function_name_str = f" function-name={post_function_name} " if post_function_name else ""
+    vdevice_group_id_str = f" vdevice-group-id={vdevice_group_id} "
+    scheduler_timeout_ms_str = (
+        f" scheduler-timeout-ms={scheduler_timeout_ms} " if scheduler_timeout_ms is not None else ""
+    )
+    scheduler_priority_str = (
+        f" scheduler-priority={scheduler_priority} " if scheduler_priority is not None else ""
+    )
+
+    hailonet_str = (
+        f"hailonet name={name}_hailonet "
+        f"hef-path={hef_path} "
+        f"batch-size={batch_size} "
+        f"{vdevice_group_id_str}"
+        f"{scheduler_timeout_ms_str}"
+        f"{scheduler_priority_str}"
+        f"{additional_params} "
+        f"force-writable=true "
+    )
+
+    # Use leaky queues to prevent backpressure buildup
+    # NOTE: No videorate here - framerate is enforced at source level only
+    # Adding videorate here causes timestamp issues with cropper/aggregator
+    inference_pipeline = (
+        f"{QUEUE(name=f'{name}_scale_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+        f"videoscale name={name}_videoscale n-threads=2 qos=false ! "
+        f"{QUEUE(name=f'{name}_convert_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+        f"video/x-raw, pixel-aspect-ratio=1/1 ! "
+        f"videoconvert name={name}_videoconvert n-threads=2 ! "
+        f"{QUEUE(name=f'{name}_hailonet_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+        f"{hailonet_str} ! "
+    )
+
+    if post_process_so:
+        inference_pipeline += (
+            f"{QUEUE(name=f'{name}_hailofilter_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+            f"hailofilter name={name}_hailofilter so-path={post_process_so} {config_str} {function_name_str} qos=false ! "
+        )
+
+    inference_pipeline += f"{QUEUE(name=f'{name}_output_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} "
+
+    return inference_pipeline
+
+
+def CROPPER_PIPELINE_OPTIMIZED(
+    inner_pipeline,
+    so_path,
+    function_name,
+    use_letterbox=True,
+    no_scaling_bbox=True,
+    internal_offset=True,
+    resize_method="bilinear",
+    bypass_max_size_buffers=20,
+    queue_leaky="downstream",
+    queue_max_size_buffers=5,
+    queue_max_size_time=166666667,
+    name="cropper_wrapper",
+):
+    """Optimized cropper wrapper with leaky queues.
+
+    Args:
+        inner_pipeline (str): The pipeline string to be wrapped.
+        so_path (str): The path to the cropper .so library.
+        function_name (str): The function name in the .so library.
+        use_letterbox (bool): Whether to preserve aspect ratio. Defaults True.
+        no_scaling_bbox (bool): If True, bounding boxes are not scaled. Defaults True.
+        internal_offset (bool): If True, uses internal offsets. Defaults True.
+        resize_method (str): The resize method. Defaults to 'bilinear'.
+        bypass_max_size_buffers (int): For the bypass queue. Defaults to 20.
+        queue_leaky (str): Queue leaky mode. Default='downstream'.
+        queue_max_size_buffers (int): Max buffers per queue. Default=5.
+        queue_max_size_time (int): Max time per queue in ns.
+        name (str): A prefix name for pipeline elements.
+
+    Returns:
+        str: A pipeline string representing hailocropper + aggregator around the inner_pipeline.
+    """
+    return (
+        f"{QUEUE(name=f'{name}_input_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+        f"hailocropper name={name}_cropper "
+        f"so-path={so_path} "
+        f"function-name={function_name} "
+        f"use-letterbox={str(use_letterbox).lower()} "
+        f"no-scaling-bbox={str(no_scaling_bbox).lower()} "
+        f"internal-offset={str(internal_offset).lower()} "
+        f"resize-method={resize_method} "
+        f"hailoaggregator name={name}_agg "
+        # bypass
+        f"{name}_cropper. ! "
+        f"{QUEUE(name=f'{name}_bypass_q', max_size_buffers=bypass_max_size_buffers, leaky=queue_leaky)} ! {name}_agg.sink_0 "
+        # pipeline for the actual inference
+        f"{name}_cropper. ! {inner_pipeline} ! {name}_agg.sink_1 "
+        # aggregator output
+        f"{name}_agg. ! {QUEUE(name=f'{name}_output_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} "
+    )
+
+
+def INFERENCE_PIPELINE_WRAPPER_OPTIMIZED(
+    inner_pipeline,
+    bypass_max_size_buffers=20,
+    queue_leaky="downstream",
+    queue_max_size_buffers=5,
+    queue_max_size_time=166666667,
+    name="inference_wrapper"
+):
+    """Creates an optimized GStreamer pipeline string that wraps an inner pipeline with leaky queues.
+
+    Args:
+        inner_pipeline (str): The inner pipeline string to be wrapped.
+        bypass_max_size_buffers (int, optional): Max buffers for bypass queue. Defaults to 20.
+        queue_leaky (str): Queue leaky mode. Default='downstream'.
+        queue_max_size_buffers (int): Max buffers per queue. Default=5.
+        queue_max_size_time (int): Max time per queue in ns.
+        name (str, optional): The prefix name for the pipeline elements.
+
+    Returns:
+        str: A string representing the GStreamer pipeline for the inference wrapper.
+    """
+    tappas_post_process_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, TAPPAS_POSTPROC_PATH_DEFAULT)
+    whole_buffer_crop_so = os.path.join(
+        tappas_post_process_dir, "cropping_algorithms/libwhole_buffer.so"
+    )
+
+    inference_wrapper_pipeline = (
+        f"{QUEUE(name=f'{name}_input_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} ! "
+        f"hailocropper name={name}_crop so-path={whole_buffer_crop_so} function-name=create_crops use-letterbox=true resize-method=inter-area internal-offset=true "
+        f"hailoaggregator name={name}_agg "
+        f"{name}_crop. ! {QUEUE(max_size_buffers=bypass_max_size_buffers, name=f'{name}_bypass_q', leaky=queue_leaky)} ! {name}_agg.sink_0 "
+        f"{name}_crop. ! {inner_pipeline} ! {name}_agg.sink_1 "
+        f"{name}_agg. ! {QUEUE(name=f'{name}_output_q', max_size_buffers=queue_max_size_buffers, max_size_time=queue_max_size_time, leaky=queue_leaky)} "
+    )
+
+    return inference_wrapper_pipeline
 
 
 def VIDEO_SHMSINK_PIPELINE(socket_path=None):

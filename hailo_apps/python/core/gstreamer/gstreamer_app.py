@@ -319,7 +319,7 @@ class GStreamerApp:
         self.loop = None
         self.threads = []
         self.error_occurred = False
-        self.pipeline_latency = 300
+        self.pipeline_latency = 3000
 
         # Handle batch-size from parser (default: 1)
         self.batch_size = getattr(self.options_menu, 'batch_size', 1)
