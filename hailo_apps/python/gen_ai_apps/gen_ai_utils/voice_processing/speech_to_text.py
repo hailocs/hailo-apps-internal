@@ -6,6 +6,11 @@ This module handles the transcription of audio using Hailo's Speech2Text model.
 
 from pathlib import Path
 
+# Check dependencies before importing them
+# Note: This checks for the standard voice stack (sounddevice, numpy)
+from .audio_diagnostics import check_voice_dependencies
+check_voice_dependencies()
+
 import numpy as np
 from hailo_platform import VDevice
 from hailo_platform.genai import Speech2Text, Speech2TextTask

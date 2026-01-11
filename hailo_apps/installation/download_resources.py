@@ -624,7 +624,7 @@ class ResourceDownloader:
             name=json_name
         )
         self._tasks.add(task)
-
+    
     def _add_npy_task(self, npy_entry):
         """Add a NPY download task from a NPY entry."""
         if is_none_value(npy_entry):
@@ -662,7 +662,6 @@ class ResourceDownloader:
             name=npy_name
         )
         self._tasks.add(task)
-    
     # -------------------------------------------------------------------------
     # High-Level Collection Methods
     # -------------------------------------------------------------------------
@@ -684,13 +683,12 @@ class ResourceDownloader:
         if "json" in self.config:
             for json_entry in self.config["json"]:
                 self._add_json_task(json_entry)
-    
     def collect_all_npy_files(self):
         """Collect all NPY download tasks from top-level npy section."""
         if "npy" in self.config:
             for npy_entry in self.config["npy"]:
                 self._add_npy_task(npy_entry)
-
+    
     def collect_models_for_app(
         self,
         app_name: str,
@@ -837,7 +835,7 @@ class ResourceDownloader:
         self.collect_all_images()
         self.collect_all_json_files()
         self.collect_all_npy_files()
-
+    
     def _is_gen_ai_app(self, app_config: dict) -> bool:
         """Check if an app is a gen-ai app."""
         if not isinstance(app_config, dict) or "models" not in app_config:
@@ -1138,7 +1136,7 @@ def download_resources(
     downloader.collect_all_images()
     downloader.collect_all_json_files()
     downloader.collect_all_npy_files()
-
+    
     # Collect models based on options
     if model:
         # Download specific model

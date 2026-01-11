@@ -322,9 +322,8 @@ class AudioDiagnostics:
         if device.is_default:
             score += 100
 
-        # Penalize "default", "sysdefault", "dmix" virtual devices to prefer hardware names
-        # But only if we have other options. For now, let's just prefer hardware-looking names
         name_lower = device.name.lower()
+
 
         if "usb" in name_lower:
             score += 50  # Prefer USB devices (likely the plugged in mic/speaker)
@@ -1000,4 +999,52 @@ ctl.!default {{
             results['success'] = True
 
         return results
+    @staticmethod
+    def install_piper_model(model_name: str = "en_US-amy-low", download_dir: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Install a Piper TTS model using the piper.download_voices module.
 
+        Args:
+            model_name (str): Name of the model to download (e.g. 'en_US-amy-low').
+            download_dir (str, optional): Directory to save the model. Defaults to local_resources.
+
+        Returns:
+            Tuple[bool, str]: (Success, Message)
+        """
+        try:
+            # Determine download directory
+            if download_dir is None:
+                # Use REPO_ROOT/local_resources/piper_models
+                download_dir = str(REPO_ROOT / "local_resources" / "piper_models")
+
+            # Create directory if it doesn't exist
+            os.makedirs(download_dir, exist_ok=True)
+
+            logger.info(f"Downloading Piper model '{model_name}' to {download_dir}...")
+
+            # Construct the command
+            # python3 -m piper.download_voices en_US-amy-low --download-dir ...
+            cmd = [
+                sys.executable, "-m", "piper.download_voices",
+                model_name,
+                "--download-dir", download_dir
+            ]
+
+            # Run the command
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300 # 5 minutes timeout for download
+            )
+
+            if result.returncode == 0:
+                return True, f"Successfully installed model '{model_name}' to {download_dir}"
+            else:
+                return False, f"Failed to install model: {result.stderr}"
+
+        except subprocess.TimeoutExpired:
+            return False, "Download timed out"
+        except Exception as e:
+            logger.exception(f"Error installing Piper model: {e}")
+            return False, f"Error: {str(e)}"

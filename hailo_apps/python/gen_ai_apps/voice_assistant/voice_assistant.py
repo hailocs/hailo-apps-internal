@@ -10,6 +10,7 @@ from hailo_apps.python.core.common.defines import LLM_PROMPT_PREFIX, SHARED_VDEV
 from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, init_logging, level_from_args
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import add_vad_args
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import (
     TextToSpeechProcessor,
@@ -58,7 +59,13 @@ class VoiceAssistantApp:
             # 4. TTS
             self.tts = None
             if not no_tts:
-                self.tts = TextToSpeechProcessor()
+                try:
+                    self.tts = TextToSpeechProcessor()
+                except PiperModelNotFoundError:
+                    # Warning handled by TextToSpeechProcessor
+                    self.tts = None
+
+        self.interaction = None
 
         print("✅ AI components ready!")
 
@@ -126,10 +133,19 @@ class VoiceAssistantApp:
         )
 
         # 4. Send remaining text
+        # 4. Send remaining text
         if self.tts and state['sentence_buffer'].strip():
             self.tts.queue_text(state['sentence_buffer'].strip(), current_gen_id)
 
-        print()
+        print() # New line after streaming
+
+        # 5. Handshake: Wait for TTS to finish, then restart listening
+        if self.interaction:
+            try:
+                self.interaction.restart_after_tts()
+            except Exception as e:
+                # If interaction somehow fails or isn't set up
+                pass
 
     def on_clear_context(self):
         self.llm.clear_context()
@@ -157,6 +173,9 @@ def main():
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
 
+    # Add VAD arguments
+    add_vad_args(parser)
+
     args = parser.parse_args()
 
     # Initialize logging
@@ -169,13 +188,7 @@ def main():
         print("TTS disabled: Running in low-resource mode.")
 
     # Initialize the app
-    try:
-        app = VoiceAssistantApp(debug=debug_mode, no_tts=args.no_tts)
-    except PiperModelNotFoundError as e:
-        # Piper model not found - exit with error message
-        print("ERROR: TTS model not found. Use --no-tts to run without TTS, or install the Piper model.")
-        print(str(e))
-        return 1
+    app = VoiceAssistantApp(debug=debug_mode, no_tts=args.no_tts)
 
     # Initialize the interaction manager
     interaction = VoiceInteractionManager(
@@ -185,8 +198,15 @@ def main():
         on_clear_context=app.on_clear_context,
         on_shutdown=app.close,
         on_abort=app.on_abort,
-        debug=debug_mode
+        debug=debug_mode,
+        vad_enabled=args.vad,
+        vad_aggressiveness=args.vad_aggressiveness,
+        vad_energy_threshold=args.vad_energy_threshold,
+        tts=app.tts,  # Pass TTS for automatic inhibition and handshake
     )
+
+    # Inject interaction into app for handshake control
+    app.interaction = interaction
 
     interaction.run()
 

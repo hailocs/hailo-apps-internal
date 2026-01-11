@@ -174,9 +174,8 @@ def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
             return validate_and_fix_call(call)
         except json.JSONDecodeError as e:
             logger.debug("JSON decode failed: %s", e)
-            # Last resort: try partial fix for unquoted keys?
-            # (Maybe too risky for general tool calling)
             return None
+
 
     except Exception as e:
         logger.error("Parse error: %s", e)

@@ -30,6 +30,7 @@ import os
 import re
 import sys
 import traceback
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -67,6 +68,7 @@ from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils import (
     tool_parsing,
     tool_selection,
 )
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import add_vad_args
 
 # Local imports
 try:
@@ -100,6 +102,7 @@ class AgentResponse:
 
     tool_called: bool = False
     tool_name: str = ""
+    tool_args: Optional[Dict[str, Any]] = None
     tool_result: Optional[Dict[str, Any]] = None
     text: str = ""
     raw_response: str = ""
@@ -123,7 +126,12 @@ class AgentApp:
         whisper_hef_path: Optional[Path] = None,
         debug: bool = False,
         no_cache: bool = False,
+        multi_turn: bool = False,
+        vad_enabled: bool = False,
+        vad_aggressiveness: int = 3,
+        vad_energy_threshold: float = 0.005,
     ):
+
         """
         Initialize the agent application.
 
@@ -136,11 +144,20 @@ class AgentApp:
             whisper_hef_path: Path to Whisper HEF (voice mode only).
             debug: Enable debug mode.
             no_cache: If True, skip loading cached states and rebuild context.
+            multi_turn: If True, enabled multi-turn conversation (preserves context).
+            vad_enabled: Enable VAD.
+            vad_aggressiveness: VAD aggressiveness (0-3).
+            vad_energy_threshold: VAD energy threshold.
         """
         self.debug = debug
         self.voice_enabled = voice_enabled
         self.no_tts = no_tts
         self.no_cache = no_cache
+        self.multi_turn = multi_turn
+        self.vad_enabled = vad_enabled
+        self.vad_aggressiveness = vad_aggressiveness
+        self.vad_energy_threshold = vad_energy_threshold
+
         self.selected_tool = selected_tool
         self.selected_tool_name = selected_tool.get("name", "")
 
@@ -168,13 +185,9 @@ class AgentApp:
 
         # Initialize Hailo VDevice
         try:
-            if voice_enabled:
-                # Shared VDevice for multiple models
-                params = VDevice.create_params()
-                params.group_id = SHARED_VDEVICE_GROUP_ID
-                self.vdevice = VDevice(params)
-            else:
-                self.vdevice = VDevice()
+            params = VDevice.create_params()
+            params.group_id = SHARED_VDEVICE_GROUP_ID
+            self.vdevice = VDevice(params)
         except Exception as e:
             logger.error("Failed to create VDevice: %s", e)
             raise
@@ -252,9 +265,6 @@ class AgentApp:
             try:
                 # TextToSpeechProcessor handles device selection internally
                 self.tts = TextToSpeechProcessor()
-            except PiperModelNotFoundError:
-                logger.warning("Piper TTS model not found, continuing without TTS")
-                self.tts = None
             except Exception as e:
                 logger.warning("Failed to initialize TTS: %s", e)
                 self.tts = None
@@ -440,9 +450,19 @@ class AgentApp:
             on_clear_context=self._handle_clear_context,
             on_shutdown=self.close,
             debug=self.debug,
+            vad_enabled=self.vad_enabled,
+            vad_aggressiveness=self.vad_aggressiveness,
+            vad_energy_threshold=self.vad_energy_threshold,
+            tts=self.tts,
         )
 
+        # Inject interaction into app for handshake control
+        self.interaction = interaction
+
+
+
         interaction.run()
+
 
     def _on_voice_input(self, audio) -> None:
         """
@@ -462,10 +482,19 @@ class AgentApp:
 
         if not user_text:
             print("No speech detected.")
+            # Restart listening immediately if no speech
+            if self.interaction and self.voice_enabled:
+                self.interaction.start_listening()
             return
 
         print(f"\nYou: {user_text}")
         self.process_query(user_text)
+
+        # Restart listening (Handshake)
+        if self.interaction and self.voice_enabled:
+            # Wait for TTS to finish if it's playing and restart listening
+            self.interaction.restart_after_tts()
+
 
     def _on_processing_start(self) -> None:
         """Callback when processing starts - interrupt any ongoing TTS."""
@@ -525,21 +554,30 @@ class AgentApp:
             AgentResponse with results.
         """
         # Reload state at start of each query (fresh context for each query)
-        logger.debug("Reloading state for fresh context")
-        if not self.state_manager.reload_state(self.llm):
-            state_name = self.state_manager.current_state or "default"
-            error_msg = (
-                f"Failed to reload state '{state_name}'. "
-                f"Ensure the state exists in {self.state_manager.contexts_dir}"
-            )
-            logger.error(error_msg)
-            assert False, error_msg
+        # UNLESS multi_turn is enabled
+        if not self.multi_turn:
+            logger.debug("Reloading state for fresh context")
+            if not self.state_manager.reload_state(self.llm):
+                state_name = self.state_manager.current_state or "default"
+                error_msg = (
+                    f"Failed to reload state '{state_name}'. "
+                    f"Ensure the state exists in {self.state_manager.contexts_dir}"
+                )
+                logger.error(error_msg)
+                assert False, error_msg
 
         prompt = [message_formatter.messages_user(user_text)]
         logger.debug("User message: %s", json.dumps(prompt, ensure_ascii=False))
 
         # Generate response (agent responses are not sent to TTS, only tool results are)
         try:
+            # Prepare TTS state
+            if self.tts:
+                self.tts.clear_interruption()
+            tts_state = {}
+            token_callback = self._create_tts_callback(tts_state) if self.tts else None
+
+            # Generate response
             #is_debug = self.debug or logger.isEnabledFor(logging.DEBUG)
             raw_response = streaming.generate_and_stream_response(
                 llm=self.llm,
@@ -548,8 +586,7 @@ class AgentApp:
                 seed=config.SEED,
                 max_tokens=config.MAX_GENERATED_TOKENS,
                 prefix="Assistant: ",
-            #    debug_mode=is_debug,
-                token_callback=None,  # Agent response not sent to TTS
+                token_callback=token_callback,  # Enable TTS (streaming filter handles tool calls)
             )
             logger.debug("Raw response length: %d, content: %s", len(raw_response), raw_response[:200])
             if len(raw_response) == 0:
@@ -574,6 +611,12 @@ class AgentApp:
                 if self.debug:
                     logger.debug("Full raw response: %s", raw_response)
             logger.debug("Direct response (no tool)")
+
+            # Flush any remaining TTS text
+            if self.tts and "sentence_buffer" in tts_state and tts_state["sentence_buffer"]:
+                logger.debug("Flushing remaining TTS buffer: %r", tts_state["sentence_buffer"])
+                self.tts.queue_text(tts_state["sentence_buffer"])
+
             return AgentResponse(
                 tool_called=False,
                 text=raw_response,
@@ -605,8 +648,10 @@ class AgentApp:
             logger.debug("Traceback: %s", traceback.format_exc())
             result = {"ok": False, "error": str(e)}
 
-        # TTS for tool result (only tool results are sent to TTS)
-        if self.tts:
+        # TTS for tool result
+        # In multi-turn, we feed the result back to generate a verbal response.
+        # In single-turn (backward compatibility), we must speak the result directly.
+        if self.tts and not self.multi_turn:
             # Clear any previous interruption before queuing new text
             self.tts.clear_interruption()
             if result.get("ok"):
@@ -628,9 +673,65 @@ class AgentApp:
         return AgentResponse(
             tool_called=True,
             tool_name=tool_call.get("name", ""),
+            tool_args=tool_call.get("arguments", {}),
             tool_result=result,
             raw_response=raw_response,
         )
+
+    def feed_tool_result(self, tool_call: Dict[str, Any], result: Dict[str, Any]) -> AgentResponse:
+        """
+        Feed a tool execution result back to the LLM to get the final response.
+
+        Used in multi-turn mode when a tool was called.
+
+        Args:
+            tool_call: The tool call dictionary (name, arguments).
+            result: The result dictionary from tool execution.
+
+        Returns:
+            AgentResponse with the final text response.
+        """
+        if not self.multi_turn:
+            logger.warning("feed_tool_result called but multi_turn is False. Context might be lost.")
+
+        # Add the Tool Result to context
+        # The Assistant's tool call is already in the context from the previous generation step.
+        tool_response_json = json.dumps(result)
+        tool_msg = message_formatter.messages_tool(tool_response_json)
+
+        prompt = [tool_msg]
+
+        logger.debug("Feeding tool result to LLM. Prompt size: %d messages", len(prompt))
+
+        # Generate response
+        try:
+            # Prepare TTS state
+            tts_state = {}
+            token_callback = self._create_tts_callback(tts_state) if self.tts else None
+
+            raw_response = streaming.generate_and_stream_response(
+                llm=self.llm,
+                prompt=prompt,
+                temperature=config.TEMPERATURE,
+                seed=config.SEED,
+                max_tokens=config.MAX_GENERATED_TOKENS,
+                prefix="Assistant: ",
+                token_callback=token_callback,
+            )
+
+            # Flush any remaining TTS text
+            if self.tts and "sentence_buffer" in tts_state and tts_state["sentence_buffer"]:
+                logger.debug("Flushing remaining TTS buffer in feed_tool_result: %r", tts_state["sentence_buffer"])
+                self.tts.queue_text(tts_state["sentence_buffer"])
+
+            return AgentResponse(
+                tool_called=False,
+                text=raw_response,
+                raw_response=raw_response
+            )
+        except Exception as e:
+            logger.error("LLM generation after tool result failed: %s", e)
+            return AgentResponse(text=f"Error: {e}", raw_response="")
 
     def _create_tts_callback(self, state: Dict[str, Any]) -> Callable[[str], None]:
         """
@@ -642,6 +743,13 @@ class AgentApp:
         Returns:
             Callback function.
         """
+        # Initialize state if needed
+        if "sentence_buffer" not in state:
+            state["sentence_buffer"] = ""
+        if "gen_id" not in state:
+            # Use current generation ID from TTS processor (must be int)
+            # This ensures we don't send stale chunks if interrupted
+            state["gen_id"] = self.tts.get_current_gen_id() if self.tts else 0
 
         def tts_callback(chunk: str) -> None:
             if not self.tts:
@@ -723,6 +831,10 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip loading cached context states and rebuild from scratch",
     )
+    # VAD Arguments
+    # VAD Arguments
+    add_vad_args(parser)
+
 
     return parser
 
@@ -821,7 +933,11 @@ def main() -> None:
             whisper_hef_path=whisper_hef_path,
             debug=args.debug,
             no_cache=args.no_cache,
+            vad_enabled=args.vad,
+            vad_aggressiveness=args.vad_aggressiveness,
+            vad_energy_threshold=args.vad_energy_threshold,
         )
+
         app.run()
     except Exception as e:
         logger.error("Agent failed: %s", e)

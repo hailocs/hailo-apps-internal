@@ -47,6 +47,7 @@ gen-ai = [
     "PyAudio",
     "piper-tts",
     "sounddevice==0.5.1",
+    "webrtcvad-wheels",
 ]
 
 # OCR dependencies - install with: pip install -e ".[ocr]"
