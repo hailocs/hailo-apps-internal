@@ -22,7 +22,7 @@ SHARED_VDEVICE_GROUP_ID = "SHARED"  # Do Not Change!
 # Core defaults
 ARM_POSSIBLE_NAME = ["arm", "aarch64"]
 X86_POSSIBLE_NAME = ["x86", "amd64", "x86_64"]
-RPI_POSSIBLE_NAME = ["rpi", "raspberrypi", "pi"]
+RPI_POSSIBLE_NAME = "Raspberry Pi"
 HAILO8_ARCH_CAPS = "HAILO8"
 HAILO8L_ARCH_CAPS = "HAILO8L"
 HAILO10H_ARCH_CAPS = "HAILO10H"

@@ -112,6 +112,13 @@ def _run_command_with_output(cmd: list[str]) -> str:
 #          reid_multisource_pipeline.py, core.py, conftest.py, test_runner.py
 # =============================================================================
 
+def is_raspberry_pi():
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            return  RPI_POSSIBLE_NAME in model
+    except:
+        return False
 
 def detect_host_arch() -> str:
     """Detect the host system architecture.
@@ -128,7 +135,7 @@ def detect_host_arch() -> str:
         hailo_logger.info("Detected host architecture: x86")
         return X86_NAME_I
     if machine_name in ARM_POSSIBLE_NAME:
-        if system_name == LINUX_SYSTEM_NAME_I and platform.uname().node in RPI_POSSIBLE_NAME:
+        if system_name == LINUX_SYSTEM_NAME_I and is_raspberry_pi():
             hailo_logger.info("Detected host architecture: Raspberry Pi")
             return RPI_NAME_I
         hailo_logger.info("Detected host architecture: ARM")
