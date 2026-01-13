@@ -105,6 +105,9 @@ class GStreamerLPRApp(GStreamerApp):
 
         super().__init__(parser, user_data)
 
+        self.video_width = 1920
+        self.video_height = 1080
+
         self.pipeline_type = self.options_menu.pipeline
         self.app_callback = app_callback
 
@@ -495,7 +498,7 @@ class GStreamerLPRApp(GStreamerApp):
             config_json=self.vehicle_json,
             additional_params=self.thresholds_str,
             batch_size=2,
-            scheduler_timeout_ms=100,
+            scheduler_timeout_ms=50,
             name="vehicle_detection",
         )
         vehicle_detection_wrapper = INFERENCE_PIPELINE_WRAPPER(vehicle_detection)
@@ -518,7 +521,7 @@ class GStreamerLPRApp(GStreamerApp):
             config_json=self.plate_json,
             additional_params=self.thresholds_str,
             batch_size=8,
-            scheduler_timeout_ms=100,
+            scheduler_timeout_ms=33,
             name="plate_detection",
         )
 
@@ -536,7 +539,7 @@ class GStreamerLPRApp(GStreamerApp):
             post_function_name=self.ocr_post_function_name,
             config_json=self.ocr_json,
             batch_size=8,
-            scheduler_timeout_ms=100,
+            scheduler_timeout_ms=33,
             name="ocr_detection",
         )
 
@@ -550,6 +553,11 @@ class GStreamerLPRApp(GStreamerApp):
 
         user_callback = USER_CALLBACK_PIPELINE()
 
+        ocrsink_pipeline = (
+            f"{QUEUE(name='lpr_ocrsink_q')} ! "
+            f"hailofilter use-gst-buffer=true so-path={self.ocrsink_so} qos=false "
+        )
+
         display_pipeline = DISPLAY_PIPELINE(
             video_sink=self.video_sink,
             sync=self.sync,
@@ -562,7 +570,7 @@ class GStreamerLPRApp(GStreamerApp):
             f"{tracker_pipeline} ! "
             f"{vehicle_cropper} ! "
             f"{lp_cropper} ! "
-            f"{user_callback} ! "
+            f"{ocrsink_pipeline} ! "
             f"{display_pipeline}"
         )
 

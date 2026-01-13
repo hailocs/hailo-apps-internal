@@ -311,7 +311,7 @@ LPR_VEHICLE_POSTPROCESS_FUNCTION = "yolov5m_vehicles"
 LPR_PLATE_POSTPROCESS_FUNCTION = "yolov8n_license_plate"
 LPR_CROPPERS_SO_FILENAME = "liblpr_croppers.so"
 # Default vehicle cropper function - C++ only (vehicles_roi_cropper in liblpr_croppers.so)
-LPR_VEHICLE_CROPPER_FUNCTION = "vehicles_roi_cropper"
+LPR_VEHICLE_CROPPER_FUNCTION = "vehicles_lpr_cropper"
 LPR_LP_CROPPER_FUNCTION = "license_plate_with_quality"
 LPR_LP_QUALITY_ESTIMATION_CROPPER_FUNCTION = "license_plate_quality_estimation"
 LPR_LP_NO_QUALITY_CROPPER_FUNCTION = "license_plate_no_quality"
