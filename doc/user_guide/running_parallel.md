@@ -16,7 +16,7 @@ The Hailo platform allows running multiple applications in parallel by using sha
 
 ## Configuration
 ### For Vision Applications (GStreamer)
-When using the INFERENCE_PIPELINE helper function, ensure the vdevice_group_id parameter is set correctly:
+When using the INFERENCE_PIPELINE helper function, ensure the vdevice_group_id parameter is set correctly and in case of Hailo8/8L set `multi_process_service=true`:
 
 ```python
 from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
@@ -27,7 +27,8 @@ inference_pipeline = INFERENCE_PIPELINE(
     hef_path="path/to/model.hef",
     post_process_so="path/to/postprocess.so",
     batch_size=1,
-    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # ⚠️ Required for parallel execution
+    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # ⚠️ Required for parallel execution,
+    multi_process_service='true'  # only for Hailo8/8L, 'true' as string, not boolean True
     name="my_inference"
 )
 ```
