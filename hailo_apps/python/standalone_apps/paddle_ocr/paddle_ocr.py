@@ -9,9 +9,14 @@ from pathlib import Path
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 except ImportError:
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.hailo_logger import get_logger, init_logging, level_from_args
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 
 # Check OCR dependencies before importing OCR-specific modules
 def check_ocr_dependencies():
@@ -76,10 +81,15 @@ try:
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
 except ImportError:
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.hailo_inference import HailoInfer
-    from common.toolbox import (
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.toolbox import (
         init_input_source,
         preprocess,
         visualize,
@@ -89,12 +99,12 @@ except ImportError:
         resolve_output_resolution_arg,
         list_inputs,
     )
-    from common.core import (
+    from hailo_apps.python.core.common.core import (
         configure_multi_model_hef_path,
         handle_list_models_flag,
         resolve_hef_paths,
     )
-    from common.parser import get_standalone_parser
+    from hailo_apps.python.core.common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
