@@ -326,11 +326,12 @@ def resolve_hef_path(
     else:
         model_name = candidate_name
     
-    # Case 2: Check if it's a full path that exists
+    # Case 2: Treat an existing path (absolute or relative) as a file path
     hef_full_path = Path(hef_path)
-    if hef_full_path.is_absolute() and hef_full_path.exists():
-        hailo_logger.info(f"Using HEF from absolute path: {hef_full_path}")
-        return hef_full_path
+    if hef_full_path.exists():
+        resolved = hef_full_path.resolve()
+        hailo_logger.info(f"Using HEF from path: {resolved}")
+        return resolved
 
     # Also check with .hef extension
     if not hef_path.endswith(HAILO_FILE_EXTENSION):

@@ -1,7 +1,7 @@
 **Stereo Depth Estimation**
 ===========================
 This example demonstrates stereo depth estimation using the HailoRT C++ API with a StereoNet model.
-It supports both Hailo-8 and Hailo-8l devices.
+It supports Hailo-8 devices only (Hailo-8L is not supported).
 The application receives a HEF file and left/right inputs (images, videos, or camera) and produces depth estimation outputs.
 
 
