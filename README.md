@@ -9,6 +9,10 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 
 **Supports:** Hailo-8, Hailo-8L, and Hailo-10H accelerators
 
+**Supported versions:**
+- **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+- **Hailo-10H:** HailoRT 5.1.1, TAPPAS Core 5.1.0, GenAI Model Zoo 5.1.1
+
 **Perfect for:** Raspberry Pi 5, x86_64 Ubuntu systems, and edge AI deployments.
 
 ## What You Get
@@ -64,6 +68,10 @@ hailo-depth                   # Depth estimation
 
 ### GenAI Applications
 > Hailo-10H generative AI demos: voice assistants, VLM chat, voice-to-action agents
+
+> **Supported versions:**
+> - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+> - **Hailo-10H:** HailoRT 5.1.1, TAPPAS Core 5.1.0, GenAI Model Zoo 5.1.1
 
 ```bash
 # Voice Assistant
