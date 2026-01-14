@@ -17,7 +17,7 @@
     },
 
     "depth_estimation_stereo": {
-      "stereonet": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "cs", "hefs": ["stereonet.hef"], "description": "depth estimation stereo" }
+      "stereonet": { "arch": ["hailo8","hailo10h"], "source": "cs", "hefs": ["stereonet.hef"], "description": "depth estimation stereo" }
     },
 
     "depth_estimation_mono": {
