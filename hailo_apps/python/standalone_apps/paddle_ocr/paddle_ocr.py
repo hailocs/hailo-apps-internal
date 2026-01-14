@@ -47,7 +47,7 @@ def check_ocr_dependencies():
         print("-"*70)
         print("\nTo install all dependencies (recommended):")
         print("  1. Navigate to the repository root directory")
-        print("  2. Run: pip install -e \".[ocr]\"")
+        print("  2. Run: pip install -e \".[ocr]\" (in case Raspberry Pi add --break-system-packages)")
         print("\n" + "="*70)
         sys.exit(1)
 
