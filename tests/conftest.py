@@ -241,3 +241,14 @@ def expected_json_files() -> List[str]:
     if config_manager is None:
         return []
     return config_manager.get_all_json_files()
+
+
+@pytest.fixture(scope="session")
+def expected_npy_files() -> List[str]:
+    """Fixture providing expected NPY files from the shared npy section.
+
+    Returns list of NPY filename strings.
+    """
+    if config_manager is None:
+        return []
+    return config_manager.get_npy_files()
