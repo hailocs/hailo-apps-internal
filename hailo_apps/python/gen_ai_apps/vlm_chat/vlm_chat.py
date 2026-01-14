@@ -101,8 +101,7 @@ class VLMChatApp:
                 config = picam2.create_preview_configuration(main={"size": (640, 480), "format": "RGB888"})
                 picam2.configure(config)
                 picam2.start()
-                # Convert RGB to BGR to match OpenCV/USB standard
-                get_frame = lambda: cv2.cvtColor(picam2.capture_array(), cv2.COLOR_RGB2BGR)
+                get_frame = lambda: picam2.capture_array()
                 cleanup = lambda: picam2.stop()
                 camera_name = "RPI"
                 return get_frame, cleanup, camera_name
