@@ -26,11 +26,16 @@ try:
     from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
     from hailo_apps.python.core.common.parser import get_standalone_parser
 except ImportError:
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.hailo_inference import HailoInfer
-    from common.hailo_logger import get_logger, init_logging, level_from_args
-    from common.toolbox import (
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+    from hailo_apps.python.core.common.toolbox import (
         init_input_source,
         preprocess,
         visualize,
@@ -40,8 +45,8 @@ except ImportError:
         resolve_output_resolution_arg,
         list_inputs,
     )
-    from common.core import handle_list_models_flag, resolve_hef_path
-    from common.parser import get_standalone_parser
+    from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
+    from hailo_apps.python.core.common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
