@@ -243,7 +243,8 @@ def auto_detect_hailort_python_bindings() -> bool:
         bool: True if bindings are installed, False otherwise
     """
     hailo_logger.debug("Detecting HailoRT Python bindings.")
-    pkg_name = get_hailort_package_name()
+    # pkg_name = get_hailort_package_name()
+    pkg_name = 'hailort'  # while hailort debian has different name for 10H, the Python wheel name remains the same for 8 & 10
     if _detect_pip_package_installed(pkg_name):
         hailo_logger.info("Detected HailoRT Python bindings installed.")
         return True

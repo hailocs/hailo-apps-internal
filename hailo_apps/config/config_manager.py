@@ -548,6 +548,22 @@ def get_images() -> list[str]:
     return images
 
 
+def get_npy_files() -> list[str]:
+    """Get list of NPY filenames from resources config.
+    
+    Returns:
+        List of NPY filename strings
+    """
+    config = get_resources_config()
+    npy_files = []
+    for entry in config.get("npy", []):
+        if isinstance(entry, dict) and entry.get("name"):
+            npy_files.append(entry["name"])
+        elif isinstance(entry, str):
+            npy_files.append(entry)
+    return npy_files
+
+
 def get_json_files(app_name: str = None) -> list[str]:
     """Get JSON config filenames from the shared json section.
     
