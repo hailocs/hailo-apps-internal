@@ -518,6 +518,18 @@ class GStreamerApp:
             identity.connect("handoff", _internal_callback_wrapper,
                            self.user_data, self.app_callback, disable_callback)
 
+    def _on_pipeline_rebuilt(self):
+        """
+        Hook method called after pipeline rebuild.
+        
+        Subclasses can override this to reconnect custom callbacks or
+        perform other setup after the pipeline is rebuilt during EOS looping.
+        
+        This is called after _connect_callback() and before the pipeline
+        is set to PLAYING state.
+        """
+        pass
+
     def _rebuild_pipeline(self):
         """
         Completely rebuild the pipeline from scratch for clean looping.
@@ -567,6 +579,9 @@ class GStreamerApp:
 
             # Step 4: Reattach callback
             self._connect_callback()
+
+            # Step 4b: Call hook for subclass-specific reconnections
+            self._on_pipeline_rebuilt()
 
             # Step 5: Disable QoS on all elements to prevent frame drops
             disable_qos(self.pipeline)
