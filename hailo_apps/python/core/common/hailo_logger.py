@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 # ---- module state (singleton-ish) ----
@@ -14,7 +14,7 @@ _CONFIGURED = False
 # Stable run id for this process (not printed by default)
 _RUN_ID = (
     os.getenv("HAILO_RUN_ID")
-    or datetime.utcnow().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
 )
 
 # Basic string->level map (kept small & obvious)

@@ -430,7 +430,7 @@ if _IS_RPI:
             if result.returncode == 0:
                 logger.info("libcamera tools available")
             else:
-                logger.warning("libcamera tools not found in PATH")
+                logger.info("libcamera tools not found in PATH (optional for USB camera users)")
 
 
 # ============================================================================
