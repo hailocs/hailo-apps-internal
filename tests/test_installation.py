@@ -23,6 +23,7 @@ Run only installation tests: pytest -m installation -v
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 from typing import List, Tuple
 
@@ -281,6 +282,9 @@ class TestModelFiles:
         missing_models = []
         found_models = []
         
+        # Gen-AI apps are optional and require --include-gen-ai to download
+        gen_ai_apps = {"agent", "llm_chat", "vlm_chat", "voice_assistant", "whisper_chat"}
+        
         for app_name, model_name in expected_models_for_arch:
             hef_path = models_dir / f"{model_name}.hef"
             if hef_path.exists():
@@ -295,13 +299,55 @@ class TestModelFiles:
             if len(found_models) > 5:
                 logger.info(f"  ... and {len(found_models) - 5} more")
         
-        if missing_models:
-            logger.warning(f"Missing {len(missing_models)} models for {detected_hailo_arch}:")
-            for app, model in missing_models[:5]:
-                logger.warning(f"  ✗ {app}: {model}.hef")
-            logger.warning(
-                "Run 'hailo-download-resources' or 'hailo-post-install' to download missing models."
-            )
+        # Separate gen-ai models from regular models
+        missing_regular = [(app, model) for app, model in missing_models if app not in gen_ai_apps]
+        missing_gen_ai = [(app, model) for app, model in missing_models if app in gen_ai_apps]
+        
+        # On Hailo-10H, gen-ai apps are supported, so include them in auto-download
+        is_hailo10h = detected_hailo_arch == HAILO10H_ARCH
+        
+        if missing_regular or (missing_gen_ai and is_hailo10h):
+            models_to_download = missing_regular + (missing_gen_ai if is_hailo10h else [])
+            logger.info(f"Missing {len(models_to_download)} models for {detected_hailo_arch}:")
+            for app, model in models_to_download:
+                logger.info(f"  ✗ {app}: {model}.hef")
+            logger.info("Downloading missing models...")
+            
+            # Build download command - include gen-ai flag on 10H
+            download_cmd = ["hailo-download-resources", "--arch", detected_hailo_arch]
+            if is_hailo10h and missing_gen_ai:
+                download_cmd.append("--include-gen-ai")
+            
+            logger.info(f"Running: {' '.join(download_cmd)}")
+            try:
+                # Gen-AI models can be very large (1.7GB+ for LLMs), so use longer timeout
+                download_timeout = 2700 if (is_hailo10h and missing_gen_ai) else 600  # 45 min for gen-ai, 10 min otherwise
+                result = subprocess.run(
+                    download_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=download_timeout
+                )
+                if result.returncode == 0:
+                    logger.info("hailo-download-resources completed successfully")
+                    # Verify models were downloaded
+                    still_missing = []
+                    for app_name, model_name in models_to_download:
+                        hef_path = models_dir / f"{model_name}.hef"
+                        if not hef_path.exists():
+                            still_missing.append((app_name, model_name))
+                    if still_missing:
+                        logger.warning(f"Still missing {len(still_missing)} models after download:")
+                        for app, model in still_missing[:5]:
+                            logger.warning(f"  ✗ {app}: {model}.hef")
+                else:
+                    logger.warning(f"hailo-download-resources failed: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                timeout_mins = download_timeout // 60
+                logger.warning(f"hailo-download-resources timed out after {timeout_mins} minutes")
+        
+        if missing_gen_ai and not is_hailo10h:
+            logger.info(f"Gen-AI models not downloaded (only supported on Hailo-10H): {len(missing_gen_ai)} models")
     
     def test_hef_files_valid(self, resources_root_path, detected_hailo_arch):
         """Verify HEF files are valid (non-empty, proper size)."""
