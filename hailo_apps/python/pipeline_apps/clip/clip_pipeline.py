@@ -9,7 +9,7 @@ import numpy as np
 
 # Local application-specific imports
 import hailo
-from hailo_apps.python.core.common import hailo_logger
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.defines import (
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
     CLIP_APP_TITLE,
@@ -50,6 +50,8 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 from hailo_apps.python.pipeline_apps.clip.text_image_matcher import text_image_matcher
 from hailo_apps.python.pipeline_apps.clip import gui
 # endregion
+
+hailo_logger = get_logger(__name__)
 
 class GStreamerClipApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
@@ -128,10 +130,20 @@ class GStreamerClipApp(GStreamerApp):
 
         self.create_pipeline()
 
+        self._connect_matching_callback()
+
+    def _connect_matching_callback(self):
+        """Connect the matching identity callback to the pipeline."""
         identity = self.pipeline.get_by_name(self.matching_callback_name)
         if identity:
             identity.set_property("signal-handoffs", True)
             identity.connect("handoff", self.matching_identity_callback, self.user_data)
+
+    def _on_pipeline_rebuilt(self):
+        """Reconnect custom callbacks after pipeline rebuild."""
+        self._connect_matching_callback()
+        # Reset classified tracks on rebuild (new video loop)
+        self.classified_tracks.clear()
 
     def run(self):
         self.win.connect('delete-event', self.on_window_close)

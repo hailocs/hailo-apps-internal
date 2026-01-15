@@ -75,7 +75,7 @@ def run_pipeline_generic(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            bufsize=1,  # Line buffered
+            bufsize=0,  # Unbuffered for binary mode
         )
 
         # Start background threads to read stdout/stderr

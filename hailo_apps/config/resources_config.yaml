@@ -592,6 +592,8 @@ depth_estimation_stereo: &depth_estimation_stereo_app
       default:
         - name: stereonet
           source: s3
+    hailo8l:
+      default: None
     hailo10h:
       default:
         - name: stereonet
