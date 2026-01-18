@@ -69,16 +69,8 @@ try:
         preprocess,
         visualize,
         FrameRateTracker,
-        resolve_arch,
-        resolve_input_arg,
-        resolve_output_resolution_arg,
-        list_inputs,
     )
-    from hailo_apps.python.core.common.core import (
-        configure_multi_model_hef_path,
-        handle_list_models_flag,
-        resolve_hef_paths,
-    )
+    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
     from hailo_apps.python.core.common.parser import get_standalone_parser
 except ImportError:
     repo_root = None
@@ -93,17 +85,9 @@ except ImportError:
         init_input_source,
         preprocess,
         visualize,
-        FrameRateTracker,
-        resolve_arch,
-        resolve_input_arg,
-        resolve_output_resolution_arg,
-        list_inputs,
+        FrameRateTracker
     )
-    from hailo_apps.python.core.common.core import (
-        configure_multi_model_hef_path,
-        handle_list_models_flag,
-        resolve_hef_paths,
-    )
+    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
     from hailo_apps.python.core.common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
@@ -123,64 +107,13 @@ def parse_args():
     parser.description = "Paddle OCR Example with detection + OCR networks."
     configure_multi_model_hef_path(parser)
 
-    # App-specific arguments
-    parser.add_argument(
-        "--camera-resolution",
-        "-cr",
-        type=str,
-        choices=["sd", "hd", "fhd"],
-        default=None,
-        help="(Camera only) Input resolution: 'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080).",
-    )
-
-    parser.add_argument(
-        "--output-resolution",
-        "-or",
-        nargs="+",
-        type=str,
-        default=None,
-        help=(
-            "Output resolution. Use: 'sd', 'hd', 'fhd', "
-            "or custom size like '--output-resolution 1920 1080'."
-        ),
-    )
-
     parser.add_argument(
         "--use-corrector",
         action="store_true",
         help="Enable text correction after OCR (e.g., for spelling or formatting).",
     )
 
-    handle_list_models_flag(parser, APP_NAME)
-
     args = parser.parse_args()
-
-    # Handle --list-inputs and exit
-    if args.list_inputs:
-        list_inputs(APP_NAME)
-        sys.exit(0)
-
-    # Resolve the two networks
-    args.arch = resolve_arch(args.arch)
-    try:
-        models = resolve_hef_paths(
-            hef_paths=args.hef_path,
-            app_name=APP_NAME,
-            arch=args.arch,
-        )
-    except Exception as exc:
-        logger.error("Failed to resolve HEF paths for %s: %s", APP_NAME, exc)
-        sys.exit(1)
-
-    args.det_net, args.ocr_net = [model.path for model in models]
-    args.input = resolve_input_arg(APP_NAME, args.input)
-    args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
-
-    # Setup output directory
-    if args.output_dir is None:
-        args.output_dir = os.path.join(os.getcwd(), "output")
-    os.makedirs(args.output_dir, exist_ok=True)
-
     return args
 
 
@@ -581,6 +514,8 @@ def main() -> None:
     """
     args = parse_args()
     init_logging(level=level_from_args(args))
+    handle_and_resolve_args(args, APP_NAME, multi_hef=True)
+    args.det_net, args.ocr_net = [model for model in args.hef_path]
     run_inference_pipeline(
         args.det_net,
         args.ocr_net,
