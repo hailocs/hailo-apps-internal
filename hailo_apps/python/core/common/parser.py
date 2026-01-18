@@ -267,7 +267,10 @@ def get_standalone_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-or",
         "--output-resolution",
+<<<<<<< HEAD
         nargs="+",
+=======
+>>>>>>> 5ccfce3 (fix integrations issues)
         type=str,
         help=(
             "Output resolution when using a camera as the input source. "
