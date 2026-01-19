@@ -200,7 +200,7 @@ def ocr_hailo_infer(hailo_inference, input_queue, output_queue):
 def run_inference_pipeline(
     det_net,
     ocr_net,
-    input,
+    input_src,
     batch_size,
     output_dir,
     camera_resolution,
@@ -216,7 +216,7 @@ def run_inference_pipeline(
     Args:
         det_net: model path for the detection network.
         ocr_net: model path for the OCR network.
-        input (str): Input source — 'camera', image directory, or video file path.
+        input_src (str): Input source — 'camera', image directory, or video file path.
         batch_size (int): Number of frames to process in each batch.
         output_dir (str): Directory where output images or videos will be saved.
         camera_resolution (str): Camera input resolution (e.g., 'sd', 'hd', 'fhd').
@@ -230,7 +230,7 @@ def run_inference_pipeline(
         None
     """
     # Initialize capture handle for video/camera or load image folder
-    cap, images = init_input_source(input, batch_size, camera_resolution)
+    cap, images = init_input_source(input_src, batch_size, camera_resolution)
 
     # Queues for passing data between threads
     det_input_queue = queue.Queue()
@@ -351,10 +351,12 @@ def run_inference_pipeline(
     vis_output_queue.put(None)
     vis_postprocess_thread.join()
 
-    logger.info('Inference was successful!')
-
     if show_fps:
-        logger.debug(fps_tracker.frame_rate_summary())
+        logger.info(fps_tracker.frame_rate_summary())
+
+    logger.success("Inference was successful!")
+    if save_output or input_src.lower() not in ("usb", "rpi"):
+        logger.info(f"Results have been saved in {output_dir}")
 
 
 

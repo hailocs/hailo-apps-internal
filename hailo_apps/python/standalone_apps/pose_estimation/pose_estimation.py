@@ -143,7 +143,7 @@ def infer(hailo_inference, input_queue, output_queue):
 
 def run_inference_pipeline(
     net_path: str,
-    input: str,
+    input_src: str,
     batch_size: int,
     class_num: int,
     output_dir: str,
@@ -158,7 +158,7 @@ def run_inference_pipeline(
 
     Args:
         net_path (str): Path to the HEF model file.
-        input (str): Path to the input source (image, video, folder, or camera).
+        input_src (str): Path to the input source (image, video, folder, or camera).
         batch_size (int): Number of frames to process per batch.
         class_num (int): Number of output classes expected by the model.
         output_dir (str): Directory where processed output will be saved.
@@ -184,7 +184,7 @@ def run_inference_pipeline(
     )
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input, batch_size, camera_resolution)
+    cap, images = init_input_source(input_src, batch_size, camera_resolution)
 
     fps_tracker = None
     if show_fps:
@@ -229,10 +229,10 @@ def run_inference_pipeline(
     postprocess_thread.join()
 
     if show_fps:
-        logger.debug(fps_tracker.frame_rate_summary())
+        logger.info(fps_tracker.frame_rate_summary())
 
     logger.success("Inference was successful!")
-    if save_output or input.lower() != "camera":
+    if save_output or input_src.lower() not in ("usb", "rpi"):
         logger.info(f"Results have been saved in {output_dir}")
 
 

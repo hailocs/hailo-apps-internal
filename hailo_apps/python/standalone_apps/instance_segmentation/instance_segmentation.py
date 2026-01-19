@@ -131,7 +131,7 @@ def inference_callback(
 
 def run_inference_pipeline(
     net,
-    input_path,
+    input_src,
     model_type,
     batch_size,
     labels_file,
@@ -139,7 +139,7 @@ def run_inference_pipeline(
     camera_resolution,
     output_resolution,
     frame_rate,
-    save_stream_output=False,
+    save_output=False,
     enable_tracking=False,
     show_fps=False
 ) -> None:
@@ -150,7 +150,7 @@ def run_inference_pipeline(
     labels = get_labels(labels_file)
 
     # Initialize input source from string: "camera", video file, or image folder
-    cap, images = init_input_source(input_path, batch_size, camera_resolution)
+    cap, images = init_input_source(input_src, batch_size, camera_resolution)
     tracker = None
     fps_tracker = None
 
@@ -188,7 +188,7 @@ def run_inference_pipeline(
 
     postprocess_thread = threading.Thread(
         target=visualize,
-        args=(output_queue, cap, save_stream_output, output_dir,
+        args=(output_queue, cap, save_output, output_dir,
                post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
 
@@ -211,7 +211,9 @@ def run_inference_pipeline(
     if show_fps:
         logger.info(fps_tracker.frame_rate_summary())
 
-    logger.success('Inference was successful!')
+    logger.success("Inference was successful!")
+    if save_output or input_src.lower() not in ("usb", "rpi"):
+        logger.info(f"Results have been saved in {output_dir}")
 
 
 

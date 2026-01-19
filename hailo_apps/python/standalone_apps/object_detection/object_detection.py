@@ -99,8 +99,8 @@ def parse_args():
     return args
 
 
-def run_inference_pipeline(net, input, batch_size, labels, output_dir,
-          save_stream_output=False, camera_resolution="sd", output_resolution=None,
+def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
+          save_output=False, camera_resolution="sd", output_resolution=None,
           enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
@@ -109,7 +109,7 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     config_data = load_json_file("config.json")
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input, batch_size, camera_resolution)
+    cap, images = init_input_source(input_src, batch_size, camera_resolution)
     tracker = None
     fps_tracker = None
     if show_fps:
@@ -136,7 +136,7 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
-        args=(output_queue, cap, save_stream_output, output_dir,
+        args=(output_queue, cap, save_output, output_dir,
                post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
     infer_thread = threading.Thread(
@@ -159,8 +159,9 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
         logger.info(fps_tracker.frame_rate_summary())
 
     logger.success("Inference was successful!")
-    if save_output or input.lower() != "camera":
+    if save_output or input_src.lower() not in ("usb", "rpi"):
         logger.info(f"Results have been saved in {output_dir}")
+
 
 
 def infer(hailo_inference, input_queue, output_queue):
