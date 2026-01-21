@@ -18,7 +18,6 @@ Requirements
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
     - 5.1.1 (for Hailo-10H devices)
-- loguru
 - opencv-python
 
 Supported Models
