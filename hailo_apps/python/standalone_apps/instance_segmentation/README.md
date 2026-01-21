@@ -72,7 +72,7 @@ cd hailo-apps/python/standalone_apps/instance_segmentation
 ## Run
 After completing either installation option, run from the application folder:
 ```shell script
-./instance_segmentation.py -n <model_path> -i <input_path> -t <model-type>
+./instance_segmentation.py -n <model_path> -i <input_path> -m <model-type>
 ```
 
 Arguments
@@ -87,7 +87,7 @@ Arguments
   - A **predefined input name** from `resources_config.yaml` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
   - Use `--list-inputs` to display all available predefined inputs.
-- `-t, --model-type`: Specify the model family used by your HEF: v5 (YOLOv5), v8 (YOLOv8), fast (fast-seg).
+- `-m, --model-type`: Specify the model family used by your HEF: v5 (YOLOv5), v8 (YOLOv8), fast (fast-seg).
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
 - `-l, --labels`: [optional] Path to a text file containing class labels. If not provided, default COCO labels are used.
 - `-s, --save_stream_output`: [optional] Save the output of the inference from a stream.
@@ -102,8 +102,8 @@ Arguments
 
 
 ### Environment Variables
-- `CAMERA_INDEX`: [Camera input only] Select which camera index to use when -i camera is specified. Defaults to 0 if not set.
-    - Example: `CAMERA_INDEX=1 ./instance_segmentation.py -n model.hef -i camera`
+- `CAMERA_INDEX`: [Camera input only] Select which usb camera index to use when -i camera is specified. Defaults to 0 if not set.
+    - Example: `CAMERA_INDEX=1 ./instance_segmentation.py -n model.hef -i usb -m v5/v8/fast`
 
 For more information:
 ```shell script
