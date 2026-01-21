@@ -230,7 +230,7 @@ http://dev-public.hailo.ai/<date>/<Hailo8|Hailo10>/
 
 > **Important:** The supported package versions are:
 > - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
-> - **Hailo-10H:** HailoRT 5.1.1, TAPPAS Core 5.1.0, GenAI Model Zoo 5.1.1
+> - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
 ### Usage
 

@@ -325,28 +325,32 @@ validate_versions() {
 }
 
 # Get Model Zoo version for a given Hailo architecture
+# For H10: Derives from HailoRT version (5.1.1 -> v5.1.0, 5.2.0 -> v5.2.0)
+# For H8/H8L: Uses static mapping v2.17.0
 get_model_zoo_version() {
     local arch="$1"
+    local hailort_ver="${HAILORT_VERSION:-}"
     local mz_version=""
 
-    if [[ -z "${MODEL_ZOO_MAPPING:-}" ]]; then
-        # Default mapping if not loaded from config
-        case "$arch" in
-            hailo8|hailo8l) mz_version="v2.17.0" ;;
-            hailo10h) mz_version="v5.1.0" ;;
-            *) mz_version="" ;;
-        esac
-    else
-        # Parse MODEL_ZOO_MAPPING (format: "hailo8=v2.17.0 hailo8l=v2.17.0 hailo10h=v5.1.1")
-        for mapping in $MODEL_ZOO_MAPPING; do
-            local key="${mapping%%=*}"
-            local value="${mapping#*=}"
-            if [[ "$key" == "$arch" ]]; then
-                mz_version="$value"
-                break
+    case "$arch" in
+        hailo8|hailo8l)
+            # H8/H8L always uses v2.17.0
+            mz_version="v2.17.0"
+            ;;
+        hailo10h)
+            # H10: Derive from HailoRT version
+            # HailoRT 5.2.x -> Model Zoo v5.2.0
+            # HailoRT 5.1.x (default) -> Model Zoo v5.1.0
+            if [[ "$hailort_ver" == 5.2.* ]]; then
+                mz_version="v5.2.0"
+            else
+                mz_version="v5.1.0"
             fi
-        done
-    fi
+            ;;
+        *)
+            mz_version=""
+            ;;
+    esac
 
     echo "$mz_version"
 }
@@ -368,7 +372,7 @@ validate_model_zoo_version() {
             valid_versions="${VALID_MZ_H8_VERSIONS:-v2.17.0}"
             ;;
         hailo10h)
-            valid_versions="${VALID_MZ_H10_VERSIONS:-v5.1.1}"
+            valid_versions="${VALID_MZ_H10_VERSIONS:-v5.1.0}"
             ;;
     esac
 

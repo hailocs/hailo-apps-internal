@@ -11,7 +11,7 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 
 **Supported versions:**
 - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
-- **Hailo-10H:** HailoRT 5.1.1, TAPPAS Core 5.1.0, GenAI Model Zoo 5.1.1
+- **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
 **Perfect for:** Raspberry Pi 5, x86_64 Ubuntu systems, and edge AI deployments.
 
@@ -36,6 +36,16 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 **Learn more:** [Hailo Official Website](https://hailo.ai/) | [Community Forum](https://community.hailo.ai/)
 
 ## Quick Start
+
+### Prerequisites
+Before installing hailo-apps, ensure you have the following Hailo packages installed:
+- hailort PCIe driver (.deb package)
+- hailort (.deb package)
+- hailo-tappas-core (.deb package)
+- hailort Python wheel
+- hailo_tappas_core_python_binding Python wheel
+
+> **Note:** These packages are available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/). See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
 
 ### Installation
 ```bash
@@ -71,7 +81,7 @@ hailo-depth                   # Depth estimation
 
 > **Supported versions:**
 > - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
-> - **Hailo-10H:** HailoRT 5.1.1, TAPPAS Core 5.1.0, GenAI Model Zoo 5.1.1
+> - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
 ```bash
 # Voice Assistant
