@@ -24,6 +24,9 @@ This guide provides comprehensive instructions for installing the Hailo Applicat
     - [Hardware Setup for RPi](#hardware-setup-for-rpi)
     - [Software Setup for RPi](#software-setup-for-rpi)
     - [Verification for RPi](#verification-for-rpi)
+  - [Hailo "Suite Docker" Installation](#hailo-suite-docker-installation)
+    - [Prerequisites for Docker](#prerequisites-for-docker)
+    - [Installation in Docker](#installation-in-docker)
   - [Post-Installation Verification](#post-installation-verification)
   - [Uninstallation](#uninstallation)
 
@@ -323,6 +326,47 @@ These instructions are for setting up a Raspberry Pi 5 with a Hailo AI accelerat
     *   Verify `hailotools`: `gst-inspect-1.0 hailotools`
     *   Verify `hailo` (inference element): `gst-inspect-1.0 hailo`
     *   If a plugin is not found, you may need to clear the GStreamer cache: `rm ~/.cache/gstreamer-1.0/registry.aarch64.bin` and reboot.
+
+---
+
+## Hailo "Suite Docker" Installation
+
+If you're running inside the **Hailo Software "Suite Docker"** container, some additional packages are required before running the installation.
+
+### Prerequisites for Docker
+
+Run the following commands to install required dependencies:
+
+```bash
+# Update package lists
+sudo apt-get update
+
+# Install Python virtual environment support
+sudo apt install -y python3-venv
+
+# Install required utilities
+sudo apt-get install -y software-properties-common gnupg
+
+# Upgrade libstdc++6 (required for newer C++ features)
+sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+sudo apt-get update
+sudo apt install -y --only-upgrade libstdc++6
+```
+
+### Installation in Docker
+
+After installing the prerequisites, proceed with the standard installation:
+
+```bash
+# Clone the repository (if not already done)
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
+
+# Run the automated installation script
+sudo ./install.sh
+```
+
+> **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
 
 ---
 
