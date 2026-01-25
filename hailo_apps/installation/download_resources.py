@@ -42,7 +42,7 @@ from hailo_apps.python.core.common.defines import (
     HAILO8L_ARCH,
     HAILO10H_ARCH,
     HAILO_FILE_EXTENSION,
-    JSON_FILE_EXTENSION,
+    HAILORT_VERSION_KEY,
     MODEL_ZOO_URL,
     MODEL_ZOO_VERSION_DEFAULT,
     MODEL_ZOO_VERSION_KEY,
@@ -170,11 +170,29 @@ def map_arch_to_s3_path(hailo_arch: str) -> str:
 
 
 def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
-    """Get Model Zoo version and download architecture for a given Hailo architecture."""
+    """Get Model Zoo version and download architecture for a given Hailo architecture.
+    
+    For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0)
+    For H8/H8L: Uses static mapping v2.17.0
+    """
     download_arch = hailo_arch
     
-    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
+    # First check if explicitly set via environment
+    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY)
     
+    if model_zoo_version is None:
+        # Derive from HailoRT version for H10
+        if hailo_arch == HAILO10H_ARCH:
+            hailort_version = os.getenv(HAILORT_VERSION_KEY, "5.1.1")
+            if hailort_version.startswith("5.2"):
+                model_zoo_version = "v5.2.0"
+            else:
+                model_zoo_version = "v5.1.0"  # Default for 5.1.x
+        else:
+            # H8/H8L always uses v2.17.0
+            model_zoo_version = "v2.17.0"
+    
+    # Validate the version
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
         model_zoo_version = "v5.1.0"
     if hailo_arch in (HAILO8_ARCH, HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
@@ -457,7 +475,9 @@ class ResourceDownloader:
                 return url
             return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
         elif source == "mz":
-            return f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
+            url = f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
+            test_url(url=url)  # Print URL validation info
+            return url
         elif source == "gen-ai-mz":
             # Gen-AI models default to metadata-driven URL construction:
             #   {gen_ai_base}/{version}/blob/{model}.hef
@@ -466,9 +486,11 @@ class ResourceDownloader:
                 .get("s3_endpoints", {})
                 .get("gen_ai_mz", "https://dev-public.hailo.ai")
             )
-            gen_ai_version = "v5.1.1"
+            gen_ai_version = f"v{os.getenv(HAILORT_VERSION_KEY, '5.1.1')}"
             
-            return f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
+            url = f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
+            test_url(url=url)  # Print URL validation info
+            return url
         else:
             hailo_logger.warning(f"Unknown source '{source}' for model '{name}'")
             return None
