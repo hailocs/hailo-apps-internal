@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Tuple, Dict
+
 
 # Base Defaults
 HAILO8_ARCH = "hailo8"
@@ -251,6 +253,28 @@ UDEV_CMD = "udevadm"
 HAILO_RGB_VIDEO_FORMAT = "RGB"
 HAILO_YUYV_VIDEO_FORMAT = "YUYV"
 HAILO_NV12_VIDEO_FORMAT = "NV12"
+
+# Image / camera defaults
+VIDEO_SUFFIXES = (".mp4", ".avi", ".mov", ".mkv")
+IMAGE_EXTENSIONS: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp")
+CAMERA_RESOLUTION_MAP: Dict[str, Tuple[int, int]] = {
+    "sd": (640, 480),
+    "hd": (1280, 720),
+    "fhd": (1920, 1080),
+}
+
+# Resource types supported for SINGLE resource download (download_resources)
+RESOURCE_TYPE_MODEL = "model"
+RESOURCE_TYPE_IMAGE = "image"
+RESOURCE_TYPE_VIDEO = "video"
+
+RESOURCE_TYPES = {
+    RESOURCE_TYPE_MODEL,
+    RESOURCE_TYPE_IMAGE,
+    RESOURCE_TYPE_VIDEO,
+}
+
+CAMERA_KEYWORDS = ["usb", "rpi"]
 
 # Video examples
 BASIC_PIPELINES_VIDEO_EXAMPLE_NAME = "example.mp4"
