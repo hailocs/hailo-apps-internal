@@ -76,3 +76,18 @@ else
     echo "Virtual environment directory '$VENV_NAME' not found. Please ensure it is created and try again."
     return 1
 fi
+
+# Load environment variables from .env file
+ENV_FILE="/usr/local/hailo/resources/.env"
+if [ -f "$ENV_FILE" ]; then
+    # Export variables from .env file (skip comments and empty lines)
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ -z "$key" || "$key" =~ ^# ]] && continue
+        # Export both original case and uppercase versions
+        export "$key=$value"
+        upper_key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+        export "$upper_key=$value"
+    done < "$ENV_FILE"
+    echo "Environment variables loaded from $ENV_FILE"
+fi
