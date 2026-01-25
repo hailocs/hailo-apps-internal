@@ -225,7 +225,7 @@ fi
 if [[ -z ${HAILORT_VERSION+x} || -z "$HAILORT_VERSION" ]]; then
   case "$HW_ARCHITECTURE" in
     hailo8)   HAILORT_VERSION="$HAILORT_VERSION_H8" ;;   # e.g., 4.23.0
-    hailo10h) HAILORT_VERSION="5.1.1" ;;                 # latest for H10H
+    hailo10h) HAILORT_VERSION="$HAILORT_VERSION_H10" ;;
     *)        HAILORT_VERSION="$HAILORT_VERSION_H8" ;;
   esac
 fi

@@ -19,7 +19,7 @@ dependencies = [
     # Core dependencies
     "numpy",
     "setproctitle",
-    "opencv-python",
+    "opencv-python<=4.10.0.84",  # Pin to avoid Qt font warnings in newer versions
     "python-dotenv",
     "pyyaml",
     "Pillow",
