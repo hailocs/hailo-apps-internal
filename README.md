@@ -13,6 +13,8 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
 - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
+> **💡 Running Multiple Apps:** You can run multiple Hailo applications in parallel (e.g., Vision + GenAI). See the [Running Parallel Applications Guide](./doc/user_guide/running_parallel.md) for configuration details.
+
 **Perfect for:** Raspberry Pi 5, x86_64 Ubuntu systems, and edge AI deployments.
 
 ## What You Get
