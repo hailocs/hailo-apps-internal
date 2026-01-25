@@ -67,6 +67,10 @@ from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 # Configuration
 # =============================================================================
 
+# User-Agent string to avoid 403 errors from Cloudflare-protected servers
+# Some servers (like dev-public.hailo.ai) block requests with Python's default User-Agent
+DEFAULT_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
 @dataclass
 class DownloadConfig:
     """Configuration for the resource downloader."""
@@ -136,7 +140,11 @@ def is_valid_model_entry(entry) -> bool:
 def test_url(url: str) -> bool:
     """Test if a URL is reachable and valid."""
     try:
-        request = urllib.request.Request(url, method='HEAD')
+        request = urllib.request.Request(
+            url, 
+            method='HEAD',
+            headers={'User-Agent': DEFAULT_USER_AGENT}
+        )
         with urllib.request.urlopen(request, timeout=30) as response:
             print(f"✓ URL valid: {url}")
             print(f"  Status: {response.status}")
@@ -209,7 +217,11 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
 def get_remote_file_size(url: str, timeout: int = 30) -> Optional[int]:
     """Get the size of a remote file without downloading it."""
     try:
-        request = urllib.request.Request(url, method='HEAD')
+        request = urllib.request.Request(
+            url, 
+            method='HEAD',
+            headers={'User-Agent': DEFAULT_USER_AGENT}
+        )
         with urllib.request.urlopen(request, timeout=timeout) as response:
             content_length = response.headers.get('Content-Length')
             if content_length:
@@ -399,11 +411,27 @@ class ResourceDownloader:
                 progress = ProgressTracker(self.download_config.show_progress)
                 hailo_logger.info(f"Downloading: {url}")
                 
-                urllib.request.urlretrieve(
+                # Use urlopen with custom User-Agent to avoid 403 from Cloudflare-protected servers
+                request = urllib.request.Request(
                     url,
-                    temp_path,
-                    progress.update if self.download_config.show_progress else None
+                    headers={'User-Agent': DEFAULT_USER_AGENT}
                 )
+                
+                with urllib.request.urlopen(request, timeout=self.download_config.timeout) as response:
+                    total_size = int(response.headers.get('Content-Length', 0))
+                    block_size = 8192
+                    downloaded = 0
+                    
+                    with open(temp_path, 'wb') as out_file:
+                        while True:
+                            block = response.read(block_size)
+                            if not block:
+                                break
+                            out_file.write(block)
+                            downloaded += len(block)
+                            if self.download_config.show_progress:
+                                progress.update(downloaded // block_size, block_size, total_size)
+                
                 progress.finish()
                 
                 # Verify download size
