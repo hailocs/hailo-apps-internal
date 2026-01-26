@@ -337,7 +337,6 @@ InputType determine_input_type(const std::string& input_path,
         input_type.is_image = true;
         frame_count = 1; // Single image
 
-
     } else if (is_video(input_path)) {
         std::cout << "Detected video file input: " << input_path << "\n";
         input_type.is_video = true;
