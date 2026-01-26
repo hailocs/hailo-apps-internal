@@ -63,6 +63,9 @@ cd hailo-apps
 sudo ./install.sh
 source setup_env.sh
 ```
+⚠️ **Option 2 only (Python 3.10 / 3.11)**: If you encounter `ModuleNotFoundError: distutils.msvccompiler`,
+run `export SETUPTOOLS_USE_DISTUTILS=stdlib` **before** executing the application.
+
 
 Then the app is already ready for usage:
 ```shell script

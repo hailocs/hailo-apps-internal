@@ -9,6 +9,7 @@ import subprocess
 import cv2
 import numpy as np
 import re
+import threading
 
 try:
     from hailo_apps.python.core.common.defines import (
@@ -19,7 +20,6 @@ try:
         VIDEO_SUFFIXES
     )
     from hailo_apps.python.core.common.hailo_logger import get_logger
-    from hailo_apps.python.core.common.camera_utils import is_rpi_camera_available
     from hailo_apps.python.core.common.installation_utils import is_raspberry_pi
 except ImportError:
     from .defines import (
@@ -35,16 +35,22 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+
+
 class PiCamera2CaptureAdapter:
     """
-    Minimal adapter to look like cv2.VideoCapture:
-      - read() -> (ret, frame)
-      - isOpened()
-      - release()
+    Adapter that makes Picamera2 behave like cv2.VideoCapture.
+
+    Goals:
+    - Provide read(), isOpened(), get(), release() APIs compatible with OpenCV code
+    - Avoid deadlocks when release() is called while another thread is reading
+    - Ensure stop()/close() never race with capture_array()
     """
+
     def __init__(self, picam2):
         self.picam2 = picam2
         self._opened = True
+        self._io_lock = threading.Lock()
 
     def isOpened(self):
         return self._opened
@@ -52,13 +58,38 @@ class PiCamera2CaptureAdapter:
     def read(self):
         if not self._opened:
             return False, None
-        frame_bgr = self.picam2.capture_array()
-        if frame_bgr is None:
+
+        # prevent stop/close while capturing
+        with self._io_lock:
+            if not self._opened: # re-check after taking lock
+                return False, None
+            frame = self.picam2.capture_array()
+
+        if frame is None:
             return False, None
-        return True, frame_bgr
+        return True, frame
+
+    def get(self, prop_id: int) -> float:
+        if prop_id in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT):
+            try:
+                cfg = self.picam2.camera_configuration()
+                size = cfg.get("main", {}).get("size", None)
+                if size and len(size) == 2:
+                    w, h = int(size[0]), int(size[1])
+                    return float(w if prop_id == cv2.CAP_PROP_FRAME_WIDTH else h)
+            except Exception:
+                pass
+            return 0.0
+        if prop_id == cv2.CAP_PROP_FPS:
+            return 30.0
+        return None
 
     def release(self):
-        if self._opened:
+        # stop new reads ASAP
+        self._opened = False
+
+        # wait if a read() is currently inside capture_array()
+        with self._io_lock:
             try:
                 self.picam2.stop()
             except Exception:
@@ -67,7 +98,6 @@ class PiCamera2CaptureAdapter:
                 self.picam2.close()
             except Exception:
                 pass
-        self._opened = False
 
 
 def get_usb_video_devices() -> dict[int, str]:
@@ -198,16 +228,10 @@ def open_rpi_camera():
         logger.error(f"Picamera2 not available: {e}")
         return None
 
-    if not is_rpi_camera_available():
-        logger.error("No Raspberry Pi camera detected or not responsive.")
-        return None
-
     try:
         picam2 = Picamera2()
-
-        config = picam2.create_preview_configuration(
-            main={"size": (1280, 720), "format": "BGR888"}
-        )
+        main = {"size": (800, 600), "format": "RGB888"}
+        config = picam2.create_video_configuration(main=main, controls={"FrameRate": 30})
 
         picam2.configure(config)
         picam2.start()
@@ -272,7 +296,7 @@ def init_input_source(input_src: str, batch_size: int, resolution: Optional[str]
         if cap is None:
             sys.exit(1)
 
-        logger.info("Using Raspberry Pi camera at 1280x720")
+        logger.info("Using Raspberry Pi camera at 800x600")
         return cap, None
 
     # ------------------------------------------------
@@ -353,63 +377,7 @@ def load_json_file(path: str) -> Dict[str, Any]:
 
     return data
 
-'''
-def init_input_source(input_path, batch_size, resolution):
-    """
-    Initialize input source from camera, video file, or image directory.
 
-    Args:
-        input_path (str): "camera", video file path, or image directory.
-        batch_size (int): Number of images to validate against.
-        resolution (str or None): One of ['sd', 'hd', 'fhd'], or None to use native camera resolution.
-
-    Returns:
-        Tuple[Optional[cv2.VideoCapture], Optional[List[np.ndarray]]]
-    """
-    cap = None
-    images = None
-
-    def get_camera_native_resolution():
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        res = (int(cap.get(3)), int(cap.get(4))) if cap.isOpened() else (640, 480)
-        cap.release()
-        return res
-
-
-    if input_path == "camera":
-
-        if not is_valid_camera_index(CAMERA_INDEX):
-            logger.error(f"CAMERA_INDEX {CAMERA_INDEX} not found.")
-            available = list_available_cameras()
-            logger.warning(f"Available camera indices: {available}")
-            exit(1)
-
-        if not resolution:
-            CAMERA_CAP_WIDTH, CAMERA_CAP_HEIGHT = get_camera_native_resolution()
-        else:
-            CAMERA_CAP_WIDTH, CAMERA_CAP_HEIGHT = CAMERA_RESOLUTION_MAP.get(resolution, (640, 480))  # fallback to SD
-
-        cap = cv2.VideoCapture(CAMERA_INDEX)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_CAP_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_CAP_HEIGHT)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-
-    elif any(input_path.lower().endswith(suffix) for suffix in ['.mp4', '.avi', '.mov', '.mkv']):
-        if not os.path.exists(input_path):
-            logger.error(f"File not found: {input_path}")
-            sys.exit(1)
-        cap = cv2.VideoCapture(input_path)
-    else:
-        images = load_images_opencv(input_path)
-        try:
-            validate_images(images, batch_size)
-        except ValueError as e:
-            logger.error(e)
-            sys.exit(1)
-
-    return cap, images
-
-'''
 def load_images_opencv(images_path: str) -> List[np.ndarray]:
     """
     Load images from the specified path as RGB.
@@ -573,7 +541,7 @@ def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, framerate: float
     input_queue.put(None)  #Add sentinel value to signal end of input
 
 
-def preprocess_from_cap(cap: cv2.VideoCapture,
+def preprocess_from_cap(cap: Any,
                         batch_size: int,
                         input_queue: queue.Queue,
                         width: int,
@@ -581,17 +549,11 @@ def preprocess_from_cap(cap: cv2.VideoCapture,
                         preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
                         framerate: Optional[float] = None) -> None:
     """
-    Process frames from the camera stream and enqueue them.
-
-    If `framerate` is provided, we *skip frames* so that only approximately
-    `framerate` frames per second are processed and displayed.
-
-    The camera can still run at its native FPS (e.g. 30 FPS), but we only
-    use every N-th frame. This gives the effect of 1 FPS / 5 FPS / 10 FPS
-    in the live view without adding artificial lag.
+    Read frames from a capture source, optionally limit how often frames are
+    allowed into the pipeline, preprocess them, and enqueue them in batches.
 
     Args:
-        cap (cv2.VideoCapture): VideoCapture object.
+        cap: VideoCapture object.
         batch_size (int): Number of images per batch.
         input_queue (queue.Queue): Queue for input images.
         width (int): Model input width.
@@ -719,7 +681,7 @@ def resize_frame_for_output(frame: np.ndarray,
 
 def visualize(
     output_queue: queue.Queue,
-    cap: Optional[cv2.VideoCapture],
+    cap: Optional[Any],
     save_stream_output: bool,
     output_dir: str,
     callback: Callable[[Any, Any], None],
