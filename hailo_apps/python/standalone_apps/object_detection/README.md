@@ -12,7 +12,6 @@ Requirements
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
     - 5.1.1 (for Hailo-10H devices)
-- loguru
 - opencv-python
 - scipy
 - lap
@@ -95,7 +94,7 @@ Arguments
   - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
 - `-l, --labels`: [optional] Path to a text file containing class labels. If not provided, default COCO labels are used.
-- `-s, --save_output`: [optional] Save the output of the inference from a stream.
+- `-s, --save-output`: [optional] Save the output of the inference from a stream.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `--draw-trail`: [optional][Tracking only] Draw motion trails of tracked objects.
 - `cr, --camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).

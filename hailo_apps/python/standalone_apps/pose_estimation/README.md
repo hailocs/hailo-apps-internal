@@ -88,7 +88,7 @@ Arguments
   - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: Number of images in one batch.
 - `-cn, --class_num`: The number of classes the model is trained on. Defaults to 1.
-- `-s, --save_output`: [optional] Save the output of the inference from a stream.
+- `-s, --save-output`: [optional] Save the output of the inference from a stream.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `--show-fps`: [optional] Display FPS performance metrics for video/camera input.
 - `cr, --camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
