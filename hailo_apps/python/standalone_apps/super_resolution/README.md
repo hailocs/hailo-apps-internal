@@ -80,7 +80,7 @@ Arguments
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
   - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
-- `-s, --save_output`: [optional] Save the output of the inference from a stream.
+- `-s, --save-output`: [optional] Save the output of the inference from a stream.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `cr, --camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
 - `or, --output-resolution`: [optional] Set output size using `sd|hd|fhd`, or pass custom width/height (e.g., `--output-resolution 1920 1080`).
