@@ -331,6 +331,7 @@ InputType determine_input_type(const std::string& input_path,
                                const std::string &camera_resolution)
 {
     InputType input_type;
+
     if (is_directory_of_images(input_path, frame_count, batch_size)) {
         input_type.is_directory = true;
 
@@ -338,28 +339,28 @@ InputType determine_input_type(const std::string& input_path,
         input_type.is_image = true;
         frame_count = 1; // Single image
 
-
     } else if (is_video(input_path)) {
-        std::cout << "-I- Detected video file input: " << input_path << "\n";
+        std::cout << "Detected video file input: " << input_path << "\n";
         input_type.is_video = true;
-        capture = open_video_capture(input_path, std::ref(capture), std::ref(org_height), std::ref(org_width), std::ref(frame_count), false);
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, false);
 
     } else if (input_path == "usb") {
         input_type.is_camera = true;
-        std::string dev = find_first_usb_camera();
-        if (dev.empty()) {
+        std::string video_device = find_first_usb_camera();
+        if (video_device.empty()) {
             throw std::runtime_error("No USB camera detected");
         }
-        std::cout << "-I- Using USB camera: " << dev << "\n";
-        capture = open_video_capture(dev, std::ref(capture), std::ref(org_height), std::ref(org_width), std::ref(frame_count), true, std::ref(camera_resolution));
+        std::cout << "Using USB camera: " << video_device << "\n";
+        capture = open_video_capture(video_device, capture, org_height, org_width, frame_count, true, camera_resolution);
 
     } else if (input_path.rfind("/dev/video", 0) == 0) { // user gave explicit device like /dev/video1
         input_type.is_camera = true;
-        capture = open_video_capture(input_path, std::ref(capture), std::ref(org_height), std::ref(org_width), std::ref(frame_count), true, std::ref(camera_resolution));
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, true, camera_resolution);
 
     } else if (input_path == "rpi") {
         input_type.is_camera = true;
-        capture = open_video_capture(input_path, std::ref(capture), std::ref(org_height), std::ref(org_width), std::ref(frame_count), true, std::ref(camera_resolution));
+        std::cout << "Using RPI camera"<< "\n";
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, true, camera_resolution);
     }
     else {
         throw std::runtime_error("Unsupported input type: " + input_path);
@@ -850,7 +851,6 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     bool is_camera,
     const std::string &camera_resolution) 
     {
-
     const bool is_rpi_input = (input_path == "rpi");
     // Validate platform
     if (is_rpi_input && !is_raspberry_pi()) {
@@ -878,14 +878,14 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     }
 
     if (is_rpi_input) {
-        width = 800;
-        height = 600;
-        std::string pipeline = make_rpi_gst_pipeline(800, 600, fps);
+        org_width  = width  = 800;
+        org_height = height = 600;
+        std::string pipeline = make_rpi_gst_pipeline(width, height, fps);
         capture.open(pipeline, cv::CAP_GSTREAMER);
     } else {
         capture.open(input_path, cv::CAP_ANY);
 
-        if (is_camera) {
+        if (is_camera) { //usb camera
             capture.set(cv::CAP_PROP_FRAME_WIDTH,  width);
             capture.set(cv::CAP_PROP_FRAME_HEIGHT, height);
             capture.set(cv::CAP_PROP_FPS, fps);
@@ -896,17 +896,12 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
         throw std::runtime_error("Unable to open input file / camera");
     }
 
-    if (is_rpi_input) {
-        org_width  = width;
-        org_height = height;
-    } else {
+    if (!is_rpi_input) {
         org_width  = capture.get(cv::CAP_PROP_FRAME_WIDTH);
         org_height = capture.get(cv::CAP_PROP_FRAME_HEIGHT);
     }
 
-    frame_count = is_camera ? 0
-                            : static_cast<size_t>(capture.get(cv::CAP_PROP_FRAME_COUNT));
-
+    frame_count = is_camera ? 0 : static_cast<size_t>(capture.get(cv::CAP_PROP_FRAME_COUNT));
     return capture;
 }
 
