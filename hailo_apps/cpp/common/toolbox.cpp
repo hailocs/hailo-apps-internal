@@ -6,7 +6,6 @@
 #include <fstream>
 #include <string>
 
-
 namespace hailo_utils {
 
 namespace fs = std::filesystem;
@@ -290,8 +289,7 @@ void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, ch
     args.input = resolve_input_arg(app, args.input);
 }
 
-
-static std::string find_first_usb_camera()
+static std::string find_usb_camera()
 {
     namespace fs = std::filesystem;
 
@@ -346,9 +344,12 @@ InputType determine_input_type(const std::string& input_path,
 
     } else if (input_path == "usb") {
         input_type.is_camera = true;
-        std::string video_device = find_first_usb_camera();
-        if (video_device.empty()) {
-            throw std::runtime_error("No USB camera detected");
+        std::string video_device = "/dev/video0";
+        if (is_raspberry_pi()) {
+            video_device = find_usb_camera();
+            if (video_device.empty()) {
+                throw std::runtime_error("No USB camera detected");
+            }
         }
         std::cout << "Using USB camera: " << video_device << "\n";
         capture = open_video_capture(video_device, capture, org_height, org_width, frame_count, true, camera_resolution);
