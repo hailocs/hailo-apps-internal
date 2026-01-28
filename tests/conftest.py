@@ -70,6 +70,14 @@ CONFIG_DIR = REPO_ROOT / "hailo_apps" / "config"
 RESOURCES_CONFIG_PATH = CONFIG_DIR / "resources_config.yaml"
 POSTPROCESS_MESON_PATH = REPO_ROOT / "hailo_apps" / "postprocess" / "cpp" / "meson.build"
 
+# Delay settings for test cleanup to prevent resource contention
+USB_CAMERA_CLEANUP_DELAY = 1.0  # seconds - after USB camera tests
+MULTI_MODEL_CLEANUP_DELAY = 2.0  # seconds - after multi-model pipelines (CLIP, face_recognition, etc.)
+DEFAULT_TEST_CLEANUP_DELAY = 0.5  # seconds - small delay between all pipeline tests
+
+# Resource-intensive multi-model apps that need extra cleanup time
+MULTI_MODEL_APPS = ['clip', 'face_recognition', 'reid_multisource', 'paddle_ocr']
+
 
 # ============================================================================
 # PYTEST CONFIGURATION
@@ -82,6 +90,40 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "resources: Resource file validation tests")
     config.addinivalue_line("markers", "requires_device: Tests requiring a Hailo device")
     config.addinivalue_line("markers", "requires_gstreamer: Tests requiring GStreamer")
+
+
+def pytest_runtest_teardown(item, nextitem):
+    """Hook that runs after each test.
+    
+    Adds delays after tests to allow proper cleanup:
+    - USB camera tests: allow camera device release
+    - Multi-model pipelines: allow Hailo device and memory cleanup
+    - All pipeline tests: small delay to prevent resource contention
+    """
+    import time
+    
+    test_name = item.name if hasattr(item, 'name') else str(item)
+    test_name_lower = test_name.lower()
+    
+    # Determine appropriate delay based on test type
+    delay = 0.0
+    
+    # Check for multi-model apps (CLIP, face_recognition, etc.) - highest priority
+    for app in MULTI_MODEL_APPS:
+        if app in test_name_lower:
+            delay = max(delay, MULTI_MODEL_CLEANUP_DELAY)
+            break
+    
+    # Check for USB camera tests
+    if 'input_usb' in test_name_lower or '_usb' in test_name_lower:
+        delay = max(delay, USB_CAMERA_CLEANUP_DELAY)
+    
+    # Apply default delay for pipeline tests if no other delay was set
+    if delay == 0.0 and 'test_pipeline' in test_name_lower:
+        delay = DEFAULT_TEST_CLEANUP_DELAY
+    
+    if delay > 0:
+        time.sleep(delay)
 
 
 # ============================================================================
@@ -241,3 +283,14 @@ def expected_json_files() -> List[str]:
     if config_manager is None:
         return []
     return config_manager.get_all_json_files()
+
+
+@pytest.fixture(scope="session")
+def expected_npy_files() -> List[str]:
+    """Fixture providing expected NPY files from the shared npy section.
+
+    Returns list of NPY filename strings.
+    """
+    if config_manager is None:
+        return []
+    return config_manager.get_npy_files()

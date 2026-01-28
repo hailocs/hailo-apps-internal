@@ -316,33 +316,41 @@ validate_versions() {
     fi
 
     if [[ "$valid" != true ]]; then
-        log_warning "Version validation warnings above - installation will continue"
+        log_error "Version validation failed - installation cannot continue"
+        log_error "Please ensure all components match the supported versions listed in config.yaml"
+        return 1
     fi
+    
+    return 0
 }
 
 # Get Model Zoo version for a given Hailo architecture
+# For H10: Derives from HailoRT version (5.1.1 -> v5.1.0, 5.2.0 -> v5.2.0)
+# For H8/H8L: Uses static mapping v2.17.0
 get_model_zoo_version() {
     local arch="$1"
+    local hailort_ver="${HAILORT_VERSION:-}"
     local mz_version=""
 
-    if [[ -z "${MODEL_ZOO_MAPPING:-}" ]]; then
-        # Default mapping if not loaded from config
-        case "$arch" in
-            hailo8|hailo8l) mz_version="v2.17.0" ;;
-            hailo10h) mz_version="v5.1.0" ;;
-            *) mz_version="" ;;
-        esac
-    else
-        # Parse MODEL_ZOO_MAPPING (format: "hailo8=v2.17.0 hailo8l=v2.17.0 hailo10h=v5.1.1")
-        for mapping in $MODEL_ZOO_MAPPING; do
-            local key="${mapping%%=*}"
-            local value="${mapping#*=}"
-            if [[ "$key" == "$arch" ]]; then
-                mz_version="$value"
-                break
+    case "$arch" in
+        hailo8|hailo8l)
+            # H8/H8L always uses v2.17.0
+            mz_version="v2.17.0"
+            ;;
+        hailo10h)
+            # H10: Derive from HailoRT version
+            # HailoRT 5.2.x -> Model Zoo v5.2.0
+            # HailoRT 5.1.x (default) -> Model Zoo v5.1.0
+            if [[ "$hailort_ver" == 5.2.* ]]; then
+                mz_version="v5.2.0"
+            else
+                mz_version="v5.1.0"
             fi
-        done
-    fi
+            ;;
+        *)
+            mz_version=""
+            ;;
+    esac
 
     echo "$mz_version"
 }
@@ -364,7 +372,7 @@ validate_model_zoo_version() {
             valid_versions="${VALID_MZ_H8_VERSIONS:-v2.17.0}"
             ;;
         hailo10h)
-            valid_versions="${VALID_MZ_H10_VERSIONS:-v5.1.1}"
+            valid_versions="${VALID_MZ_H10_VERSIONS:-v5.1.0}"
             ;;
     esac
 
@@ -776,9 +784,15 @@ check_prerequisites() {
 
     # Validate versions against config (including architecture)
     if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"
+        if ! validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"; then
+            record_step_result "FAILED" "Version validation failed"
+            return 1
+        fi
     else
-        validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"
+        if ! validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"; then
+            record_step_result "FAILED" "Version validation failed"
+            return 1
+        fi
     fi
 
     # Validate Model Zoo version if we have both arch and MZ version
@@ -1037,10 +1051,11 @@ install_python_packages() {
 
     # Install Hailo Python packages if needed
     if [[ "${INSTALL_HAILORT}" == true ]]; then
-        local install_script="${SCRIPT_DIR}/scripts/hailo_python_installation.sh"
+        local install_script="${SCRIPT_DIR}/scripts/hailo_installer_python.sh"
 
         if [[ -f "$install_script" ]]; then
             log_info "Installing Hailo Python packages..."
+            local arch_arg=""
             local flags=""
 
             if [[ -z "${HAILO_ARCH:-}" || "${HAILO_ARCH}" == "unknown" ]]; then
@@ -1050,8 +1065,8 @@ install_python_packages() {
             fi
 
             case "${HAILO_ARCH}" in
-                hailo8|hailo8l) flags="${flags} --arch=hailo8" ;;
-                hailo10h) flags="${flags} --arch=hailo10h" ;;
+                hailo8|hailo8l) arch_arg="hailo8" ;;
+                hailo10h) arch_arg="hailo10h" ;;
                 *)
                     log_error "Unsupported HAILO_ARCH value: ${HAILO_ARCH}. Expected hailo8/hailo8l/hailo10h."
                     record_step_result "FAILED" "Unsupported HAILO_ARCH"
@@ -1060,15 +1075,15 @@ install_python_packages() {
             esac
 
             if [[ "${INSTALL_HAILORT}" == true && -n "${HAILORT_VERSION}" && "${HAILORT_VERSION}" != "-1" ]]; then
-                flags="${flags} --hailort-version=${HAILORT_VERSION}"
+                flags="${flags} --hailort-version ${HAILORT_VERSION}"
                 log_debug "Installing HailoRT version: ${HAILORT_VERSION}"
             fi
             if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
                 flags="${flags} --no-tappas"
             fi
 
-            log_debug "Running: ${install_script} ${flags}"
-            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${flags}"; then
+            log_debug "Running: ${install_script} ${arch_arg} ${flags}"
+            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${arch_arg} ${flags}"; then
                 log_warning "Hailo Python package installation had issues"
                 log_info "Continuing with installation - packages may be available from system"
             fi

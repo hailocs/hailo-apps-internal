@@ -18,34 +18,35 @@ try:
         preprocess,
         visualize,
         FrameRateTracker,
-        resolve_arch,
-        resolve_input_arg,
-        list_inputs,
     )
-    from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
+    from hailo_apps.python.core.common.core import handle_and_resolve_args
 except ImportError:
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from tracker.byte_tracker import BYTETracker
-    from common.hailo_inference import HailoInfer
-    from common.toolbox import (
+    # Running as a plain script: add repo root so `import hailo_apps` works.
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+
+    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
+    from hailo_apps.python.core.common.hailo_inference import HailoInfer
+    from hailo_apps.python.core.common.core import handle_and_resolve_args
+    from hailo_apps.python.core.common.toolbox import (
         init_input_source,
         get_labels,
         load_json_file,
         preprocess,
         visualize,
         FrameRateTracker,
-        resolve_arch,
-        resolve_input_arg,
-        list_inputs,
     )
-    from common.core import handle_list_models_flag, resolve_hef_path
-    from common.parser import get_standalone_parser
-    from common.hailo_logger import get_logger, init_logging, level_from_args
-    from object_detection_post_process import inference_result_handler
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+    from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -61,38 +62,46 @@ def parse_args():
     parser = get_standalone_parser()
     parser.description = "Run object detection with optional tracking and performance measurement."
 
-    handle_list_models_flag(parser, APP_NAME)
+    parser.add_argument(
+        "--track",
+        action="store_true",
+        help=(
+            "Enable object tracking for detections. "
+            "When enabled, detected objects will be tracked across frames using a tracking algorithm "
+            "(e.g., ByteTrack). This assigns consistent IDs to objects over time, enabling temporal analysis, "
+            "trajectory visualization, and multi-frame association. Useful for video processing applications."
+        ),
+    )
+
+    parser.add_argument(
+        "--labels",
+        "-l",
+        type=str,
+        default=None,
+        help=(
+            "Path to a text file containing class labels, one per line. "
+            "Used for mapping model output indices to human-readable class names. "
+            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
+        ),
+    )
+
+
+    parser.add_argument(
+        "--draw-trail",
+        action="store_true",
+        help=(
+            "[Tracking only] Draw motion trails of tracked objects.\n"
+            "Uses the last 30 positions from the tracker history."
+        )
+    )
 
     args = parser.parse_args()
-
-    # Handle --list-inputs and exit
-    if args.list_inputs:
-        list_inputs(APP_NAME)
-        sys.exit(0)
-
-    # Resolve network and input paths
-    args.arch = resolve_arch(args.arch)
-    args.hef_path = resolve_hef_path(
-        hef_path=args.hef_path,
-        app_name=APP_NAME,
-        arch=args.arch,
-    )
-    if args.hef_path is None:
-        logger.error("Failed to resolve HEF path for %s", APP_NAME)
-        sys.exit(1)
-    args.input = resolve_input_arg(APP_NAME, args.input)
-
-    # Setup output directory
-    if args.output_dir is None:
-        args.output_dir = os.path.join(os.getcwd(), "output")
-    os.makedirs(args.output_dir, exist_ok=True)
-
     return args
 
 
-def run_inference_pipeline(net, input, batch_size, labels, output_dir,
-          save_stream_output=False, resolution="sd",
-          enable_tracking=False, show_fps=False) -> None:
+def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
+          save_output=False, camera_resolution="sd", output_resolution=None,
+          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
@@ -100,7 +109,7 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     config_data = load_json_file("config.json")
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input, batch_size, resolution)
+    cap, images = init_input_source(input_src, batch_size, camera_resolution)
     tracker = None
     fps_tracker = None
     if show_fps:
@@ -116,18 +125,19 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
 
     post_process_callback_fn = partial(
         inference_result_handler, labels=labels,
-        config_data=config_data, tracker=tracker
+        config_data=config_data, tracker=tracker, draw_trail=draw_trail
     )
 
     hailo_inference = HailoInfer(net, batch_size)
     height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, None, batch_size, input_queue, width, height)
+        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height)
     )
     postprocess_thread = threading.Thread(
-        target=visualize, args=(output_queue, cap, save_stream_output,
-                                output_dir, post_process_callback_fn, fps_tracker, None, None)
+        target=visualize, 
+        args=(output_queue, cap, save_output, output_dir,
+               post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue)
@@ -146,9 +156,12 @@ def run_inference_pipeline(net, input, batch_size, labels, output_dir,
     postprocess_thread.join()
 
     if show_fps:
-        logger.debug(fps_tracker.frame_rate_summary())
+        logger.info(fps_tracker.frame_rate_summary())
 
-    logger.info('Inference was successful!')
+    logger.success("Inference was successful!")
+    if save_output or input_src.lower() not in ("usb", "rpi"):
+        logger.info(f"Results have been saved in {output_dir}")
+
 
 
 def infer(hailo_inference, input_queue, output_queue):
@@ -227,6 +240,7 @@ def main() -> None:
     """
     args = parse_args()
     init_logging(level=level_from_args(args))
+    handle_and_resolve_args(args, APP_NAME)
     run_inference_pipeline(
         args.hef_path,
         args.input,
@@ -234,12 +248,13 @@ def main() -> None:
         args.labels,
         args.output_dir,
         args.save_output,
-        args.resolution,
+        args.camera_resolution,
+        args.output_resolution,
         args.track,
-        args.show_fps
+        args.show_fps,
+        args.frame_rate,
+        args.draw_trail
     )
-
-
 
 
 if __name__ == "__main__":

@@ -112,6 +112,13 @@ def _run_command_with_output(cmd: list[str]) -> str:
 #          reid_multisource_pipeline.py, core.py, conftest.py, test_runner.py
 # =============================================================================
 
+def is_raspberry_pi():
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            return  RPI_POSSIBLE_NAME in model
+    except:
+        return False
 
 def detect_host_arch() -> str:
     """Detect the host system architecture.
@@ -128,7 +135,7 @@ def detect_host_arch() -> str:
         hailo_logger.info("Detected host architecture: x86")
         return X86_NAME_I
     if machine_name in ARM_POSSIBLE_NAME:
-        if system_name == LINUX_SYSTEM_NAME_I and platform.uname().node in RPI_POSSIBLE_NAME:
+        if system_name == LINUX_SYSTEM_NAME_I and is_raspberry_pi():
             hailo_logger.info("Detected host architecture: Raspberry Pi")
             return RPI_NAME_I
         hailo_logger.info("Detected host architecture: ARM")
@@ -216,8 +223,9 @@ def get_hailort_package_name() -> str:
     """
     host_arch = detect_host_arch()
     if host_arch == RPI_NAME_I:
-        hailo_logger.debug(f"Using RPI-specific HailoRT package: {HAILORT_PACKAGE_NAME_RPI}")
-        return HAILORT_PACKAGE_NAME_RPI
+        if detect_hailo_arch() == HAILO10H_ARCH:
+            hailo_logger.debug(f"Using RPI-specific HailoRT package: {HAILORT_PACKAGE_NAME_RPI}")
+            return HAILORT_PACKAGE_NAME_RPI
     hailo_logger.debug(f"Using default HailoRT package: {HAILORT_PACKAGE_NAME}")
     return HAILORT_PACKAGE_NAME
 
@@ -235,7 +243,8 @@ def auto_detect_hailort_python_bindings() -> bool:
         bool: True if bindings are installed, False otherwise
     """
     hailo_logger.debug("Detecting HailoRT Python bindings.")
-    pkg_name = get_hailort_package_name()
+    # pkg_name = get_hailort_package_name()
+    pkg_name = 'hailort'  # while hailort debian has different name for 10H, the Python wheel name remains the same for 8 & 10
     if _detect_pip_package_installed(pkg_name):
         hailo_logger.info("Detected HailoRT Python bindings installed.")
         return True

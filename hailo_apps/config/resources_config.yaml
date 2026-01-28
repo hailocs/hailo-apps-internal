@@ -1,6 +1,6 @@
 # Resources configuration organized by app
 # Each app contains models (default/extra per architecture) and JSON files
-# Videos, images, and JSONs are shared across all apps (see top-level sections)
+# Videos, images, JSON and npy's are shared across all apps (see top-level sections)
 # Models can be from Model Zoo (mz), S3 (s3), or Gen-AI Model Zoo (gen-ai-mz)
 #
 # Structure:
@@ -16,6 +16,7 @@
 #         - {name: "model_name", source: "gen-ai-mz"}  # Gen-AI model from server (URL built from metadata)
 #
 #   json: [list of JSON config file entries - shared across all apps]
+#   npy: [list of npy file entries - shared across all apps]
 #   videos: [list of video entries with name field]
 #   images: [list of image entries with name and url]
 
@@ -153,6 +154,10 @@ images:
     source: s3
     tag:
       - paddle_ocr
+  - name: dota_image.png
+    source: s3
+    tag:
+      - oriented_object_detection
   - name: tree_branches.png
     source: s3
     tag:
@@ -196,7 +201,22 @@ json:
     tag:
       - detection
       - object_detection
+  - name: clip_tokenizer.json
+    source: s3
+    tag:
+      - clip
 
+# Shared npy files for all apps
+# Tags use app names only (no _p/_s suffixes)
+npy:
+  - name: token_embedding_lut.npy
+    source: s3
+    tag:
+      - clip
+  - name: text_projection.npy
+    source: s3
+    tag:
+      - clip
 
 classifier: &classifier_app
   models:
@@ -573,9 +593,7 @@ depth_estimation_stereo: &depth_estimation_stereo_app
         - name: stereonet
           source: s3
     hailo8l:
-      default:
-        - name: stereonet
-          source: s3
+      default: None
     hailo10h:
       default:
         - name: stereonet
@@ -656,6 +674,21 @@ lane_detection: &lane_detection_app
     hailo10h:
       default:
         - name: ufld_v2_tu
+          source: s3
+
+oriented_object_detection: &oriented_object_detection_app
+  models:
+    hailo8:
+      default:
+        - name: yolo11s_obb
+          source: s3
+    hailo8l:
+      default:
+        - name: yolo11s_obb
+          source: s3
+    hailo10h:
+      default:
+        - name: yolo11s_obb
           source: s3
 
 super_resolution: &super_resolution_app
@@ -763,23 +796,28 @@ clip: &clip_app
   models:
     hailo8:
       default:
-        - name: clip_resnet_50x4_image_encoder
+        - name: clip_vit_b_32_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
           source: s3
+        - name: clip_vit_b_32_text_encoder
+          source: mz
     hailo8l:
       default:
-        - name: clip_resnet_50x4_image_encoder
+        - name: clip_vit_b_32_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
           source: s3
+        - name: clip_vit_b_32_text_encoder
+          source: mz
     hailo10h:
       default:
-        - name: clip_resnet_50x4_image_encoder
+        - name: clip_vit_b_32_image_encoder
           source: mz
         - name: hailo_yolov8n_4_classes_vga
           source: s3
-
+        - name: clip_vit_b_32_text_encoder
+          source: mz
 
 #-------------------------------------------------------------------------------
 # METADATA
@@ -795,4 +833,4 @@ metadata:
   model_zoo_versions:
     hailo8: "v2.17.0"
     hailo8l: "v2.17.0"
-    hailo10h: "v5.1.1"
+    hailo10h: "v5.1.0"

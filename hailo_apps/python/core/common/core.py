@@ -4,10 +4,11 @@ import os
 import queue
 import sys
 from pathlib import Path
-
+from typing import Optional, Tuple
 from dataclasses import dataclass
 from dotenv import load_dotenv
 from . import parser as common_parser
+import argparse
 
 from .defines import (
     DEFAULT_DOTENV_PATH,
@@ -37,6 +38,7 @@ from .defines import (
     POSE_ESTIMATION_PIPELINE,
     RESOURCES_JSON_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
+    RESOURCES_NPY_DIR_NAME,
     # for get_resource_path
     RESOURCES_PHOTOS_DIR_NAME,
     RESOURCES_ROOT_PATH_DEFAULT,
@@ -44,23 +46,24 @@ from .defines import (
     RESOURCES_VIDEOS_DIR_NAME,
     SIMPLE_DETECTION_MODEL_NAME,
     SIMPLE_DETECTION_PIPELINE,
-    CLIP_PIPELINE,
-    CLIP_MODEL_NAME,
-    CLIP_DETECTION_PIPELINE,
-    CLIP_DETECTION_MODEL_NAME
+    CAMERA_RESOLUTION_MAP,
+    RESOURCE_TYPE_IMAGE,
+    RESOURCE_TYPE_VIDEO,
+    RESOURCE_TYPE_MODEL,
+    CAMERA_KEYWORDS,
 )
+
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
 
 try:
-    from hailo_apps.config.config_manager import get_default_models, get_extra_models, get_all_models
+    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app
 except ImportError:
     import sys
     from pathlib import Path
     config_dir = Path(__file__).resolve().parents[3] / "config"
     sys.path.insert(0, str(config_dir))
-    from config_manager import get_default_models, get_extra_models, get_all_models
-
+    from config_manager import get_default_models
 hailo_logger = get_logger(__name__)
 
 
@@ -129,22 +132,12 @@ def get_model_name(pipeline_name: str, arch: str) -> str:
     is_h8 = arch in (HAILO8_ARCH, HAILO10H_ARCH)
     pipeline_map = {
         DEPTH_PIPELINE: DEPTH_MODEL_NAME,
-        CLIP_PIPELINE: CLIP_MODEL_NAME,
-        CLIP_DETECTION_PIPELINE: CLIP_DETECTION_MODEL_NAME,
         SIMPLE_DETECTION_PIPELINE: SIMPLE_DETECTION_MODEL_NAME,
         DETECTION_PIPELINE: DETECTION_MODEL_NAME_H8 if is_h8 else DETECTION_MODEL_NAME_H8L,
-        INSTANCE_SEGMENTATION_PIPELINE: INSTANCE_SEGMENTATION_MODEL_NAME_H8
-        if is_h8
-        else INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
-        POSE_ESTIMATION_PIPELINE: POSE_ESTIMATION_MODEL_NAME_H8
-        if is_h8
-        else POSE_ESTIMATION_MODEL_NAME_H8L,
-        FACE_DETECTION_PIPELINE: FACE_DETECTION_MODEL_NAME_H8
-        if is_h8
-        else FACE_DETECTION_MODEL_NAME_H8L,
-        FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8
-        if is_h8
-        else FACE_RECOGNITION_MODEL_NAME_H8L
+        INSTANCE_SEGMENTATION_PIPELINE: INSTANCE_SEGMENTATION_MODEL_NAME_H8 if is_h8 else INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
+        POSE_ESTIMATION_PIPELINE: POSE_ESTIMATION_MODEL_NAME_H8 if is_h8 else POSE_ESTIMATION_MODEL_NAME_H8L,
+        FACE_DETECTION_PIPELINE: FACE_DETECTION_MODEL_NAME_H8 if is_h8 else FACE_DETECTION_MODEL_NAME_H8L,
+        FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8 if is_h8 else FACE_RECOGNITION_MODEL_NAME_H8L,
     }
     name = pipeline_map[pipeline_name]
     hailo_logger.debug(f"Resolved model name: {name}")
@@ -162,10 +155,10 @@ def get_resource_path(
     if arch is None and resource_type == RESOURCES_MODELS_DIR_NAME:
         arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
         hailo_logger.debug(f"Auto-detected arch: {arch}")
+
     if not arch and resource_type == RESOURCES_MODELS_DIR_NAME:
         hailo_logger.error("Could not detect Hailo architecture.")
         assert False, "Could not detect Hailo architecture."
-
 
     if resource_type == RESOURCES_SO_DIR_NAME and model:
         return root / RESOURCES_SO_DIR_NAME / model
@@ -175,6 +168,8 @@ def get_resource_path(
         return root / RESOURCES_PHOTOS_DIR_NAME / model
     if resource_type == RESOURCES_JSON_DIR_NAME and model:
         return root / RESOURCES_JSON_DIR_NAME / model
+    if resource_type == RESOURCES_NPY_DIR_NAME and model:
+        return root / RESOURCES_NPY_DIR_NAME / model
     if resource_type == DEFAULT_LOCAL_RESOURCES_PATH and model:
         return root / DEFAULT_LOCAL_RESOURCES_PATH / model
 
@@ -220,7 +215,7 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
             is_gen_ai_app,
         )
     except ImportError:
-        print("Error: Could not import config_manager. Run 'pip install -e .' first.")
+        hailo_logger.error("Error: Could not import config_manager. Run 'pip install -e .' first.")
         sys.exit(1)
 
     # Detect architecture if not provided
@@ -279,7 +274,7 @@ def list_models_for_app(app_name: str, arch: str | None = None) -> None:
 def resolve_hef_path(
     hef_path: str | None,
     app_name: str,
-    arch: str
+    arch: str | None = None,
 ) -> Path | None:
     """
     Main method for resolving HEF (Hailo Executable Format) file paths.
@@ -308,6 +303,16 @@ def resolve_hef_path(
         return Path(hef_path) if hef_path else None
 
     resources_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
+
+    # Auto-detect arch if not provided.
+    if arch is None:
+        arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+        if not arch:
+            hailo_logger.error("Could not detect Hailo architecture.")
+            assert False, "Could not detect Hailo architecture."
+        hailo_logger.debug(f"Auto-detected arch: {arch}")
+
+
     models_dir = resources_root / RESOURCES_MODELS_DIR_NAME / arch
 
     # Get available models for this app/arch
@@ -336,11 +341,12 @@ def resolve_hef_path(
     else:
         model_name = candidate_name
     
-    # Case 2: Check if it's a full path that exists
+    # Case 2: Treat an existing path (absolute or relative) as a file path
     hef_full_path = Path(hef_path)
-    if hef_full_path.is_absolute() and hef_full_path.exists():
-        hailo_logger.info(f"Using HEF from absolute path: {hef_full_path}")
-        return hef_full_path
+    if hef_full_path.exists():
+        resolved = hef_full_path.resolve()
+        hailo_logger.info(f"Using HEF from path: {resolved}")
+        return resolved
 
     # Also check with .hef extension
     if not hef_path.endswith(HAILO_FILE_EXTENSION):
@@ -367,7 +373,7 @@ def resolve_hef_path(
             print(f"   Downloading model for {app_name}/{arch}...")
             print(f"   This may take a while depending on your internet connection.\n")
 
-        if _download_model(model_name, arch):
+        if _download_resource(model_name, RESOURCE_TYPE_MODEL, app_name, arch):
             if resource_path.exists():
                 hailo_logger.info(f"Model downloaded successfully: {resource_path}")
                 return resource_path
@@ -386,13 +392,13 @@ def resolve_hef_path(
     return None
 
 
-def _download_model(model_name: str, arch: str) -> bool:
+def _download_resource(resource_name: str, resource_type: str, app_name: str, arch: str | None = None) -> bool:
     """
-    Download a specific model using the download_resources module.
+    Download a specific resource using the download_resources module.
 
     Args:
-        model_name: Name of the model to download
-        arch: Hailo architecture
+        resource_name: Name of the resource to download
+        resource_type: Type of the resource (e.g., model, video)
 
     Returns:
         True if download succeeded, False otherwise
@@ -400,17 +406,19 @@ def _download_model(model_name: str, arch: str) -> bool:
     try:
         from hailo_apps.installation.download_resources import download_resources
 
-        print(f"Downloading model: {model_name} for {arch}...")
+        print(f"Downloading resource: {resource_name} (type: {resource_type})")
         download_resources(
             arch=arch,
-            model=model_name,
+            group=app_name,
+            resource_name=resource_name,
+            resource_type=resource_type,
             dry_run=False,
             force=False,
             parallel=False  # Sequential for single model
         )
         return True
     except Exception as e:
-        hailo_logger.error(f"Failed to download model: {e}")
+        hailo_logger.error(f"Failed to download resource: {e}")
         return False
 
 
@@ -448,7 +456,7 @@ class ResolvedModel:
 def resolve_hef_paths(
     hef_paths: list[str] | None,
     app_name: str,
-    arch: str,
+    arch: str | None = None,
 ) -> list[ResolvedModel]:
     """
     Resolve one or more HEF paths for apps that require multiple models.
@@ -460,6 +468,14 @@ def resolve_hef_paths(
         → length must match required model count
     - Each model is resolved via resolve_hef_path()
     """
+
+    # Auto-detect arch if not provided.
+    if arch is None:
+        arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+        if not arch:
+            hailo_logger.error("Could not detect Hailo architecture.")
+            assert False, "Could not detect Hailo architecture."
+        hailo_logger.debug(f"Auto-detected arch: {arch}")
 
     default_models = get_default_models(app_name, arch)
     required_count = len(default_models)
@@ -493,3 +509,309 @@ def resolve_hef_paths(
         resolved.append(ResolvedModel(name=model_name, path=path))
 
     return resolved
+
+
+
+# =============================================================================
+# Input Resolution and Listing
+# =============================================================================
+
+def list_inputs_for_app(app_name: str) -> None:
+    """
+    List all available inputs for an application and exit.
+
+    Args:
+        app_name: The app name from resources config (e.g., 'detection', 'vlm_chat')
+    """
+    inputs = get_inputs_for_app(app_name, is_standalone=True)
+    print(f"\n{'=' * 60}")
+    print(f"Available inputs for: {app_name}")
+    print(f"{'=' * 60}")    
+    for section in ["images", "videos"]:
+        entries = inputs.get(section, [])
+        if entries:
+            print(f"\n📂 {section.capitalize()}:")
+            for entry in entries:
+                name = entry.get("name", "Unnamed")
+                description = entry.get("description", "")
+                print(f"   • {name} - {description}")
+    print(f"\n{'=' * 60}\n")
+    sys.exit(0) 
+
+
+def resolve_input_arg(app: str, input_arg: str | None) -> str:
+    """
+    Resolve the CLI `--input` argument into a concrete input source.
+
+    Supported inputs (in priority order):
+      1) If `--input` is NOT provided:
+         - Try to use the first available input defined in the resources YAML that already exists locally.
+         - If no input exists locally, try to download the default input from the YAML and use it.
+         - If download fails, exit with an actionable error message.
+
+      2) If `--input` IS provided:
+         - If `--input` is 'usb' or 'rpi': treat it as a camera source keyword and return as-is.
+         - If it is an existing local file or directory path: return it as-is.
+         - Otherwise, treat it as a resource name defined in the resources YAML:
+             * If it exists locally under the resources folder, return it.
+             * If it is missing, download it and return its resolved local path.
+         - If nothing matches, exit with a clear error.
+
+    """
+
+    # Map standalone app names to their resource tag names used in resources YAML
+    APP_NAME_MAPPING = {
+        "object_detection": "detection",
+        "simple_detection": "simple_detection",
+        "instance_segmentation": "instance_segmentation",
+        "super_resolution": "super_resolution",
+    }
+
+    def resolve_tagged_resource(
+        app_name: str,
+        preferred_name: str | None = None,
+        allow_download_default: bool = False
+    ) -> str | None:
+        """
+        Resolve an input resource defined in resources_config.yaml.
+
+        Behavior:
+          - If `preferred_name` is provided, resolve that exact resource name.
+          - If `preferred_name` is not provided, pick the first available resource.
+          - Images are preferred over videos.
+          - Resources are downloaded automatically if required.
+        """
+
+        resource_app_name = APP_NAME_MAPPING.get(app_name, app_name)
+        inputs = get_inputs_for_app(resource_app_name, is_standalone=True)
+
+        def pick(section: str) -> str | None:
+            """
+            Resolve a resource from a specific YAML section ('images' or 'videos').
+            """
+            resource_type = RESOURCES_PHOTOS_DIR_NAME if section == "images" else RESOURCES_VIDEOS_DIR_NAME
+
+            def download_if_missing(name: str) -> str | None:
+                """
+                Download a resource by name and return its resolved local path (or None).
+                """
+                print(f"\n⚠️  WARNING: Input '{preferred_name}' is not downloaded.")
+                print(f"   Downloading input for {app_name}...")
+                print("   This may take a while depending on your internet connection.\n")
+
+                if _download_resource(
+                    resource_name=name,
+                    resource_type=RESOURCE_TYPE_IMAGE if section == "images" else RESOURCE_TYPE_VIDEO,
+                    app_name=resource_app_name,
+                ):
+                    resolved = get_resource_path(
+                        pipeline_name=None,
+                        resource_type=resource_type,
+                        arch=None,
+                        model=name,
+                    )
+                    if resolved and resolved.exists():
+                        return str(resolved)
+                return None
+
+
+            # Iterate over YAML-defined resources in this section (images/videos)
+            for entry in inputs.get(section, []):
+                name = entry.get("name")
+                if not name:
+                    continue
+
+                # If user asked for a specific resource, skip others
+                if preferred_name and preferred_name != name:
+                    continue
+
+                # Try local resource first
+                resolved = get_resource_path(
+                    pipeline_name=None,
+                    resource_type=resource_type,
+                    arch=None,
+                    model=name,
+                )
+                if resolved and resolved.exists():
+                    return str(resolved)
+
+                # Download requested resource if missing
+                if preferred_name:
+                    return download_if_missing(preferred_name)
+
+                # Download default resource if required
+                if allow_download_default:
+                    return download_if_missing(name)
+
+            return None
+
+        # Prefer images first, then videos
+        resolved = pick("images")
+        if resolved:
+            return resolved
+        return pick("videos")
+
+    # ------------------------------------------------
+    # Case A: No --input provided
+    # ------------------------------------------------
+    if input_arg is None:
+        resolved = resolve_tagged_resource(app_name=app, preferred_name=None, allow_download_default=False)
+        if resolved:
+            hailo_logger.info("No input provided; using default bundled input resource for %s: %s", app, resolved)
+            return resolved
+
+        hailo_logger.info("No input was provided and no input was found locally; downloading default input...")
+
+        resolved = resolve_tagged_resource(app_name=app, preferred_name=None, allow_download_default=True)
+        if resolved:
+            hailo_logger.info("Default input downloaded successfully for: %s: %s", app, resolved)
+            return resolved
+
+        hailo_logger.error("No --input was provided and no bundled resource was found. "
+            "Default input download failed.\n"
+            "Please specify -i/--input with a file name, full file path, directory path, or camera'usb/rpi'."
+        )
+        sys.exit(1)
+
+    # ------------------------------------------------
+    # Case B: Camera keywords
+    # ------------------------------------------------
+    if input_arg in CAMERA_KEYWORDS:
+        return input_arg
+
+    path_candidate = Path(input_arg)
+
+    # ------------------------------------------------
+    # Case C: Local path
+    # ------------------------------------------------
+    if path_candidate.exists():
+        return str(path_candidate)
+
+    # ------------------------------------------------
+    # Case D: YAML resource name
+    # ------------------------------------------------
+    resource_path = resolve_tagged_resource(app_name=app, preferred_name=path_candidate.name, allow_download_default=False)
+    if resource_path:
+        return resource_path
+
+    # ------------------------------------------------
+    # Case E: Invalid input
+    # ------------------------------------------------
+    hailo_logger.error(
+        f"Input '{input_arg}' does not exist as a local file or directory, "
+        "and was not found as a downloadable resource.\n"
+        "Please provide a full file path, directory path, a resource name, or a camera source: 'usb' / 'rpi'."
+    )
+    sys.exit(1)
+
+
+
+# =============================================================================
+# Handle and Resolve Common Args
+# =============================================================================
+def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_hef: bool = False) -> None:
+    """
+    Handle common CLI argument logic for Hailo applications.
+
+    This function:
+    - Handles early-exit flags such as --list-models and --list-inputs
+    - Resolves the HEF path for the given application
+    - Resolves the input source (camera / video / image)
+    - Resolves output resolution if the flag exists
+    - Ensures a valid output directory exists
+
+    Notes:
+    - This helper is intended mainly for standalone applications.
+
+    Args:
+        args: Parsed argparse.Namespace from the application
+        APP_NAME: The application name for model/input resolution
+    """
+
+    #handle --list-models and exit
+    if args.list_models:
+        list_models_for_app(APP_NAME)
+        sys.exit(0)
+
+    # Handle --list-inputs and exit
+    if args.list_inputs:
+        list_inputs_for_app(APP_NAME)
+        sys.exit(0)
+
+
+    if multi_hef:
+        # Resolve multiple HEF paths
+        try:
+            models = resolve_hef_paths(
+                hef_paths=args.hef_path,
+                app_name=APP_NAME
+            )
+            args.hef_path = [model.path for model in models]
+        except Exception as e:
+            hailo_logger.error(f"Failed to resolve HEF paths: {e}")
+            sys.exit(1)
+    else:
+        # Resolve network path
+        args.hef_path = resolve_hef_path(hef_path=args.hef_path, app_name=APP_NAME)
+        if args.hef_path is None:
+            hailo_logger.error("Failed to resolve HEF path for %s", APP_NAME)
+            sys.exit(1)
+
+    #resolve input source
+    args.input = resolve_input_arg(APP_NAME, args.input)
+    if args.input is None:
+        hailo_logger.error("Failed to resolve input source for %s", APP_NAME)
+        sys.exit(1)
+
+    # Resolve output resolution if flag exists
+    if hasattr(args, "output_dir"):
+        try:
+            if args.output_dir is None:
+                args.output_dir = os.path.join(os.getcwd(), "output")
+                os.makedirs(args.output_dir, exist_ok=True)
+        except ValueError as e:
+            hailo_logger.error(str(e))
+            sys.exit(1)
+
+
+    # Resolve output resolution if flag exists
+    if hasattr(args, "output_resolution"):
+        try:
+            args.output_resolution = resolve_output_resolution_arg(args.output_resolution)
+        except ValueError as e:
+            hailo_logger.error(str(e))
+            sys.exit(1)
+
+
+def resolve_output_resolution_arg(res_arg: Optional[list[str]]) -> Optional[Tuple[int, int]]:
+    """
+    Parse --output-resolution argument.
+
+    Supported:
+      --output-resolution sd|hd|fhd
+      --output-resolution 1920 1080
+    """
+    if res_arg is None:
+        return None
+
+    # Single token: preset name (sd/hd/fhd)
+    if len(res_arg) == 1:
+        key = res_arg[0]
+        if key in CAMERA_RESOLUTION_MAP:
+            return CAMERA_RESOLUTION_MAP[key]
+        raise ValueError(
+            f"Invalid --output-resolution value '{key}'. "
+            "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+        )
+
+    # Two tokens: custom width/height
+    if len(res_arg) == 2 and all(x.isdigit() for x in res_arg):
+        w, h = map(int, res_arg)
+        if w <= 0 or h <= 0:
+            raise ValueError("Custom --output-resolution width/height must be positive integers.")
+        return (w, h)
+
+    raise ValueError(
+        f"Invalid --output-resolution value: {res_arg}. "
+        "Use 'sd', 'hd', 'fhd' or two integers, e.g. '--output-resolution 1920 1080'."
+    )

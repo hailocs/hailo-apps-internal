@@ -31,8 +31,14 @@ WRITE_CHUNK_SIZE = 8192  # ~0.5 seconds at 16kHz
 
 class AudioPlayer:
     """
-    Handles audio playback using sounddevice OutputStream.
-    Uses a persistent stream and queue to ensure gapless playback of chunks.
+    Handles audio playback using sounddevice OutputStream with a persistent worker thread.
+
+    This implementation uses a background thread to write to the OutputStream.
+    Crucially, it keeps the stream OPEN and writes silence when no audio is available.
+    This prevents:
+    1. Jitter/Latency from opening/closing streams.
+    2. ALSA client churn (multiple clients appearing).
+    3. Buffer underruns (which happen easily with Python callbacks on some systems).
     """
 
     def _resample_numpy(self, data: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
@@ -56,7 +62,7 @@ class AudioPlayer:
         x_old = np.linspace(0, duration, len(data))
         x_new = np.linspace(0, duration, target_len)
 
-        # Handle multi-channel resampling if input is already multi-channel (unlikely for TTS but possible)
+        # Handle multi-channel resampling if input is already multi-channel
         if data.ndim == 2 and data.shape[1] > 1:
             resampled = np.zeros((target_len, data.shape[1]), dtype=data.dtype)
             for ch in range(data.shape[1]):
@@ -78,10 +84,10 @@ class AudioPlayer:
         self.queue = queue.Queue()
         self._playback_thread = None
         self._stop_event = threading.Event()
-        self._reinit_event = threading.Event()
         self._stream_lock = threading.Lock()
+        self._is_writing = False
 
-        # Suppress stderr at startup and keep it suppressed for this player
+        # Suppress stderr at startup
         self._devnull_fd = None
         self._original_stderr_fd = None
 
@@ -99,13 +105,171 @@ class AudioPlayer:
         self._playback_thread = threading.Thread(target=self._playback_worker, daemon=True)
         self._playback_thread.start()
 
+    @property
+    def is_playing(self) -> bool:
+        """Check if audio is currently being played."""
+        return not self.queue.empty() or self._is_writing
+
+    def _create_stream(self):
+        """Create a new output stream."""
+        try:
+            # Query device info
+            try:
+                device_info = sd.query_devices(self.device_id)
+            except Exception:
+                self.device_id = None
+                device_info = sd.query_devices(kind='output')
+
+            channels = device_info.get('max_output_channels', 1)
+            if channels > 2:
+                channels = 2
+
+            stream_sr = TARGET_PLAYBACK_SR
+
+            logger.debug("Creating output stream: device=%s, channels=%d, rate=%d",
+                         self.device_id, channels, stream_sr)
+
+            stream = sd.OutputStream(
+                samplerate=stream_sr,
+                device=self.device_id,
+                channels=channels,
+                dtype='float32',
+                blocksize=WRITE_CHUNK_SIZE,
+                latency=0.5 # Relaxed latency for stability
+            )
+            stream.start()
+            logger.info("Audio output stream started.")
+            return stream
+
+        except Exception as e:
+            logger.error("Failed to initialize audio stream: %s", e)
+            raise
+
+    def _playback_worker(self):
+        """
+        Worker thread that writes to the OutputStream.
+        Maintains the stream active by writing silence when idle.
+        """
+        self._suppress_stderr()
+
+        # Silence chunk to keep stream alive (e.g., 50ms)
+        silence_size = int(TARGET_PLAYBACK_SR * 0.05)
+        silence_chunk = None # Will be created once we know channels
+
+        try:
+            # Initialize stream once
+            with self._stream_lock:
+                try:
+                    self.stream = self._create_stream()
+                except Exception:
+                    logger.error("Worker failed to create stream on startup.")
+                    return
+
+            while not self._stop_event.is_set():
+                try:
+                    # 1. Try to get data from queue (non-blocking)
+                    try:
+                        data = self.queue.get_nowait()
+                    except queue.Empty:
+                        data = None
+
+                    # 2. Check for sentinel (shutdown)
+                    if data is None and not self.queue.empty():
+                         pass
+
+                    if data is None:
+                        # Queue is empty.
+                        # Check buffer status before writing silence to avoid gaps.
+                        if self.stream and self.stream.active:
+                            try:
+                                # write_available: number of frames that can be written without blocking.
+                                # If this is small, the buffer is full (audio playing).
+                                # If this is large, the buffer is draining/empty.
+                                available = self.stream.write_available
+
+                                # Threshold: 4000 frames is ~0.25s at 16k.
+                                # If we have fewer than 4000 frames available to WRITE,
+                                # it means we have > (Buffer_Size - 0.25s) FULL of audio.
+                                # Safe to wait for next chunk.
+
+
+                                if available < 4000:
+                                    time.sleep(0.02)
+                                    continue
+
+                            except Exception:
+                                pass
+
+                            # If buffer is draining (available is high), write silence to prevent underrun.
+                            if silence_chunk is None or silence_chunk.shape[0] != silence_size or (self.stream.channels > 1 and silence_chunk.shape[1] != self.stream.channels):
+                                channels = self.stream.channels
+                                if channels > 1:
+                                    silence_chunk = np.zeros((silence_size, channels), dtype=np.float32)
+                                else:
+                                    silence_chunk = np.zeros((silence_size,), dtype=np.float32)
+
+                            self.stream.write(silence_chunk)
+                        else:
+                             time.sleep(0.1)
+                        continue
+
+                    # 3. We have data
+                    if data is None:
+                         continue
+
+                    # 4. Play the data
+                    if self.stream and self.stream.active:
+                         # Handle channel expansion
+                        if self.stream.channels > 1 and (data.ndim == 1 or data.shape[1] == 1):
+                            data = data.flatten()
+                            data = np.tile(data[:, np.newaxis], (1, self.stream.channels))
+                        elif data.ndim == 1 and self.stream.channels == 1:
+                             pass
+
+                        # Write (blocking if buffer full)
+                        self._is_writing = True
+                        try:
+                            self.stream.write(data)
+                        finally:
+                            self._is_writing = False
+
+                    self.queue.task_done()
+
+                except Exception as e:
+                   # logger.error(f"Error in playback worker: {e}")
+                    # Try to recreate stream if it died?
+                    if self.stream is None or not self.stream.active:
+                        with self._stream_lock:
+                             try:
+                                 if self.stream:
+                                     try:
+                                         self.stream.close()
+                                     except: pass
+                                 self.stream = self._create_stream()
+                                 # Reset silence chunk just in case channels changed
+                                 silence_chunk = None
+                             except Exception:
+                                 time.sleep(1) # Backoff
+
+        finally:
+            with self._stream_lock:
+                if self.stream:
+                    try:
+                        self.stream.stop()
+                        self.stream.close()
+                    except: pass
+                    self.stream = None
+            self._restore_stderr()
+
+
     def play(self, audio_data: Union[str, np.ndarray], block: bool = False):
         """
         Queue audio data for playback.
 
         Args:
             audio_data (Union[str, np.ndarray]): Path to WAV file or numpy array.
-            block (bool): Ignored in this streaming implementation. Kept for API compatibility.
+            block (bool): If True, blocks until this specific audio data is consumed.
+                          (NOTE: approximate blocking by checking queue emptiness)
         """
         input_sr = TARGET_SR
         data = None
@@ -119,7 +283,6 @@ class AudioPlayer:
                 return
         elif isinstance(audio_data, np.ndarray):
             data = audio_data
-            # For raw numpy arrays, we assume TARGET_SR (16kHz) as per app convention
             input_sr = TARGET_SR
         else:
             logger.error("Unsupported audio data type: %s", type(audio_data))
@@ -129,11 +292,8 @@ class AudioPlayer:
         if data.dtype != np.float32:
             data = data.astype(np.float32)
 
-        # Resample to stream rate (TARGET_PLAYBACK_SR)
-        # We enforce TARGET_PLAYBACK_SR for the stream to ensure compatibility with devices
-        # that might play 16kHz content at 3x speed if they don't support 16kHz natively.
+        # Resample
         target_sr = TARGET_PLAYBACK_SR
-
         if input_sr != target_sr:
             try:
                 data = self._resample_numpy(data, input_sr, target_sr)
@@ -141,53 +301,42 @@ class AudioPlayer:
                 logger.error("Resampling failed: %s", e)
                 return
 
-        # Enqueue for playback
-        logger.debug("Queuing audio data for playback: %d samples", len(data))
+        # Enqueue
         self.queue.put(data)
+
+        if block:
+            while not self.queue.empty():
+                time.sleep(0.1)
 
 
     def stop(self):
         """
-        Clear the playback queue and stop audio immediately.
+        Clear the playback queue.
         """
-        # Clear queue
-        while not self.queue.empty():
-            try:
+        # Drain queue
+        try:
+            while True:
                 self.queue.get_nowait()
                 self.queue.task_done()
-            except queue.Empty:
-                break
-
-        # Abort stream
-        with self._stream_lock:
-            if self.stream:
-                try:
-                    self.stream.abort()
-                except Exception:
-                    pass
-
-        # Signal reinit
-        self._reinit_event.set()
-
-        # Brief wait for hardware
-        time.sleep(0.02)
+        except queue.Empty:
+            pass
 
     def close(self):
         """Shutdown the player and release resources."""
         self._stop_event.set()
-        self._reinit_event.set()
+        # Wait for worker
+        if self._playback_thread:
+            self._playback_thread.join(timeout=1.0)
 
+        self.stop()
         with self._stream_lock:
             if self.stream:
                 try:
-                    self.stream.abort()
+                    self.stream.stop()
                     self.stream.close()
                 except Exception:
                     pass
                 self.stream = None
-
-        if self._playback_thread:
-            self._playback_thread.join(timeout=1.0)
 
     def _suppress_stderr(self):
         """Redirect stderr to /dev/null."""
@@ -210,165 +359,6 @@ class AudioPlayer:
                 self._devnull_fd = None
         except Exception:
             pass
-
-    def _create_stream(self):
-        """Create a new output stream."""
-        try:
-            # query_devices can fail if the device ID is no longer valid (e.g. disconnected)
-            try:
-                device_info = sd.query_devices(self.device_id)
-            except Exception as e:
-                logger.warning("Failed to query device %s: %s. Attempting to rediscover preferred device.", self.device_id, e)
-
-                # Try to re-detect preferred device (it might have a new ID)
-                try:
-                    _, new_device_id = AudioDiagnostics.get_preferred_devices()
-                    if new_device_id is not None:
-                        self.device_id = new_device_id
-                        logger.info("Rediscovered preferred device: %s", self.device_id)
-                        device_info = sd.query_devices(self.device_id)
-                    else:
-                        raise ValueError("No preferred device found")
-                except Exception as discovery_error:
-                    logger.warning("Could not rediscover preferred device: %s. Falling back to system default.", discovery_error)
-                    self.device_id = None
-                    device_info = sd.query_devices(kind='output')
-
-            channels = device_info.get('max_output_channels', 1)
-            # Ensure at least 1, and default to 1 if something goes wrong
-            if channels < 1:
-                channels = 1
-
-            # If device claims > 2 channels (like 7.1), maybe stick to 2?
-            # For now, let's match hardware to avoid rate issues, but caps at 2 might be safer?
-            # Actually, filling all channels is usually the safest for "raw" hw devices.
-
-            logger.debug("Creating output stream for device %s with %d channels", self.device_id, channels)
-
-            # Use TARGET_PLAYBACK_SR (standard) or device default if higher
-            # 16kHz on 48kHz hardware causes 3x speedup if not resampled/negotiated.
-            # We explicitly ask for TARGET_PLAYBACK_SR to match modern hardware.
-            stream_sr = TARGET_PLAYBACK_SR
-
-            # Check if device supports it? sounddevice/portaudio usually handles conversion
-            # if we request a specific rate.
-            # But the issue we saw is that raw ALSA `hw:` device might NOT do conversion.
-            # So we must feed it what it wants (likely 48k).
-
-            logger.debug("Creating output stream for device %s with %d channels at %d Hz",
-                        self.device_id, channels, stream_sr)
-
-            stream = sd.OutputStream(
-                samplerate=stream_sr,
-                device=self.device_id,
-                channels=channels,
-                dtype='float32',
-                blocksize=WRITE_CHUNK_SIZE,
-                latency=0.3  # 300ms buffer to prevent underruns
-            )
-            stream.start()
-            logger.debug("Audio output stream created successfully (device_id=%s, active=%s)",
-                       self.device_id, stream.active)
-            return stream
-        except Exception as e:
-            logger.error("Failed to create audio output stream (device_id=%s): %s", self.device_id, e)
-            raise
-
-    def _playback_worker(self):
-        """Worker thread that writes to the OutputStream."""
-        # Suppress stderr for the entire worker thread lifetime
-        self._suppress_stderr()
-
-        try:
-            while not self._stop_event.is_set():
-                # Create/recreate stream
-                try:
-                    with self._stream_lock:
-                        if self.stream:
-                            try:
-                                self.stream.close()
-                            except Exception:
-                                pass
-                        self.stream = self._create_stream()
-                        self._reinit_event.clear()
-
-                    logger.debug("Audio stream initialized successfully (device_id=%s)", self.device_id)
-
-                except Exception as e:
-                    logger.error("Failed to initialize audio stream (device_id=%s): %s", self.device_id, e)
-                    logger.debug("Stream initialization error traceback:", exc_info=True)
-                    time.sleep(0.5)
-                    continue
-
-                # Process audio queue
-                while not self._stop_event.is_set() and not self._reinit_event.is_set():
-                    try:
-                        # Get audio data
-                        try:
-                            data = self.queue.get(timeout=0.05)
-                        except queue.Empty:
-                            time.sleep(0)  # Yield GIL
-                            continue
-
-                        # Write in chunks for responsiveness
-                        offset = 0
-                        data_len = len(data)
-                        logger.debug("Playing audio chunk: %d samples", data_len)
-
-                        while offset < len(data):
-                            if self._reinit_event.is_set() or self._stop_event.is_set():
-                                break
-
-                            chunk = data[offset:offset + WRITE_CHUNK_SIZE]
-                            offset += WRITE_CHUNK_SIZE
-
-                            if self.stream and self.stream.active:
-                                try:
-                                    # Handle channel expansion if needed
-                                    # If our data is mono (1D or shape (N,1)) but stream is stereo (N, 2+),
-                                    # we need to duplicate the data to fill all channels.
-                                    should_expand = self.stream.channels > 1 and (chunk.ndim == 1 or chunk.shape[1] == 1)
-
-                                    if should_expand:
-                                        # Reshape to (N, 1) if 1D
-                                        if chunk.ndim == 1:
-                                            chunk = chunk.reshape(-1, 1)
-                                        # Tile to (N, channels)
-                                        chunk = np.tile(chunk, (1, self.stream.channels))
-
-                                    self.stream.write(chunk)
-                                except Exception as write_error:
-                                    # If we are stopping, this error is expected (abort called on stream)
-                                    if self._stop_event.is_set() or self._reinit_event.is_set():
-                                        break
-
-                                    logger.error("Error writing to audio stream: %s", write_error)
-                                    raise
-                            else:
-                                logger.warning("Audio stream not active (stream=%s, active=%s)",
-                                              self.stream is not None,
-                                              self.stream.active if self.stream else False)
-
-                            time.sleep(0)  # Yield GIL
-
-                        logger.debug("Finished playing audio chunk: %d samples", data_len)
-                        self.queue.task_done()
-
-                    except Exception as e:
-                        logger.error("Playback error (will reinit): %s", e)
-                        logger.debug("Playback error traceback:", exc_info=True)
-                        break
-
-            # Cleanup
-            with self._stream_lock:
-                if self.stream:
-                    try:
-                        self.stream.close()
-                    except Exception:
-                        pass
-                    self.stream = None
-        finally:
-            self._restore_stderr()
 
     def _read_wav(self, file_path: str) -> tuple[np.ndarray, int]:
         """Read WAV file to numpy array."""

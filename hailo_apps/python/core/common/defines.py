@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Tuple, Dict
+
 
 # Base Defaults
 HAILO8_ARCH = "hailo8"
@@ -22,7 +24,7 @@ SHARED_VDEVICE_GROUP_ID = "SHARED"  # Do Not Change!
 # Core defaults
 ARM_POSSIBLE_NAME = ["arm", "aarch64"]
 X86_POSSIBLE_NAME = ["x86", "amd64", "x86_64"]
-RPI_POSSIBLE_NAME = ["rpi", "raspberrypi", "pi"]
+RPI_POSSIBLE_NAME = "Raspberry Pi"
 HAILO8_ARCH_CAPS = "HAILO8"
 HAILO8L_ARCH_CAPS = "HAILO8L"
 HAILO10H_ARCH_CAPS = "HAILO10H"
@@ -35,6 +37,8 @@ LINUX_SYSTEM_NAME_I = "linux"
 UNKNOWN_NAME_I = "unknown"
 USB_CAMERA = "usb"
 JSON_FILE_EXTENSION = ".json"
+CONFIG_ENABLED = 'enabled'
+CONFIG_DISABLED = 'disabled'
 
 # CLI defaults
 PIP_CMD = "pip3"
@@ -81,9 +85,9 @@ DEFAULT_DOTENV_PATH = "/usr/local/hailo/resources/.env"  # your env file lives h
 DEFAULT_LOCAL_RESOURCES_PATH = str(REPO_ROOT / "local_resources")  # bundled GIFs, JSON, etc.
 
 # Supported config options (used for validation in config_utils.py)
-VALID_HAILORT_VERSION = [AUTO_DETECT, "4.23.0", "5.1.1"]
-VALID_TAPPAS_VERSION = [AUTO_DETECT, "5.1.0"]
-VALID_H10_MODEL_ZOO_VERSION = ["v5.1.0", "v5.1.1"]
+VALID_HAILORT_VERSION = [AUTO_DETECT, "4.23.0", "5.1.1", "5.2.0"]
+VALID_TAPPAS_VERSION = [AUTO_DETECT, "5.1.0", "5.2.0"]
+VALID_H10_MODEL_ZOO_VERSION = ["v5.1.0", "v5.2.0"]  # First element is default
 VALID_H8_MODEL_ZOO_VERSION = ["v2.17.0"]
 VALID_MODEL_ZOO_VERSION = VALID_H10_MODEL_ZOO_VERSION + VALID_H8_MODEL_ZOO_VERSION
 VALID_HOST_ARCH = [AUTO_DETECT, "x86", "rpi", "arm"]
@@ -133,6 +137,7 @@ RESOURCES_VIDEOS_DIR_NAME = "videos"
 RESOURCES_SO_DIR_NAME = "so"
 RESOURCES_PHOTOS_DIR_NAME = "images"  # Changed from "photos" to match actual directory name
 RESOURCES_JSON_DIR_NAME = "json"
+RESOURCES_NPY_DIR_NAME = "npy"
 
 # Depth pipeline defaults
 DEPTH_APP_TITLE = "Hailo Depth App"
@@ -198,14 +203,12 @@ SCRFD_2_5G_POSTPROCESS_FUNCTION = "scrfd_2_5g_letterbox"  # Used for hailo8l
 
 # Clip pipeline defaults
 CLIP_PIPELINE = "clip"
-CLIP_MODEL_NAME = "clip_resnet_50x4_image_encoder"
-CLIP_DETECTION_PIPELINE = "clip_detection"
-CLIP_DETECTION_MODEL_NAME = "hailo_yolov8n_4_classes_vga"
 CLIP_APP_TITLE = "Hailo CLIP App"
 CLIP_VIDEO_NAME = "clip_example.mp4"
 CLIP_POSTPROCESS_SO_FILENAME = 'libclip_postprocess.so'
 CLIP_CROPPER_POSTPROCESS_SO_FILENAME = 'libclip_croppers_postprocess.so'
 CLIP_POSTPROCESS_FUNCTION_NAME = 'filter'
+CLIP_CUSTOM_POSTPROCESS_FUNCTION_NAME = 'filter_custom_clip'
 CLIP_DETECTION_POSTPROCESS_FUNCTION_NAME = 'filter'
 CLIP_CROPPER_PERSON_POSTPROCESS_FUNCTION_NAME = 'person_cropper'
 CLIP_CROPPER_VEHICLE_POSTPROCESS_FUNCTION_NAME = 'vehicle_cropper'
@@ -250,6 +253,28 @@ UDEV_CMD = "udevadm"
 HAILO_RGB_VIDEO_FORMAT = "RGB"
 HAILO_YUYV_VIDEO_FORMAT = "YUYV"
 HAILO_NV12_VIDEO_FORMAT = "NV12"
+
+# Image / camera defaults
+VIDEO_SUFFIXES = (".mp4", ".avi", ".mov", ".mkv")
+IMAGE_EXTENSIONS: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp")
+CAMERA_RESOLUTION_MAP: Dict[str, Tuple[int, int]] = {
+    "sd": (640, 480),
+    "hd": (1280, 720),
+    "fhd": (1920, 1080),
+}
+
+# Resource types supported for SINGLE resource download (download_resources)
+RESOURCE_TYPE_MODEL = "model"
+RESOURCE_TYPE_IMAGE = "image"
+RESOURCE_TYPE_VIDEO = "video"
+
+RESOURCE_TYPES = {
+    RESOURCE_TYPE_MODEL,
+    RESOURCE_TYPE_IMAGE,
+    RESOURCE_TYPE_VIDEO,
+}
+
+CAMERA_KEYWORDS = ["usb", "rpi"]
 
 # Video examples
 BASIC_PIPELINES_VIDEO_EXAMPLE_NAME = "example.mp4"

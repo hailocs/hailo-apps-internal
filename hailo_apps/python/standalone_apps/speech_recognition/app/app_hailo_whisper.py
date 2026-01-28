@@ -30,7 +30,7 @@ def check_whisper_dependencies():
         print("-"*70)
         print("\nTo install all dependencies (recommended):")
         print("  1. Navigate to the repository root directory")
-        print("  2. Run: pip install -e \".[speech-rec]\"")
+        print("  2. Run: pip install -e \".[speech-rec]\" (in case Raspberry Pi add --break-system-packages)")
         print("\n" + "="*70)
         sys.exit(1)
 
@@ -59,18 +59,31 @@ try:
 except ImportError:
     from pathlib import Path
 
-    speech_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(speech_root))
-    core_dir = Path(__file__).resolve().parents[3] / "core"
-    sys.path.insert(0, str(core_dir))
-    from app.hailo_whisper_pipeline import HailoWhisperPipeline
-    from common.audio_utils import load_audio
-    from common.preprocessing import preprocess, improve_input_audio
-    from common.postprocessing import clean_transcription
-    from common.record_utils import record_audio
-    from app.whisper_hef_registry import HEF_REGISTRY
-    from common.parser import get_standalone_parser
-    from common.toolbox import resolve_arch
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+
+    from hailo_apps.python.standalone_apps.speech_recognition.app.hailo_whisper_pipeline import (
+        HailoWhisperPipeline,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.audio_utils import load_audio
+    from hailo_apps.python.standalone_apps.speech_recognition.common.preprocessing import (
+        preprocess,
+        improve_input_audio,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.postprocessing import (
+        clean_transcription,
+    )
+    from hailo_apps.python.standalone_apps.speech_recognition.common.record_utils import record_audio
+    from hailo_apps.python.standalone_apps.speech_recognition.app.whisper_hef_registry import (
+        HEF_REGISTRY,
+    )
+    from hailo_apps.python.core.common.parser import get_standalone_parser
+    from hailo_apps.python.core.common.toolbox import resolve_arch
 
 
 def get_args():
@@ -102,11 +115,6 @@ def get_args():
         default="base",
         choices=["base", "tiny", "tiny.en"],
         help="Whisper variant to use (default: base)"
-    )
-    parser.add_argument(
-        "--multi-process-service", 
-        action="store_true", 
-        help="Enable multi-process service to run other models in addition to Whisper"
     )
     parser.add_argument(
         "--duration",
@@ -167,7 +175,7 @@ def main():
     encoder_path = get_hef_path(variant, args.arch, "encoder")
     decoder_path = get_hef_path(variant, args.arch, "decoder")
 
-    whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant, multi_process_service=args.multi_process_service)
+    whisper_hailo = HailoWhisperPipeline(encoder_path, decoder_path, variant)
     print("Hailo Whisper pipeline initialized.")
     audio_path = "sampled_audio.wav"
     is_nhwc = True

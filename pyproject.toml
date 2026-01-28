@@ -19,11 +19,12 @@ dependencies = [
     # Core dependencies
     "numpy",
     "setproctitle",
-    "opencv-python",
+    "opencv-python<=4.10.0.84",  # Pin to avoid Qt font warnings in newer versions
     "python-dotenv",
     "pyyaml",
     "Pillow",
     "lancedb",
+    "tokenizers",
     # Dependencies from hace-internal (tracker, etc.)
     "loguru",
     "scipy>=1.9.3",
@@ -46,6 +47,7 @@ gen-ai = [
     "PyAudio",
     "piper-tts",
     "sounddevice==0.5.1",
+    "webrtcvad-wheels",
 ]
 
 # OCR dependencies - install with: pip install -e ".[ocr]"
@@ -63,13 +65,6 @@ speech-rec = [
     "torch==2.6.0",
     "torchvision==0.21.0",
     "streamlit",
-]
-
-# CLIP dependencies - install with: pip install -e ".[clip]"
-clip = [
-    "openai-clip",
-    "torch==2.6.0",
-    "torchvision==0.21.0"
 ]
 
 [project.scripts]

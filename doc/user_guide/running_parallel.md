@@ -15,8 +15,8 @@ The Hailo platform allows running multiple applications in parallel by using sha
 - GenAI + GenAI (they use the same service and cannot run simultaneously)
 
 ## Configuration
-### For Vision Applications (GStreamer)
-When using the INFERENCE_PIPELINE helper function, ensure the vdevice_group_id parameter is set correctly:
+### For Vision Applications (GStreamer pipeline)
+When using the INFERENCE_PIPELINE helper function, ensure the vdevice_group_id parameter is set correctly and **⚠️ in case of Hailo8/8L set `multi_process_service=true`**:
 
 ```python
 from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
@@ -24,11 +24,12 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import INFERENC
 
 # Create your inference pipeline with shared vdevice group
 inference_pipeline = INFERENCE_PIPELINE(
-    hef_path="path/to/model.hef",
-    post_process_so="path/to/postprocess.so",
+    hef_path='path/to/model.hef',
+    post_process_so='path/to/postprocess.so',
     batch_size=1,
-    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # ⚠️ Required for parallel execution
-    name="my_inference"
+    vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # ⚠️ Required for parallel execution,
+    multi_process_service='true'  # only for Hailo8/8L, ⚠️ 'true' as string, not boolean True
+    name='my_inference'
 )
 ```
 
@@ -40,8 +41,8 @@ The constant SHARED_VDEVICE_GROUP_ID = "SHARED" is defined in defines.py
 
 ⚠️ Critical Reminder: Do not modify the SHARED_VDEVICE_GROUP_ID constant or use different group IDs between applications - this will prevent parallel execution.
 
-### For GenAI Applications
-When creating a VDevice in your GenAI application, configure it with the shared group ID:
+### Workign with the VDevice API (e.g., For GenAI Applications)"
+When creating a VDevice in your application, configure it with the shared group ID:
 
 ```python
 from hailo_platform import VDevice

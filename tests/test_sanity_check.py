@@ -68,6 +68,37 @@ logger = logging.getLogger("sanity-tests")
 
 
 # ============================================================================
+# HOST ARCHITECTURE DETECTION (for conditional test collection)
+# ============================================================================
+
+def _detect_host_arch_for_skip():
+    """Detect host architecture at module load time for skipif decorators."""
+    if IMPORTS_AVAILABLE:
+        try:
+            return detect_host_arch()
+        except Exception:
+            pass
+    # Fallback detection
+    import platform
+    machine = platform.machine().lower()
+    if "x86" in machine or "amd64" in machine:
+        return "x86"
+    elif "aarch64" in machine or "arm" in machine:
+        # Check if it's RPi
+        try:
+            with open("/proc/device-tree/model", "r") as f:
+                if "raspberry" in f.read().lower():
+                    return "rpi"
+        except Exception:
+            pass
+        return "arm"
+    return "unknown"
+
+_HOST_ARCH = _detect_host_arch_for_skip()
+_IS_RPI = _HOST_ARCH == "rpi"
+
+
+# ============================================================================
 # SECTION 1: HAILO APPS PACKAGE TESTS
 # ============================================================================
 
@@ -351,49 +382,55 @@ class TestEnvironmentConfiguration:
             # Check if TAPPAS is installed
             tappas_installed = auto_detect_tappas_installed()
             if tappas_installed:
-                logger.warning(
+                logger.info(
                     "TAPPAS core is installed but postprocess path not set. "
-                    "Run 'hailo-set-env' or 'hailo-post-install' to configure."
+                    "Running 'hailo-set-env' to configure..."
                 )
+                # Automatically run hailo-set-env to configure
+                result = subprocess.run(
+                    ["hailo-set-env"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    logger.info("hailo-set-env completed successfully")
+                else:
+                    logger.warning(f"hailo-set-env failed: {result.stderr}")
 
 
 # ============================================================================
-# SECTION 6: HOST ARCHITECTURE SPECIFIC TESTS
+# SECTION 6: HOST ARCHITECTURE SPECIFIC TESTS (RPi only)
 # ============================================================================
 
-@pytest.mark.sanity
-class TestHostArchitectureSpecific:
-    """Tests specific to host architecture (x86, ARM, RPi)."""
-    
-    def test_rpi_camera_module(self, detected_host_arch):
-        """On Raspberry Pi: verify picamera2 is available."""
-        if detected_host_arch != "rpi":
-            pytest.skip("Not running on Raspberry Pi")
+# Only define RPi-specific tests when running on RPi
+if _IS_RPI:
+    @pytest.mark.sanity
+    class TestHostArchitectureSpecific:
+        """Tests specific to Raspberry Pi host architecture."""
         
-        try:
-            import picamera2
-            logger.info("picamera2 is available for RPi camera support")
-        except ImportError:
-            logger.warning(
-                "picamera2 not installed. "
-                "RPi camera module support will be unavailable. "
-                "Install with: pip install picamera2"
+        def test_rpi_camera_module(self):
+            """On Raspberry Pi: verify picamera2 is available."""
+            try:
+                import picamera2
+                logger.info("picamera2 is available for RPi camera support")
+            except ImportError:
+                logger.warning(
+                    "picamera2 not installed. "
+                    "RPi camera module support will be unavailable. "
+                    "Install with: pip install picamera2"
+                )
+        
+        def test_libcamera_available(self):
+            """On Raspberry Pi: check if libcamera is available."""
+            result = subprocess.run(
+                ["which", "libcamera-hello"],
+                check=False,
+                capture_output=True
             )
-    
-    def test_libcamera_available(self, detected_host_arch):
-        """On Raspberry Pi: check if libcamera is available."""
-        if detected_host_arch != "rpi":
-            pytest.skip("Not running on Raspberry Pi")
-        
-        result = subprocess.run(
-            ["which", "libcamera-hello"],
-            check=False,
-            capture_output=True
-        )
-        if result.returncode == 0:
-            logger.info("libcamera tools available")
-        else:
-            logger.warning("libcamera tools not found in PATH")
+            if result.returncode == 0:
+                logger.info("libcamera tools available")
+            else:
+                logger.info("libcamera tools not found in PATH (optional for USB camera users)")
 
 
 # ============================================================================

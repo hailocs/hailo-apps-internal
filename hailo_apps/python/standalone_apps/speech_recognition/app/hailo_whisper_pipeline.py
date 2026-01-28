@@ -20,7 +20,7 @@ class HailoWhisperPipeline:
     A pipeline for running inference using Hailo's Whisper models.
     """
 
-    def __init__(self, encoder_model_path: str, decoder_model_path: str, variant="tiny", host="arm64", multi_process_service=False):
+    def __init__(self, encoder_model_path: str, decoder_model_path: str, variant="tiny", host="arm64"):
         """
         Initialize the pipeline.
 
@@ -35,7 +35,6 @@ class HailoWhisperPipeline:
 
         self.decoding_sequence_length = None  # set automatically based on HEF details
         self.host = host  # not used in this version
-        self.multi_process_service = multi_process_service
 
         # Token embedding
         self.token_embedding_weight = self._load_token_embedding_weight()
@@ -106,10 +105,7 @@ class HailoWhisperPipeline:
         """
         params = VDevice.create_params()
         params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN
-        
-        if self.multi_process_service:
-            params.multi_process_service = True
-            params.group_id = "SHARED"
+        params.group_id = "SHARED"
 
         # get output info
         decoder_hef = HEF(self.decoder_model_path)

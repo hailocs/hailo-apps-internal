@@ -18,6 +18,9 @@ For full details on Hailo Model Zoo GenAI, see: https://github.com/hailo-ai/hail
 
 1. Visit: https://hailo.ai/developer-zone/
 2. Download the appropriate package for your architecture
+
+   **Important: The supported version is 5.1.1  & 5.2.0**
+
 3. Install the package:
    ```bash
    sudo apt install hailo_gen_ai_model_zoo_<ver>_<arch>.deb
@@ -70,33 +73,40 @@ Once Hailo-Ollama is up and running, you can consume it with the popular Open We
 
 Based on the Open WebUI quick start guide: https://docs.openwebui.com/getting-started/quick-start
 
-1. Download and run the **slim** variant
+1. For environments with limited storage or bandwidth, Open WebUI offers slim image variants that exclude pre-bundled models.
 2. **Important:** Run with host network
 
 ```bash
-docker pull ghcr.io/open-webui/open-webui:main-slim
+docker pull ghcr.io/open-webui/open-webui:main
 
+docker run -d -e OLLAMA_BASE_URL=http://127.0.0.1:8000 -v open-webui:/app/backend/data --name open-webui --network=host --restart always ghcr.io/open-webui/open-webui:main
+```
+
+Alternative `run` command in case there are issues:
+```bash
 # Run with host network (container shares host's network)
 docker run -d --network host \
   -v open-webui:/app/backend/data \
   --name open-webui \
-  ghcr.io/open-webui/open-webui:main-slim
+  ghcr.io/open-webui/open-webui:main
 ```
+
+Open your browser and navigate to the Open WebUI interface at: **http://localhost:8080**
 
 ### Configure Open WebUI
 
-1. Open your browser and navigate to the Open WebUI interface at: **http://localhost:8080**
+If the local model does not appear immediately, the following configuration may be required:
 
-2. In **Settings → Admin Settings → Connections**, add the Hailo-Ollama API URL:
+1. In **Settings → Admin Settings → Connections**, add the Hailo-Ollama API URL:
    ```
    http://localhost:8000
    ```
 
-3. Under the "Ollama API" section:
+2. Under the "Ollama API" section:
    - Set "Connection Type" to "Local"
    - Set "Auth" to "None"
 
-4. Now in the chat, select one of the models served by Hailo-Ollama from the available models.
+3. Now in the chat, select one of the models served by Hailo-Ollama from the available models.
 
 ## Usage
 

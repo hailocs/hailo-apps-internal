@@ -33,7 +33,7 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
 
-from hailo_apps.config.config_manager import get_resources_config, _load_yaml as load_config
+from hailo_apps.config.config_manager import get_images_for_app, get_videos_for_app, _load_yaml as load_config
 
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (
@@ -42,24 +42,34 @@ from hailo_apps.python.core.common.defines import (
     HAILO8L_ARCH,
     HAILO10H_ARCH,
     HAILO_FILE_EXTENSION,
-    JSON_FILE_EXTENSION,
+    HAILORT_VERSION_KEY,
     MODEL_ZOO_URL,
     MODEL_ZOO_VERSION_DEFAULT,
     MODEL_ZOO_VERSION_KEY,
     RESOURCES_JSON_DIR_NAME,
+    RESOURCES_NPY_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_ROOT_PATH_DEFAULT,
     RESOURCES_VIDEOS_DIR_NAME,
     S3_RESOURCES_BASE_URL,
     VALID_H8_MODEL_ZOO_VERSION,
     VALID_H10_MODEL_ZOO_VERSION,
+    RESOURCE_TYPE_MODEL,
+    RESOURCE_TYPE_IMAGE,
+    RESOURCE_TYPE_VIDEO,
+    RESOURCE_TYPES,
 )
+
 from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 
 # =============================================================================
 # Configuration
 # =============================================================================
+
+# User-Agent string to avoid 403 errors from Cloudflare-protected servers
+# Some servers (like dev-public.hailo.ai) block requests with Python's default User-Agent
+DEFAULT_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 @dataclass
 class DownloadConfig:
@@ -130,7 +140,11 @@ def is_valid_model_entry(entry) -> bool:
 def test_url(url: str) -> bool:
     """Test if a URL is reachable and valid."""
     try:
-        request = urllib.request.Request(url, method='HEAD')
+        request = urllib.request.Request(
+            url, 
+            method='HEAD',
+            headers={'User-Agent': DEFAULT_USER_AGENT}
+        )
         with urllib.request.urlopen(request, timeout=30) as response:
             print(f"✓ URL valid: {url}")
             print(f"  Status: {response.status}")
@@ -169,11 +183,29 @@ def map_arch_to_s3_path(hailo_arch: str) -> str:
 
 
 def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
-    """Get Model Zoo version and download architecture for a given Hailo architecture."""
+    """Get Model Zoo version and download architecture for a given Hailo architecture.
+    
+    For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0)
+    For H8/H8L: Uses static mapping v2.17.0
+    """
     download_arch = hailo_arch
     
-    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY, MODEL_ZOO_VERSION_DEFAULT)
+    # First check if explicitly set via environment
+    model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY)
     
+    if model_zoo_version is None:
+        # Derive from HailoRT version for H10
+        if hailo_arch == HAILO10H_ARCH:
+            hailort_version = os.getenv(HAILORT_VERSION_KEY, "5.1.1")
+            if hailort_version.startswith("5.2"):
+                model_zoo_version = "v5.2.0"
+            else:
+                model_zoo_version = "v5.1.0"  # Default for 5.1.x
+        else:
+            # H8/H8L always uses v2.17.0
+            model_zoo_version = "v2.17.0"
+    
+    # Validate the version
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
         model_zoo_version = "v5.1.0"
     if hailo_arch in (HAILO8_ARCH, HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
@@ -185,7 +217,11 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
 def get_remote_file_size(url: str, timeout: int = 30) -> Optional[int]:
     """Get the size of a remote file without downloading it."""
     try:
-        request = urllib.request.Request(url, method='HEAD')
+        request = urllib.request.Request(
+            url, 
+            method='HEAD',
+            headers={'User-Agent': DEFAULT_USER_AGENT}
+        )
         with urllib.request.urlopen(request, timeout=timeout) as response:
             content_length = response.headers.get('Content-Length')
             if content_length:
@@ -375,11 +411,27 @@ class ResourceDownloader:
                 progress = ProgressTracker(self.download_config.show_progress)
                 hailo_logger.info(f"Downloading: {url}")
                 
-                urllib.request.urlretrieve(
+                # Use urlopen with custom User-Agent to avoid 403 from Cloudflare-protected servers
+                request = urllib.request.Request(
                     url,
-                    temp_path,
-                    progress.update if self.download_config.show_progress else None
+                    headers={'User-Agent': DEFAULT_USER_AGENT}
                 )
+                
+                with urllib.request.urlopen(request, timeout=self.download_config.timeout) as response:
+                    total_size = int(response.headers.get('Content-Length', 0))
+                    block_size = 8192
+                    downloaded = 0
+                    
+                    with open(temp_path, 'wb') as out_file:
+                        while True:
+                            block = response.read(block_size)
+                            if not block:
+                                break
+                            out_file.write(block)
+                            downloaded += len(block)
+                            if self.download_config.show_progress:
+                                progress.update(downloaded // block_size, block_size, total_size)
+                
                 progress.finish()
                 
                 # Verify download size
@@ -456,7 +508,9 @@ class ResourceDownloader:
                 return url
             return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
         elif source == "mz":
-            return f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
+            url = f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
+            test_url(url=url)  # Print URL validation info
+            return url
         elif source == "gen-ai-mz":
             # Gen-AI models default to metadata-driven URL construction:
             #   {gen_ai_base}/{version}/blob/{model}.hef
@@ -465,9 +519,11 @@ class ResourceDownloader:
                 .get("s3_endpoints", {})
                 .get("gen_ai_mz", "https://dev-public.hailo.ai")
             )
-            gen_ai_version = "v5.1.1"
+            gen_ai_version = f"v{os.getenv(HAILORT_VERSION_KEY, '5.1.1')}"
             
-            return f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
+            url = f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
+            test_url(url=url)  # Print URL validation info
+            return url
         else:
             hailo_logger.warning(f"Unknown source '{source}' for model '{name}'")
             return None
@@ -624,6 +680,43 @@ class ResourceDownloader:
         )
         self._tasks.add(task)
     
+    def _add_npy_task(self, npy_entry):
+        """Add a NPY download task from a NPY entry."""
+        if is_none_value(npy_entry):
+            return
+
+        if isinstance(npy_entry, dict):
+            npy_name = npy_entry.get("name")
+            source = npy_entry.get("source")
+            npy_url = npy_entry.get("url")
+
+            if not npy_name:
+                hailo_logger.warning(f"NPY entry missing name: {npy_entry}")
+                return
+
+            dest = self.resource_root / RESOURCES_NPY_DIR_NAME / npy_name
+
+            if source == "s3":
+                url = npy_url or f"{S3_RESOURCES_BASE_URL}/npy/{npy_name}"
+            elif npy_url:
+                url = npy_url
+            else:
+                hailo_logger.warning(f"NPY '{npy_name}' missing URL and source is not 's3'")
+                return
+        elif isinstance(npy_entry, str) and npy_entry.startswith(("http://", "https://")):
+            url = npy_entry
+            npy_name = Path(npy_entry).name
+            dest = self.resource_root / RESOURCES_NPY_DIR_NAME / npy_name
+        else:
+            return
+
+        task = DownloadTask(
+            url=url,
+            dest_path=dest,
+            resource_type="npy",
+            name=npy_name
+        )
+        self._tasks.add(task)
     # -------------------------------------------------------------------------
     # High-Level Collection Methods
     # -------------------------------------------------------------------------
@@ -639,12 +732,60 @@ class ResourceDownloader:
         if "images" in self.config:
             for image_entry in self.config["images"]:
                 self._add_image_task(image_entry)
-    
+
+    def collect_specific_image_for_app(self, app_name: str, image_name: str):
+        """Collect a specific image by name, restricted to a specific app."""
+        images_config = get_images_for_app(app_name=app_name)
+
+        for image_entry in images_config:
+            if isinstance(image_entry, dict):
+                name = image_entry.get("name")
+            elif isinstance(image_entry, str):
+                name = Path(image_entry).name
+            else:
+                continue
+
+            if name == image_name:
+                self._add_image_task(image_entry)
+                hailo_logger.info(f"Collected image '{image_name}' for app '{app_name}'")
+                return
+
+        hailo_logger.warning(
+            f"Image '{image_name}' not found for app '{app_name}'"
+        )
+
+
+    def collect_specific_video_for_app(self, app_name: str, video_name: str):
+        """Collect a specific video by name, restricted to a specific app."""
+        videos_config = get_videos_for_app(app_name=app_name)
+
+        for video_entry in videos_config:
+            if isinstance(video_entry, dict):
+                name = video_entry.get("name")
+            elif isinstance(video_entry, str):
+                name = Path(video_entry).name
+            else:
+                continue
+
+            if name == video_name:
+                self._add_video_task(video_entry)
+                hailo_logger.info(f"Collected video '{video_name}' for app '{app_name}'")
+                return
+
+        hailo_logger.warning(
+            f"Video '{video_name}' not found for app '{app_name}'"
+        )
+
     def collect_all_json_files(self):
         """Collect all JSON download tasks from top-level json section."""
         if "json" in self.config:
             for json_entry in self.config["json"]:
                 self._add_json_task(json_entry)
+    def collect_all_npy_files(self):
+        """Collect all NPY download tasks from top-level npy section."""
+        if "npy" in self.config:
+            for npy_entry in self.config["npy"]:
+                self._add_npy_task(npy_entry)
     
     def collect_models_for_app(
         self,
@@ -716,7 +857,42 @@ class ResourceDownloader:
                 include_extra=include_extra,
                 is_gen_ai_allowed=not exclude_gen_ai_apps
             )
-    
+
+    def collect_specific_model_for_app(self, app_name: str, model_name: str):
+        """Collect a specific model by name, restricted to a specific app."""
+        app_config = self.config.get(app_name)
+
+        if not isinstance(app_config, dict) or "models" not in app_config:
+            hailo_logger.warning(f"App '{app_name}' not found or has no models section")
+            return
+
+        models_config = app_config["models"]
+        if self.hailo_arch not in models_config:
+            hailo_logger.warning(
+                f"Architecture '{self.hailo_arch}' not found for app '{app_name}'"
+            )
+            return
+
+        arch_models = models_config[self.hailo_arch]
+
+        # Check default model
+        if "default" in arch_models:
+            default_model = arch_models["default"]
+            if self._find_and_add_model_by_name(default_model, model_name):
+                return
+
+        # Check extra models
+        if "extra" in arch_models:
+            for model_entry in arch_models["extra"]:
+                if self._find_and_add_model_by_name(model_entry, model_name):
+                    return
+
+        hailo_logger.warning(
+            f"Model '{model_name}' not found for app '{app_name}' "
+            f"and architecture '{self.hailo_arch}'"
+        )
+
+
     def collect_specific_model(self, model_name: str):
         """Collect a specific model by name."""
         for app_name, app_config in self.config.items():
@@ -791,6 +967,7 @@ class ResourceDownloader:
         self.collect_all_videos()
         self.collect_all_images()
         self.collect_all_json_files()
+        self.collect_all_npy_files()
     
     def _is_gen_ai_app(self, app_config: dict) -> bool:
         """Check if an app is a gen-ai app."""
@@ -1009,50 +1186,42 @@ def download_group_resources(
     downloader.execute(parallel=True)
 
 
-def download_resources(
-    resource_config_path: str | None = None,
-    arch: str | None = None,
-    group: str | None = None,
-    all_models: bool = False,
-    model: str | None = None,
-    dry_run: bool = False,
-    force: bool = False,
-    parallel: bool = True,
-    include_gen_ai: bool = False
+def _create_downloader(
+    resource_config_path: str | None,
+    arch: str | None,
+    dry_run: bool,
+    force: bool,
+    include_gen_ai: bool,
 ):
     """
-    Download resources based on the specified options.
-    
+    Create and initialize a ResourceDownloader.
+
     Args:
-        resource_config_path: Path to resources config file
-        arch: Hailo architecture override (hailo8, hailo8l, hailo10h)
-        group: Specific group/app name to download resources for
-        all_models: If True, download all models (default + extra) for all apps
-        model: Specific model name to download
-        dry_run: If True, only show what would be downloaded
-        force: If True, force re-download even if files exist
-        parallel: If True, download files in parallel
-        include_gen_ai: If True, include gen-ai models in downloads
+        resource_config_path: Path to the resources config file. If None, use default.
+        arch: Hailo architecture override ("hailo8", "hailo8l", "hailo10h"). Auto-detected if None.
+        dry_run: If True, do not download files, only log planned actions.
+        force: If True, force re-download even if files already exist.
+        include_gen_ai: If True, allow downloading gen-ai models/resources.
+
+    Returns:
+        ResourceDownloader instance on success, None if configuration loading fails.
     """
-    # If group is specified and not "default", use group-specific download
-    if group and group.lower() != "default":
-        download_group_resources(group, resource_config_path, arch)
-        return
-    
-    hailo_logger.debug(
-        f"Starting download_resources: config={resource_config_path}, arch={arch}, "
-        f"all_models={all_models}, model={model}, dry_run={dry_run}"
-    )
-    
+
+    # ------------------------------------------------------------
+    # Resolve and validate resources configuration path
+    # ------------------------------------------------------------
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
         hailo_logger.error(f"Config file not found at {cfg_path}")
-        return
-    
+        return None
+
+    # Load resources configuration
     config = load_config(cfg_path)
     hailo_logger.info(f"Using resource config from: {cfg_path}")
-    
-    # Detect architecture
+
+    # ------------------------------------------------------------
+    # Detect or validate Hailo architecture
+    # ------------------------------------------------------------
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
         hailo_logger.error("Could not detect Hailo architecture.")
@@ -1066,52 +1235,153 @@ def download_resources(
             file=sys.stderr
         )
         sys.exit(1)
+
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
-    
-    resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
-    
-    # Create downloader
+
+    # ------------------------------------------------------------
+    # Build download configuration
+    # ------------------------------------------------------------
     download_config = DownloadConfig(
-        dry_run=dry_run,
-        force_redownload=force,
-        include_gen_ai=include_gen_ai
+        dry_run=dry_run,              # Preview-only mode (no actual downloads)
+        force_redownload=force,       # Re-download even if files already exist
+        include_gen_ai=include_gen_ai # Allow gen-ai resources/models
     )
-    
-    downloader = ResourceDownloader(
+
+    # ------------------------------------------------------------
+    # Create and return the downloader instance
+    # ------------------------------------------------------------
+    return ResourceDownloader(
         config=config,
         hailo_arch=hailo_arch,
-        resource_root=resource_root,
+        resource_root=Path(RESOURCES_ROOT_PATH_DEFAULT),
         download_config=download_config
     )
+
+
+def download_resources(
+    resource_config_path: str | None = None,
+    arch: str | None = None,
+    group: str | None = None,
+    all_models: bool = False,
+    resource_name: str | None = None,
+    resource_type: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    parallel: bool = True,
+    include_gen_ai: bool = False
+):
+    """
+    Download resources based on the specified options.
     
+    Args:
+        resource_config_path: Path to resources config file
+        arch: Hailo architecture override (hailo8, hailo8l, hailo10h)
+        group: Specific group/app name to download resources for
+        all_models: If True, download all models (default + extra) for all apps
+        resource_name: Specific resource name to download
+        resource_type: Type of the resource specified by `resource_name`, supported values: "model", "image", "video".
+        dry_run: If True, only show what would be downloaded
+        force: If True, force re-download even if files exist
+        parallel: If True, download files in parallel
+        include_gen_ai: If True, include gen-ai models in downloads
+    """
+    
+    # ------------------------------------------------------------
+    # Targeted mode:
+    # Download exactly ONE resource (model OR image OR video).
+    # This mode is strict and REQUIRES a valid group/app name.
+    # ------------------------------------------------------------
+    if resource_name:
+        # resource_type must be provided
+        if not resource_type:
+            hailo_logger.error("resource_type must be specified with resource_name")
+            return
+
+        # Validate resource_type
+        if resource_type not in RESOURCE_TYPES:
+            hailo_logger.error(
+                f"Invalid resource_type '{resource_type}'. "
+                f"Supported types: {', '.join(RESOURCE_TYPES)}"
+            )
+            return
+
+        # Group is mandatory for targeted mode
+        if not group:
+            hailo_logger.error("Targeted download requires a valid --group (app name).")
+            return
+
+        downloader = _create_downloader(
+            resource_config_path,
+            arch,
+            dry_run,
+            force,
+            include_gen_ai
+        )
+        if downloader is None:
+            return
+
+        # Dispatch by resource type
+        if resource_type == RESOURCE_TYPE_IMAGE:
+            hailo_logger.info(f"Collecting specific image: {resource_name} (group={group})")
+            downloader.collect_specific_image_for_app(group, resource_name)
+
+        elif resource_type == RESOURCE_TYPE_VIDEO:
+            hailo_logger.info(f"Collecting specific video: {resource_name} (group={group})")
+            downloader.collect_specific_video_for_app(group, resource_name)
+
+        elif resource_type == RESOURCE_TYPE_MODEL:
+            hailo_logger.info(f"Collecting specific model: {resource_name} (group={group})")
+            downloader.collect_specific_model_for_app(group, resource_name)
+
+        downloader.execute(parallel=parallel)
+        return
+
+    # ------------------------------------------------------------
+    # Group mode:
+    # Download ALL resources for a specific group/app.
+    # ------------------------------------------------------------
+    if group and group.lower() != "default":
+        download_group_resources(group, resource_config_path, arch)
+        return
+
+    # ------------------------------------------------------------
+    # Bootstrap / default mode:
+    # Download shared resources and default (or all) models.
+    # ------------------------------------------------------------
+    downloader = _create_downloader(
+        resource_config_path,
+        arch,
+        dry_run,
+        force,
+        include_gen_ai
+    )
+    if downloader is None:
+        return
+
     hailo_logger.info(f"Using Model Zoo version: {downloader.model_zoo_version}")
-    
-    # Always collect images, videos, and JSON files
+
+    # Collect shared resources used across apps
     hailo_logger.info("Collecting default resources: images, videos, and JSON files...")
     downloader.collect_all_videos()
     downloader.collect_all_images()
     downloader.collect_all_json_files()
-    
-    # Collect models based on options
-    if model:
-        # Download specific model
-        downloader.collect_specific_model(model)
-    elif all_models:
-        # Download all models (default + extra) for all apps
-        hailo_logger.info(f"Collecting all models for {hailo_arch}...")
+    downloader.collect_all_npy_files()
+
+    # Collect models according to the selected bootstrap mode
+    if all_models:
+        hailo_logger.info(f"Collecting all models for {downloader.hailo_arch}...")
         downloader.collect_all_default_models(
             include_extra=True,
             exclude_gen_ai_apps=not include_gen_ai
         )
     else:
-        # Download only default models
-        hailo_logger.info(f"Collecting default models for {hailo_arch}...")
+        hailo_logger.info(f"Collecting default models for {downloader.hailo_arch}...")
         downloader.collect_all_default_models(
             include_extra=False,
             exclude_gen_ai_apps=not include_gen_ai
         )
-    
-    # Execute downloads
+
+    # Execute all queued downloads
     downloader.execute(parallel=parallel)
 
 
@@ -1234,8 +1504,10 @@ Examples:
   # Download resources for a specific app
   %(prog)s --group detection
 
-  # Download a specific model
-  %(prog)s --model yolov8m
+  # Download a specific resource (strict targeted mode)
+  %(prog)s --group detection --resource-type model --resource-name yolov8m
+  %(prog)s --group detection --resource-type image --resource-name bus.jpg
+  %(prog)s --group detection --resource-type video --resource-name example.mp4
 
   # Download for a specific architecture
   %(prog)s --arch hailo10h
@@ -1279,10 +1551,17 @@ Examples:
         help="Group/app name to download resources for (e.g., detection, vlm_chat)"
     )
     parser.add_argument(
-        "--model",
+        "--resource-name",
         type=str,
         default=None,
-        help="Specific model name to download"
+        help="Specific resource name to download"
+    )
+    parser.add_argument(
+        "--resource-type",
+        type=str,
+        default=None,
+        choices=sorted(RESOURCE_TYPES),
+        help="Type of the resource specified by --resource-name (model/image/video)"
     )
     parser.add_argument(
         "--list-models",
@@ -1323,13 +1602,22 @@ Examples:
         )
         return
     
+    # Validate targeted mode arguments
+    if args.resource_name and not args.resource_type:
+        parser.error("--resource-name requires --resource-type")
+
+    if args.resource_type and not args.resource_name:
+        parser.error("--resource-type requires --resource-name")
+
+
     # Download resources
     download_resources(
         resource_config_path=args.config,
         arch=args.arch,
         group=args.group,
         all_models=args.all,
-        model=args.model,
+        resource_name=args.resource_name,
+        resource_type=args.resource_type,
         dry_run=args.dry_run,
         force=args.force,
         parallel=not args.no_parallel,

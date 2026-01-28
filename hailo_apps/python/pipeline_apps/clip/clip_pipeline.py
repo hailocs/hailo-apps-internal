@@ -6,78 +6,66 @@ import setproctitle
 
 # Third-party imports
 import numpy as np
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
 
 # Local application-specific imports
 import hailo
+from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.defines import (
+    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
+    CLIP_APP_TITLE,
     CLIP_CROPPER_FACE_POSTPROCESS_FUNCTION_NAME,
     CLIP_CROPPER_LICENSE_PLATE_POSTPROCESS_FUNCTION_NAME,
     CLIP_CROPPER_OBJECT_POSTPROCESS_FUNCTION_NAME,
     CLIP_CROPPER_PERSON_POSTPROCESS_FUNCTION_NAME,
+    CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
     CLIP_CROPPER_VEHICLE_POSTPROCESS_FUNCTION_NAME,
     CLIP_DETECTION_POSTPROCESS_FUNCTION_NAME,
     CLIP_DETECTOR_TYPE_FACE,
     CLIP_DETECTOR_TYPE_LICENSE_PLATE,
     CLIP_DETECTOR_TYPE_PERSON,
     CLIP_DETECTOR_TYPE_VEHICLE,
-    CLIP_POSTPROCESS_FUNCTION_NAME,
+    CLIP_PIPELINE,
+    CLIP_POSTPROCESS_SO_FILENAME,
+    CLIP_VIDEO_NAME,
+    DETECTION_POSTPROCESS_SO_FILENAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
-    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
-    CLIP_APP_TITLE,
-    CLIP_VIDEO_NAME,
-    CLIP_PIPELINE,
-    DETECTION_POSTPROCESS_SO_FILENAME,
-    CLIP_POSTPROCESS_SO_FILENAME,
-    CLIP_CROPPER_POSTPROCESS_SO_FILENAME,
+    HAILO8_ARCH, 
+    HAILO8L_ARCH,
+    CLIP_POSTPROCESS_FUNCTION_NAME,
 )
-from hailo_apps.python.core.common.core import (
-    get_pipeline_parser,
-    get_resource_path,
-    handle_list_models_flag,
-    configure_multi_model_hef_path,
-    resolve_hef_paths,
-)
+from hailo_apps.python.core.common.core import configure_multi_model_hef_path, get_pipeline_parser, get_resource_path, handle_list_models_flag, resolve_hef_paths
 from hailo_apps.python.core.common.hef_utils import get_hef_labels_json
-from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
-
-hailo_logger = get_logger(__name__)
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    QUEUE,
-    SOURCE_PIPELINE,
+    CROPPER_PIPELINE,
+    DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
+    QUEUE,
+    SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
-    DISPLAY_PIPELINE,
-    CROPPER_PIPELINE
 )
 from hailo_apps.python.pipeline_apps.clip.text_image_matcher import text_image_matcher
 from hailo_apps.python.pipeline_apps.clip import gui
-# endregion imports
+# endregion
+
+hailo_logger = get_logger(__name__)
 
 class GStreamerClipApp(GStreamerApp):
     def __init__(self, app_callback, user_data, parser=None):
-        if parser is None:
+        setproctitle.setproctitle(CLIP_APP_TITLE)
+        if parser == None:
             parser = get_pipeline_parser()
         parser.add_argument("--detector", "-d", type=str, choices=["person", "vehicle", "face", "license-plate", "none"], default="none", help="Which detection pipeline to use.")
         parser.add_argument("--json-path", type=str, default=None, help="Path to JSON file to load and save embeddings. If not set, embeddings.json will be used.")
         parser.add_argument("--detection-threshold", type=float, default=0.5, help="Detection threshold.")
         parser.add_argument("--disable-runtime-prompts", action="store_true", help="When set, app will not support runtime prompts. Default is False.")
-        parser.add_argument("--labels-json", type=str, default=None, help="Path to custom labels JSON file for detection model.")
-
-        # Configure --hef-path for multi-model support (detection + clip)
-        configure_multi_model_hef_path(parser)
-
-        # Handle --list-models flag before full initialization
-        handle_list_models_flag(parser, CLIP_PIPELINE)
-
+        parser.add_argument("--labels-json", type=str, default=None, help="Path to custom labels JSON file for detection model.")     
+        configure_multi_model_hef_path(parser)  # Configure --hef-path for multi-model support (detection + clip)
+        handle_list_models_flag(parser, CLIP_PIPELINE)  # Handle --list-models flag before full initialization
         super().__init__(parser, user_data)
-        setproctitle.setproctitle(CLIP_APP_TITLE)
         if self.options_menu.input is None:
             self.json_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'example_embeddings.json') if self.options_menu.json_path is None else self.options_menu.json_path
         else:
@@ -104,6 +92,7 @@ class GStreamerClipApp(GStreamerApp):
         # order as in hailo_apps/config/resources_config.yaml
         self.hef_path_clip = models[0].path
         self.hef_path_detection = models[1].path
+        self.text_image_matcher.set_hef_path(models[2].path)
 
         # User-defined label JSON file for detection model
         self.labels_json = self.options_menu.labels_json
@@ -141,10 +130,20 @@ class GStreamerClipApp(GStreamerApp):
 
         self.create_pipeline()
 
+        self._connect_matching_callback()
+
+    def _connect_matching_callback(self):
+        """Connect the matching identity callback to the pipeline."""
         identity = self.pipeline.get_by_name(self.matching_callback_name)
         if identity:
             identity.set_property("signal-handoffs", True)
             identity.connect("handoff", self.matching_identity_callback, self.user_data)
+
+    def _on_pipeline_rebuilt(self):
+        """Reconnect custom callbacks after pipeline rebuild."""
+        self._connect_matching_callback()
+        # Reset classified tracks on rebuild (new video loop)
+        self.classified_tracks.clear()
 
     def run(self):
         self.win.connect('delete-event', self.on_window_close)
@@ -159,15 +158,16 @@ class GStreamerClipApp(GStreamerApp):
     def get_pipeline_string(self):
         source_pipeline = SOURCE_PIPELINE(self.video_source, self.video_width, self.video_height, frame_rate=self.frame_rate, sync=self.sync)
 
+        multi_process_service_value = 'true' if getattr(self, 'arch', None) in [HAILO8_ARCH, HAILO8L_ARCH] else None
         detection_pipeline = INFERENCE_PIPELINE(
-                hef_path=self.hef_path_detection,
-                post_process_so=self.post_process_so_detection,
-                post_function_name=self.detection_post_process_function_name,
-                batch_size=self.detection_batch_size,
-                config_json=self.labels_json,
-                scheduler_priority=31,
-                scheduler_timeout_ms=100,
-                name='detection_inference'
+            hef_path=self.hef_path_detection,
+            post_process_so=self.post_process_so_detection,
+            post_function_name=self.detection_post_process_function_name,
+            batch_size=self.detection_batch_size,
+            scheduler_priority=31,
+            scheduler_timeout_ms=100,
+            name='detection_inference',
+            multi_process_service=multi_process_service_value
         )
 
         detection_pipeline_wrapper = ''
@@ -175,13 +175,14 @@ class GStreamerClipApp(GStreamerApp):
             detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
 
         clip_pipeline = INFERENCE_PIPELINE(
-                hef_path=self.hef_path_clip,
-                post_process_so=self.post_process_so_clip,
-                post_function_name=self.clip_post_process_function_name,
-                batch_size=self.clip_batch_size,
-                scheduler_priority=16,
-                scheduler_timeout_ms=1000,
-                name='clip_inference'
+            hef_path=self.hef_path_clip,
+            post_process_so=self.post_process_so_clip,
+            post_function_name=self.clip_post_process_function_name,
+            batch_size=self.clip_batch_size,
+            scheduler_priority=16,
+            scheduler_timeout_ms=1000,
+            name='clip_inference',
+            multi_process_service=multi_process_service_value
         )
 
         tracker_pipeline = TRACKER_PIPELINE(class_id=self.class_id, keep_past_metadata=True)
@@ -234,7 +235,7 @@ class GStreamerClipApp(GStreamerApp):
         if len(top_level_matrix) == 0:
             detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
         else:
-            detections = [roi]
+            detections = [roi]  # Use the ROI as the detection
         embeddings_np = None
         used_detection = []
         track_id_focus = text_image_matcher.track_id_focus  # Used to focus on a specific track_id
@@ -243,7 +244,7 @@ class GStreamerClipApp(GStreamerApp):
             results = detection.get_objects_typed(hailo.HAILO_MATRIX)
             if len(results) == 0:
                 continue
-            detection_embeddings = np.array(results[0].get_data())
+            detection_embeddings = np.array(results[0].get_data())  # Convert the matrix to a NumPy array
             used_detection.append(detection)  # used_detection corresponds to embeddings_np
             if embeddings_np is None:
                 embeddings_np = detection_embeddings[np.newaxis, :]

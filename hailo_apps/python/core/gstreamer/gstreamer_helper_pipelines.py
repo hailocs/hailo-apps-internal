@@ -1,11 +1,18 @@
 import os
 
+import yaml
+
+from hailo_apps.config import get_main_config
 from hailo_apps.python.core.common.defines import (
+    CONFIG_ENABLED,
     GST_VIDEO_SINK,
+    HAILO8_ARCH,
+    HAILO8L_ARCH,
     TAPPAS_POSTPROC_PATH_DEFAULT,
     TAPPAS_POSTPROC_PATH_KEY,
     SHARED_VDEVICE_GROUP_ID
 )
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 
 def get_source_type(input_source):
@@ -196,6 +203,20 @@ def INFERENCE_PIPELINE(
     config_str = f" config-path={config_json} " if config_json else ""
     function_name_str = f" function-name={post_function_name} " if post_function_name else ""
     vdevice_group_id_str = f" vdevice-group-id={vdevice_group_id} "
+    arch = detect_hailo_arch()
+    config = get_main_config()
+    multi_processing = config.get('multi_processing')
+    # Validate user's multi_process_service request against arch and config
+    if multi_process_service == 'true':
+        # User wants it enabled, but check if it's supported
+        if arch in [HAILO8_ARCH, HAILO8L_ARCH] and multi_processing == CONFIG_ENABLED:
+            # Valid: keep it as 'true'
+            pass
+        else:
+            # Invalid: architecture or config doesn't support it
+            multi_process_service = None  # Disable it
+            # Optionally log a warning
+            print(f"Warning: multi-process-service not supported on {arch} or disabled in config")
     multi_process_service_str = (
         f" multi-process-service={str(multi_process_service).lower()} "
         if multi_process_service is not None
@@ -213,7 +234,7 @@ def INFERENCE_PIPELINE(
         f"hef-path={hef_path} "
         f"batch-size={batch_size} "
         f"{vdevice_group_id_str}"
-        # f"{multi_process_service_str}"
+        f"{multi_process_service_str}"
         f"{scheduler_timeout_ms_str}"
         f"{scheduler_priority_str}"
         f"{additional_params} "

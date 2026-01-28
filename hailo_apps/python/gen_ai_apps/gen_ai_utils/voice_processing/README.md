@@ -11,8 +11,10 @@ It handles audio recording, speech-to-text, text-to-speech, and interaction mana
 - **Device management** - Automatic device selection with preference persistence
 - **Audio diagnostics** - Built-in tools for troubleshooting and device testing
 - **Interaction management** - High-level API for building voice-enabled applications
+- **Voice Activity Detection (VAD)** - Hands-free operation with silence suppression and configurable sensitivity
 
 ## Prerequisites
+
 
 - **Hardware**: Hailo AI accelerator device (H10 or compatible)
 - **Python**: Python 3.10 or higher
@@ -47,7 +49,7 @@ sudo apt-get install portaudio19-dev
 - **`AudioRecorder`**: Handles microphone recording using `sounddevice` with automatic device detection and preference support. Supports resampling and debug audio saving.
 - **`SpeechToTextProcessor`**: Wraps Hailo's Speech2Text API (Whisper model) for audio transcription with language support.
 - **`TextToSpeechProcessor`**: Handles speech synthesis using Piper TTS with streaming playback, interruption support, and text cleaning for optimal quality.
-- **`AudioPlayer`**: Cross-platform audio playback using `sounddevice` with persistent streaming and automatic device selection.
+- **`AudioPlayer`**: Cross-platform audio playback using `sounddevice` with persistent streaming (supporting gapless playback) and automatic device selection.
 - **`AudioDiagnostics`**: Tools for device enumeration, testing, troubleshooting, and preference management. Provides platform-specific guidance.
 
 ## Files
@@ -162,43 +164,32 @@ The `VoiceInteractionManager` is the high-level entry point that handles the com
 
 ```python
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
-import numpy as np
 
-def on_audio_ready(audio_data: np.ndarray):
-    # Process audio here (e.g., transcribe, send to LLM)
-    print(f"Audio received: {len(audio_data)} samples")
-
-def on_processing_start():
-    # Called when recording starts (e.g., stop TTS)
-    print("Recording started")
-
-def on_clear_context():
-    # Called when user presses 'C' to clear context
-    print("Context cleared")
-
-def on_shutdown():
-    # Called when user quits (cleanup)
-    print("Shutting down")
-
-def on_abort():
-    # Called when user presses 'X' to abort generation
-    print("Aborting")
+# ... (callbacks as above) ...
 
 manager = VoiceInteractionManager(
     title="My Voice App",
     on_audio_ready=on_audio_ready,
-    on_processing_start=on_processing_start,
-    on_clear_context=on_clear_context,
-    on_shutdown=on_shutdown,
-    on_abort=on_abort,
-    debug=False
+    on_processing_start=on_processing_start, # Important for VAD to stop TTS/Audio
+    # ...
+    # VAD Configuration
+    vad_enabled=True,          # Enable hands-free mode
+    vad_aggressiveness=3,      # Sensitivity (0-3), higher = filters more non-speech
+    vad_energy_threshold=0.05, # Minimum energy to trigger (0.0-1.0)
+    # Optional: Inhibit VAD when TTS is speaking to prevent self-triggering
+    vad_inhibit=lambda: tts.is_speaking
 )
 
-# Start the interaction loop (blocks until user quits)
 manager.run()
 ```
 
-**Interactive Controls:**
+**Hands-free Mode (VAD):**
+When `vad_enabled=True`, the application listens continuously.
+- Starts recording when speech is detected.
+- Stops recording automatically after a pause in speech.
+- Visualizes energy and speech status in the terminal.
+
+### Interactive Controls
 - `SPACE` - Start/stop recording
 - `Q` - Quit the application
 - `C` - Clear conversation context
@@ -329,10 +320,16 @@ pip install -e ".[gen-ai]"
 
 ### Piper TTS Model Not Found
 
+### Piper TTS Model Not Found
+
 If you see an error about missing Piper TTS model files:
-1. Follow the [Piper TTS Model Installation](#piper-tts-model-installation) instructions above
-2. Ensure model files are in `local_resources/piper_models/`
-3. Verify the model name matches `TTS_MODEL_NAME` in `hailo_apps/python/core/common/defines.py`
+1. Run the automatic installer:
+   ```bash
+   hailo-audio-troubleshoot --install-tts
+   ```
+2. Or manually follow the [Piper TTS Model Installation](#piper-tts-model-installation) instructions above
+3. Ensure model files are in `local_resources/piper_models/`
+4. Verify the model name matches `TTS_MODEL_NAME` in `hailo_apps/python/core/common/defines.py`
 
 ### No Audio Input/Output Detected
 

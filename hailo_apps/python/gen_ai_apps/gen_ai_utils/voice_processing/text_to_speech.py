@@ -16,6 +16,11 @@ from contextlib import redirect_stderr
 from io import StringIO
 from typing import Optional
 
+
+# Check dependencies before importing them
+from .audio_diagnostics import check_voice_dependencies
+check_voice_dependencies(required_deps=['piper', 'sounddevice', 'numpy'])
+
 import numpy as np
 from piper import PiperVoice
 from piper.voice import SynthesisConfig
@@ -71,17 +76,15 @@ def check_piper_model_installed(onnx_path: str = TTS_ONNX_PATH, json_path: str =
         if not json_exists:
             missing_files.append(json_path)
 
-        error_msg = f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                     PIPER TTS MODEL NOT FOUND                                ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-Please install the Piper TTS model before running this application.
-For detailed installation instructions, see:
-  hailo_apps/python/core/gen_ai_utils/voice_processing/README.md
+        print("\033[91m" + "="*70)
+        print("⚠️  Piper TTS model not found")
+        print("="*70)
+        print("To fix this, run:")
+        print("  hailo-audio-troubleshoot --install-tts")
+        print("\nContinuing without TTS support.")
+        print("="*70 + "\033[0m")
 
-Missing files:
-{chr(10).join(f'  - {f}' for f in missing_files)}
-"""
+        error_msg = f"Missing Piper TTS model files: {missing_files}"
         raise PiperModelNotFoundError(error_msg)
 
     return True
@@ -123,7 +126,7 @@ def clean_text_for_tts(text: str) -> str:
     # This regex keeps "word characters", spaces, and listed punctuation.
     # \w includes alphanumeric + underscore, but we stripped underscore above if it was markdown.
     # We allow underscore inside words if any remain, or we can be stricter.
-    # Let's be permissive with \w but strip specific problematic symbols.
+    # Strip specific problematic symbols.
 
     # Common symbols causing noise: ~ @ ^ | \ < > { } [ ] #
     text = re.sub(r"[~@^|\\<>{}\[\]#]", " ", text)
@@ -207,6 +210,7 @@ class TextToSpeechProcessor:
         while not self.speech_queue.empty():
             try:
                 self.speech_queue.get_nowait()
+                self.speech_queue.task_done()
                 drained += 1
             except queue.Empty:
                 continue
@@ -273,6 +277,11 @@ class TextToSpeechProcessor:
 
         return buffer
 
+    @property
+    def is_speaking(self) -> bool:
+        """Check if TTS is currently synthesizing or playing audio."""
+        return self.audio_player.is_playing or not self.speech_queue.empty()
+
     def get_current_gen_id(self) -> int:
         """Get the current generation ID."""
         with self._gen_id_lock:
@@ -281,6 +290,32 @@ class TextToSpeechProcessor:
     def clear_interruption(self):
         """Clear the interruption flag."""
         self._interrupted.clear()
+
+    def wait_for_completion(self, timeout: float = 30.0):
+        """
+        Block until all queued speech has been processed and played.
+        Returns gracefully if timeout is reached to prevent hanging.
+
+        Args:
+            timeout (float): Maximum time to wait in seconds. Defaults to 30.0.
+        """
+        start_time = time.time()
+
+        # Helper to check if done
+        def is_done():
+            speech_empty = self.speech_queue.empty() and (self.speech_queue.unfinished_tasks == 0)
+            audio_empty = True
+            if self.audio_player:
+                audio_empty = self.audio_player.queue.empty() and (self.audio_player.queue.unfinished_tasks == 0) and not self.audio_player.is_playing
+            return speech_empty and audio_empty
+
+        while not is_done():
+            current_time = time.time()
+            if current_time - start_time > timeout:
+                logger.warning("Wait for audio completion timed out (%.1fs). Forcing proceed.", timeout)
+                break
+
+            time.sleep(0.1)
 
     def stop(self):
         """Stop the worker thread and cleanup."""
@@ -347,12 +382,8 @@ class TextToSpeechProcessor:
             # Convert WAV buffer to numpy array for playback
             wav_buffer.seek(0)
 
-            # We can use soundfile or wave to read it back, or just use wave manually
-            # Since AudioPlayer has _read_wav logic, let's just re-implement simple parsing here or use a helper
-            # Actually, AudioPlayer.play supports reading from file path, but not bytes buffer directly yet.
-            # But wait, AudioPlayer supports numpy array.
-
             # Parse WAV from buffer
+
             with wave.open(wav_buffer, 'rb') as wf:
                 n_frames = wf.getnframes()
                 data = wf.readframes(n_frames)

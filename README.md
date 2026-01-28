@@ -9,6 +9,12 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 
 **Supports:** Hailo-8, Hailo-8L, and Hailo-10H accelerators
 
+**Supported versions:**
+- **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+- **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
+
+> **💡 Running Multiple Apps:** You can run multiple Hailo applications in parallel (e.g., Vision + GenAI). See the [Running Parallel Applications Guide](./doc/user_guide/running_parallel.md) for configuration details.
+
 **Perfect for:** Raspberry Pi 5, x86_64 Ubuntu systems, and edge AI deployments.
 
 ## What You Get
@@ -32,6 +38,16 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 **Learn more:** [Hailo Official Website](https://hailo.ai/) | [Community Forum](https://community.hailo.ai/)
 
 ## Quick Start
+
+### Prerequisites
+Before installing hailo-apps, ensure you have the following Hailo packages installed:
+- hailort PCIe driver (.deb package)
+- hailort (.deb package)
+- hailo-tappas-core (.deb package)
+- hailort Python wheel
+- hailo_tappas_core_python_binding Python wheel
+
+> **Note:** These packages are available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/). See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
 
 ### Installation
 ```bash
@@ -64,6 +80,10 @@ hailo-depth                   # Depth estimation
 
 ### GenAI Applications
 > Hailo-10H generative AI demos: voice assistants, VLM chat, voice-to-action agents
+
+> **Supported versions:**
+> - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+> - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
 ```bash
 # Voice Assistant
@@ -133,7 +153,7 @@ python vlm_chat.py
 | `onnxruntime`              | Inference with Hailo device and postprocessing via ONNXRuntime   |
 | `pose_estimation`          | Pose estimation with yolov8                                      |
 | `semantic_segmentation`    | Semantic segmentation with Resnet18_fcn (Cityscapes dataset)     |
-| `zero_shot_classification` | Zero-shot classification with clip_vit_l14                       |
+| `zero_shot_classification` | Zero-shot classification with clip_vit_b_32                      |
 
 </details>
 

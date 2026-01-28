@@ -8,7 +8,6 @@ from hailo_platform import (HEF, VDevice,FormatType, HailoSchedulingAlgorithm)
 from hailo_platform.pyhailort.pyhailort import FormatOrder
 
 
-
 class HailoInfer:
     def __init__(
         self, hef_path: str, batch_size: int = 1,
@@ -25,7 +24,6 @@ class HailoInfer:
             output_type (Optional[str], optional): Output data type format. Common values: 'UINT8', 'UINT16', 'FLOAT32'.
             priority (optional[int]): Scheduler priority value for the model within the shared VDevice context. Defaults to 0.
         """
-
         params = VDevice.create_params()
         # Set the scheduling algorithm to round-robin to activate the scheduler
         params.scheduling_algorithm = HailoSchedulingAlgorithm.ROUND_ROBIN

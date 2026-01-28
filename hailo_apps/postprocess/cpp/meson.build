@@ -81,9 +81,18 @@ face_align_post_sources = [
     'face_align.cpp',
 ]
 
+# Use static OpenCV if available, otherwise fall back to TAPPAS dynamic OpenCV
+face_align_deps = [postprocess_dep]
+if opencv_dep.found()
+    face_align_deps += opencv_dep
+endif
+if zlib_dep.found()
+    face_align_deps += zlib_dep
+endif
+
 shared_library('vms_face_align',
     face_align_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : face_align_deps,
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -126,9 +135,18 @@ vms_croppers_sources = [
     'vms_croppers.cpp',
 ]
 
+# Use static OpenCV if available
+vms_croppers_deps = [postprocess_dep]
+if opencv_dep.found()
+    vms_croppers_deps += opencv_dep
+endif
+if zlib_dep.found()
+    vms_croppers_deps += zlib_dep
+endif
+
 shared_library('vms_croppers',
     vms_croppers_sources,
-    dependencies : postprocess_dep,
+    dependencies : vms_croppers_deps,
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -156,10 +174,17 @@ shared_library('repvgg_reid_postprocess',
 all_detections_cropper_sources = [
     'all_detections_cropper.cpp'
 ]
+
+# Use static OpenCV if available
+all_detections_cropper_deps = [postprocess_dep]
+if opencv_dep.found()
+    all_detections_cropper_deps += opencv_dep
+endif
+
 shared_library('all_detections_cropper_postprocess',
     all_detections_cropper_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : all_detections_cropper_deps,
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -201,10 +226,17 @@ shared_library('clip_postprocess',
 clip_croppers_sources = [
     'clip_croppers.cpp',
 ]
+
+# Use static OpenCV if available
+clip_croppers_deps = [postprocess_dep]
+if opencv_dep.found()
+    clip_croppers_deps += opencv_dep
+endif
+
 shared_library('clip_croppers_postprocess',
     clip_croppers_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : clip_croppers_deps,
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -217,10 +249,20 @@ shared_library('clip_croppers_postprocess',
 ocr_postprocess_sources = [
     'ocr_postprocess.cpp'
 ]
+
+# Use static OpenCV if available
+ocr_postprocess_deps = [postprocess_dep]
+if opencv_dep.found()
+    ocr_postprocess_deps += opencv_dep
+endif
+if zlib_dep.found()
+    ocr_postprocess_deps += zlib_dep
+endif
+
 shared_library('ocr_postprocess',
     ocr_postprocess_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : ocr_postprocess_deps,
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',

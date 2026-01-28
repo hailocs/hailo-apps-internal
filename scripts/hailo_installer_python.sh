@@ -25,7 +25,7 @@ HAILORT_VERSION=""
 TAPPAS_CORE_VERSION=""
 
 # Behavior flags
-HW_ARCHITECTURE=""          # hailo8 | hailo10h (affects defaults if versions not passed)
+HW_ARCHITECTURE=""          # hailo8 | hailo10h (mandatory positional argument)
 DOWNLOAD_DIR="/usr/local/hailo/resources/packages"
 DOWNLOAD_ONLY=false
 DRY_RUN=false
@@ -34,6 +34,7 @@ QUIET=false
 INSTALL_HAILORT=false
 INSTALL_TAPPAS=false
 NO_TAPPAS=false
+NO_HAILORT=false
 
 # Pip flag presets
 PIP_SYS_FLAGS=(--break-system-packages --disable-pip-version-check --no-input --prefer-binary)
@@ -43,23 +44,27 @@ PIP_VENV_FLAGS=(--disable-pip-version-check --no-input --prefer-binary)
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [OPTIONS]
+Usage: $(basename "$0") ARCH [OPTIONS]
+
+ARCH (mandatory positional argument):
+  hailo8|hailo10h          Choose hardware preset for default versions
 
 Options:
-  --arch=(hailo8|hailo10h)       Choose hardware preset for default versions
-  --hailort-version=VER          Force a specific HailoRT wheel version (overrides preset)
-  --tappas-core-version=VER      Force a specific TAPPAS core wheel version (overrides preset)
-  --no-tappas                    Skip TAPPAS core download/install
-  --base-url=URL                 Override base URL (default: ${BASE_URL})
-  --download-dir=DIR             Where to place wheels (default: ${DOWNLOAD_DIR})
-  --download-only                Only download wheels; do not install
-  --dry-run                      Show what would be done without actually doing it
-  -d, --default                  Install both HailoRT and TAPPAS packages
-  -q, --quiet                    Less output
-  -h, --help                     Show this help
+  -r, --hailort-version VER     Force a specific HailoRT wheel version (overrides preset)
+  -t, --tappas-core-version VER Force a specific TAPPAS core wheel version (overrides preset)
+  -H, --no-hailort              Skip HailoRT download/install
+  -N, --no-tappas               Skip TAPPAS core download/install
+  -b, --base-url URL            Override base URL (default: auto-detected from ARCH)
+  -D, --download-dir DIR        Where to place wheels (default: ${DOWNLOAD_DIR})
+  -o, --download-only           Only download wheels; do not install
+  -y, --dry-run                 Show what would be done without actually doing it
+  -d, --default                 Install both HailoRT and TAPPAS packages
+  -q, --quiet                   Less output
+  -h, --help                    Show this help
 
 Notes:
-- If you pass neither --hailort-version nor --tappas-core-version, the chosen --arch preset is used.
+- ARCH must be the first argument (hailo8 or hailo10h)
+- If you pass neither --hailort-version nor --tappas-core-version, the chosen ARCH preset is used.
 - If you pass only one of them, only that package is downloaded/installed.
 - Dry-run mode shows all actions without downloading or installing anything.
 EOF
@@ -68,30 +73,6 @@ EOF
 log() { $QUIET || echo -e "$*"; }
 
 # -------------------- Helper functions (defined early for context reporting) --------------------
-is_venv() {
-  # True for venv/virtualenv/conda (prefix differs) or real_prefix set
-  python3 - "$@" <<'PY'
-import sys
-print("1" if (getattr(sys, "real_prefix", None) or sys.prefix != sys.base_prefix) else "0")
-PY
-}
-
-site_writable() {
-  # True if system site-packages dir is writable
-  python3 - "$@" <<'PY'
-import os, site, sys
-try:
-    paths = site.getsitepackages()
-except Exception:
-    # Fallback (rare, but just in case)
-    paths = [sys.prefix + "/lib/python%s.%s/site-packages" % sys.version_info[:2]]
-print("1" if (paths and os.access(paths[0], os.W_OK)) else "0")
-PY
-}
-
-# -------------------- Helper functions (defined early for context reporting) --------------------
-log() { $QUIET || echo -e "$*"; }
-
 is_venv() {
   # True for venv/virtualenv/conda (prefix differs) or real_prefix set
   python3 - "$@" <<'PY'
@@ -130,48 +111,77 @@ sys.exit(1)
 PY
 }
 
-# -------------------- Parse flags --------------------
+# -------------------- Parse arguments --------------------
+# First argument is mandatory ARCH (positional)
+if [[ $# -eq 0 ]]; then
+  echo "Error: ARCH argument is required (hailo8|hailo10h)"
+  echo
+  usage
+  exit 1
+fi
+
+# Check if first argument is help flag
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+# First argument must be ARCH
+HW_ARCHITECTURE="$1"
+if [[ "$HW_ARCHITECTURE" != "hailo8" && "$HW_ARCHITECTURE" != "hailo10h" ]]; then
+  echo "Error: Invalid ARCH specified: $HW_ARCHITECTURE"
+  echo "ARCH must be 'hailo8' or 'hailo10h'"
+  echo
+  usage
+  exit 1
+fi
+shift
+
+# Parse remaining flags (now using --flag value format)
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --arch=*)
-      HW_ARCHITECTURE="${1#*=}"
-      if [[ "$HW_ARCHITECTURE" != "hailo8" && "$HW_ARCHITECTURE" != "hailo10h" ]]; then
-          echo "Invalid architecture specified. Use 'hailo8' or 'hailo10h'."
-          exit 1
+    -r|--hailort-version)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --hailort-version requires a value"
+        exit 1
       fi
-      shift
+      HAILORT_VERSION="$2"
+      shift 2
       ;;
-    --hw-arch=*)
-      # Backward compatibility (deprecated)
-      HW_ARCHITECTURE="${1#*=}"
-      if [[ "$HW_ARCHITECTURE" != "hailo8" && "$HW_ARCHITECTURE" != "hailo10h" ]]; then
-          echo "Invalid architecture specified. Use 'hailo8' or 'hailo10h'."
-          exit 1
+    -t|--tappas-core-version)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --tappas-core-version requires a value"
+        exit 1
       fi
+      TAPPAS_CORE_VERSION="$2"
+      shift 2
+      ;;
+    -H|--no-hailort)
+      NO_HAILORT=true
+      INSTALL_HAILORT=false
       shift
       ;;
-
-    --hailort-version=*)
-      HAILORT_VERSION="${1#*=}"
-      shift
+    -b|--base-url)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --base-url requires a value"
+        exit 1
+      fi
+      BASE_URL="$2"
+      shift 2
       ;;
-    --tappas-core-version=*)
-      TAPPAS_CORE_VERSION="${1#*=}"
-      shift
+    -D|--download-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --download-dir requires a value"
+        exit 1
+      fi
+      DOWNLOAD_DIR="$2"
+      shift 2
       ;;
-    --base-url=*)
-      BASE_URL="${1#*=}"
-      shift
-      ;;
-    --download-dir=*)
-      DOWNLOAD_DIR="${1#*=}"
-      shift
-      ;;
-    --download-only)
+    -o|--download-only)
       DOWNLOAD_ONLY=true
       shift
       ;;
-    --dry-run)
+    -y|--dry-run)
       DRY_RUN=true
       shift
       ;;
@@ -179,12 +189,12 @@ while [[ $# -gt 0 ]]; do
       QUIET=true
       shift
       ;;
-    -d | --default)
+    -d|--default)
       INSTALL_HAILORT=true
       INSTALL_TAPPAS=true
       shift
       ;;
-    --no-tappas)
+    -N|--no-tappas)
       NO_TAPPAS=true
       INSTALL_TAPPAS=false
       shift
@@ -201,12 +211,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Require architecture flag
-if [[ -z "$HW_ARCHITECTURE" ]]; then
-  echo "Error: --arch is required (hailo8|hailo10h)."
-  exit 1
-fi
-
 # Set BASE_URL based on hardware architecture (unless overridden by --base-url)
 if [[ -z "$BASE_URL" ]]; then
   if [[ "$HW_ARCHITECTURE" == "hailo8" ]]; then
@@ -221,7 +225,7 @@ fi
 if [[ -z ${HAILORT_VERSION+x} || -z "$HAILORT_VERSION" ]]; then
   case "$HW_ARCHITECTURE" in
     hailo8)   HAILORT_VERSION="$HAILORT_VERSION_H8" ;;   # e.g., 4.23.0
-    hailo10h) HAILORT_VERSION="5.1.1" ;;                 # latest for H10H
+    hailo10h) HAILORT_VERSION="$HAILORT_VERSION_H10" ;;
     *)        HAILORT_VERSION="$HAILORT_VERSION_H8" ;;
   esac
 fi
@@ -239,8 +243,13 @@ if [[ "$NO_TAPPAS" == true ]]; then
   INSTALL_TAPPAS=false
 fi
 
+if [[ "$NO_HAILORT" == true ]]; then
+  HAILORT_VERSION=""
+  INSTALL_HAILORT=false
+fi
+
 # If user specified only one version, we install only that one; otherwise decide based on installed state.
-if [[ -n "$HAILORT_VERSION" ]]; then
+if [[ -n "$HAILORT_VERSION" && "$NO_HAILORT" != true ]]; then
   if [[ "$INSTALL_HAILORT" == false ]]; then
     installed_hailort="$(get_installed_version hailort || true)"
     if [[ -z "$installed_hailort" || "$installed_hailort" != "$HAILORT_VERSION" ]]; then
@@ -609,3 +618,4 @@ else
     log "✅ Installation complete and verified successfully!"
   fi
 fi
+

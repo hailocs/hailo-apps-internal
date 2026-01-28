@@ -169,11 +169,19 @@ def _get_tappas_version() -> str:
     sys.exit(1)
 
 
-def _get_model_zoo_version(hailo_arch: str) -> str:
-    """Get Model Zoo version based on Hailo architecture."""
+def _get_model_zoo_version(hailo_arch: str, hailort_version: str = "") -> str:
+    """Get Model Zoo version based on Hailo architecture and HailoRT version.
+    
+    For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0)
+    For H8/H8L: Uses static mapping v2.17.0
+    """
     if hailo_arch == HAILO10H_ARCH:
-        return VALID_H10_MODEL_ZOO_VERSION[0] if VALID_H10_MODEL_ZOO_VERSION else "v5.1.1"
-    return VALID_H8_MODEL_ZOO_VERSION[0] if VALID_H8_MODEL_ZOO_VERSION else "v2.17.0"
+        # H10: Derive from HailoRT version
+        if hailort_version.startswith("5.2"):
+            return "v5.2.0"
+        return "v5.1.0"  # Default for 5.1.x
+    # H8/H8L always uses v2.17.0
+    return "v2.17.0"
 
 
 def _get_hailo_arch() -> str | None:
@@ -225,7 +233,7 @@ def configure_environment(config: Dict, env_path: Path) -> None:
     hailort_version = _get_hailort_version()
     tappas_version = _get_tappas_version()
     tappas_postproc_dir = auto_detect_tappas_postproc_dir()
-    model_zoo_version = _get_model_zoo_version(hailo_arch)
+    model_zoo_version = _get_model_zoo_version(hailo_arch, hailort_version)
     
     # Get repo root
     try:

@@ -79,44 +79,6 @@ def get_base_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--width",
-        "-W",
-        type=int,
-        default=None,
-        help=(
-            "Custom output width in pixels for video or image output. "
-            "If specified, the output will be resized to this width while maintaining aspect ratio. "
-            "If not specified, uses the input resolution or model default."
-        ),
-    )
-
-    parser.add_argument(
-        "--height",
-        "-H",
-        type=int,
-        default=None,
-        help=(
-            "Custom output height in pixels for video or image output. "
-            "If specified, the output will be resized to this height while maintaining aspect ratio. "
-            "If not specified, uses the input resolution or model default."
-        ),
-    )
-
-    parser.add_argument(
-        "--arch",
-        "-a",
-        type=str,
-        default=None,
-        choices=["hailo8", "hailo8l", "hailo10h"],
-        help=(
-            "Target Hailo architecture for model execution. "
-            "Options: 'hailo8' (Hailo-8 processor), 'hailo8l' (Hailo-8L processor), "
-            "'hailo10h' (Hailo-10H processor). "
-            "If not specified, the architecture will be auto-detected from the connected device."
-        ),
-    )
-
-    parser.add_argument(
         "--show-fps",
         action="store_true",
         help=(
@@ -138,17 +100,6 @@ def get_base_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    parser.add_argument(
-        "--labels",
-        "-l",
-        type=str,
-        default=None,
-        help=(
-            "Path to a text file containing class labels, one per line. "
-            "Used for mapping model output indices to human-readable class names. "
-            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
-        ),
-    )
 
     return parser
 
@@ -223,6 +174,56 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    parser.add_argument(
+        "--width",
+        "-W",
+        type=int,
+        default=None,
+        help=(
+            "Custom output width in pixels for video or image output. "
+            "If specified, the output will be resized to this width while maintaining aspect ratio. "
+            "If not specified, uses the input resolution or model default."
+        ),
+    )
+
+    parser.add_argument(
+        "--height",
+        "-H",
+        type=int,
+        default=None,
+        help=(
+            "Custom output height in pixels for video or image output. "
+            "If specified, the output will be resized to this height while maintaining aspect ratio. "
+            "If not specified, uses the input resolution or model default."
+        ),
+    )
+
+    parser.add_argument(
+        "--labels",
+        "-l",
+        type=str,
+        default=None,
+        help=(
+            "Path to a text file containing class labels, one per line. "
+            "Used for mapping model output indices to human-readable class names. "
+            "If not specified, default labels for the model will be used (e.g., COCO labels for detection models)."
+        ),
+    )
+
+    parser.add_argument(
+        "--arch",
+        "-a",
+        type=str,
+        default=None,
+        choices=["hailo8", "hailo8l", "hailo10h"],
+        help=(
+            "Target Hailo architecture for model execution. "
+            "Options: 'hailo8' (Hailo-8 processor), 'hailo8l' (Hailo-8L processor), "
+            "'hailo10h' (Hailo-10H processor). "
+            "If not specified, the architecture will be auto-detected from the connected device."
+        ),
+    )
+
     return parser
 
 
@@ -242,17 +243,6 @@ def get_standalone_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--track",
-        action="store_true",
-        help=(
-            "Enable object tracking for detections. "
-            "When enabled, detected objects will be tracked across frames using a tracking algorithm "
-            "(e.g., ByteTrack). This assigns consistent IDs to objects over time, enabling temporal analysis, "
-            "trajectory visualization, and multi-frame association. Useful for video processing applications."
-        ),
-    )
-
-    parser.add_argument(
         "--list-inputs",
         action="store_true",
         help=(
@@ -262,20 +252,10 @@ def get_standalone_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
-        "--list-nets",
-        action="store_true",
-        help=(
-            "List available models for this application and exit. "
-            "Alias for --list-models to align with legacy app flags."
-        ),
-    )
-
-    parser.add_argument(
-        "--resolution",
-        "-r",
+        "-cr",
+        "--camera-resolution",
         type=str,
         choices=["sd", "hd", "fhd"],
-        default="sd",
         help=(
             "Predefined resolution for camera input sources. "
             "Options: 'sd' (640x480, Standard Definition), 'hd' (1280x720, High Definition), "
@@ -284,7 +264,20 @@ def get_standalone_parser() -> argparse.ArgumentParser:
         ),
     )
 
-
+    parser.add_argument(
+        "-or",
+        "--output-resolution",
+        nargs="+",
+        type=str,
+        help=(
+            "Output resolution when using a camera as the input source. "
+            "You can choose one of the predefined options: "
+            "'sd' (640x480), 'hd' (1280x720), or 'fhd' (1920x1080). "
+            "Alternatively, specify a custom resolution in the format: "
+            "--output-resolution <width> <height> (e.g., 1920 1080). "
+            "This option is ignored for non-camera input sources."
+        ),
+    )
 
     parser.add_argument(
         "--output-dir",

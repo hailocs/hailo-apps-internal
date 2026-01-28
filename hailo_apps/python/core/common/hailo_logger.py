@@ -5,8 +5,11 @@ import logging
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+
+# ---- custom log levels ----
+SUCCESS_LEVEL_NUM = 25
 
 # ---- module state (singleton-ish) ----
 _CONFIGURED = False
@@ -14,7 +17,7 @@ _CONFIGURED = False
 # Stable run id for this process (not printed by default)
 _RUN_ID = (
     os.getenv("HAILO_RUN_ID")
-    or datetime.utcnow().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
 )
 
 # Basic string->level map (kept small & obvious)
@@ -24,8 +27,44 @@ _LEVELS: dict[str, int] = {
     "WARNING": logging.WARNING,
     "INFO": logging.INFO,
     "DEBUG": logging.DEBUG,
+    "SUCCESS": SUCCESS_LEVEL_NUM,
 }
 
+
+# ANSI color codes for log levels
+_LEVEL_COLORS = {
+    "DEBUG": "\033[36m",    # Cyan
+    "INFO": "\033[0m",      # Default
+    "SUCCESS": "\033[32m",  # Green
+    "WARNING": "\033[33m",  # Yellow
+    "ERROR": "\033[31m",    # Red
+    "CRITICAL": "\033[35m", # Magenta
+}
+
+_COLOR_RESET = "\033[0m"
+
+
+# ---- ANSI color support (console only) ----
+# Colors are enabled only when stdout is a real TTY (interactive terminal)
+# This avoids polluting log files or redirected output with ANSI codes.
+def _use_color() -> bool:
+    return sys.stdout.isatty()
+
+
+def _register_success_level() -> None:
+    """Register a custom SUCCESS level and add logger.success()."""
+    # Avoid double-registering if module reloaded
+    if getattr(logging, "SUCCESS", None) == SUCCESS_LEVEL_NUM and hasattr(logging.Logger, "success"):
+        return
+
+    logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
+    setattr(logging, "SUCCESS", SUCCESS_LEVEL_NUM)
+
+    def success(self: logging.Logger, msg: str, *args: Any, **kwargs: Any) -> None:
+        if self.isEnabledFor(SUCCESS_LEVEL_NUM):
+            self._log(SUCCESS_LEVEL_NUM, msg, args, **kwargs)
+
+    logging.Logger.success = success
 
 def _coerce_level(level: str | int | None) -> int:
     """Coerce a string/int/None into a logging level int."""
@@ -75,6 +114,7 @@ def init_logging(
     if _CONFIGURED and not force:
         return
 
+    _register_success_level()
     # Resolve level from param or env
     env_level = os.getenv("HAILO_LOG_LEVEL")
     # Track if level came from environment variable (user's explicit choice)
@@ -184,6 +224,7 @@ class _ShortNameFormatter(logging.Formatter):
         self.normal_fmt = normal_fmt
         self.datefmt = datefmt
 
+
     def format(self, record: logging.LogRecord) -> str:
         """Format log record with appropriate format based on level."""
         # Shorten logger name to last 2 hierarchies for non-DEBUG
@@ -196,17 +237,23 @@ class _ShortNameFormatter(logging.Formatter):
         # Use full format for DEBUG, concise for others
         if record.levelno == logging.DEBUG:
             # Create a new formatter with debug format
-            debug_formatter = logging.Formatter(fmt=self.debug_fmt, datefmt=self.datefmt)
-            return debug_formatter.format(record)
+            formatter = logging.Formatter(fmt=self.debug_fmt, datefmt=self.datefmt)
+            message = formatter.format(record)
         else:
             # Use concise format with short name
             original_name = record.name
             record.name = short_name
-            # Create a new formatter with normal format
-            normal_formatter = logging.Formatter(fmt=self.normal_fmt, datefmt=self.datefmt)
-            result = normal_formatter.format(record)
+            formatter = logging.Formatter(fmt=self.normal_fmt, datefmt=self.datefmt)
+            message = formatter.format(record)
             record.name = original_name
-            return result
+
+        # Apply ANSI color to the entire message when supported (console only)
+        if _use_color():
+            color = _LEVEL_COLORS.get(record.levelname)
+            if color:
+                message = f"{color}{message}{_COLOR_RESET}"
+
+        return message
 
 
 def get_logger(name: str) -> logging.Logger:

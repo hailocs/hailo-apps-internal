@@ -23,6 +23,7 @@ Run only installation tests: pytest -m installation -v
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 from typing import List, Tuple
 
@@ -39,6 +40,7 @@ try:
         RESOURCES_VIDEOS_DIR_NAME,
         RESOURCES_SO_DIR_NAME,
         RESOURCES_JSON_DIR_NAME,
+        RESOURCES_NPY_DIR_NAME,
         RESOURCES_PHOTOS_DIR_NAME,
         HAILO8_ARCH,
         HAILO8L_ARCH,
@@ -54,6 +56,7 @@ except ImportError:
     RESOURCES_VIDEOS_DIR_NAME = "videos"
     RESOURCES_SO_DIR_NAME = "so"
     RESOURCES_JSON_DIR_NAME = "json"
+    RESOURCES_NPY_DIR_NAME = "npy"
     RESOURCES_PHOTOS_DIR_NAME = "photos"
     HAILO8_ARCH = "hailo8"
     HAILO8L_ARCH = "hailo8l"
@@ -134,6 +137,25 @@ def is_valid_json_file(filepath: Path) -> bool:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return False
 
+def is_valid_npy_file(filepath: Path) -> bool:
+    """Check if a file is valid NPY.
+    
+    Args:
+        filepath: Path to the file to check
+        
+    Returns:
+        True if the file is valid NPY
+    """
+    if not filepath.exists() or filepath.stat().st_size == 0:
+        return False
+
+    try:
+        with open(filepath, 'rb') as f:
+            # Check NPY magic number
+            magic = f.read(6)
+            return magic == b'\x93NUMPY'
+    except Exception:
+        return False
 
 def is_valid_video_file(filepath: Path) -> bool:
     """Check if a file appears to be a valid video file.
@@ -228,6 +250,11 @@ class TestDirectoryStructure:
         assert json_dir.exists(), f"JSON directory does not exist: {json_dir}"
         logger.info(f"JSON directory exists: {json_dir}")
 
+    def test_npy_directory_exists(self, resources_root_path):
+        """Verify NPY directory exists."""
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        assert npy_dir.exists(), f"NPY directory does not exist: {npy_dir}"
+        logger.info(f"NPY directory exists: {npy_dir}")
 
 # ============================================================================
 # SECTION 2: MODEL FILES TESTS
@@ -255,6 +282,9 @@ class TestModelFiles:
         missing_models = []
         found_models = []
         
+        # Gen-AI apps are optional and require --include-gen-ai to download
+        gen_ai_apps = {"agent", "llm_chat", "vlm_chat", "voice_assistant", "whisper_chat"}
+        
         for app_name, model_name in expected_models_for_arch:
             hef_path = models_dir / f"{model_name}.hef"
             if hef_path.exists():
@@ -269,13 +299,55 @@ class TestModelFiles:
             if len(found_models) > 5:
                 logger.info(f"  ... and {len(found_models) - 5} more")
         
-        if missing_models:
-            logger.warning(f"Missing {len(missing_models)} models for {detected_hailo_arch}:")
-            for app, model in missing_models[:5]:
-                logger.warning(f"  ✗ {app}: {model}.hef")
-            logger.warning(
-                "Run 'hailo-download-resources' or 'hailo-post-install' to download missing models."
-            )
+        # Separate gen-ai models from regular models
+        missing_regular = [(app, model) for app, model in missing_models if app not in gen_ai_apps]
+        missing_gen_ai = [(app, model) for app, model in missing_models if app in gen_ai_apps]
+        
+        # On Hailo-10H, gen-ai apps are supported, so include them in auto-download
+        is_hailo10h = detected_hailo_arch == HAILO10H_ARCH
+        
+        if missing_regular or (missing_gen_ai and is_hailo10h):
+            models_to_download = missing_regular + (missing_gen_ai if is_hailo10h else [])
+            logger.info(f"Missing {len(models_to_download)} models for {detected_hailo_arch}:")
+            for app, model in models_to_download:
+                logger.info(f"  ✗ {app}: {model}.hef")
+            logger.info("Downloading missing models...")
+            
+            # Build download command - include gen-ai flag on 10H
+            download_cmd = ["hailo-download-resources", "--arch", detected_hailo_arch]
+            if is_hailo10h and missing_gen_ai:
+                download_cmd.append("--include-gen-ai")
+            
+            logger.info(f"Running: {' '.join(download_cmd)}")
+            try:
+                # Gen-AI models can be very large (1.7GB+ for LLMs), so use longer timeout
+                download_timeout = 2700 if (is_hailo10h and missing_gen_ai) else 600  # 45 min for gen-ai, 10 min otherwise
+                result = subprocess.run(
+                    download_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=download_timeout
+                )
+                if result.returncode == 0:
+                    logger.info("hailo-download-resources completed successfully")
+                    # Verify models were downloaded
+                    still_missing = []
+                    for app_name, model_name in models_to_download:
+                        hef_path = models_dir / f"{model_name}.hef"
+                        if not hef_path.exists():
+                            still_missing.append((app_name, model_name))
+                    if still_missing:
+                        logger.warning(f"Still missing {len(still_missing)} models after download:")
+                        for app, model in still_missing[:5]:
+                            logger.warning(f"  ✗ {app}: {model}.hef")
+                else:
+                    logger.warning(f"hailo-download-resources failed: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                timeout_mins = download_timeout // 60
+                logger.warning(f"hailo-download-resources timed out after {timeout_mins} minutes")
+        
+        if missing_gen_ai and not is_hailo10h:
+            logger.info(f"Gen-AI models not downloaded (only supported on Hailo-10H): {len(missing_gen_ai)} models")
     
     def test_hef_files_valid(self, resources_root_path, detected_hailo_arch):
         """Verify HEF files are valid (non-empty, proper size)."""
@@ -673,6 +745,61 @@ class TestIntegrationSmoke:
             pytest.skip("hailo_platform not available")
         except Exception as e:
             pytest.fail(f"Failed to load HEF file {test_hef.name}: {e}")
+
+# ============================================================================
+# SECTION 9: NPY CONFIG FILES TESTS
+# ============================================================================
+
+@pytest.mark.installation
+@pytest.mark.resources
+class TestNpyConfigFiles:
+    """Tests for downloaded NPY configuration files."""
+
+    def test_expected_npy_files_downloaded(self, resources_root_path, expected_npy_files):
+        """Verify expected NPY config files are downloaded."""
+        if not expected_npy_files:
+            pytest.skip("No NPY files defined in resources_config.yaml")
+
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        if not npy_dir.exists():
+            pytest.fail(f"NPY directory does not exist: {npy_dir}")
+
+        missing_npy = []
+        found_npy = []
+
+        for npy_name in expected_npy_files:
+            npy_path = npy_dir / npy_name
+            if npy_path.exists():
+                found_npy.append(npy_name)
+            else:
+                missing_npy.append(npy_name)
+
+        if found_npy:
+            logger.info(f"Found {len(found_npy)}/{len(expected_npy_files)} expected NPY files")
+
+        if missing_npy:
+            logger.warning(f"Missing NPY files: {missing_npy}")
+
+    def test_npy_files_valid(self, resources_root_path, expected_npy_files):
+        """Verify NPY files are valid NPY."""
+        if not expected_npy_files:
+            pytest.skip("No NPY files defined in resources_config.yaml")
+
+        npy_dir = resources_root_path / RESOURCES_NPY_DIR_NAME
+        if not npy_dir.exists():
+            pytest.skip(f"NPY directory does not exist: {npy_dir}")
+
+        invalid_npy = []
+
+        for npy_name in expected_npy_files:
+            npy_path = npy_dir / npy_name
+            if npy_path.exists() and not is_valid_npy_file(npy_path):
+                invalid_npy.append(npy_name)
+
+        if invalid_npy:
+            pytest.fail(f"Invalid NPY files found: {invalid_npy}")
+
+        logger.info("All NPY files are valid")
 
 
 # ============================================================================

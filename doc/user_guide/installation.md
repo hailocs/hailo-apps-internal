@@ -24,6 +24,9 @@ This guide provides comprehensive instructions for installing the Hailo Applicat
     - [Hardware Setup for RPi](#hardware-setup-for-rpi)
     - [Software Setup for RPi](#software-setup-for-rpi)
     - [Verification for RPi](#verification-for-rpi)
+  - [Hailo "Suite Docker" Installation](#hailo-suite-docker-installation)
+    - [Prerequisites for Docker](#prerequisites-for-docker)
+    - [Installation in Docker](#installation-in-docker)
   - [Post-Installation Verification](#post-installation-verification)
   - [Uninstallation](#uninstallation)
 
@@ -86,7 +89,11 @@ Note that also on the x86_64 Ubuntu, the gi library is installed on the system (
 3.  **Install Hailo Python packages**
     This script will install the HailoRT and TAPPAS-CORE python bindings.
     ```bash
-    ./scripts/hailo_python_installation.sh
+    ./scripts/hailo_installer_python.sh hailo8
+    ```
+    Or for Hailo10:
+    ```bash
+    ./scripts/hailo_installer_python.sh hailo10h
     ```
 4.  **Install repository**
     ```bash
@@ -224,36 +231,44 @@ The packages are fetched from:
 http://dev-public.hailo.ai/<date>/<Hailo8|Hailo10>/
 ```
 
+> **Important:** The supported package versions are:
+> - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+> - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
+
 ### Usage
 
 ```bash
 chmod +x scripts/hailo_installer.sh
-sudo ./scripts/hailo_installer.sh [options]
+sudo ./scripts/hailo_installer.sh ARCH [options]
 ```
+
+ARCH (mandatory positional argument):
+- `hailo8` or `hailo10h` - Target hardware platform
 
 #### Common Options
 
 | Option                      | Description                                                                       |                                     |
 | --------------------------- | --------------------------------------------------------------------------------- | ----------------------------------- |
-| `--hw-arch=`           | hailo10h,hailo8                                                                         | Target hardware platform. Required. |
-| `--venv-name=NAME`          | Name of the Python virtual environment (default: `hailo_venv`).                   |                                     |
+| `--hailort-version VER`     | Override HailoRT version                                                         |                                     |
+| `--tappas-core-version VER`| Override TAPPAS Core version                                                      |                                     |
+| `--venv-name NAME`          | Name of the Python virtual environment (default: `venv_hailo_apps`).              |                                     |
 | `--download-only`           | Only download the packages without installing them.                               |                                     |
-| `--output-dir=DIR`          | Change where packages are saved (default: `/usr/local/hailo/resources/packages`). |                                     |
-| `--py-tag=TAG`              | Manually specify Python wheel tag (e.g., `cp311-cp311`).                          |                                     |
-| `-h                         | --help`                                                                           | Show help menu.                     |
+| `--output-dir DIR`          | Change where packages are saved (default: `/usr/local/hailo/resources/packages`). |                                     |
+| `--py-tag TAG`              | Manually specify Python wheel tag (e.g., `cp311-cp311`).                          |                                     |
+| `-h, --help`                | Show help menu.                                                                   |                                     |
 
 ### Examples
 
 #### Install for Hailo-8 on Ubuntu 24.04
 
 ```bash
-sudo ./scripts/hailo_installer.sh --hw-arch=hailo8
+sudo ./scripts/hailo_installer.sh hailo8
 ```
 
 #### Download Only (No Installation)
 
 ```bash
-./scripts/hailo_installer.sh --hw-arch=hailo10h --download-only
+./scripts/hailo_installer.sh hailo10h --download-only
 ```
 
 Packages will be saved under:
@@ -311,6 +326,47 @@ These instructions are for setting up a Raspberry Pi 5 with a Hailo AI accelerat
     *   Verify `hailotools`: `gst-inspect-1.0 hailotools`
     *   Verify `hailo` (inference element): `gst-inspect-1.0 hailo`
     *   If a plugin is not found, you may need to clear the GStreamer cache: `rm ~/.cache/gstreamer-1.0/registry.aarch64.bin` and reboot.
+
+---
+
+## Hailo "Suite Docker" Installation
+
+If you're running inside the **Hailo Software "Suite Docker"** container, some additional packages are required before running the installation.
+
+### Prerequisites for Docker
+
+Run the following commands to install required dependencies:
+
+```bash
+# Update package lists
+sudo apt-get update
+
+# Install Python virtual environment support
+sudo apt install -y python3-venv
+
+# Install required utilities
+sudo apt-get install -y software-properties-common gnupg
+
+# Upgrade libstdc++6 (required for newer C++ features)
+sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+sudo apt-get update
+sudo apt install -y --only-upgrade libstdc++6
+```
+
+### Installation in Docker
+
+After installing the prerequisites, proceed with the standard installation:
+
+```bash
+# Clone the repository (if not already done)
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
+
+# Run the automated installation script
+sudo ./install.sh
+```
+
+> **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
 
 ---
 
