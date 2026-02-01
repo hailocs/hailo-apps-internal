@@ -7,14 +7,12 @@
  * This example demonstrates the Async Infer API usage with a specific model.
  **/
 #include "../common/toolbox.hpp"
-using namespace hailo_utils;
-
 #include "../common/hailo_infer.hpp"
 #include "instance_seg_postprocess.hpp"
-
-
+#include <cstdlib>
 #include <cstring>
 
+using namespace hailo_utils;
 namespace fs = std::filesystem;
 
 /////////// Constants ///////////
@@ -31,23 +29,25 @@ void postprocess_callback(cv::Mat &frame_to_draw,
                           const std::vector<std::pair<uint8_t*, hailo_vstream_info_t>> &outputs,
                           const int model_w,
                           const int model_h,
-                          const bool hef_has_nms_and_mask)
+                          const bool hef_has_nms_and_mask,
+                          const VisualizationParams &vis_param)
 {
         if (hef_has_nms_and_mask) {
             // ===== packed NMS + byte masks on device =====
             const uint8_t *src_ptr = outputs.front().first;
             LetterboxMap map{};
             cv::Mat model_space = make_model_space_canvas(frame_to_draw, model_w, model_h, map);
-            draw_detections_and_mask(src_ptr, model_w, model_h, model_space);
+            draw_detections_and_mask(src_ptr, model_w, model_h, model_space, vis_param);
             map_model_to_frame(model_space, map, frame_to_draw);
         } else {
             // ===== raw heads NMS + mask reconstruction =====
             auto roi = build_roi_from_outputs(outputs);
-            std::vector<cv::Mat> masks = filter(roi, model_w, model_h);
+            std::vector<cv::Mat> masks = filter(roi, model_h, model_w, vis_param.score_thresh);
             auto dets = get_detections_from_roi(roi);
+
             LetterboxMap map{};
             cv::Mat model_space = make_model_space_canvas(frame_to_draw, model_w, model_h, map);
-            draw_masks_and_boxes(model_space, dets, masks, /*alpha=*/0.7f, /*thresh=*/0.5f);
+            draw_masks_and_boxes(model_space, dets, masks, vis_param);
             map_model_to_frame(model_space, map, frame_to_draw);
         }
 }
@@ -66,6 +66,19 @@ int main(int argc, char** argv)
     CommandLineArgs args = parse_command_line_arguments(argc, argv);
     post_parse_args(APP_NAME, args, argc, argv);
     HailoInfer model(args.net, args.batch_size);
+
+    // Load Visualization config params
+    VisualizationParams vis_param;
+    try {
+        vis_param = load_visualization_params("visualization_config.json");
+    } catch (const std::exception &e) {
+        std::cerr << "ERROR: failed to load visualization_config.json: "
+                << e.what() << "\n";
+        return EXIT_FAILURE;
+    }
+
+    validate_visualization_params(vis_param, AppVisMode::instance_seg);
+
     bool hef_with_nms_and_mask = model.get_output_vstream_infos_size() == 1;
     input_type = determine_input_type(std::ref(args.input),
                                     std::ref(capture),
@@ -101,8 +114,8 @@ int main(int argc, char** argv)
                 std::placeholders::_2,   // outputs
                 model.get_model_shape().width,
                 model.get_model_shape().height,
-                hef_with_nms_and_mask); 
-
+                hef_with_nms_and_mask,
+                std::cref(vis_param));
 
     auto output_parser_thread = std::async(run_post_process,
                                 std::ref(input_type),

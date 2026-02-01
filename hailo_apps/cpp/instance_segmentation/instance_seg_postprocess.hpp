@@ -68,17 +68,10 @@ std::string getCmdOptionWithShortFlag(int argc, char *argv[], const std::string 
 // Postprocess of HEF with HailoRT-Postprocess
 // ─────────────────────────────────────────────────────────────────────────────
 
-template <typename T>
-cv::Mat draw_detections_and_mask(std::vector<T>& logits,
-                                 int width, int height,
-                                 cv::Mat& frame);
-
-                                 
 std::vector<const hailo_detection_with_byte_mask_t*> get_detections(const uint8_t *src_ptr);
 
-cv::Mat draw_detections_and_mask(const uint8_t *src_ptr,
-                                          int width, int height,
-                                          cv::Mat &frame);
+cv::Mat draw_detections_and_mask(const uint8_t *src_ptr, int width, int height,
+                                 cv::Mat &frame, const VisualizationParams &vis);
 
 cv::Mat pad_frame_letterbox(const cv::Mat &frame, int model_h, int model_w);
 
@@ -105,13 +98,15 @@ std::vector<DetectionAndMask> segmentation_postprocess(std::vector<HailoTensorPt
 HailoROIPtr build_roi_from_outputs(const std::vector<std::pair<uint8_t*, hailo_vstream_info_t>> &outputs);
 std::vector<HailoDetectionPtr> get_detections_from_roi(const HailoROIPtr &roi);
 void draw_masks_and_boxes(cv::Mat &frame,
-                                   const std::vector<HailoDetectionPtr> &dets,
-                                   const std::vector<cv::Mat> &masks,
-                                   float alpha = 0.7f,
-                                   float thresh = 0.5f);
+                          const std::vector<HailoDetectionPtr> &dets,
+                          const std::vector<cv::Mat> &masks,
+                          const VisualizationParams &vis);
 
 __BEGIN_DECLS
-std::vector<cv::Mat> filter(HailoROIPtr roi, int org_width, int org_height);
+std::vector<cv::Mat> filter(HailoROIPtr roi,
+                            int org_image_height,
+                            int org_image_width,
+                            float score_thres);
 __END_DECLS
 
 #endif

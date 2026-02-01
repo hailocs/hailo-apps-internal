@@ -35,6 +35,11 @@ std::vector<cv::Scalar> COLORS = {
     cv::Scalar(0, 0, 0)
 };
 
+static inline size_t clamp_max_boxes(int max_boxes)
+{
+    return (max_boxes <= 0) ? 0u : static_cast<size_t>(max_boxes);
+}
+
 cv::Vec3b indexToColor(size_t index)
 {
     return color_table[index % color_table.size()];
@@ -58,40 +63,53 @@ std::vector<const hailo_detection_with_byte_mask_t*> get_detections(const uint8_
 
 cv::Mat draw_detections_and_mask(const uint8_t *src_ptr,
                                           int width, int height,
-                                          cv::Mat &frame)
+                                          cv::Mat &frame,
+                                          const VisualizationParams &vis)
 {
     auto detections = get_detections(src_ptr);
+    const size_t max_draw = clamp_max_boxes(vis.max_boxes_to_draw);
+    if (max_draw == 0) {
+        return frame;
+    }
+
     cv::Mat overlay = cv::Mat::zeros(height, width, CV_8UC3);
+    const double mask_alpha = static_cast<double>(*vis.mask_alpha);
+
+    size_t drawn = 0;
     for (const auto *detection : detections) {
-        const int box_w = static_cast<int>(std::ceil((detection->box.x_max - detection->box.x_min) * width));
-        const int box_h = static_cast<int>(std::ceil((detection->box.y_max - detection->box.y_min) * height));
-        const cv::Vec3b color = indexToColor(detection->class_id);
+        if (drawn >= max_draw) break;
 
-        const uint8_t *mask_ptr = reinterpret_cast<const uint8_t*>(detection) + sizeof(hailo_detection_with_byte_mask_t);
-        const size_t expected = static_cast<size_t>(box_w) * static_cast<size_t>(box_h);
-        (void)expected;
+            const int box_w = static_cast<int>(std::ceil((detection->box.x_max - detection->box.x_min) * width));
+            const int box_h = static_cast<int>(std::ceil((detection->box.y_max - detection->box.y_min) * height));
+            const cv::Vec3b color = indexToColor(detection->class_id);
 
-        for (int i = 0; i < box_h; ++i) {
-            for (int j = 0; j < box_w; ++j) {
-                const size_t idx = static_cast<size_t>(i) * static_cast<size_t>(box_w) + static_cast<size_t>(j);
-                if (idx < detection->mask_size && mask_ptr[idx]) {
-                    const int ox = j + static_cast<int>(detection->box.x_min * width);
-                    const int oy = i + static_cast<int>(detection->box.y_min * height);
-                    if (0 <= ox && ox < width && 0 <= oy && oy < height) {
-                        overlay.at<cv::Vec3b>(oy, ox) = color;
+            const uint8_t *mask_ptr = reinterpret_cast<const uint8_t*>(detection) + sizeof(hailo_detection_with_byte_mask_t);
+            const size_t expected = static_cast<size_t>(box_w) * static_cast<size_t>(box_h);
+            (void)expected;
+
+            for (int i = 0; i < box_h; ++i) {
+                for (int j = 0; j < box_w; ++j) {
+                    const size_t idx = static_cast<size_t>(i) * static_cast<size_t>(box_w) + static_cast<size_t>(j);
+                    if (idx < detection->mask_size && mask_ptr[idx]) {
+                        const int ox = j + static_cast<int>(detection->box.x_min * width);
+                        const int oy = i + static_cast<int>(detection->box.y_min * height);
+                        if (0 <= ox && ox < width && 0 <= oy && oy < height) {
+                            overlay.at<cv::Vec3b>(oy, ox) = color;
+                        }
                     }
                 }
             }
-        }
-        cv::rectangle(
-            frame,
-            cv::Rect(static_cast<int>(detection->box.x_min * width),
-                     static_cast<int>(detection->box.y_min * height),
-                     box_w, box_h),
-            color, 1);
+            cv::rectangle(
+                frame,
+                cv::Rect(static_cast<int>(detection->box.x_min * width),
+                        static_cast<int>(detection->box.y_min * height),
+                        box_w, box_h),
+                color, 1);
+        ++drawn;
+
     }
 
-    cv::addWeighted(frame, 1.0, overlay, 0.7, 0.0, frame);
+    cv::addWeighted(frame, 1.0, overlay, mask_alpha, 0.0, frame);
     return frame;
 }
 
@@ -173,6 +191,18 @@ HailoROIPtr build_roi_from_outputs(
 }
 
 
+static size_t apply_visual_limits_count(size_t dets_size, size_t masks_size, int max_boxes_to_draw)
+{
+    const size_t n = std::min(dets_size, masks_size);
+
+    if (max_boxes_to_draw <= 0) {
+        return 0;
+    }
+    const size_t maxn = static_cast<size_t>(max_boxes_to_draw);
+    return std::min(n, maxn);
+}
+
+
 std::vector<HailoDetectionPtr> get_detections_from_roi(const HailoROIPtr &roi)
 {
     std::vector<HailoDetectionPtr> dets;
@@ -183,22 +213,27 @@ std::vector<HailoDetectionPtr> get_detections_from_roi(const HailoROIPtr &roi)
     }
     return dets;
 }
-
 void draw_masks_and_boxes(
     cv::Mat &frame,
     const std::vector<HailoDetectionPtr> &dets,
     const std::vector<cv::Mat> &masks,
-    float alpha,
-    float thresh)
+    const VisualizationParams &vis)
 {
-    (void)alpha; 
-    (void)thresh; 
-    CV_Assert(static_cast<int>(dets.size()) == static_cast<int>(masks.size()));
+
+    const size_t draw_n = apply_visual_limits_count(dets.size(), masks.size(), vis.max_boxes_to_draw);
+
+    const float mask_thresh = *vis.mask_thresh;
+    const double mask_alpha = static_cast<double>(*vis.mask_alpha);
+
+    CV_Assert(draw_n <= dets.size());
+    CV_Assert(draw_n <= masks.size());  
+
     cv::Mat overlay(frame.size(), CV_8UC3, cv::Scalar(0,0,0));
 
-    for (size_t i = 0; i < dets.size(); ++i) {
+    for (size_t i = 0; i < draw_n; ++i) {
         const auto &det = dets[i];
         cv::Mat mask = masks[i];
+
         if (mask.size() != frame.size()) {
             cv::resize(mask, mask, frame.size(), 0, 0, cv::INTER_LINEAR);
         }
@@ -206,12 +241,11 @@ void draw_masks_and_boxes(
         const int cls_id = std::max(0, det->get_class_id());
         const cv::Scalar color = COLORS[static_cast<size_t>(cls_id) % COLORS.size()];
 
-        // Fast threshold blend
         for (int y = 0; y < mask.rows; ++y) {
             const float *mp = mask.ptr<float>(y);
             cv::Vec3b *op = overlay.ptr<cv::Vec3b>(y);
             for (int x = 0; x < mask.cols; ++x) {
-                if (mp[x] > thresh) {
+                if (mp[x] > mask_thresh) {
                     op[x][0] = static_cast<uchar>(color[0]);
                     op[x][1] = static_cast<uchar>(color[1]);
                     op[x][2] = static_cast<uchar>(color[2]);
@@ -219,7 +253,6 @@ void draw_masks_and_boxes(
             }
         }
 
-        // Draw bbox (HailoBBox is normalized)
         const auto &bb = det->get_bbox();
         const int x = static_cast<int>(bb.xmin() * frame.cols);
         const int y = static_cast<int>(bb.ymin() * frame.rows);
@@ -228,8 +261,9 @@ void draw_masks_and_boxes(
         cv::rectangle(frame, cv::Rect(x, y, w, h), color, 1);
     }
 
-    cv::addWeighted(frame, 1.0, overlay, alpha, 0.0, frame);
+    cv::addWeighted(frame, 1.0, overlay, mask_alpha, 0.0, frame);
 }
+
 
 
 // ====================  FUNCTIONS ====================
@@ -430,7 +464,8 @@ std::vector<std::pair<HailoDetection, xt::xarray<float>>> decode_boxes_and_extra
                                                                                 xt::xarray<float> scores,
                                                                                 std::vector<int> network_dims,
                                                                                 std::vector<int> strides,
-                                                                                int regression_length) {
+                                                                                int regression_length,
+                                                                                float score_thresh){
     int strided_width, strided_height, class_index;
     std::vector<std::pair<HailoDetection, xt::xarray<float>>> detections_and_masks;
     int instance_index = 0;
@@ -582,7 +617,8 @@ std::vector<DetectionAndMask> segmentation_postprocess(std::vector<HailoTensorPt
                                                                                 int regression_length,
                                                                                 int num_classes,
                                                                                 int org_image_height, 
-                                                                                int org_image_width) {
+                                                                                int org_image_width,
+                                                                                float score_threshold) {
     std::vector<DetectionAndMask> detections_and_cropped_masks;
     if (tensors.size() == 0)
     {
@@ -597,7 +633,7 @@ std::vector<DetectionAndMask> segmentation_postprocess(std::vector<HailoTensorPt
     xt::xarray<float> proto = boxes_scores_masks_mask_matrix.proto_data;
 
     // Decode the boxes and get masks
-    auto detections_and_masks = decode_boxes_and_extract_masks(raw_boxes, raw_masks, scores, network_dims, strides, regression_length);
+    auto detections_and_masks = decode_boxes_and_extract_masks(raw_boxes, raw_masks, scores, network_dims, strides, regression_length, score_threshold);
 
     // Filter with NMS
     auto detections_and_masks_after_nms = nms(detections_and_masks, IOU_THRESHOLD, true);
@@ -608,7 +644,8 @@ std::vector<DetectionAndMask> segmentation_postprocess(std::vector<HailoTensorPt
     return detections_and_decoded_masks;
 }
 
-std::vector<cv::Mat> filter(HailoROIPtr roi, int org_image_height, int org_image_width)
+
+std::vector<cv::Mat> filter(HailoROIPtr roi, int org_image_height, int org_image_width, float score_thres)
 {
     // anchor params
     int regression_length = 15;
@@ -622,7 +659,8 @@ std::vector<cv::Mat> filter(HailoROIPtr roi, int org_image_height, int org_image
                                                             regression_length, 
                                                             NUM_CLASSES, 
                                                             org_image_height, 
-                                                            org_image_width);
+                                                            org_image_width,
+                                                            score_thres);
 
     std::vector<HailoDetection> detections;
     std::vector<cv::Mat> masks;
