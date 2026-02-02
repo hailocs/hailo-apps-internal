@@ -532,10 +532,10 @@ std::vector<std::pair<HailoDetection, xt::xarray<float>>> decode_boxes_and_extra
             auto distance_view = xt::concatenate(xt::xtuple(distance_view1, distance_view2), 1);
             auto decoded_box = centers[i] + distance_view;
 
-            HailoBBox bbox(decoded_box(j, 0) / network_dims[0],
-                           decoded_box(j, 1) / network_dims[1],
-                           (decoded_box(j, 2) - decoded_box(j, 0)) / network_dims[0],
-                           (decoded_box(j, 3) - decoded_box(j, 1)) / network_dims[1]);
+            HailoBBox bbox(decoded_box(j, 0) / network_dims[1],
+                           decoded_box(j, 1) / network_dims[0],
+                           (decoded_box(j, 2) - decoded_box(j, 0)) / network_dims[1],
+                           (decoded_box(j, 3) - decoded_box(j, 1)) / network_dims[0]);
 
             label = common::coco_eighty[class_index + 1];
             HailoDetection detected_instance(bbox, class_index, label, confidence);
