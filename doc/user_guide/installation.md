@@ -60,6 +60,95 @@ For more options, such as using a custom virtual environment name:
 sudo ./install.sh --all
 ```
 
+---
+
+## Installing via pip (For Integration into Other Projects)
+
+If you want to integrate hailo-apps into an existing Python project, you can install it directly via pip.
+
+> **⚠️ Important: PyGObject & GStreamer**
+> 
+> hailo-apps requires PyGObject (Python bindings for GObject) to manage GStreamer pipelines.
+> 
+> **Do NOT install PyGObject via pip** - it requires system-level dependencies to build correctly.
+> 
+> Install system packages first:
+> ```bash
+> sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0
+> ```
+> 
+> **Virtual Environment Setup:** Standard pip environments won't see system-installed PyGObject. You **must** create your virtual environment with access to system site-packages:
+> ```bash
+> python3 -m venv --system-site-packages my_hailo_env
+> source my_hailo_env/bin/activate
+> ```
+
+### Prerequisites
+
+1. **Install System Dependencies:**
+   ```bash
+   # PyGObject and GStreamer bindings (required)
+   sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0
+   
+   # HailoRT and TAPPAS Core system packages
+   # Download from Hailo Developer Zone: https://hailo.ai/developer-zone/
+   ```
+
+2. **Create a Virtual Environment with System Site-Packages:**
+   ```bash
+   python3 -m venv --system-site-packages my_project_env
+   source my_project_env/bin/activate
+   ```
+
+### Installation Options
+
+**Install from GitHub (latest):**
+```bash
+pip install git+https://github.com/hailo-ai/hailo-apps.git
+```
+
+**Install from GitHub with optional dependencies:**
+```bash
+# With development tools
+pip install "hailo-apps[dev] @ git+https://github.com/hailo-ai/hailo-apps.git"
+
+# With GenAI dependencies
+pip install "hailo-apps[gen-ai] @ git+https://github.com/hailo-ai/hailo-apps.git"
+```
+
+**Install in editable mode (for development):**
+```bash
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
+pip install -e .
+```
+
+### Install Hailo Python Bindings
+
+After pip install, you need to install the Hailo Python bindings (hailort and tappas-core wheels):
+
+```bash
+# For Hailo-8
+hailo-install-python-bindings hailo8
+
+# For Hailo-10H
+hailo-install-python-bindings hailo10h
+```
+
+### Post-Installation Setup
+
+After pip install, run the post-install command to download models and configure the environment:
+
+```bash
+hailo-post-install
+```
+
+Or download resources for specific apps:
+```bash
+hailo-download-resources --group detection
+```
+
+---
 
 <details>
 <summary><b>Manual Installation (Advanced)</b></summary>
