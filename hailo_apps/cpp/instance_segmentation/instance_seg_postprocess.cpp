@@ -8,7 +8,6 @@
 using namespace hailo_utils;
 using namespace xt::placeholders;
 
-#define SCORE_THRESHOLD 0.6f
 #define IOU_THRESHOLD 0.7f
 #define NUM_CLASSES 80
 
@@ -439,8 +438,9 @@ std::vector<xt::xarray<double>> get_centers(std::vector<int>& strides, std::vect
         std::vector<xt::xarray<double>> centers(boxes_num);
 
         for (uint i=0; i < boxes_num; i++) {
-            strided_width = network_dims[0] / strides[i];
-            strided_height = network_dims[1] / strides[i];
+            int max_network_dim = std::max(network_dims[0], network_dims[1]);
+            strided_width = max_network_dim / strides[i];
+            strided_height = max_network_dim / strides[i];
 
             // Create a meshgrid of the proper strides
             xt::xarray<int> grid_x = xt::arange(0, strided_width);
@@ -506,7 +506,7 @@ std::vector<std::pair<HailoDetection, xt::xarray<float>>> decode_boxes_and_extra
             class_index = xt::argmax(xt::row(scores, instance_index))(0);
             confidence = scores(instance_index, class_index);
             instance_index++;
-            if (confidence < SCORE_THRESHOLD)
+            if (confidence < score_thresh)
                 continue;
 
             xt::xarray<float> box(shape);
@@ -548,11 +548,13 @@ std::vector<std::pair<HailoDetection, xt::xarray<float>>> decode_boxes_and_extra
     return detections_and_masks;
 }
 
-HailoTensorPtr pop_proto(std::vector<HailoTensorPtr> &tensors){
+HailoTensorPtr pop_proto(std::vector<HailoTensorPtr> &tensors, const std::vector<int> &network_dims){
+    int expected_height = network_dims[0] / 4;
+    int expected_width = network_dims[1] / 4;
     auto it = tensors.begin();
     while (it != tensors.end()) {
         auto tensor = *it;
-        if (tensor->features() == 32 && tensor->height() == 160 && tensor->width() == 160){
+        if (tensor->features() == 32 && tensor->height() == expected_height && tensor->width() == expected_width){
             auto proto = tensor;
             tensors.erase(it);
             return proto;
@@ -561,12 +563,14 @@ HailoTensorPtr pop_proto(std::vector<HailoTensorPtr> &tensors){
             ++it;
         }
     }
+    std::cerr << "Error: Could not find proto tensor of shape (32," << expected_height << "," << expected_width << ")" << std::endl;
     return nullptr;
 }
 
-Quadruple get_boxes_scores_masks(std::vector<HailoTensorPtr> &tensors, int num_classes, int regression_length){
 
-    auto raw_proto = pop_proto(tensors);
+Quadruple get_boxes_scores_masks(std::vector<HailoTensorPtr> &tensors, int num_classes, int regression_length, const std::vector<int> &network_dims){
+
+    auto raw_proto = pop_proto(tensors, network_dims);
 
     std::vector<HailoTensorPtr> outputs_boxes(tensors.size() / 3);
     std::vector<HailoTensorPtr> outputs_masks(tensors.size() / 3);
@@ -625,7 +629,7 @@ std::vector<DetectionAndMask> segmentation_postprocess(std::vector<HailoTensorPt
         return detections_and_cropped_masks;
     }
 
-    Quadruple boxes_scores_masks_mask_matrix = get_boxes_scores_masks(tensors, num_classes, regression_length);
+    Quadruple boxes_scores_masks_mask_matrix = get_boxes_scores_masks(tensors, num_classes, regression_length, network_dims);
 
     std::vector<HailoTensorPtr> raw_boxes = boxes_scores_masks_mask_matrix.boxes;
     xt::xarray<float> scores = boxes_scores_masks_mask_matrix.scores;
@@ -650,7 +654,7 @@ std::vector<cv::Mat> filter(HailoROIPtr roi, int org_image_height, int org_image
     // anchor params
     int regression_length = 15;
     std::vector<int> strides = {8, 16, 32};
-    std::vector<int> network_dims = {640, 640};
+    std::vector<int> network_dims = {org_image_height, org_image_width};
 
     std::vector<HailoTensorPtr> tensors = roi->get_tensors();
     auto filtered_detections_and_masks = segmentation_postprocess(tensors, 
