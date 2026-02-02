@@ -70,20 +70,11 @@ std::string getCmdOptionWithShortFlag(int argc, char *argv[], const std::string 
 
 std::vector<const hailo_detection_with_byte_mask_t*> get_detections(const uint8_t *src_ptr);
 
-cv::Mat draw_detections_and_mask(const uint8_t *src_ptr, int width, int height,
-                                 cv::Mat &frame, const VisualizationParams &vis);
-
-cv::Mat pad_frame_letterbox(const cv::Mat &frame, int model_h, int model_w);
-
-cv::Mat make_model_space_canvas(const cv::Mat &src,
-    int model_w, int model_h,
-    LetterboxMap &map);
-
-void map_model_to_frame(const cv::Mat &model_space,
-    const LetterboxMap &map,
-    cv::Mat &dst_frame);
-
-
+void draw_detections_and_mask(const uint8_t *src_ptr,
+                                          int model_w, int model_h,
+                                          int org_w, int org_h,
+                                          cv::Mat &frame,
+                                          const VisualizationParams &vis);
     
 // ─────────────────────────────────────────────────────────────────────────────
 // Postprocess of HEF without HailoRT-Postprocess
@@ -104,8 +95,8 @@ void draw_masks_and_boxes(cv::Mat &frame,
 
 __BEGIN_DECLS
 std::vector<cv::Mat> filter(HailoROIPtr roi,
-                            int org_image_height,
-                            int org_image_width,
+                            int org_image_height, int org_image_width,
+                            int model_h, int model_w,
                             float score_thres);
 __END_DECLS
 

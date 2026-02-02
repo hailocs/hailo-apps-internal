@@ -25,6 +25,51 @@ std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue =
     std::make_shared<BoundedTSQueue<InferenceResult>>(MAX_QUEUE_SIZE);
 
 
+// Task-specific preprocessing callback
+void preprocess_callback(const std::vector<cv::Mat>& org_frames,
+                         std::vector<cv::Mat>& preprocessed_frames,
+                         uint32_t target_width, uint32_t target_height)
+{
+    preprocessed_frames.clear();
+    preprocessed_frames.reserve(org_frames.size());
+
+    for (const auto &src_bgr : org_frames) {
+        // Skip invalid frames but keep vector alignment (optional: push empty)
+        if (src_bgr.empty()) {
+            preprocessed_frames.emplace_back();
+            continue;
+        }
+        cv::Mat rgb;
+        // 1) Convert to RGB
+        if (src_bgr.channels() == 3) {
+            cv::cvtColor(src_bgr, rgb, cv::COLOR_BGR2RGB);
+        } else if (src_bgr.channels() == 4) {
+            // If someone passed BGRA, drop alpha
+            cv::cvtColor(src_bgr, rgb, cv::COLOR_BGRA2RGB);
+        } else if (src_bgr.channels() == 1) {
+            // If grayscale sneaks in, promote to 3 channels
+            cv::cvtColor(src_bgr, rgb, cv::COLOR_GRAY2RGB);
+        } else {
+            // Fallback: force 3 channels by duplicating/merging
+            std::vector<cv::Mat> ch(3, src_bgr);
+            cv::merge(ch, rgb);
+            cv::cvtColor(rgb, rgb, cv::COLOR_BGR2RGB); // ensure RGB order
+        }
+        // 2) Resize to target
+        if (rgb.cols != static_cast<int>(target_width) || rgb.rows != static_cast<int>(target_height)) {
+            cv::resize(rgb, rgb, cv::Size(static_cast<int>(target_width),
+                                          static_cast<int>(target_height)),
+                       0.0, 0.0, cv::INTER_AREA);
+        }
+        // 3) Ensure contiguous buffer
+        if (!rgb.isContinuous()) {
+            rgb = rgb.clone();
+        }
+        // 4) Push to output vector
+        preprocessed_frames.push_back(std::move(rgb));
+    }
+}
+
 void postprocess_callback(cv::Mat &frame_to_draw,
                           const std::vector<std::pair<uint8_t*, hailo_vstream_info_t>> &outputs,
                           const int model_w,
@@ -32,24 +77,34 @@ void postprocess_callback(cv::Mat &frame_to_draw,
                           const bool hef_has_nms_and_mask,
                           const VisualizationParams &vis_param)
 {
-        if (hef_has_nms_and_mask) {
-            // ===== packed NMS + byte masks on device =====
-            const uint8_t *src_ptr = outputs.front().first;
-            LetterboxMap map{};
-            cv::Mat model_space = make_model_space_canvas(frame_to_draw, model_w, model_h, map);
-            draw_detections_and_mask(src_ptr, model_w, model_h, model_space, vis_param);
-            map_model_to_frame(model_space, map, frame_to_draw);
-        } else {
-            // ===== raw heads NMS + mask reconstruction =====
-            auto roi = build_roi_from_outputs(outputs);
-            std::vector<cv::Mat> masks = filter(roi, model_h, model_w, vis_param.score_thresh);
-            auto dets = get_detections_from_roi(roi);
+    const int org_w = frame_to_draw.cols;
+    const int org_h = frame_to_draw.rows;
 
-            LetterboxMap map{};
-            cv::Mat model_space = make_model_space_canvas(frame_to_draw, model_w, model_h, map);
-            draw_masks_and_boxes(model_space, dets, masks, vis_param);
-            map_model_to_frame(model_space, map, frame_to_draw);
-        }
+    if (hef_has_nms_and_mask) {
+        // ===== packed NMS + byte masks on device =====
+        const uint8_t *src_ptr = outputs.front().first;
+
+        // Draw overlay+boxes directly in ORIGINAL resolution (quality preserved)
+        draw_detections_and_mask(src_ptr,
+                                model_w, model_h,
+                                org_w, org_h,
+                                frame_to_draw,
+                                vis_param);
+    } else {
+        // ===== raw heads NMS + mask reconstruction =====
+        auto roi = build_roi_from_outputs(outputs);
+
+        // Decode using MODEL dims, but generate masks in ORIGINAL dims
+        std::vector<cv::Mat> masks = filter(roi,
+                                            org_h, org_w,
+                                            model_h, model_w,
+                                            vis_param.score_thresh);
+
+        auto dets = get_detections_from_roi(roi);
+
+        // Draw directly on original frame
+        draw_masks_and_boxes(frame_to_draw, dets, masks, vis_param);
+    }
 }
 
 
@@ -97,7 +152,7 @@ int main(int argc, char** argv)
                                         std::ref(args.batch_size),
                                         std::ref(args.framerate),
                                         preprocessed_batch_queue,
-                                        preprocess_frames);
+                                        preprocess_callback);
 
     ModelInputQueuesMap input_queues = {
         { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue }
