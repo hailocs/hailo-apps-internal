@@ -163,12 +163,13 @@ hailo-install-python-bindings hailo10h --download-dir ./wheels
 After pip install, run the post-install command to download models and configure the environment:
 
 ```bash
-hailo-post-install
+# Requires sudo (writes to /usr/local/hailo)
+sudo hailo-post-install
 ```
 
 Or download resources for specific apps:
 ```bash
-hailo-download-resources --group detection
+sudo hailo-download-resources --group detection
 ```
 
 After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
