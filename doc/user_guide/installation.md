@@ -164,16 +164,39 @@ hailo-install-python-bindings hailo10h
 
 ### Post-Installation Setup
 
-After pip install, run the post-install command to download models and configure the environment:
+After pip install, you must run the post-install command to complete the setup:
 
 ```bash
 hailo-post-install
 ```
 
-Or download resources for specific apps:
-```bash
-hailo-download-resources --group detection
-```
+This command performs three essential steps:
+1. **Downloads models and resources** to `/usr/local/hailo/resources/`
+2. **Compiles the C++ postprocess shared libraries** (.so files required for GStreamer pipelines)
+3. **Sets up environment configuration** (.env file)
+
+> **Note:** By default, gen-ai models (VLM, LLM, Whisper) are **NOT** downloaded since they are very large. Use `--group vlm_chat` or `--all --include-gen-ai` to download them explicitly.
+
+> **⚠️ Important:** If you skip this step, applications like `hailo-detect-simple` will fail with errors like:
+> ```
+> Could not load lib /usr/local/hailo/resources/so/libyolo_hailortpp_postprocess.so
+> ```
+
+**Options:**
+
+| Command | What it does |
+|---------|--------------|
+| `hailo-post-install` | Downloads default models + compiles .so files (recommended) |
+| `hailo-post-install --group detection` | Downloads only detection resources + compiles .so files |
+| `hailo-post-install --skip-download` | Compiles .so files only (no downloads) |
+| `hailo-post-install --skip-compile` | Downloads resources only (no compilation) |
+
+**Standalone commands:**
+
+| Command | What it does |
+|---------|--------------|
+| `hailo-download-resources --group detection` | Downloads resources only (does NOT compile .so files) |
+| `hailo-compile-postprocess` | Compiles .so files only (does NOT download resources) |
 
 After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
