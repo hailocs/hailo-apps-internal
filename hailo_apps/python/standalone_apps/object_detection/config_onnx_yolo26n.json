@@ -1,5 +1,5 @@
 {
-  "onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n_postprocessing.onnx",
+  "onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n_postprocessing_no_sigmoid.onnx",
   "output_tensor_mapping": {
     "yolo26n/conv61": ["/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv_output_0", [4, 80, 80]],
     "yolo26n/conv77": ["/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv_output_0", [4, 40, 40]],
@@ -21,5 +21,6 @@
     "max_boxes_to_draw": 50
   },
   "full_onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n.onnx",
+  "full_onnx_intermediate_model_path": "/home/alexf/yolo26_hailo8/yolo26n_intermediates.onnx",
   "use_full_onnx_mode": true
 }

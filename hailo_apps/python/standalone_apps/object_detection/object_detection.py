@@ -133,6 +133,12 @@ def normalized_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.n
     # Convert to float32 and normalize to 0-1
     normalized_image = padded_image.astype(np.float32) / 255.0
     
+    # <DEBUG>
+    DEBUG = True
+    if DEBUG:
+        logger.info(f"DEBUG normalized_preprocess: output shape={normalized_image.shape}, dtype={normalized_image.dtype}, min={normalized_image.min():.3f}, max={normalized_image.max():.3f}, mean={normalized_image.mean():.3f}")
+    # </DEBUG>
+    
     return normalized_image
 
 
@@ -149,6 +155,7 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     onnx_config = None
     onnx_session = None
     full_onnx_session = None
+    full_onnx_intermediate_session = None
     use_full_onnx = False
     
     if onnxconfig:
@@ -189,13 +196,28 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         use_full_onnx = onnx_config.get("use_full_onnx_mode", False)
         
         if use_full_onnx:
-            # Load full ONNX model (bypasses HEF)
+            # Load intermediate ONNX model (outputs HEF-like tensors) for Full-ONNX mode
+            intermediate_model_path = onnx_config.get("full_onnx_intermediate_model_path")
+            if not intermediate_model_path:
+                raise ValueError("use_full_onnx_mode is True but full_onnx_intermediate_model_path not specified in config")
+            intermediate_model_path = resolve_onnx_path(intermediate_model_path)
+            full_onnx_intermediate_session = ort.InferenceSession(intermediate_model_path)
+            logger.info(f"Loaded full ONNX intermediate model: {intermediate_model_path}")
+            
+            # Also load postprocessing model to apply to intermediates
+            onnx_model_path = onnx_config.get("onnx_model_path")
+            if not onnx_model_path:
+                raise ValueError("onnx_model_path not specified in ONNX config")
+            onnx_model_path = resolve_onnx_path(onnx_model_path)
+            onnx_session = ort.InferenceSession(onnx_model_path)
+            logger.info(f"Loaded ONNX postprocessing model: {onnx_model_path}")
+            
+            # Optionally load full model for reference
             full_model_path = onnx_config.get("full_onnx_model_path")
-            if not full_model_path:
-                raise ValueError("use_full_onnx_mode is True but full_onnx_model_path not specified in config")
-            full_model_path = resolve_onnx_path(full_model_path)
-            full_onnx_session = ort.InferenceSession(full_model_path)
-            logger.info(f"Loaded full ONNX model (debug mode): {full_model_path}")
+            if full_model_path:
+                full_model_path = resolve_onnx_path(full_model_path)
+                full_onnx_session = ort.InferenceSession(full_model_path)
+                logger.info(f"Loaded full ONNX model (reference): {full_model_path}")
         else:
             # Load postprocessing ONNX model (used with HEF outputs)
             onnx_model_path = onnx_config.get("onnx_model_path")
@@ -228,8 +250,8 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
 
     # Skip HEF initialization in full ONNX mode
     if use_full_onnx:
-        # Use full ONNX model input shape
-        full_onnx_input = full_onnx_session.get_inputs()[0]
+        # Use full ONNX intermediate model input shape
+        full_onnx_input = full_onnx_intermediate_session.get_inputs()[0]
         # Assume NCHW or NHWC format - extract H, W
         input_shape = full_onnx_input.shape
         if len(input_shape) == 4:
@@ -241,7 +263,7 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         else:
             raise ValueError(f"Unexpected full ONNX input shape: {input_shape}")
         hailo_inference = None
-        logger.info(f"Full ONNX mode enabled - bypassing HEF inference (input size: {height}x{width})")
+        logger.info(f"Full ONNX mode enabled - using intermediate outputs + ONNX postprocessing (input size: {height}x{width})")
     else:
         # When using ONNX postprocessing, request FLOAT32 inputs and outputs
         # Model was compiled with normalization [0,0,0]/[1,1,1] so expects float32 0-1 range
@@ -268,9 +290,9 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     )
     
     if use_full_onnx:
-        # Use full ONNX inference instead of HEF
+        # Use full ONNX inference (intermediate model + postprocessing)
         infer_thread = threading.Thread(
-            target=infer_full_onnx, args=(full_onnx_session, input_queue, output_queue)
+            target=infer_full_onnx, args=(full_onnx_intermediate_session, onnx_session, onnx_config, input_queue, output_queue)
         )
     else:
         infer_thread = threading.Thread(
@@ -337,13 +359,15 @@ def infer(hailo_inference, input_queue, output_queue):
     hailo_inference.close()
 
 
-def infer_full_onnx(onnx_session, input_queue, output_queue):
+def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, input_queue, output_queue):
     """
-    Full ONNX inference loop (debug mode) that bypasses HEF.
-    Pulls data from input queue, runs ONNX inference, and pushes results to output queue.
-
+    Full ONNX inference loop that runs intermediate model + ONNX postprocessing.
+    This matches the HEF+ONNX flow but using ONNX for both stages.
+    
     Args:
-        onnx_session: ONNXRuntime inference session for the full model.
+        intermediate_session: ONNXRuntime session for model that outputs HEF-like intermediates.
+        postprocess_session: ONNXRuntime session for ONNX postprocessing.
+        onnx_config: ONNX configuration with tensor mapping.
         input_queue (queue.Queue): Provides (input_batch, preprocessed_batch) tuples.
         output_queue (queue.Queue): Collects (input_frame, result) tuples for visualization.
 
@@ -353,8 +377,12 @@ def infer_full_onnx(onnx_session, input_queue, output_queue):
     # <DEBUG>
     DEBUG = True
     if DEBUG:
-        logger.info(">>> infer_full_onnx() starting")
+        logger.info(">>> infer_full_onnx() starting (intermediate + postprocess)")
     # </DEBUG>
+    
+    # Build reverse mapping: ONNX tensor name -> HEF tensor name
+    tensor_mapping = onnx_config.get("output_tensor_mapping", {})
+    onnx_to_hef = {onnx_name: hef_name for hef_name, (onnx_name, _) in tensor_mapping.items()}
     
     while True:
         next_batch = input_queue.get()
@@ -373,22 +401,46 @@ def infer_full_onnx(onnx_session, input_queue, output_queue):
             else:
                 onnx_input = np.expand_dims(preprocessed_frame, axis=0)
             
+            # <DEBUG>
+            if DEBUG:
+                logger.info(f"DEBUG infer_full_onnx: onnx_input shape={onnx_input.shape}, dtype={onnx_input.dtype}, min={onnx_input.min():.3f}, max={onnx_input.max():.3f}, mean={onnx_input.mean():.3f}")
+            # </DEBUG>
+            
             # Convert to float32 and normalize to 0-1 if needed
             if onnx_input.dtype == np.uint8:
                 onnx_input = onnx_input.astype(np.float32) / 255.0
             
-            # Run ONNX inference
-            onnx_input_name = onnx_session.get_inputs()[0].name
-            onnx_output_names = [out.name for out in onnx_session.get_outputs()]
-            onnx_results = onnx_session.run(onnx_output_names, {onnx_input_name: onnx_input})
+            # Run intermediate ONNX model (get HEF-like outputs)
+            intermediate_input_name = intermediate_session.get_inputs()[0].name
+            intermediate_output_names = [out.name for out in intermediate_session.get_outputs()]
+            intermediate_results = intermediate_session.run(intermediate_output_names, {intermediate_input_name: onnx_input})
             
             # <DEBUG>
             if DEBUG:
-                logger.info(f">>> Full ONNX inference complete. Output shape: {onnx_results[0].shape}")
+                logger.info(f"DEBUG infer_full_onnx: Intermediate outputs (HEF-like tensors):")
+                for name, tensor in zip(intermediate_output_names[:2], intermediate_results[:2]):
+                    logger.info(f"  {name}: shape={tensor.shape}, dtype={tensor.dtype}, min={tensor.min():.3f}, max={tensor.max():.3f}, mean={tensor.mean():.3f}")
             # </DEBUG>
             
-            # Format result (assume single output tensor for yolon26 format)
-            result = onnx_results[0]
+            # Apply sigmoid to classifier tensors (80 channels) to match HEF behavior
+            # HEF applies sigmoid to conv61, conv77, conv91 (the box regression layers)
+            # but we need sigmoid on the CLASSIFIER layers (80 channels, not 4 channels)
+            # to match the expected postprocessing input
+            for idx, (onnx_name, tensor) in enumerate(zip(intermediate_output_names, intermediate_results)):
+                # Check if this is a classifier tensor (80 channels in dim 1)
+                if tensor.shape[1] == 80:
+                    intermediate_results[idx] = 1.0 / (1.0 + np.exp(-tensor))  # sigmoid
+                    if DEBUG:
+                        logger.info(f"  Applied sigmoid to {onnx_name} (classifier, 80 channels): min={intermediate_results[idx].min():.3f}, max={intermediate_results[idx].max():.3f}")
+            
+            # Map ONNX tensor names to HEF tensor names for compatibility with extract_detections_onnx
+            result = {}
+            for onnx_name, tensor in zip(intermediate_output_names, intermediate_results):
+                hef_name = onnx_to_hef.get(onnx_name)
+                if hef_name:
+                    result[hef_name] = tensor
+                else:
+                    logger.warning(f"ONNX intermediate output '{onnx_name}' not found in tensor mapping")
             
             output_queue.put((input_batch[i], result))
 

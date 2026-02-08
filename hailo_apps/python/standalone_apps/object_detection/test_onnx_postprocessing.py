@@ -66,23 +66,24 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
         num_detections = 0
         class_0_count = 0
         class_5_count = 0
-        seen_raw_bbox = False
         
         # Show relevant output and count detections
-        for line in result.stdout.split('\\n'):
+        for line in result.stdout.split('\n'):
             if any(keyword in line for keyword in ['INFO', 'SUCCESS', 'ERROR', 'Full ONNX', 'dequantized', 'Loaded', 'Saved', 'DEBUG', '>>>', '===', 'routing', 'Routing', 'Class']):
                 print(line)
             
-            # Count detections from debug output (only from "Raw bbox" lines to avoid double-counting)
+            # Count total detections
             if 'Total detections after threshold' in line:
                 try:
                     num_detections = int(line.split(':')[-1].strip())
                 except:
                     pass
+            
+            # Count by class from "Raw bbox" lines (more reliable than Top N summary)
             if 'Raw bbox' in line:
                 if 'Class 0, Score:' in line:
                     class_0_count += 1
-                if 'Class 5, Score:' in line:
+                elif 'Class 5, Score:' in line:
                     class_5_count += 1
         
         success = result.returncode == 0
@@ -90,18 +91,21 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
         # Output should already be in output_dir from --output-dir flag
         output_image = Path(output_dir) / 'output_0.png'
         
-        # Validate detections for Full ONNX mode
+        # Validate detections - expected results: 5 total (4x class 0 people, 1x class 5 bus)
         detection_valid = True
-        if 'Full ONNX' in mode_name:
-            if num_detections != 5:
-                detection_valid = False
-                print(f"\n⚠️  Expected 5 detections, got {num_detections}")
-            if class_0_count != 4:
-                detection_valid = False
-                print(f"\n⚠️  Expected 4 people (class 0), got {class_0_count}")
-            if class_5_count != 1:
-                detection_valid = False
-                print(f"\n⚠️  Expected 1 bus (class 5), got {class_5_count}")
+        expected_total = 5
+        expected_class_0 = 4  # people
+        expected_class_5 = 1  # bus
+        
+        if num_detections != expected_total:
+            detection_valid = False
+            print(f"\n⚠️  Expected {expected_total} detections, got {num_detections}")
+        if class_0_count != expected_class_0:
+            detection_valid = False
+            print(f"\n⚠️  Expected {expected_class_0} people (class 0), got {class_0_count}")
+        if class_5_count != expected_class_5:
+            detection_valid = False
+            print(f"\n⚠️  Expected {expected_class_5} bus (class 5), got {class_5_count}")
         
         if success and detection_valid:
             print(f"\n✅ {mode_name} completed successfully")
@@ -117,6 +121,7 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
                 success = False
         elif not detection_valid:
             print(f"\n❌ {mode_name} failed: Detection validation failed")
+            print(f"   Got {num_detections} total (class 0: {class_0_count}, class 5: {class_5_count})")
             success = False
         else:
             print(f"\n❌ {mode_name} failed (exit code: {result.returncode})")

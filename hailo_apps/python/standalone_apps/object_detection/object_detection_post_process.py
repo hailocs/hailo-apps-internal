@@ -57,16 +57,13 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
     # </DEBUG>
     
     # Route to appropriate postprocessing backend
-    # Check full ONNX mode FIRST (before checking onnx_session)
-    if onnx_config is not None and onnx_config.get("use_full_onnx_mode", False):
-        # Full ONNX mode (direct ONNX inference results, bypasses HEF)
+    # Check if ONNX postprocessing session is available (both HEF+ONNX and Full-ONNX modes)
+    if onnx_session is not None:
+        # ONNX-based postprocessing (HEF outputs or Full-ONNX intermediates -> ONNX postproc)
         if DEBUG:
-            logger.info("  -> Routing to extract_detections_onnx_direct (Full ONNX)")
-        detections = extract_detections_onnx_direct(original_frame, infer_results, onnx_config)
-    elif onnx_session is not None:
-        # ONNX-based postprocessing (HEF outputs -> ONNX postproc model)
-        if DEBUG:
-            logger.info("  -> Routing to extract_detections_onnx (HEF + ONNX postproc)")
+            use_full = onnx_config.get("use_full_onnx_mode", False) if onnx_config else False
+            mode_str = "Full-ONNX intermediates" if use_full else "HEF outputs"
+            logger.info(f"  -> Routing to extract_detections_onnx ({mode_str} + ONNX postproc)")
         if onnx_config is None:
             raise ValueError("onnx_session provided but onnx_config is None")
         detections = extract_detections_onnx(original_frame, infer_results, onnx_config, onnx_session)
@@ -465,6 +462,16 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
             hef_tensor = np.transpose(hef_tensor, (0, 3, 1, 2))  # NHWC -> NCHW
         
         onnx_inputs[onnx_name] = hef_tensor
+    
+    # Debug: Check HEF outputs before ONNX
+    DEBUG = True
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info("=" * 80)
+        logger.info("DEBUG extract_detections_onnx: HEF outputs before ONNX")
+        for name, tensor in list(onnx_inputs.items()): #[:2]:  # Show first 2
+            logger.info(f"  {name}: shape={tensor.shape}, dtype={tensor.dtype}, min={tensor.min():.3f}, max={tensor.max():.3f}, mean={tensor.mean():.3f}")
     
     # Run ONNX postprocessing inference
     onnx_output_names = [out.name for out in onnx_session.get_outputs()]
