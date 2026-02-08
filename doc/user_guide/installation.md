@@ -50,6 +50,8 @@ For more all options:
 sudo ./install.sh --help
 ```
 
+After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
+
 ---
 
 ## Installing via pip (For Integration into Other Projects)
@@ -95,6 +97,9 @@ If you want to integrate hailo-apps into an existing Python project, you can ins
 **Install from GitHub (latest):**
 ```bash
 pip install git+https://github.com/hailo-ai/hailo-apps.git
+
+# Refresh shell's command cache so new scripts are found
+hash -r
 ```
 
 **Install from GitHub with optional dependencies:**
@@ -104,6 +109,9 @@ pip install "hailo-apps[dev] @ git+https://github.com/hailo-ai/hailo-apps.git"
 
 # With GenAI dependencies
 pip install "hailo-apps[gen-ai] @ git+https://github.com/hailo-ai/hailo-apps.git"
+
+# Refresh shell's command cache
+hash -r
 ```
 
 **Install in editable mode (for development):**
@@ -111,11 +119,14 @@ pip install "hailo-apps[gen-ai] @ git+https://github.com/hailo-ai/hailo-apps.git
 git clone https://github.com/hailo-ai/hailo-apps.git
 cd hailo-apps
 pip install -e .
+
+# Refresh shell's command cache
+hash -r
 ```
 
 ### Install Hailo Python Bindings
 
-After pip install, you need to install the Hailo Python bindings (hailort and tappas-core wheels):
+After pip install, you need to install the Hailo Python bindings (hailort and tappas-core wheels).
 
 ```bash
 # For Hailo-8
@@ -124,6 +135,25 @@ hailo-install-python-bindings hailo8
 # For Hailo-10H
 hailo-install-python-bindings hailo10h
 ```
+
+> **Troubleshooting "command not found":**
+> 
+> If you get "command not found", try these solutions in order:
+> 
+> 1. **Refresh the shell's command cache:**
+>    ```bash
+>    hash -r
+>    ```
+> 
+> 2. **Verify scripts are installed:**
+>    ```bash
+>    ls $(python -c "import sys; print(sys.prefix)")/bin/hailo-*
+>    ```
+> 
+> 3. **Run directly with Python:**
+>    ```bash
+>    python -m hailo_apps.installation.install_python_bindings hailo10h
+>    ```
 
 ### Post-Installation Setup
 
@@ -137,6 +167,8 @@ Or download resources for specific apps:
 ```bash
 hailo-download-resources --group detection
 ```
+
+After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
 ---
 
@@ -184,6 +216,8 @@ Note that also on the x86_64 Ubuntu, the gi library is installed on the system (
     ```bash
     hailo-post-install
     ```
+
+After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
 </details>
 
@@ -433,6 +467,8 @@ sudo ./install.sh
 ```
 
 > **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
+
+After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
 ---
 
