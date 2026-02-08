@@ -129,11 +129,14 @@ hash -r
 After pip install, you need to install the Hailo Python bindings (hailort and tappas-core wheels).
 
 ```bash
-# For Hailo-8
-hailo-install-python-bindings hailo8
+# For Hailo-8 (requires sudo for default download location)
+sudo hailo-install-python-bindings hailo8
 
 # For Hailo-10H
-hailo-install-python-bindings hailo10h
+sudo hailo-install-python-bindings hailo10h
+
+# Or specify a custom download directory (no sudo required)
+hailo-install-python-bindings hailo10h --download-dir ./wheels
 ```
 
 > **Troubleshooting "command not found":**

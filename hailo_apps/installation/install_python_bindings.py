@@ -96,6 +96,10 @@ Note:
         help="Only download wheels, do not install"
     )
     parser.add_argument(
+        "--download-dir", "-D",
+        help="Directory to download wheels to (default: /usr/local/hailo/resources/packages)"
+    )
+    parser.add_argument(
         "--no-hailort", "-H",
         action="store_true",
         help="Skip HailoRT download/install"
@@ -130,6 +134,8 @@ Note:
         cmd.extend(["--tappas-core-version", args.tappas_core_version])
     if args.download_only:
         cmd.append("--download-only")
+    if args.download_dir:
+        cmd.extend(["--download-dir", args.download_dir])
     if args.no_hailort:
         cmd.append("--no-hailort")
     if args.no_tappas:
