@@ -21,7 +21,8 @@ trail_length = 30
 # Only draw trail for certain classes (e.g., person=0, phone=67 in COCO)
 TRACKLET_CLASSES = [0, 67]  # PERSON, SMARTPHONE
 
-def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False):
+def inference_result_handler(original_frame, infer_results, labels, config_data, tracker=None, draw_trail=False, 
+                            onnx_config=None, onnx_session=None):
     """
     Processes inference results and draw detections (with optional tracking).
 
@@ -31,11 +32,50 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
         labels (list): List of class labels.
         enable_tracking (bool): Whether tracking is enabled.
         tracker (BYTETracker, optional): ByteTrack tracker instance.
+        onnx_config (dict, optional): ONNX postprocessing configuration.
+        onnx_session (onnxruntime.InferenceSession, optional): ONNX Runtime session.
 
     Returns:
         np.ndarray: Frame with detections or tracks drawn.
     """
-    detections = extract_detections(original_frame, infer_results, config_data)  # Should return dict with boxes, classes, scores
+    # <DEBUG>
+    DEBUG = True
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info("=" * 80)
+        logger.info(">>> inference_result_handler() called")
+        logger.info(f"  onnx_config: {onnx_config is not None}")
+        if onnx_config is not None:
+            logger.info(f"  use_full_onnx_mode: {onnx_config.get('use_full_onnx_mode', False)}")
+        logger.info(f"  onnx_session: {onnx_session is not None}")
+        logger.info(f"  infer_results type: {type(infer_results)}")
+        if isinstance(infer_results, np.ndarray):
+            logger.info(f"  infer_results shape: {infer_results.shape}")
+        elif isinstance(infer_results, dict):
+            logger.info(f"  infer_results keys: {list(infer_results.keys())}")
+    # </DEBUG>
+    
+    # Route to appropriate postprocessing backend
+    # Check full ONNX mode FIRST (before checking onnx_session)
+    if onnx_config is not None and onnx_config.get("use_full_onnx_mode", False):
+        # Full ONNX mode (direct ONNX inference results, bypasses HEF)
+        if DEBUG:
+            logger.info("  -> Routing to extract_detections_onnx_direct (Full ONNX)")
+        detections = extract_detections_onnx_direct(original_frame, infer_results, onnx_config)
+    elif onnx_session is not None:
+        # ONNX-based postprocessing (HEF outputs -> ONNX postproc model)
+        if DEBUG:
+            logger.info("  -> Routing to extract_detections_onnx (HEF + ONNX postproc)")
+        if onnx_config is None:
+            raise ValueError("onnx_session provided but onnx_config is None")
+        detections = extract_detections_onnx(original_frame, infer_results, onnx_config, onnx_session)
+    else:
+        # Default: HailoRT-NMS postprocessing
+        if DEBUG:
+            logger.info("  -> Routing to extract_detections (HailoRT NMS)")
+        detections = extract_detections(original_frame, infer_results, config_data)
+    
     frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker, draw_trail=draw_trail)
     return frame_with_detections
 
@@ -87,19 +127,27 @@ def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_heig
     Denormalize bounding box coordinates and remove padding.
 
     Args:
-        box (list): Normalized bounding box coordinates.
-        size (int): Size to scale the coordinates.
+        box (list): Normalized bounding box coordinates [x1, y1, x2, y2] in 0-1 range.
+        size (int): Size to scale the coordinates (max of height/width).
         padding_length (int): Length of padding to remove.
         input_height (int): Height of the input image.
         input_width (int): Width of the input image.
 
     Returns:
-        list: Denormalized bounding box coordinates with padding removed.
+        list: Denormalized bounding box coordinates [ymin, xmin, ymax, xmax] with padding removed.
     """
+    DEBUG = False  # Disable debug to reduce noise
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info(f"denormalize_and_rm_pad: input box={box}, size={size}, pad={padding_length}, img_h={input_height}, img_w={input_width}")
+    
     # Scale box coordinates
     box = [int(x * size) for x in box]
+    if DEBUG:
+        logger.info(f"  After scaling by {size}: {box}")
 
-    # Apply padding correction
+    # Apply padding correction (ORIGINAL LOGIC - WORKS FOR OTHER NETWORKS)
     for i in range(4):
         if i % 2 == 0:  # x-coordinates
             if input_height != size:
@@ -107,9 +155,15 @@ def denormalize_and_rm_pad(box: list, size: int, padding_length: int, input_heig
         else:  # y-coordinates
             if input_width != size:
                 box[i] -= padding_length
+    
+    if DEBUG:
+        logger.info(f"  After padding removal: {box}")
 
     # Swap to [ymin, xmin, ymax, xmax]
-    return [box[1], box[0], box[3], box[2]]
+    result = [box[1], box[0], box[3], box[2]]
+    if DEBUG:
+        logger.info(f"  After swap to [ymin,xmin,ymax,xmax]: {result}")
+    return result
 
 
 def extract_detections(image: np.ndarray, detections: list, config_data) -> dict:
@@ -135,10 +189,41 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
 
     all_detections = []
 
+    # Debug: Check structure of detections
+    DEBUG = True
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info("=" * 80)
+        logger.info("DEBUG extract_detections: Input from HailoRT-NMS")
+        logger.info(f"  Image size: {img_width}x{img_height}, size={size}, pad={padding_length}")
+        logger.info(f"  Number of classes: {len(detections)}")
+    
+    if isinstance(detections, dict):
+        # Dict format - likely raw HEF outputs, not HailoRT-NMS
+        raise ValueError(
+            f"Expected HailoRT-NMS format (list of per-class detections), "
+            f"but got dict with keys: {list(detections.keys())}. "
+            f"This model may not have on-device NMS enabled. "
+            f"Try using --onnxconfig for ONNX-based postprocessing."
+        )
+    
     for class_id, detection in enumerate(detections):
+        if not isinstance(detection, (list, np.ndarray)):
+            raise ValueError(
+                f"Unexpected detection format for class {class_id}: {type(detection)}. "
+                f"Expected array of detections, got: {detection}"
+            )
         for det in detection:
+            if len(det) < 5:
+                raise ValueError(
+                    f"Invalid detection format: expected at least 5 values [x1, y1, x2, y2, score], "
+                    f"but got {len(det)} values: {det}"
+                )
             bbox, score = det[:4], det[4]
             if score >= score_threshold:
+                if DEBUG and len(all_detections) < 5:  # Print first 5
+                    logger.info(f"  Class {class_id}, Score: {score:.3f}, Raw bbox (normalized 0-1): {bbox}")
                 denorm_bbox = denormalize_and_rm_pad(bbox, size, padding_length, img_height, img_width)
                 all_detections.append((score, class_id, denorm_bbox))
 
@@ -237,8 +322,13 @@ def draw_detections(detections: dict, img_out: np.ndarray, labels, tracker=None,
     else:
         # No tracking — draw raw model detections
         for idx in range(num_detections):
-            color = tuple(id_to_color(classes[idx]).tolist())  # Color based on class
-            draw_detection(img_out, boxes[idx], [labels[classes[idx]]], scores[idx] * 100.0, color)
+            class_id = classes[idx]
+            # Validate class ID is within labels range
+            if class_id >= len(labels):
+                print(f"Warning: Class ID {class_id} out of range for labels (max: {len(labels)-1}). Skipping detection.")
+                continue
+            color = tuple(id_to_color(class_id).tolist())  # Color based on class
+            draw_detection(img_out, boxes[idx], [labels[class_id]], scores[idx] * 100.0, color)
 
     return img_out
 
@@ -287,3 +377,287 @@ def compute_iou(boxA, boxB):
     areaA = max(1e-5, (boxA[2] - boxA[0]) * (boxA[3] - boxA[1]))
     areaB = max(1e-5, (boxB[2] - boxB[0]) * (boxB[3] - boxB[1]))
     return inter / (areaA + areaB - inter + 1e-5)
+
+
+# ==================== ONNX Postprocessing Functions ====================
+
+# Supported output formats for ONNX postprocessing
+SUPPORTED_OUTPUT_FORMATS = ["yolon26", "yolov8", "yolov5"]
+
+
+def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config: dict, onnx_session) -> dict:
+    """
+    Extract detections using ONNX postprocessing model.
+    Maps HEF output tensors to ONNX inputs, runs inference, and parses results.
+    
+    Args:
+        image (np.ndarray): Original image frame for coordinate denormalization.
+        hailo_outputs (dict): Dict of HEF output tensors {name: numpy array}.
+        onnx_config (dict): ONNX configuration with tensor mapping and format spec.
+        onnx_session: ONNX Runtime inference session for postprocessing model.
+        
+    Returns:
+        dict: Detection results with 'detection_boxes', 'detection_classes', 
+              'detection_scores', and 'num_detections'.
+    """
+    tensor_mapping = onnx_config["output_tensor_mapping"]
+    output_format = onnx_config["output_format"]
+    
+    # Validate output format
+    if output_format not in SUPPORTED_OUTPUT_FORMATS:
+        raise ValueError(
+            f"Unsupported output_format '{output_format}'. "
+            f"Supported formats: {SUPPORTED_OUTPUT_FORMATS}"
+        )
+    
+    # Map HEF outputs to ONNX inputs with shape validation
+    onnx_inputs = {}
+    for hef_name, (onnx_name, expected_shape) in tensor_mapping.items():
+        if hef_name not in hailo_outputs:
+            raise ValueError(
+                f"Expected HEF output '{hef_name}' not found in inference results. "
+                f"Available outputs: {list(hailo_outputs.keys())}"
+            )
+        
+        hef_tensor = hailo_outputs[hef_name]
+        
+        # Validate shape (allow batch dimension to be flexible)
+        actual_shape = list(hef_tensor.shape)
+        if len(actual_shape) == 4:  # Remove batch dimension for comparison
+            actual_shape_no_batch = actual_shape[1:]
+        else:
+            actual_shape_no_batch = actual_shape
+        
+        # HEF outputs are in NHWC format, but expected_shape might be in HWC or CHW
+        # Check if we need to transpose from NHWC to NCHW
+        needs_transpose = False
+        if len(actual_shape) == 4 and len(expected_shape) == 3:
+            # HEF: [N, H, W, C], expected: [H, W, C]
+            if actual_shape_no_batch != expected_shape:
+                # Try transposing to [N, C, H, W] format
+                if [actual_shape[3], actual_shape[1], actual_shape[2]] == expected_shape:
+                    needs_transpose = True
+                else:
+                    raise ValueError(
+                        f"Shape mismatch for HEF output '{hef_name}': "
+                        f"expected {expected_shape}, got {actual_shape_no_batch} (NHWC format). "
+                        f"Full tensor shape: {hef_tensor.shape}"
+                    )
+            # else: shape matches as-is
+        else:
+            if actual_shape_no_batch != expected_shape:
+                raise ValueError(
+                    f"Shape mismatch for HEF output '{hef_name}': "
+                    f"expected {expected_shape}, got {actual_shape_no_batch}. "
+                    f"Full tensor shape: {hef_tensor.shape}"
+                )
+        
+        # Note: HEF outputs should be FLOAT32 when HailoInfer is initialized with output_type="FLOAT32"
+        # If they're still UINT8, ensure object_detection.py passes output_type="FLOAT32" to HailoInfer
+        if hef_tensor.dtype == np.uint8:
+            raise ValueError(
+                f"HEF output '{hef_name}' is UINT8. ONNX postprocessing requires dequantized (FLOAT32) outputs. "
+                f"Ensure HailoInfer is initialized with output_type='FLOAT32' when using ONNX postprocessing."
+            )
+        
+        # Transpose from NHWC to NCHW if needed
+        if needs_transpose:
+            hef_tensor = np.transpose(hef_tensor, (0, 3, 1, 2))  # NHWC -> NCHW
+        
+        onnx_inputs[onnx_name] = hef_tensor
+    
+    # Run ONNX postprocessing inference
+    onnx_output_names = [out.name for out in onnx_session.get_outputs()]
+    onnx_results = onnx_session.run(onnx_output_names, onnx_inputs)
+    
+    # Parse ONNX output to normalized coords (matching HailoRT-NMS format)
+    if output_format == "yolon26":
+        detections = parse_yolon26_output(onnx_results, image, onnx_config)
+    elif output_format == "yolov8":
+        detections = parse_yolov8_output(onnx_results, image, onnx_config)
+    elif output_format == "yolov5":
+        detections = parse_yolov5_output(onnx_results, image, onnx_config)
+    else:
+        raise NotImplementedError(f"Parser for format '{output_format}' not implemented")
+    
+    # Reuse extract_detections to handle denormalization and filtering
+    return extract_detections(image, detections, onnx_config)
+
+
+def extract_detections_onnx_direct(image: np.ndarray, onnx_output, onnx_config: dict) -> dict:
+    """
+    Extract detections from full ONNX model output (debug mode).
+    Used when use_full_onnx_mode=True and inference was done entirely in ONNX.
+    
+    Args:
+        image (np.ndarray): Original image frame for coordinate denormalization.
+        onnx_output: Direct output from full ONNX model inference.
+        onnx_config (dict): ONNX configuration with format spec.
+        
+    Returns:
+        dict: Detection results with 'detection_boxes', 'detection_classes', 
+              'detection_scores', and 'num_detections'.
+    """
+    # <DEBUG>
+    DEBUG = True
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info(">>> extract_detections_onnx_direct() called (Full ONNX mode)")
+    # </DEBUG>
+    
+    output_format = onnx_config["output_format"]
+    
+    # Validate output format
+    if output_format not in SUPPORTED_OUTPUT_FORMATS:
+        raise ValueError(
+            f"Unsupported output_format '{output_format}'. "
+            f"Supported formats: {SUPPORTED_OUTPUT_FORMATS}"
+        )
+    
+    # Wrap output in list format expected by parsers
+    onnx_results = [onnx_output] if not isinstance(onnx_output, list) else onnx_output
+    
+    # Parse ONNX output to normalized coords (matching HailoRT-NMS format)
+    if output_format == "yolon26":
+        detections = parse_yolon26_output(onnx_results, image, onnx_config)
+    elif output_format == "yolov8":
+        detections = parse_yolov8_output(onnx_results, image, onnx_config)
+    elif output_format == "yolov5":
+        detections = parse_yolov5_output(onnx_results, image, onnx_config)
+    else:
+        raise NotImplementedError(f"Parser for format '{output_format}' not implemented")
+    
+    # Reuse extract_detections to handle denormalization and filtering
+    return extract_detections(image, detections, onnx_config)
+
+
+def parse_yolon26_output(onnx_results: list, image: np.ndarray, onnx_config: dict) -> list:
+    """
+    Parse YOLOv26n output format: 300x6 tensor with [x1, y1, x2, y2, score, class_id].
+    Returns per-class detections in normalized coordinates matching HailoRT-NMS format.
+    
+    Args:
+        onnx_results (list): ONNX inference outputs (first element is detection tensor).
+        image (np.ndarray): Original image (not used, kept for compatibility).
+        onnx_config (dict): Config with postprocess_params (score_threshold, input_size).
+        
+    Returns:
+        list: Per-class detections [[bbox, score], ...] where bbox is [x1, y1, x2, y2] normalized 0-1.
+    """
+    params = onnx_config.get("postprocess_params", {})
+    score_threshold = params.get("score_threshold", 0.25)
+    input_size = params.get("input_size", 640)
+    
+    # Extract detection tensor (assume first output)
+    detections = onnx_results[0]
+    
+    # Validate shape
+    if detections.ndim == 3:  # Batch dimension
+        detections = detections[0]  # Take first batch
+    
+    expected_shape = (300, 6)
+    if detections.shape != expected_shape:
+        raise ValueError(
+            f"YOLOv26n output shape mismatch: expected {expected_shape}, got {detections.shape}"
+        )
+    
+    # Parse detections: [x1, y1, x2, y2, score, class_id]
+    # ONNX outputs are in pixel space (0-640), normalize to 0-1 to match yolov5 format
+    DEBUG = True
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info(f"DEBUG parse_yolon26: Raw ONNX output (pixel coords 0-640)")
+        logger.info(f"  Sample detections[0]: {detections[0]}")
+        logger.info(f"  Sample detections[1]: {detections[1]}")
+    
+    # Normalize by input_size to get 0-1 range, then clip negatives at 0
+    x1s = np.clip(detections[:, 0] / input_size, 0, 1)
+    y1s = np.clip(detections[:, 1] / input_size, 0, 1)
+    x2s = np.clip(detections[:, 2] / input_size, 0, 1)
+    y2s = np.clip(detections[:, 3] / input_size, 0, 1)
+    confidences = detections[:, 4]
+    class_ids = detections[:, 5].astype(int)
+    
+    # Apply score threshold
+    valid_mask = confidences >= score_threshold
+    x1s = x1s[valid_mask]
+    y1s = y1s[valid_mask]
+    x2s = x2s[valid_mask]
+    y2s = y2s[valid_mask]
+    confidences = confidences[valid_mask]
+    class_ids = class_ids[valid_mask]
+    
+    # <DEBUG> Print normalized coordinates
+    DEBUG = True  # Set to False to disable debug logging
+    if DEBUG:
+        from hailo_apps.python.core.common.hailo_logger import get_logger
+        logger = get_logger(__name__)
+        logger.info("=" * 80)
+        logger.info("DEBUG parse_yolon26: After normalization (coords 0-1, clipped)")
+        logger.info(f"  Total detections after threshold {score_threshold}: {len(confidences)}")
+        if len(confidences) > 0:
+            top_5 = min(5, len(confidences))
+            top_indices = np.argsort(confidences)[-top_5:][::-1]
+            logger.info(f"  Top {top_5} detections (normalized coords 0-1):")
+            for idx in top_indices:
+                logger.info(f"    Class {class_ids[idx]}, Score: {confidences[idx]:.3f}, Box: [x1={x1s[idx]:.3f}, y1={y1s[idx]:.3f}, x2={x2s[idx]:.3f}, y2={y2s[idx]:.3f}]")
+    # </DEBUG>
+    
+    # Group by class ID in HailoRT-NMS format: list of per-class detections
+    # Each detection is [x1, y1, x2, y2, score] in normalized 0-1 coords
+    # NOTE: HailoRT-NMS outputs [ymin, xmin, ymax, xmax], so we need to swap X and Y
+    class_detections = {}
+    for x1, y1, x2, y2, score, class_id in zip(x1s, y1s, x2s, y2s, confidences, class_ids):
+        if class_id not in class_detections:
+            class_detections[class_id] = []
+        # Swap to match HailoRT-NMS format: [ymin, xmin, ymax, xmax, score]
+        class_detections[class_id].append([float(y1), float(x1), float(y2), float(x2), float(score)])
+    
+    # Convert to list format (index = class_id)
+    max_class_id = max(class_detections.keys()) if class_detections else 0
+    detections_list = []
+    for class_id in range(max_class_id + 1):
+        detections_list.append(class_detections.get(class_id, []))
+    
+    return detections_list
+
+
+def parse_yolov8_output(onnx_results: list, image: np.ndarray, onnx_config: dict) -> list:
+    """
+    Parse YOLOv8 output format (placeholder for future implementation).
+    
+    Args:
+        onnx_results (list): ONNX inference outputs.
+        image (np.ndarray): Original image (not used, kept for compatibility).
+        onnx_config (dict): Config with postprocess_params.
+        
+    Returns:
+        list: Per-class detections in HailoRT-NMS format.
+    """
+    raise NotImplementedError(
+        "YOLOv8 format parser not yet implemented. "
+        "This is a placeholder to demonstrate extensibility. "
+        "Expected format: [batch, 84, 8400] with [x, y, w, h, class_scores...]"
+    )
+
+
+def parse_yolov5_output(onnx_results: list, image: np.ndarray, onnx_config: dict) -> list:
+    """
+    Parse YOLOv5 output format (placeholder for future implementation).
+    
+    Args:
+        onnx_results (list): ONNX inference outputs.
+        image (np.ndarray): Original image (not used, kept for compatibility).
+        onnx_config (dict): Config with postprocess_params.
+        
+    Returns:
+        list: Per-class detections in HailoRT-NMS format.
+    """
+    raise NotImplementedError(
+        "YOLOv5 format parser not yet implemented. "
+        "This is a placeholder to demonstrate extensibility. "
+        "Expected format: [batch, num_anchors, 85] with [x, y, w, h, objectness, class_scores...]"
+    )
+

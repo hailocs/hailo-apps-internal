@@ -1,0 +1,25 @@
+{
+  "onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n_postprocessing.onnx",
+  "output_tensor_mapping": {
+    "yolo26n/conv61": ["/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv_output_0", [4, 80, 80]],
+    "yolo26n/conv77": ["/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv_output_0", [4, 40, 40]],
+    "yolo26n/conv91": ["/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv_output_0", [4, 20, 20]],
+    "yolo26n/conv64": ["/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv_output_0", [80, 80, 80]],
+    "yolo26n/conv80": ["/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv_output_0", [80, 40, 40]],
+    "yolo26n/conv94": ["/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv_output_0", [80, 20, 20]]
+  },
+  "output_format": "yolon26",
+  "postprocess_params": {
+    "num_classes": 80,
+    "score_threshold": 0.25,
+    "nms_iou_threshold": 0.45,
+    "max_detections": 300,
+    "input_size": 640
+  },
+  "visualization_params": {
+    "score_thres": 0.25,
+    "max_boxes_to_draw": 50
+  },
+  "full_onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n.onnx",
+  "use_full_onnx_mode": false
+}

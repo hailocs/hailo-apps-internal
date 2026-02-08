@@ -95,18 +95,115 @@ def parse_args():
         )
     )
 
+    parser.add_argument(
+        "--onnxconfig",
+        type=str,
+        default=None,
+        help=(
+            "Path to ONNX postprocessing configuration file (JSON). "
+            "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
+            "The config must include: onnx_model_path, output_tensor_mapping, output_format, "
+            "and postprocess_params. Optionally supports full_onnx_model_path and use_full_onnx_mode "
+            "for debug mode (bypasses HEF inference entirely)."
+        ),
+    )
+
     args = parser.parse_args()
     return args
 
 
+def normalized_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
+    """
+    Resize image with letterbox padding and normalize to float32 [0-1] range.
+    Used for ONNX models and HEF models compiled with [0,0,0]/[1,1,1] normalization.
+    
+    Args:
+        image (np.ndarray): Input image (uint8, 0-255).
+        model_w (int): Model input width.
+        model_h (int): Model input height.
+    
+    Returns:
+        np.ndarray: Preprocessed padded image as float32 normalized 0-1.
+    """
+    from hailo_apps.python.core.common.toolbox import default_preprocess
+    
+    # First apply standard letterbox preprocessing (uint8)
+    padded_image = default_preprocess(image, model_w, model_h)
+    
+    # Convert to float32 and normalize to 0-1
+    normalized_image = padded_image.astype(np.float32) / 255.0
+    
+    return normalized_image
+
+
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
-          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False) -> None:
+          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False, onnxconfig=None) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
     labels = get_labels(labels)
     config_data = load_json_file("config.json")
+    
+    # Load ONNX config and initialize sessions if specified
+    onnx_config = None
+    onnx_session = None
+    full_onnx_session = None
+    use_full_onnx = False
+    
+    if onnxconfig:
+        import json
+        import onnxruntime as ort
+        
+        # Load ONNX config with permissive path resolution
+        onnx_config_path = Path(onnxconfig)
+        if not onnx_config_path.is_absolute():
+            # Try relative to current directory first
+            if not onnx_config_path.exists():
+                # Try relative to object_detection directory
+                onnx_config_path = Path(__file__).parent / onnxconfig
+        
+        if not onnx_config_path.exists():
+            raise FileNotFoundError(f"ONNX config file not found: {onnxconfig}")
+        
+        with open(onnx_config_path, 'r') as f:
+            onnx_config = json.load(f)
+        
+        logger.info(f"Loaded ONNX config from: {onnx_config_path}")
+        
+        # Helper function for permissive ONNX model path resolution
+        def resolve_onnx_path(model_path_str):
+            model_path = Path(model_path_str)
+            if model_path.is_absolute() and model_path.exists():
+                return str(model_path)
+            # Try relative to config file directory
+            config_dir_path = onnx_config_path.parent / model_path
+            if config_dir_path.exists():
+                return str(config_dir_path)
+            # Try relative to current directory
+            if model_path.exists():
+                return str(model_path)
+            raise FileNotFoundError(f"ONNX model file not found: {model_path_str}")
+        
+        # Check for full ONNX mode (debug mode)
+        use_full_onnx = onnx_config.get("use_full_onnx_mode", False)
+        
+        if use_full_onnx:
+            # Load full ONNX model (bypasses HEF)
+            full_model_path = onnx_config.get("full_onnx_model_path")
+            if not full_model_path:
+                raise ValueError("use_full_onnx_mode is True but full_onnx_model_path not specified in config")
+            full_model_path = resolve_onnx_path(full_model_path)
+            full_onnx_session = ort.InferenceSession(full_model_path)
+            logger.info(f"Loaded full ONNX model (debug mode): {full_model_path}")
+        else:
+            # Load postprocessing ONNX model (used with HEF outputs)
+            onnx_model_path = onnx_config.get("onnx_model_path")
+            if not onnx_model_path:
+                raise ValueError("onnx_model_path not specified in ONNX config")
+            onnx_model_path = resolve_onnx_path(onnx_model_path)
+            onnx_session = ort.InferenceSession(onnx_model_path)
+            logger.info(f"Loaded ONNX postprocessing model: {onnx_model_path}")
 
     # Initialize input source from string: "camera", video file, or image folder.
     cap, images = init_input_source(input_src, batch_size, camera_resolution)
@@ -125,23 +222,60 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
 
     post_process_callback_fn = partial(
         inference_result_handler, labels=labels,
-        config_data=config_data, tracker=tracker, draw_trail=draw_trail
+        config_data=config_data, tracker=tracker, draw_trail=draw_trail,
+        onnx_config=onnx_config, onnx_session=onnx_session
     )
 
-    hailo_inference = HailoInfer(net, batch_size)
-    height, width, _ = hailo_inference.get_input_shape()
+    # Skip HEF initialization in full ONNX mode
+    if use_full_onnx:
+        # Use full ONNX model input shape
+        full_onnx_input = full_onnx_session.get_inputs()[0]
+        # Assume NCHW or NHWC format - extract H, W
+        input_shape = full_onnx_input.shape
+        if len(input_shape) == 4:
+            # NCHW: [batch, channels, height, width] or NHWC: [batch, height, width, channels]
+            if input_shape[1] in [1, 3]:  # NCHW
+                height, width = input_shape[2], input_shape[3]
+            else:  # NHWC
+                height, width = input_shape[1], input_shape[2]
+        else:
+            raise ValueError(f"Unexpected full ONNX input shape: {input_shape}")
+        hailo_inference = None
+        logger.info(f"Full ONNX mode enabled - bypassing HEF inference (input size: {height}x{width})")
+    else:
+        # When using ONNX postprocessing, request FLOAT32 inputs and outputs
+        # Model was compiled with normalization [0,0,0]/[1,1,1] so expects float32 0-1 range
+        # Otherwise, use default (UINT8 for HailoRT-NMS models)
+        if onnx_session is not None:
+            input_type = "FLOAT32"
+            output_type = "FLOAT32"
+            logger.info(f"HEF configured for FLOAT32 inputs (0-1 normalized) and outputs (dequantized)")
+        else:
+            input_type = None
+            output_type = None
+        
+        hailo_inference = HailoInfer(net, batch_size, input_type=input_type, output_type=output_type)
+        height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height)
+        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height),
+        kwargs={'preprocess_fn': normalized_preprocess if (onnx_session is not None or use_full_onnx) else None}
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
         args=(output_queue, cap, save_output, output_dir,
                post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
-    infer_thread = threading.Thread(
-        target=infer, args=(hailo_inference, input_queue, output_queue)
-    )
+    
+    if use_full_onnx:
+        # Use full ONNX inference instead of HEF
+        infer_thread = threading.Thread(
+            target=infer_full_onnx, args=(full_onnx_session, input_queue, output_queue)
+        )
+    else:
+        infer_thread = threading.Thread(
+            target=infer, args=(hailo_inference, input_queue, output_queue)
+        )
 
     preprocess_thread.start()
     postprocess_thread.start()
@@ -203,6 +337,62 @@ def infer(hailo_inference, input_queue, output_queue):
     hailo_inference.close()
 
 
+def infer_full_onnx(onnx_session, input_queue, output_queue):
+    """
+    Full ONNX inference loop (debug mode) that bypasses HEF.
+    Pulls data from input queue, runs ONNX inference, and pushes results to output queue.
+
+    Args:
+        onnx_session: ONNXRuntime inference session for the full model.
+        input_queue (queue.Queue): Provides (input_batch, preprocessed_batch) tuples.
+        output_queue (queue.Queue): Collects (input_frame, result) tuples for visualization.
+
+    Returns:
+        None
+    """
+    # <DEBUG>
+    DEBUG = True
+    if DEBUG:
+        logger.info(">>> infer_full_onnx() starting")
+    # </DEBUG>
+    
+    while True:
+        next_batch = input_queue.get()
+        if not next_batch:
+            break  # Stop signal received
+
+        input_batch, preprocessed_batch = next_batch
+
+        # Process each frame in the batch
+        for i, preprocessed_frame in enumerate(preprocessed_batch):
+            # Prepare input for ONNX (may need to transpose/reshape depending on model)
+            # Assuming model expects NCHW format [1, 3, H, W] with float32 values 0-1
+            if preprocessed_frame.ndim == 3:  # HWC format
+                onnx_input = np.transpose(preprocessed_frame, (2, 0, 1))  # CHW
+                onnx_input = np.expand_dims(onnx_input, axis=0)  # NCHW
+            else:
+                onnx_input = np.expand_dims(preprocessed_frame, axis=0)
+            
+            # Convert to float32 and normalize to 0-1 if needed
+            if onnx_input.dtype == np.uint8:
+                onnx_input = onnx_input.astype(np.float32) / 255.0
+            
+            # Run ONNX inference
+            onnx_input_name = onnx_session.get_inputs()[0].name
+            onnx_output_names = [out.name for out in onnx_session.get_outputs()]
+            onnx_results = onnx_session.run(onnx_output_names, {onnx_input_name: onnx_input})
+            
+            # <DEBUG>
+            if DEBUG:
+                logger.info(f">>> Full ONNX inference complete. Output shape: {onnx_results[0].shape}")
+            # </DEBUG>
+            
+            # Format result (assume single output tensor for yolon26 format)
+            result = onnx_results[0]
+            
+            output_queue.put((input_batch[i], result))
+
+
 def inference_callback(
     completion_info,
     bindings_list: list,
@@ -253,7 +443,8 @@ def main() -> None:
         args.track,
         args.show_fps,
         args.frame_rate,
-        args.draw_trail
+        args.draw_trail,
+        args.onnxconfig
     )
 
 
