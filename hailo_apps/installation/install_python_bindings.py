@@ -34,11 +34,12 @@ def get_installer_script_path() -> Path:
     # Try package location (when installed via pip)
     try:
         import hailo_apps
-        package_dir = Path(hailo_apps.__file__).parent.parent
-        package_script = package_dir / "scripts" / "hailo_installer_python.sh"
-        if package_script.exists():
-            return package_script
-    except (ImportError, AttributeError):
+        if hailo_apps.__file__ is not None:
+            package_dir = Path(hailo_apps.__file__).parent.parent
+            package_script = package_dir / "scripts" / "hailo_installer_python.sh"
+            if package_script.exists():
+                return package_script
+    except (ImportError, AttributeError, TypeError):
         pass
     
     # Try installed data-files location (pip install from git)
