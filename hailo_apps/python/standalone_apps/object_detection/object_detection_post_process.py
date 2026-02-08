@@ -606,13 +606,13 @@ def parse_yolon26_output(onnx_results: list, image: np.ndarray, onnx_config: dic
     # </DEBUG>
     
     # Group by class ID in HailoRT-NMS format: list of per-class detections
-    # Each detection is [x1, y1, x2, y2, score] in normalized 0-1 coords
-    # NOTE: HailoRT-NMS outputs [ymin, xmin, ymax, xmax], so we need to swap X and Y
+    # Each detection must match HailoRT-NMS output format which is [ymin, xmin, ymax, xmax, score]
+    # (verified by checking yolov5 debug output)
     class_detections = {}
     for x1, y1, x2, y2, score, class_id in zip(x1s, y1s, x2s, y2s, confidences, class_ids):
         if class_id not in class_detections:
             class_detections[class_id] = []
-        # Swap to match HailoRT-NMS format: [ymin, xmin, ymax, xmax, score]
+        # Swap to [ymin, xmin, ymax, xmax, score] to match HailoRT-NMS format
         class_detections[class_id].append([float(y1), float(x1), float(y2), float(x2), float(score)])
     
     # Convert to list format (index = class_id)

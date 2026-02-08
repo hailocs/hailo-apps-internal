@@ -62,26 +62,50 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
         
-        # Show relevant output
-        for line in result.stdout.split('\n'):
-            if any(keyword in line for keyword in ['INFO', 'SUCCESS', 'ERROR', 'Full ONNX', 'dequantized', 'Loaded', 'Saved', 'DEBUG', '>>>', '===', 'routing', 'Routing']):
+        # Parse detection counts from output
+        num_detections = 0
+        class_0_count = 0
+        class_5_count = 0
+        seen_raw_bbox = False
+        
+        # Show relevant output and count detections
+        for line in result.stdout.split('\\n'):
+            if any(keyword in line for keyword in ['INFO', 'SUCCESS', 'ERROR', 'Full ONNX', 'dequantized', 'Loaded', 'Saved', 'DEBUG', '>>>', '===', 'routing', 'Routing', 'Class']):
                 print(line)
+            
+            # Count detections from debug output (only from "Raw bbox" lines to avoid double-counting)
+            if 'Total detections after threshold' in line:
+                try:
+                    num_detections = int(line.split(':')[-1].strip())
+                except:
+                    pass
+            if 'Raw bbox' in line:
+                if 'Class 0, Score:' in line:
+                    class_0_count += 1
+                if 'Class 5, Score:' in line:
+                    class_5_count += 1
         
         success = result.returncode == 0
         
-        # Move output from default 'output/' to our output_dir
-        default_output = Path('output') / 'output_0.png'
-        target_output = Path(output_dir) / 'output_0.png'
+        # Output should already be in output_dir from --output-dir flag
+        output_image = Path(output_dir) / 'output_0.png'
         
-        if default_output.exists():
-            shutil.copy(default_output, target_output)
-            print(f"   Copied output from {default_output} to {target_output}")
+        # Validate detections for Full ONNX mode
+        detection_valid = True
+        if 'Full ONNX' in mode_name:
+            if num_detections != 5:
+                detection_valid = False
+                print(f"\n⚠️  Expected 5 detections, got {num_detections}")
+            if class_0_count != 4:
+                detection_valid = False
+                print(f"\n⚠️  Expected 4 people (class 0), got {class_0_count}")
+            if class_5_count != 1:
+                detection_valid = False
+                print(f"\n⚠️  Expected 1 bus (class 5), got {class_5_count}")
         
-        # Check for output_0.png (default output filename for images)
-        output_image = target_output
-        
-        if success:
+        if success and detection_valid:
             print(f"\n✅ {mode_name} completed successfully")
+            print(f"   Detections: {num_detections} total (class 0: {class_0_count}, class 5: {class_5_count})")
             if output_image.exists():
                 print(f"   Output saved: {output_image}")
             else:
@@ -90,6 +114,10 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
                 files = list(Path(output_dir).glob('*'))
                 if files:
                     print(f"   Files in {output_dir}: {[f.name for f in files]}")
+                success = False
+        elif not detection_valid:
+            print(f"\n❌ {mode_name} failed: Detection validation failed")
+            success = False
         else:
             print(f"\n❌ {mode_name} failed (exit code: {result.returncode})")
             if result.stderr:

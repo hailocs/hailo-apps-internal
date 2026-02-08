@@ -21,5 +21,5 @@
     "max_boxes_to_draw": 50
   },
   "full_onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n.onnx",
-  "use_full_onnx_mode": false
+  "use_full_onnx_mode": true
 }
