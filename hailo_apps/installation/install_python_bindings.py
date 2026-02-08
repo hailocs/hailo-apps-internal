@@ -41,6 +41,17 @@ def get_installer_script_path() -> Path:
     except (ImportError, AttributeError):
         pass
     
+    # Try installed data-files location (pip install from git)
+    import sys
+    data_file_locations = [
+        Path(sys.prefix) / "share" / "hailo-apps" / "scripts" / "hailo_installer_python.sh",
+        Path("/usr/local/share/hailo-apps/scripts/hailo_installer_python.sh"),
+        Path("/usr/share/hailo-apps/scripts/hailo_installer_python.sh"),
+    ]
+    for script_path in data_file_locations:
+        if script_path.exists():
+            return script_path
+    
     raise FileNotFoundError(
         "Could not find hailo_installer_python.sh script. "
         "Please ensure hailo-apps is installed correctly or run from the repository root."

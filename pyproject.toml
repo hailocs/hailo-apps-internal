@@ -93,6 +93,12 @@ include-package-data = true
 [tool.setuptools.packages.find]
 include = ["hailo_apps*", "local_resources*"]
 
+[tool.setuptools.data-files]
+"share/hailo-apps/scripts" = [
+    "scripts/hailo_installer_python.sh",
+    "scripts/hailo_installer.sh",
+]
+
 [tool.setuptools.package-data]
 "hailo_apps.postprocess" = [
     "meson.build",
