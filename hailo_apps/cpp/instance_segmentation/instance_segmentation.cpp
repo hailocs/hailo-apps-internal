@@ -9,6 +9,7 @@
 #include "../common/toolbox.hpp"
 #include "../common/hailo_infer.hpp"
 #include "instance_seg_postprocess.hpp"
+
 #include <cstdlib>
 #include <cstring>
 
@@ -17,6 +18,8 @@ namespace fs = std::filesystem;
 
 /////////// Constants ///////////
 constexpr size_t MAX_QUEUE_SIZE = 60;
+constexpr size_t WITH_NMS_OUTPUTS = 1;
+constexpr size_t YOLOV8_OUTPUTS   = 10;
 
 std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>, std::vector<cv::Mat>>>> preprocessed_batch_queue =
     std::make_shared<BoundedTSQueue<std::pair<std::vector<cv::Mat>, std::vector<cv::Mat>>>>(MAX_QUEUE_SIZE);
@@ -24,6 +27,26 @@ std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>, std::vector<cv::M
 std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue =
     std::make_shared<BoundedTSQueue<InferenceResult>>(MAX_QUEUE_SIZE);
 
+enum class SegType {
+    WithNms,
+    YoloV8
+};
+
+SegType detect_seg_model_type(HailoInfer &model)
+{
+    size_t outputs = model.get_output_vstream_infos_size();
+
+    std::cout << "Detected instance segmentation model with " << outputs << " outputs.\n";
+    if (outputs == WITH_NMS_OUTPUTS)
+        return SegType::WithNms;
+
+    if (outputs == YOLOV8_OUTPUTS)
+        return SegType::YoloV8;
+
+    throw std::runtime_error(
+        "Unsupported instance segmentation HEF. "
+        "To see the supported models, run: --list-nets");
+}
 
 // Task-specific preprocessing callback
 void preprocess_callback(const std::vector<cv::Mat>& org_frames,
@@ -74,36 +97,34 @@ void postprocess_callback(cv::Mat &frame_to_draw,
                           const std::vector<std::pair<uint8_t*, hailo_vstream_info_t>> &outputs,
                           const int model_w,
                           const int model_h,
-                          const bool hef_has_nms_and_mask,
+                          SegType seg_model_type,
                           const VisualizationParams &vis_param)
 {
     const int org_w = frame_to_draw.cols;
     const int org_h = frame_to_draw.rows;
 
-    if (hef_has_nms_and_mask) {
-        // ===== packed NMS + byte masks on device =====
+
+    if (seg_model_type == SegType::WithNms) {
         const uint8_t *src_ptr = outputs.front().first;
-
-        // Draw overlay+boxes directly in ORIGINAL resolution (quality preserved)
+        // Draw overlay+boxes directly in original resolution
         draw_detections_and_mask(src_ptr,
-                                model_w, model_h,
-                                org_w, org_h,
-                                frame_to_draw,
-                                vis_param);
-    } else {
-        // ===== raw heads NMS + mask reconstruction =====
-        auto roi = build_roi_from_outputs(outputs);
+                                 model_w, model_h,
+                                 org_w, org_h,
+                                 frame_to_draw,
+                                 vis_param);
+        return;
+    }
 
-        // Decode using MODEL dims, but generate masks in ORIGINAL dims
+    if (seg_model_type == SegType::YoloV8) {
+        auto roi = build_roi_from_outputs(outputs);
         std::vector<cv::Mat> masks = filter(roi,
                                             org_h, org_w,
                                             model_h, model_w,
                                             vis_param.score_thresh);
 
         auto dets = get_detections_from_roi(roi);
-
-        // Draw directly on original frame
         draw_masks_and_boxes(frame_to_draw, dets, masks, vis_param);
+        return;
     }
 }
 
@@ -122,6 +143,8 @@ int main(int argc, char** argv)
     post_parse_args(APP_NAME, args, argc, argv);
     HailoInfer model(args.net, args.batch_size);
 
+    SegType seg_model_type = detect_seg_model_type(model);
+
     // Load Visualization config params
     VisualizationParams vis_param;
     try {
@@ -134,7 +157,6 @@ int main(int argc, char** argv)
 
     validate_visualization_params(vis_param, AppVisMode::instance_seg);
 
-    bool hef_with_nms_and_mask = model.get_output_vstream_infos_size() == 1;
     input_type = determine_input_type(std::ref(args.input),
                                     std::ref(capture),
                                     std::ref(org_height),
@@ -169,7 +191,7 @@ int main(int argc, char** argv)
                 std::placeholders::_2,   // outputs
                 model.get_model_shape().width,
                 model.get_model_shape().height,
-                hef_with_nms_and_mask,
+                seg_model_type,
                 std::cref(vis_param));
 
     auto output_parser_thread = std::async(run_post_process,
