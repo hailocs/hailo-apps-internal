@@ -2,7 +2,7 @@
 
 This guide provides instructions for installing the Hailo Application Infrastructure on both x86_64 Ubuntu systems and Raspberry Pi devices.
 
-> **Prerequisites:** Before installing hailo-apps, you must have the Hailo runtime packages installed on your system. If you haven't installed them yet, see the [Installing Hailo Packages](#installing-hailo-packages) section first.
+> **Prerequisites:** Before installing hailo-apps, you must have the Hailo runtime packages installed on your system. If you haven't installed them yet, see the [Installing Hailo Packages](#installing-hailo-packages-prerequisites) section first.
 
 ## Table of Contents
 
@@ -10,12 +10,13 @@ This guide provides instructions for installing the Hailo Application Infrastruc
 - [Automated Installation (Recommended)](#automated-installation-recommended)
   - [Download Resources](#download-resources)
 - [Installing via pip](#installing-via-pip-for-integration-into-other-projects)
+- [Manual Installation (Advanced)](#manual-installation-advanced)
 - [Hailo Suite Docker Installation](#hailo-suite-docker-installation)
 - [Post-Installation Verification](#post-installation-verification)
 - [Uninstallation](#uninstallation)
 
 **Installing Hailo Packages (Prerequisites)**
-- [Installing Hailo Packages](#installing-hailo-packages)
+- [Installing Hailo Packages (Prerequisites)](#installing-hailo-packages-prerequisites)
   - [Raspberry Pi Installation](#raspberry-pi-installation)
   - [x86_64 Ubuntu Installation](#x86_64-ubuntu-installation)
 
@@ -52,6 +53,67 @@ sudo ./install.sh --help
 
 After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
+### Download Resources
+
+The `install.sh` script automatically downloads AI models for your hardware. You can also use the `hailo-download-resources` command to download additional models or update existing ones.
+
+```bash
+hailo-download-resources [OPTIONS]
+```
+
+#### Available Options
+
+| Option | Description |
+|--------|-------------|
+| `--all` | Download all models (default + extra) for all apps |
+| `--group <APP>` | Download resources for a specific app (e.g., `detection`, `vlm_chat`, `face_recognition`) |
+| `--model <NAME>` | Download a specific model by name |
+| `--arch <ARCH>` | Force a specific Hailo architecture: `hailo8`, `hailo8l`, or `hailo10h`. Auto-detected if not specified |
+| `--list-models` | List all available models for the detected/selected architecture |
+| `--dry-run` | Preview what would be downloaded without actually downloading |
+| `--force` | Force re-download even if files already exist |
+| `--include-gen-ai` | Include gen-ai apps (VLM, LLM, Whisper) in bulk downloads |
+
+#### App Groups
+
+Resources are organized by application:
+
+| App | Description | Architectures |
+|-----|-------------|---------------|
+| `detection` | Object detection (YOLOv8, YOLOv11) | hailo8, hailo8l, hailo10h |
+| `pose_estimation` | Human pose estimation | hailo8, hailo8l, hailo10h |
+| `instance_segmentation` | Instance segmentation | hailo8, hailo8l, hailo10h |
+| `face_recognition` | Face detection and recognition | hailo8, hailo8l, hailo10h |
+| `depth` | Monocular depth estimation | hailo8, hailo8l, hailo10h |
+| `clip` | Zero-shot image classification | hailo8, hailo8l, hailo10h |
+| `tiling` | High-resolution tiled detection | hailo8, hailo8l, hailo10h |
+| `vlm_chat` | Vision-Language Model (Qwen2-VL) | hailo10h only |
+| `llm_chat` | Large Language Model (Qwen2.5) | hailo10h only |
+| `whisper_chat` | Speech-to-text (Whisper) | hailo10h only |
+
+> **Note:** Gen-AI apps (`vlm_chat`, `llm_chat`, `whisper_chat`) are only available on Hailo-10H hardware.
+
+#### Examples
+
+```bash
+# Download default resources for your detected hardware
+hailo-download-resources
+
+# Download all models (default + extra) for all apps
+hailo-download-resources --all
+
+# Download resources for a specific app
+hailo-download-resources --group detection
+
+# Download for a specific architecture
+hailo-download-resources --arch hailo10h
+
+# List all available models for your architecture
+hailo-download-resources --list-models
+```
+
+Resources are organized into `/usr/local/hailo/resources/`, with models separated by architecture (`models/hailo8/`, `models/hailo10h/`, etc.).
+
 ---
 
 ## Installing via pip (For Integration into Other Projects)
@@ -64,16 +126,7 @@ If you want to integrate hailo-apps into an existing Python project, you can ins
 > 
 > **Do NOT install PyGObject via pip** - it requires system-level dependencies to build correctly.
 > 
-> Install system packages first:
-> ```bash
-> sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0
-> ```
-> 
-> **Virtual Environment Setup:** Standard pip environments won't see system-installed PyGObject. You **must** create your virtual environment with access to system site-packages:
-> ```bash
-> python3 -m venv --system-site-packages my_hailo_env
-> source my_hailo_env/bin/activate
-> ```
+> Standard pip environments won't see system-installed PyGObject. You **must** create your virtual environment with access to system site-packages.
 
 ### Prerequisites
 
@@ -88,8 +141,8 @@ If you want to integrate hailo-apps into an existing Python project, you can ins
 
 2. **Create a Virtual Environment with System Site-Packages:**
    ```bash
-   python3 -m venv --system-site-packages my_project_env
-   source my_project_env/bin/activate
+   python3 -m venv --system-site-packages my_hailo_env
+   source my_hailo_env/bin/activate
    ```
 
 ### Installation Options
@@ -202,8 +255,7 @@ After installation completes, see [Post-Installation Verification](#post-install
 
 ---
 
-<details>
-<summary><b>Manual Installation (Advanced)</b></summary>
+## Manual Installation (Advanced)
 
 If you need full control over the process use the following instructions.
 
@@ -249,68 +301,48 @@ Note that also on the x86_64 Ubuntu, the gi library is installed on the system (
 
 After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
-</details>
+---
 
-### Download Resources
+## Hailo Suite Docker Installation
 
-The `install.sh` script automatically downloads AI models for your hardware. You can also use the `hailo-download-resources` command to download additional models or update existing ones.
+If you're running inside the **Hailo Software Suite Docker** container (available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/)), HailoRT and TAPPAS Core are already pre-installed.
 
-```bash
-hailo-download-resources [OPTIONS]
-```
+### Prerequisites for Docker
 
-#### Available Options
-
-| Option | Description |
-|--------|-------------|
-| `--all` | Download all models (default + extra) for all apps |
-| `--group <APP>` | Download resources for a specific app (e.g., `detection`, `vlm_chat`, `face_recognition`) |
-| `--model <NAME>` | Download a specific model by name |
-| `--arch <ARCH>` | Force a specific Hailo architecture: `hailo8`, `hailo8l`, or `hailo10h`. Auto-detected if not specified |
-| `--list-models` | List all available models for the detected/selected architecture |
-| `--dry-run` | Preview what would be downloaded without actually downloading |
-| `--force` | Force re-download even if files already exist |
-| `--include-gen-ai` | Include gen-ai apps (VLM, LLM, Whisper) in bulk downloads |
-
-#### App Groups
-
-Resources are organized by application:
-
-| App | Description | Architectures |
-|-----|-------------|---------------|
-| `detection` | Object detection (YOLOv8, YOLOv11) | hailo8, hailo8l, hailo10h |
-| `pose_estimation` | Human pose estimation | hailo8, hailo8l, hailo10h |
-| `instance_segmentation` | Instance segmentation | hailo8, hailo8l, hailo10h |
-| `face_recognition` | Face detection and recognition | hailo8, hailo8l, hailo10h |
-| `depth` | Monocular depth estimation | hailo8, hailo8l, hailo10h |
-| `clip` | Zero-shot image classification | hailo8, hailo8l, hailo10h |
-| `tiling` | High-resolution tiled detection | hailo8, hailo8l, hailo10h |
-| `vlm_chat` | Vision-Language Model (Qwen2-VL) | hailo10h only |
-| `llm_chat` | Large Language Model (Qwen2.5) | hailo10h only |
-| `whisper_chat` | Speech-to-text (Whisper) | hailo10h only |
-
-> **Note:** Gen-AI apps (`vlm_chat`, `llm_chat`, `whisper_chat`) are only available on Hailo-10H hardware.
-
-#### Examples
+Run the following commands to install required dependencies:
 
 ```bash
-# Download default resources for your detected hardware
-hailo-download-resources
+# Update package lists
+sudo apt-get update
 
-# Download all models (default + extra) for all apps
-hailo-download-resources --all
+# Install Python virtual environment support
+sudo apt install -y python3-venv
 
-# Download resources for a specific app
-hailo-download-resources --group detection
+# Install required utilities
+sudo apt-get install -y software-properties-common gnupg
 
-# Download for a specific architecture
-hailo-download-resources --arch hailo10h
-
-# List all available models for your architecture
-hailo-download-resources --list-models
+# Upgrade libstdc++6 (required for newer C++ features)
+sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+sudo apt-get update
+sudo apt install -y --only-upgrade libstdc++6
 ```
 
-Resources are organized into `/usr/local/hailo/resources/`, with models separated by architecture (`models/hailo8/`, `models/hailo10h/`, etc.).
+### Installation in Docker
+
+After installing the prerequisites, proceed with the standard installation:
+
+```bash
+# Clone the repository (if not already done)
+git clone https://github.com/hailo-ai/hailo-apps.git
+cd hailo-apps
+
+# Run the automated installation script
+sudo ./install.sh
+```
+
+> **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
+
+After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
 
 ---
 
@@ -457,56 +489,13 @@ pip list | grep hailo
 
 ---
 
-# Installing hailo-apps (continued)
-
-## Hailo Suite Docker Installation
-
-If you're running inside the **Hailo Software Suite Docker** container (available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/)), HailoRT and TAPPAS Core are already pre-installed.
-
-### Prerequisites for Docker
-
-Run the following commands to install required dependencies:
-
-```bash
-# Update package lists
-sudo apt-get update
-
-# Install Python virtual environment support
-sudo apt install -y python3-venv
-
-# Install required utilities
-sudo apt-get install -y software-properties-common gnupg
-
-# Upgrade libstdc++6 (required for newer C++ features)
-sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-sudo apt-get update
-sudo apt install -y --only-upgrade libstdc++6
-```
-
-### Installation in Docker
-
-After installing the prerequisites, proceed with the standard installation:
-
-```bash
-# Clone the repository (if not already done)
-git clone https://github.com/hailo-ai/hailo-apps.git
-cd hailo-apps
-
-# Run the automated installation script
-sudo ./install.sh
-```
-
-> **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
-
-After installation completes, see [Post-Installation Verification](#post-installation-verification) to verify everything is working.
-
----
-
 ## Post-Installation Verification
 
 After running any of the installation methods, you can verify that everything is working correctly.
 
 1.  **Activate your environment**
+
+    Note: If installed via pip - there is no need for this step.
     ```bash
     source venv_hailo_apps/bin/activate
     # or simply run the helper each session

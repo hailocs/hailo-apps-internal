@@ -51,7 +51,7 @@ Installation methods differ between Raspberry Pi and x86 platforms.
 
 See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
 
-### Installation
+### Installation (Hailo-Apps only)
 ```bash
 git clone https://github.com/hailo-ai/hailo-apps.git
 cd hailo-apps
