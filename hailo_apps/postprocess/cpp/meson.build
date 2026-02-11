@@ -177,6 +177,7 @@ shared_library('lpr_croppers',
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
+    install_rpath: '/usr/local/hailo/resources/so',
 )
 
 # Use static OpenCV if available for LPR libraries
