@@ -155,18 +155,6 @@ pip install git+https://github.com/hailo-ai/hailo-apps.git
 hash -r
 ```
 
-**Install from GitHub with optional dependencies:**
-```bash
-# With development tools
-pip install "hailo-apps[dev] @ git+https://github.com/hailo-ai/hailo-apps.git"
-
-# With GenAI dependencies
-pip install "hailo-apps[gen-ai] @ git+https://github.com/hailo-ai/hailo-apps.git"
-
-# Refresh shell's command cache
-hash -r
-```
-
 **Install in editable mode (for development):**
 ```bash
 git clone https://github.com/hailo-ai/hailo-apps.git
