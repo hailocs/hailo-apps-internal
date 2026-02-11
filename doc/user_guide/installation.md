@@ -360,6 +360,8 @@ Before running hailo-apps, you need to install the Hailo runtime packages. The i
 | `hailort` | .whl | HailoRT Python bindings |
 | `hailo_tappas_core_python_binding` | .whl | TAPPAS Core Python bindings |
 
+**Note: Hailo Model Zoo GenAI** Is required only for Hailo-10H & GenAI use cases, like Hailo-Ollama, more details [Hailo Model Zoo GenAI](/hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)
+
 > **Supported versions:**
 > - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
 > - **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0
@@ -368,52 +370,12 @@ Before running hailo-apps, you need to install the Hailo runtime packages. The i
 
 ## Raspberry Pi Installation
 
-For Raspberry Pi 5 with a Hailo AI accelerator, use the official Raspberry Pi AI stack.
+For Raspberry Pi 5 with a Hailo AI accelerator, use the official Raspberry Pi AI guide:
 
-### Hardware Setup
-
-1. **Required Hardware:**
-   - Raspberry Pi 5 (8GB recommended) with Active Cooler
-   - A Hailo accelerator:
-     - **Raspberry Pi AI Kit**: M.2 HAT + Hailo-8L/Hailo-8 Module
-     - **Raspberry Pi AI HAT+**: Board with integrated Hailo accelerator (13 or 26 TOPs)
-   - 27W USB-C Power Supply
-
-2. **Assembly:**
-   - **For AI Kit**: Follow the [Raspberry Pi AI Kit Guide](https://www.raspberrypi.com/documentation/accessories/ai-kit.html#ai-kit)
-   - **For AI HAT+**: Follow the [Raspberry Pi AI HAT+ Guide](https://www.raspberrypi.com/documentation/accessories/ai-hat-plus.html#ai-hat-plus)
-   - Ensure thermal pad and GPIO header are properly connected
-
-### Software Setup
-
-1. **Install Raspberry Pi OS:**
-   Use the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to install the latest Raspberry Pi OS.
-
-2. **Install Hailo Software:**
-   Follow the [Raspberry Pi AI Software Guide](https://www.raspberrypi.com/documentation/computers/ai.html#getting-started):
-   ```bash
-   sudo apt update
-   sudo apt install hailo-all
-   ```
-   This installs all required Hailo packages automatically.
-
-3. **Enable PCIe Gen3 (for M.2 HAT):**
-   ```bash
-   sudo raspi-config
-   # Navigate to: 6 Advanced Options → A8 PCIe Speed → Yes
-   sudo reboot
-   ```
-
-### Verification
-
-```bash
-# Check if Hailo device is recognized
-hailortcli fw-control identify
-
-# Check GStreamer plugins
-gst-inspect-1.0 hailotools
-gst-inspect-1.0 hailo
-```
+- **For AI Kit**: Follow the [Raspberry Pi AI Kit Guide](https://www.raspberrypi.com/documentation/accessories/ai-kit.html#ai-kit)
+- **For AI HAT+ / HAT+ 2**: Follow the [Raspberry Pi AI HAT+ / HAT+ 2 Guide](https://www.raspberrypi.com/documentation/accessories/ai-hat-plus.html#ai-hat-plus)
+- Make sure to visit this page: [Raspberry Pi AI Software Guide](https://www.raspberrypi.com/documentation/computers/ai.html#getting-started)
+- Install the latest Raspberry Pi OS: [Raspberry Pi Imager](https://www.raspberrypi.com/software/) 
 
 ---
 
