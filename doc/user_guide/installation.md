@@ -177,43 +177,15 @@ pip install -e .
 hash -r
 ```
 
-### Install Hailo Python Bindings
+### Setup Hailo Resources Directory
 
-After pip install, you need to install the Hailo Python bindings (hailort and tappas-core wheels).
+After pip install, create the Hailo resources directory where models and compiled libraries will be stored.
 
-First, create the download directory with proper permissions (one-time setup):
+Create the directory with proper permissions (one-time setup):
 ```bash
 sudo mkdir -p /usr/local/hailo/resources/packages
 sudo chown -R $USER:$USER /usr/local/hailo
 ```
-
-Then install the bindings (no sudo needed now):
-```bash
-# For Hailo-8
-hailo-install-python-bindings hailo8
-
-# For Hailo-10H
-hailo-install-python-bindings hailo10h
-```
-
-> **Troubleshooting "command not found":**
-> 
-> If you get "command not found", try these solutions in order:
-> 
-> 1. **Refresh the shell's command cache:**
->    ```bash
->    hash -r
->    ```
-> 
-> 2. **Verify scripts are installed:**
->    ```bash
->    ls $(python -c "import sys; print(sys.prefix)")/bin/hailo-*
->    ```
-> 
-> 3. **Run directly with Python:**
->    ```bash
->    python -m hailo_apps.installation.install_python_bindings hailo10h
->    ```
 
 ### Post-Installation Setup
 
