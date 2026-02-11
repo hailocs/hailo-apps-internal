@@ -102,6 +102,10 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: lpr_video.mp4
+    source: s3
+    tag:
+      - license_plate_recognition
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -708,6 +712,27 @@ oriented_object_detection: &oriented_object_detection_app
     hailo10h:
       default:
         - name: yolo11s_obb
+          source: s3
+
+license_plate_recognition: &license_plate_recognition_app
+  models:
+    hailo8:
+      default:
+        - name: hailo_yolov8n_4_classes_vga
+          source: s3
+        - name: ocr
+          source: s3
+    hailo8l:
+      default:
+        - name: hailo_yolov8n_4_classes_vga
+          source: s3
+        - name: ocr
+          source: s3
+    hailo10h:
+      default:
+        - name: hailo_yolov8n_4_classes_vga
+          source: s3
+        - name: ocr
           source: s3
 
 super_resolution: &super_resolution_app

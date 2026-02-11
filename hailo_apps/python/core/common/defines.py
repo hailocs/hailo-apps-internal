@@ -339,7 +339,21 @@ OCR_RECOGNITION_MODEL_NAME = "ocr"
 OCR_POSTPROCESS_SO_FILENAME = "libocr_postprocess.so"
 OCR_DETECTION_POSTPROCESS_FUNCTION = "paddleocr_det"
 OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
+LPR_OCR_POSTPROCESS_FUNCTION = "lpr_post_process"  # LPR-specific OCR with caching
 OCR_CROPPER_FUNCTION = "crop_text_regions"
 OCR_VIDEO_NAME = "ocr.mp4"
+
+# License Plate Recognition pipeline defaults
+LPR_APP_TITLE = "Hailo LPR App"
+LPR_PIPELINE = "license_plate_recognition"
+LPR_PLATE_MODEL_NAME = "hailo_yolov8n_4_classes_vga"
+LPRNET_MODEL_NAME = "lprnet"  # LPRNet OCR model (75x300 input, 11 classes: 0-9 + blank)
+LPR_YOLO_POSTPROCESS_SO_FILENAME = "libyolo_hailortpp_postprocess.so"
+LPR_PLATE_POSTPROCESS_FUNCTION = "filter_letterbox"
+LPR_CROPPERS_SO_FILENAME = "liblpr_croppers.so"
+LPR_LP_CROPPER_FUNCTION = "license_plate_cropper"
+LPR_OCRSINK_SO_FILENAME = "liblpr_ocrsink.so"
+LPR_VIDEO_NAME = "lpr_video.mp4"
+LPRNET_POSTPROCESS_FUNCTION = "lprnet_post_process"  # LPRNet-specific postprocess
 
 DEFAULT_COCO_LABELS_PATH = str(REPO_ROOT / "local_resources" / "coco.txt")

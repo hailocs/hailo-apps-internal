@@ -152,6 +152,53 @@ shared_library('vms_croppers',
     install_dir: '/usr/local/hailo/resources/so',
 )
 
+# GENERIC CROPPER
+generic_cropper_sources = [
+    'generic_cropper.cpp',
+]
+generic_cropper_lib = shared_library('generic_cropper',
+    generic_cropper_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# LPR CROPPERS / OCR SINK SOURCES
+################################################
+lpr_croppers_sources = [
+    'lpr_croppers.cpp',
+]
+shared_library('lpr_croppers',
+    lpr_croppers_sources,
+    dependencies : postprocess_dep,
+    link_with : generic_cropper_lib,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+# Use static OpenCV if available for LPR libraries
+lpr_deps = [postprocess_dep]
+if opencv_dep.found()
+    lpr_deps += opencv_dep
+endif
+if zlib_dep.found()
+    lpr_deps += zlib_dep
+endif
+
+lpr_ocrsink_sources = [
+    'lpr_ocrsink.cpp',
+]
+shared_library('lpr_ocrsink',
+    lpr_ocrsink_sources,
+    dependencies : lpr_deps,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
 ################################################
 # REPVGG REID POST SOURCES
 ################################################

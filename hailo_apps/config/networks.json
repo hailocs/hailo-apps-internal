@@ -37,6 +37,11 @@
       "ocr_rec": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "cs", "hefs": ["ocr_rec.hef"], "group": "paddle_ocr", "description": "optical character recognition" }
     },
 
+    "license_plate_recognition": {
+      "lprnet": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "model_zoo", "hefs": ["lprnet.hef"], "description": "License Plate Recognition OCR (75x300 input, digits only)" },
+      "hailo_yolov8n_4_classes_vga": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "cs", "hefs": ["hailo_yolov8n_4_classes_vga.hef"], "description": "4-class detector: person, vehicle, face, license_plate" }
+    },
+
     "pose_estimation": {
       "yolov8m_pose": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "model_zoo", "hefs": ["yolov8m_pose.hef"], "description": "YOLOv8m pose" },
       "yolov8s_pose": { "arch": ["hailo8","hailo8l","hailo10h"], "source": "model_zoo", "hefs": ["yolov8s_pose.hef"], "description": "YOLOv8s pose" }

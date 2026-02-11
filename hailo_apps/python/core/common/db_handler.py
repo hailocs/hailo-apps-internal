@@ -1,10 +1,12 @@
 # region imports
 # Standard library imports
+import fcntl
 import json
 import os
+import threading
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 # Third-party imports
 import numpy as np
@@ -35,6 +37,12 @@ class Record(LanceModel):
     classificaiton_confidence_threshold: float
     # optional fields, but default values are set
     value: float = 0.0  # in some cases numeric value might be relevant
+
+
+class LPRRecord(LanceModel):
+    track_id: int
+    has_lpr: bool = False
+    lpr_result: str = ""
 
 
 class DatabaseHandler:
@@ -527,6 +535,128 @@ class DatabaseHandler:
         reduced_embeddings = np.dot(centered_embeddings, principal_components)
 
         return reduced_embeddings, principal_components, mean
+
+
+class LPRDatabaseHandler:
+    """Lightweight database handler for License Plate Recognition runs.
+
+    The schema is intentionally small: each track_id gets a single row with a boolean flag
+    indicating whether an LPR result was observed and the best-known OCR output.
+    """
+
+    def __init__(
+        self,
+        db_name: str,
+        table_name: str = "lpr_tracks",
+        database_dir: str = ".",
+        json_export_path: Optional[str] = None,
+    ):
+        self.db = self.__init_database(db_name=db_name, database_dir=database_dir)
+        self.tbl_records = self.__init_table(
+            self.db,
+            table_name=table_name,
+            schema=LPRRecord,
+            indexes=[("track_id", "BTREE")],
+        )
+        self.json_export_path = json_export_path
+        self._json_lock = threading.Lock()
+
+    def __init_database(self, db_name: str, database_dir: str):
+        os.makedirs(database_dir, exist_ok=True)
+        return lancedb.connect(uri=os.path.join(database_dir, db_name))
+
+    def __init_table(self, db, table_name: str, schema=None, indexes=None):
+        try:
+            table = db.open_table(table_name)
+        except Exception as err:
+            if schema is None:
+                raise ValueError("Schema must be provided to create a new table.") from err
+            table = db.create_table(table_name, schema=schema)
+            if indexes:
+                for column, index_type in indexes:
+                    table.create_scalar_index(column, index_type=index_type)
+        return table
+
+    def upsert_track(
+        self,
+        track_id: int,
+        has_lpr: bool = False,
+        lpr_result: Optional[str] = None,
+        emit_json: bool = True,
+    ) -> dict[str, Any]:
+        """Insert or update a track row.
+
+        Args:
+            track_id: Tracker ID to record.
+            has_lpr: Whether an LPR detection was found for this track.
+            lpr_result: OCR string for the license plate (if available).
+        """
+        track_id_int = int(track_id)
+        existing = self.get_record_by_track_id(track_id_int)
+        if existing:
+            values: dict[str, Any] = {"has_lpr": has_lpr}
+            if lpr_result is not None:
+                values["lpr_result"] = lpr_result
+            self.tbl_records.update(where=f"track_id = {track_id_int}", values=values)
+            updated = self.get_record_by_track_id(track_id_int)
+            if emit_json:
+                self._emit_json({"event": "upsert", **updated})
+            return updated
+
+        record = LPRRecord(track_id=track_id_int, has_lpr=has_lpr, lpr_result=lpr_result or "")
+        self.tbl_records.add([record])
+        dumped = record.model_dump()
+        if emit_json:
+            self._emit_json({"event": "upsert", **dumped})
+        return dumped
+
+    def mark_plate_found(self, track_id: int, lpr_result: str) -> dict[str, Any]:
+        """Convenience wrapper that marks a track as having an LPR result."""
+        return self.upsert_track(track_id=track_id, has_lpr=True, lpr_result=lpr_result)
+
+    def get_record_by_track_id(self, track_id: int) -> Optional[dict[str, Any]]:
+        """Fetch a single track row by ID."""
+        results = self.tbl_records.search().where(f"track_id = {int(track_id)}").to_list()
+        return results[0] if results else None
+
+    def get_all_records(self) -> list[dict[str, Any]]:
+        """Return all track rows."""
+        return self.tbl_records.search().to_list()
+
+    def delete_record(self, track_id: int) -> None:
+        """Delete a specific track row."""
+        track_id_int = int(track_id)
+        self.tbl_records.delete(where=f"track_id = {track_id_int}")
+        self._emit_json({"event": "delete", "track_id": track_id_int})
+
+    def clear_table(self) -> None:
+        """Delete all track rows."""
+        records = self.tbl_records.search().to_list()
+        if not records:
+            return
+        to_delete = ", ".join([str(int(record["track_id"])) for record in records])
+        self.tbl_records.delete(f"track_id IN ({to_delete})")
+        self._emit_json({"event": "clear"})
+
+    def _emit_json(self, payload: dict[str, Any]) -> None:
+        if not self.json_export_path:
+            return
+        body = payload.copy()
+        body.setdefault("timestamp", int(time.time() * 1000))
+        path = self.json_export_path
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        try:
+            with self._json_lock:
+                with open(path, "a", encoding="utf-8") as f:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    json.dump(body, f)
+                    f.write("\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            # Silent failure; logging left to caller
+            pass
 
 
 if __name__ == "__main__":
