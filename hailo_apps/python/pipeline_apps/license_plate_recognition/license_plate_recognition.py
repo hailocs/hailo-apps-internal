@@ -2,10 +2,6 @@
 import os
 import sys
 import re
-import json
-import time
-import threading
-import shutil
 from datetime import datetime
 
 # Third-party imports
@@ -23,7 +19,6 @@ except Exception:  # pragma: no cover
 from hailo_apps.python.pipeline_apps.license_plate_recognition.license_plate_recognition_pipeline import (
     GStreamerLPRApp,
 )
-from hailo_apps.python.core.common.db_handler import LPRDatabaseHandler
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
@@ -44,53 +39,12 @@ def lpr_dbg(msg: str, *args) -> None:
     print(f"[lpr_py] {text}")
 
 
-def init_lpr_db():
-    """Initialize the LPR DB + JSON mirror once at app start."""
-    lpr_db_dir = os.path.join(os.path.dirname(__file__), "lpr_database")
-    os.makedirs(lpr_db_dir, exist_ok=True)
-    lpr_db_json = os.path.join(lpr_db_dir, "lpr_tracks.jsonl")
-    # Clean previous run artifacts (files only)
-    for stale_path in (
-        os.path.join(lpr_db_dir, "lpr.db"),
-        lpr_db_json,
-    ):
-        try:
-            if os.path.isfile(stale_path):
-                os.remove(stale_path)
-            elif os.path.isdir(stale_path):
-                # Remove directory and its contents to ensure clean start
-                shutil.rmtree(stale_path, ignore_errors=False)
-        except Exception as exc:  # pragma: no cover - defensive
-            hailo_logger.warning("Failed to remove stale LPR DB path %s: %s", stale_path, exc)
-    try:
-        handler = LPRDatabaseHandler(
-            db_name="lpr.db",
-            table_name="lpr_tracks",
-            database_dir=lpr_db_dir,
-            json_export_path=lpr_db_json,
-        )
-        hailo_logger.info("LPR DB initialized at %s (JSON: %s)", lpr_db_dir, lpr_db_json)
-        return handler, lpr_db_json
-    except Exception as exc:  # pragma: no cover - defensive logging
-        hailo_logger.error("Failed to init LPR DB: %s", exc)
-        return None, None
-
-
 class user_app_callback_class(app_callback_class):
-    def __init__(self, lpr_db=None, lpr_db_json=None):
+    def __init__(self):
         super().__init__()
         self.output_file = "ocr_results.txt"
         self.save_ocr_results = False  # Enable/disable OCR result saving
         self.disable_found_lp_gate = False
-
-        # LPR DB + JSON mirror (for C++ consumption)
-        self.lpr_db = lpr_db
-        self.lpr_db_json = lpr_db_json
-        self.lpr_tracks_state: dict[int, dict] = {}
-        self._jsonl_tailer_thread = None
-        self._jsonl_tailer_stop = False
-        if self.lpr_db_json:
-            self._start_jsonl_tailer()
 
         # Per-track state
         self.found_lp_tracks: set[int] = set()
@@ -126,97 +80,6 @@ class user_app_callback_class(app_callback_class):
         with open(self.output_file, "a", encoding="utf-8") as f:
             f.write(f"Frame {frame_num:6d} | {timestamp:>8s} | Track {track_str:>4s} | {text:<20s} | Conf: {conf_str}\n")
 
-    def _start_jsonl_tailer(self) -> None:
-        if not self.lpr_db_json:
-            return
-
-        def tailer():
-            position = 0
-            while not getattr(self, "_jsonl_tailer_stop", False):
-                try:
-                    with open(self.lpr_db_json, "r", encoding="utf-8") as f:
-                        f.seek(position)
-                        for line in f:
-                            position = f.tell()
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                event = json.loads(line)
-                                self._apply_jsonl_event(event)
-                            except Exception as exc:  # pragma: no cover
-                                hailo_logger.debug("Failed to parse LPR JSONL line: %s", exc)
-                    time.sleep(0.2)
-                except FileNotFoundError:
-                    time.sleep(0.5)
-                except Exception as exc:  # pragma: no cover
-                    hailo_logger.debug("LPR JSONL tailer error: %s", exc)
-                    time.sleep(0.5)
-
-        self._jsonl_tailer_thread = threading.Thread(target=tailer, daemon=True)
-        self._jsonl_tailer_thread.start()
-
-    def _apply_jsonl_event(self, event: dict) -> None:
-        evt = event.get("event")
-        if evt not in {"upsert", "delete", "clear"}:
-            return
-        if evt == "clear":
-            self.lpr_tracks_state.clear()
-            return
-        track_id = event.get("track_id")
-        if track_id is None:
-            return
-        try:
-            track_id_int = int(track_id)
-        except (TypeError, ValueError):
-            return
-
-        if evt == "delete":
-            self.lpr_tracks_state.pop(track_id_int, None)
-            return
-
-        has_lpr = bool(event.get("has_lpr", False))
-        lpr_result = event.get("lpr_result") or ""
-        ts = event.get("timestamp", 0)
-
-        self.lpr_tracks_state[track_id_int] = {
-            "has_lpr": has_lpr,
-            "lpr_result": lpr_result,
-            "timestamp": ts,
-        }
-
-        # Optionally mirror into LanceDB without re-emitting JSON
-        if self.lpr_db:
-            try:
-                self.lpr_db.upsert_track(
-                    track_id=track_id_int,
-                    has_lpr=has_lpr,
-                    lpr_result=lpr_result,
-                    emit_json=False,
-                )
-            except Exception as exc:  # pragma: no cover
-                hailo_logger.debug("Failed to mirror JSONL event to LanceDB: %s", exc)
-
-    def record_track_seen(self, track_id: int) -> None:
-        """Ensure track exists in LPR DB with has_lpr flag False."""
-        if not hasattr(self, "lpr_db") or self.lpr_db is None:
-            return
-        try:
-            self.lpr_db.upsert_track(track_id=track_id, has_lpr=False)
-        except Exception as exc:  # pragma: no cover - keep callback resilient
-            hailo_logger.debug("LPR DB upsert failed for track %s: %s", track_id, exc)
-
-    def record_plate_result(self, track_id: int, plate_text: str) -> None:
-        """Persist an accepted plate result to LPR DB + JSON mirror."""
-        if track_id is None:
-            return
-        if not hasattr(self, "lpr_db") or self.lpr_db is None:
-            return
-        try:
-            self.lpr_db.mark_plate_found(track_id=track_id, lpr_result=plate_text)
-        except Exception as exc:  # pragma: no cover - keep callback resilient
-            hailo_logger.debug("LPR DB mark_plate_found failed for track %s: %s", track_id, exc)
-
     def reset_state(self) -> None:
         """Reset per-run state when the pipeline restarts (e.g., video loops)."""
         self.found_lp_tracks.clear()
@@ -224,7 +87,6 @@ class user_app_callback_class(app_callback_class):
         self.vehicle_tracks.clear()
         self.ocr_results.clear()
         self._start_time = datetime.now()
-
 
 
 def _iter_classifications(roi):
@@ -362,19 +224,11 @@ def app_callback(element, buffer, user_data):
         lpr_dbg("callback: roi is None => EXIT")
         return
 
-    # Tracks that already have an accepted LP (either from this run or from DB mirror)
-    try:
-        db_tracks_with_lp = {
-            tid
-            for tid, info in getattr(user_data, "lpr_tracks_state", {}).items()
-            if info.get("has_lpr") and info.get("lpr_result")
-        }
-    except Exception:
-        db_tracks_with_lp = set()
+    # Tracks that already have an accepted LP — skip re-processing
     in_memory_found = getattr(user_data, "found_lp_tracks", set())
     skip_tracks_enabled = not _no_skip_enabled()
     if skip_tracks_enabled:
-        skip_lp_tracks = set(in_memory_found) | db_tracks_with_lp
+        skip_lp_tracks = set(in_memory_found)
         if skip_lp_tracks:
             lpr_dbg("callback: skip_lp_tracks (already have LP)=%s", sorted(skip_lp_tracks))
     else:
@@ -470,11 +324,6 @@ def app_callback(element, buffer, user_data):
 
     if newly_found_tracks:
         lpr_dbg("callback: newly_found_tracks=%s", sorted(newly_found_tracks))
-        for track_id in newly_found_tracks:
-            try:
-                user_data.record_track_seen(track_id)
-            except Exception:
-                hailo_logger.debug("Failed to record track %s in LPR DB", track_id)
 
     # Update per-track vehicle info
     for track_id, vdet in vehicles:
@@ -595,10 +444,6 @@ def app_callback(element, buffer, user_data):
             float(confidence),
         )
         accepted_ocr += 1
-        try:
-            user_data.record_plate_result(track_id=track_id, plate_text=normalized_label)
-        except Exception:
-            hailo_logger.debug("Failed to persist LPR result for track %s", track_id)
 
         if track_id is not None:
             user_data.found_lp_tracks.add(track_id)
@@ -742,8 +587,7 @@ def main():
     hailo_logger.info("Starting Hailo LPR App...")
     user_data = None
     try:
-        lpr_db, lpr_db_json = init_lpr_db()
-        user_data = user_app_callback_class(lpr_db=lpr_db, lpr_db_json=lpr_db_json)
+        user_data = user_app_callback_class()
         app = GStreamerLPRApp(app_callback, user_data)
         app.run()
     except KeyboardInterrupt:

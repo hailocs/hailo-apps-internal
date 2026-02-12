@@ -287,7 +287,7 @@ class GStreamerLPRApp(GStreamerApp):
             f"{user_callback_pipeline} ! "
             f"{display_pipeline}"
         )
-        hailo_logger.info(f"Pipeline string:\n gst-launch-1.0 {pipeline_string}")
+        hailo_logger.debug(f"Pipeline string:\n gst-launch-1.0 {pipeline_string}")
         return pipeline_string
 
     # ===================================================================
