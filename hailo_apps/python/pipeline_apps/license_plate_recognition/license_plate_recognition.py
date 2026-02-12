@@ -94,6 +94,7 @@ class user_app_callback_class(app_callback_class):
 
         # Per-track state
         self.found_lp_tracks: set[int] = set()
+        self.plate_texts: dict[int, tuple[str, float]] = {}  # track_id -> (plate_text, ocr_confidence)
         self.vehicle_tracks: dict[int, dict] = {}
         self.ocr_results: dict[int, list] = {}  # track_id -> list of (plate_text, confidence, frame_num, timestamp)
         self._start_time = datetime.now()
@@ -219,6 +220,7 @@ class user_app_callback_class(app_callback_class):
     def reset_state(self) -> None:
         """Reset per-run state when the pipeline restarts (e.g., video loops)."""
         self.found_lp_tracks.clear()
+        self.plate_texts.clear()
         self.vehicle_tracks.clear()
         self.ocr_results.clear()
         self._start_time = datetime.now()
@@ -584,7 +586,7 @@ def app_callback(element, buffer, user_data):
         ocr_pct = f"{confidence * 100:.0f}%"
         
         print(
-            f"LP Det Conf.: {plate_det_pct} | Plate: '{normalized_label}' | OCR Conf.: {ocr_pct}"
+            f"LP {track_id:>2} | Det Conf.: {plate_det_pct} | OCR Conf.: {ocr_pct} | Plate: '{normalized_label}'"
         )
         lpr_dbg(
             "callback: accepted track=%s plate='%s' conf=%.3f",
@@ -600,6 +602,7 @@ def app_callback(element, buffer, user_data):
 
         if track_id is not None:
             user_data.found_lp_tracks.add(track_id)
+            user_data.plate_texts[track_id] = (normalized_label, confidence)
             skip_lp_tracks.add(track_id)
             if track_id in user_data.vehicle_tracks:
                 user_data.vehicle_tracks[track_id]["found_lp"] = True
@@ -669,38 +672,23 @@ def app_callback(element, buffer, user_data):
 
     lpr_dbg("callback: accepted_ocr=%d", accepted_ocr)
 
-    # Remove all text_region classifications from detections to prevent hailooverlay
-    # from drawing them (causes blurry overlapping text when drawn every frame)
-    for det in roi.get_objects_typed(hailo.HAILO_DETECTION):
-        for cls in list(det.get_objects_typed(hailo.HAILO_CLASSIFICATION)):
-            if hasattr(cls, 'get_classification_type') and cls.get_classification_type() == "text_region":
-                try:
-                    det.remove_object(cls)
-                except Exception:
-                    pass
-        # Also check nested detections (license plates inside vehicles)
-        for nested in det.get_objects_typed(hailo.HAILO_DETECTION):
-            for cls in list(nested.get_objects_typed(hailo.HAILO_CLASSIFICATION)):
-                if hasattr(cls, 'get_classification_type') and cls.get_classification_type() == "text_region":
-                    try:
-                        nested.remove_object(cls)
-                    except Exception:
-                        pass
+    # ── Overlay: show only recognised plates as "PLATE_TEXT  XX%" ──
+    # Remove every detection from the ROI, then add back a single clean
+    # detection per recognised plate (plate text as label, OCR confidence).
+    plate_by_track = getattr(user_data, "plate_texts", {})
 
-    # If HAILO_LPR_HIDE_LP is set, remove license plate detections from ROI
-    # so they won't be drawn by hailooverlay (only vehicles will be visible)
-    if _should_hide_lp_overlay():
-        # Remove top-level license plate detections
-        for det in list(roi.get_objects_typed(hailo.HAILO_DETECTION)):
-            if (det.get_label() or "") == "license_plate":
-                roi.remove_object(det)
+    for det in list(roi.get_objects_typed(hailo.HAILO_DETECTION)):
+        uid = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        tid = uid[0].get_id() if uid else None
 
-        # Remove nested license plate detections from vehicles
-        for det in roi.get_objects_typed(hailo.HAILO_DETECTION):
-            if (det.get_label() or "") == "vehicle":
-                for nested in list(det.get_objects_typed(hailo.HAILO_DETECTION)):
-                    if (nested.get_label() or "") == "license_plate":
-                        det.remove_object(nested)
+        # Remove the original detection no matter what
+        roi.remove_object(det)
+
+        # For recognised plates, add a clean replacement
+        if tid is not None and tid in plate_by_track:
+            plate_text, ocr_conf = plate_by_track[tid]
+            new_det = hailo.HailoDetection(det.get_bbox(), f"LP {tid}: {plate_text}", ocr_conf)
+            roi.add_object(new_det)
 
     return
 

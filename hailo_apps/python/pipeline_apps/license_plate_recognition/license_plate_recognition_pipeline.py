@@ -1,7 +1,5 @@
 import os
-import tempfile
 import gi
-from pathlib import Path
 
 # Reason: Disable VAAPI hardware decoding to prevent black screen issues caused by
 # incorrect 3D metadata (views=2) output from the driver for some video files.
@@ -48,6 +46,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     INFERENCE_PIPELINE_WRAPPER,
     QUEUE,
     SOURCE_PIPELINE,
+    TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
 hailo_logger = get_logger(__name__)
@@ -130,33 +129,12 @@ class GStreamerLPRApp(GStreamerApp):
             model=LPR_OCRSINK_SO_FILENAME,
         )
 
-        # Get remove_labels.so for filtering classes
-        self.remove_labels_so = get_resource_path(
-            pipeline_name=None,
-            resource_type=RESOURCES_SO_DIR_NAME,
-            arch=None,
-            model="libremove_labels.so",
-        )
-
-        # Label filter: keep only license_plate class from detection
-        self._label_filter_dir = tempfile.mkdtemp(prefix="hailo_lpr_")
-        self.plate_labels_to_remove_path = Path(self._label_filter_dir) / "plate_labels_to_remove.txt"
-        self._create_label_filter_files()
-
         self.plate_post_function_name = LPR_PLATE_POSTPROCESS_FUNCTION
         self.ocr_post_function_name = LPR_OCR_POSTPROCESS_FUNCTION
 
         self.plate_post_process_so = self.yolo_post_process_so
 
         self._build_pipeline()
-
-    def _create_label_filter_files(self):
-        """Create label filter files in temp directory for libremove_labels.so."""
-        # Keep only 'license_plate' class - remove everything else
-        plate_labels_to_remove = ["person", "vehicle", "face"]
-        
-        with open(self.plate_labels_to_remove_path, 'w') as f:
-            f.write('\n'.join(plate_labels_to_remove) + '\n')
 
     def _build_pipeline(self):
         """Build the LPR pipeline string."""
@@ -224,12 +202,13 @@ class GStreamerLPRApp(GStreamerApp):
         """
         Build and return the full LPR pipeline string.
 
-        Simplified 2-stage pipeline:
+        Pipeline stages:
         1. Source: video input
-        2. Plate detection: detect license plates directly on full frame
-        3. LP cropper: crop license plate regions and run OCR
-        4. OCR sink: process OCR results
-        5. Display: render output with overlays
+        2. Plate detection: detect license plates on full frame (YOLOv8n)
+        3. Tracker: track license plates across frames
+        4. LP cropper: crop license plate regions and run OCR
+        5. OCR sink: process and deduplicate OCR results
+        6. Display: render output with overlays
 
         Returns:
             str: GStreamer pipeline string
@@ -253,14 +232,20 @@ class GStreamerLPRApp(GStreamerApp):
             scheduler_timeout_ms=66,
             name="plate_detection",
         )
-        # Filter to keep only license_plate class
-        if self.remove_labels_so and self.remove_labels_so.exists():
-            plate_detection += (
-                f"! {QUEUE(name='plate_detection_remove_labels_q')} ! "
-                f"hailofilter name=plate_remove_labels so-path={str(self.remove_labels_so)} "
-                f"config-path={str(self.plate_labels_to_remove_path)} qos=false "
-            )
         plate_detection_wrapper = INFERENCE_PIPELINE_WRAPPER(plate_detection)
+
+        # Track license plates across frames
+        tracker_pipeline = TRACKER_PIPELINE(
+            class_id=-1,
+            kalman_dist_thr=0.7,
+            iou_thr=0.8,
+            init_iou_thr=0.9,
+            keep_new_frames=2,
+            keep_tracked_frames=6,
+            keep_lost_frames=2,
+            keep_past_metadata=True,
+            name="hailo_tracker",
+        )
 
         # Stage 2: Crop license plates and run OCR
         ocr_recognition = INFERENCE_PIPELINE(
@@ -296,6 +281,7 @@ class GStreamerLPRApp(GStreamerApp):
         pipeline_string = (
             f"{source_pipeline} ! "
             f"{plate_detection_wrapper} ! "
+            f"{tracker_pipeline} ! "
             f"{lp_cropper} ! "
             f"{ocrsink_pipeline} ! "
             f"{user_callback_pipeline} ! "
