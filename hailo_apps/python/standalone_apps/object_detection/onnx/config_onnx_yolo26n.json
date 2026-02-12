@@ -12,7 +12,7 @@
   "postprocess_params": {
     "input_size": 640
   },
-  "full_onnx_model_path": "/home/alexf/yolo26_hailo8/yolo26n.onnx",
-  "full_onnx_intermediate_model_path": "/home/alexf/yolo26_hailo8/yolo26n_intermediates.onnx",
+  "full_onnx_model_path": "onnx/yolo26n.onnx",
+  "full_onnx_intermediate_model_path": "onnx/yolo26n_intermediates.onnx",
   "intermediate_tensors_to_add_sigmoid": []
 }
