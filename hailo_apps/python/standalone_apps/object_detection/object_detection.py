@@ -108,6 +108,16 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "--full-onnx",
+        action="store_true",
+        help=(
+            "Use full ONNX mode (bypass HEF, run entire model in ONNX). "
+            "Overrides use_full_onnx_mode setting in config. "
+            "Requires full_onnx_intermediate_model_path in ONNX config."
+        ),
+    )
+
     args = parser.parse_args()
     return args
 
@@ -144,7 +154,7 @@ def normalized_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.n
 
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
-          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False, onnxconfig=None) -> None:
+          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False, onnxconfig=None, onnxconfig_args=None) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
@@ -193,7 +203,8 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
             raise FileNotFoundError(f"ONNX model file not found: {model_path_str}")
         
         # Check for full ONNX mode (debug mode)
-        use_full_onnx = onnx_config.get("use_full_onnx_mode", False)
+        # CLI argument overrides config setting
+        use_full_onnx = onnxconfig_args.full_onnx if hasattr(onnxconfig_args, 'full_onnx') and onnxconfig_args.full_onnx else onnx_config.get("use_full_onnx_mode", False)
         
         if use_full_onnx:
             # Load intermediate ONNX model (outputs HEF-like tensors) for Full-ONNX mode
@@ -269,19 +280,20 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         # Model was compiled with normalization [0,0,0]/[1,1,1] so expects float32 0-1 range
         # Otherwise, use default (UINT8 for HailoRT-NMS models)
         if onnx_session is not None:
-            input_type = "FLOAT32"
+            input_type = None # "FLOAT32"
             output_type = "FLOAT32"
-            logger.info(f"HEF configured for FLOAT32 inputs (0-1 normalized) and outputs (dequantized)")
+            #logger.info(f"HEF configured for FLOAT32 inputs (0-1 normalized) and outputs (dequantized)")
         else:
             input_type = None
             output_type = None
-        
+        logger.info(f"Using HEF from {net} with input_type={input_type} and output_type={output_type}")
         hailo_inference = HailoInfer(net, batch_size, input_type=input_type, output_type=output_type)
         height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
         target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height),
-        kwargs={'preprocess_fn': normalized_preprocess if (onnx_session is not None or use_full_onnx) else None}
+        # kwargs={'preprocess_fn': normalized_preprocess if (onnx_session is not None or use_full_onnx) else None}
+        kwargs={'preprocess_fn': normalized_preprocess if use_full_onnx else None}
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
@@ -422,16 +434,18 @@ def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, inpu
                     logger.info(f"  {name}: shape={tensor.shape}, dtype={tensor.dtype}, min={tensor.min():.3f}, max={tensor.max():.3f}, mean={tensor.mean():.3f}")
             # </DEBUG>
             
-            # Apply sigmoid to classifier tensors (80 channels) to match HEF behavior
-            # HEF applies sigmoid to conv61, conv77, conv91 (the box regression layers)
-            # but we need sigmoid on the CLASSIFIER layers (80 channels, not 4 channels)
-            # to match the expected postprocessing input
-            for idx, (onnx_name, tensor) in enumerate(zip(intermediate_output_names, intermediate_results)):
-                # Check if this is a classifier tensor (80 channels in dim 1)
-                if tensor.shape[1] == 80:
-                    intermediate_results[idx] = 1.0 / (1.0 + np.exp(-tensor))  # sigmoid
-                    if DEBUG:
-                        logger.info(f"  Applied sigmoid to {onnx_name} (classifier, 80 channels): min={intermediate_results[idx].min():.3f}, max={intermediate_results[idx].max():.3f}")
+            # Apply sigmoid to specified intermediate tensors (e.g., class score tensors)
+            # This is configured via intermediate_tensors_to_add_sigmoid in the ONNX config
+            # For YOLOv26n: should be the classifier layers (conv64/80/94) with 80 channels,
+            # NOT the box regression layers (conv61/77/91) with 4 channels
+            tensors_to_sigmoid = onnx_config.get("intermediate_tensors_to_add_sigmoid", [])
+            if tensors_to_sigmoid:
+                for idx, onnx_name in enumerate(intermediate_output_names):
+                    if onnx_name in tensors_to_sigmoid:
+                        tensor = intermediate_results[idx]
+                        intermediate_results[idx] = 1.0 / (1.0 + np.exp(-tensor))  # sigmoid
+                        if DEBUG:
+                            logger.info(f"  Applied sigmoid to '{onnx_name}': min={intermediate_results[idx].min():.3f}, max={intermediate_results[idx].max():.3f}")
             
             # Map ONNX tensor names to HEF tensor names for compatibility with extract_detections_onnx
             result = {}
@@ -496,7 +510,8 @@ def main() -> None:
         args.show_fps,
         args.frame_rate,
         args.draw_trail,
-        args.onnxconfig
+        args.onnxconfig,
+        args  # Pass full args for --full-onnx flag
     )
 
 

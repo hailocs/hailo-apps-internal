@@ -66,7 +66,7 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
             logger.info(f"  -> Routing to extract_detections_onnx ({mode_str} + ONNX postproc)")
         if onnx_config is None:
             raise ValueError("onnx_session provided but onnx_config is None")
-        detections = extract_detections_onnx(original_frame, infer_results, onnx_config, onnx_session)
+        detections = extract_detections_onnx(original_frame, infer_results, onnx_config, onnx_session, config_data)
     else:
         # Default: HailoRT-NMS postprocessing
         if DEBUG:
@@ -382,7 +382,7 @@ def compute_iou(boxA, boxB):
 SUPPORTED_OUTPUT_FORMATS = ["yolon26", "yolov8", "yolov5"]
 
 
-def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config: dict, onnx_session) -> dict:
+def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config: dict, onnx_session, config_data: dict) -> dict:
     """
     Extract detections using ONNX postprocessing model.
     Maps HEF output tensors to ONNX inputs, runs inference, and parses results.
@@ -392,6 +392,7 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
         hailo_outputs (dict): Dict of HEF output tensors {name: numpy array}.
         onnx_config (dict): ONNX configuration with tensor mapping and format spec.
         onnx_session: ONNX Runtime inference session for postprocessing model.
+        config_data (dict): Main config with visualization_params.
         
     Returns:
         dict: Detection results with 'detection_boxes', 'detection_classes', 
@@ -479,7 +480,7 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
     
     # Parse ONNX output to normalized coords (matching HailoRT-NMS format)
     if output_format == "yolon26":
-        detections = parse_yolon26_output(onnx_results, image, onnx_config)
+        detections = parse_yolon26_output(onnx_results, image, onnx_config, config_data)
     elif output_format == "yolov8":
         detections = parse_yolov8_output(onnx_results, image, onnx_config)
     elif output_format == "yolov5":
@@ -488,7 +489,7 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
         raise NotImplementedError(f"Parser for format '{output_format}' not implemented")
     
     # Reuse extract_detections to handle denormalization and filtering
-    return extract_detections(image, detections, onnx_config)
+    return extract_detections(image, detections, config_data)
 
 
 def extract_detections_onnx_direct(image: np.ndarray, onnx_output, onnx_config: dict) -> dict:
@@ -539,21 +540,26 @@ def extract_detections_onnx_direct(image: np.ndarray, onnx_output, onnx_config: 
     return extract_detections(image, detections, onnx_config)
 
 
-def parse_yolon26_output(onnx_results: list, image: np.ndarray, onnx_config: dict) -> list:
+def parse_yolon26_output(onnx_results, image: np.ndarray, onnx_config: dict, config_data: dict) -> list:
     """
-    Parse YOLOv26n output format: 300x6 tensor with [x1, y1, x2, y2, score, class_id].
+    Parse YOLOv26n ONNX output to per-class detection list.
     Returns per-class detections in normalized coordinates matching HailoRT-NMS format.
     
     Args:
         onnx_results (list): ONNX inference outputs (first element is detection tensor).
         image (np.ndarray): Original image (not used, kept for compatibility).
-        onnx_config (dict): Config with postprocess_params (score_threshold, input_size).
+        onnx_config (dict): Config with postprocess_params (input_size).
+        config_data (dict): Main config with visualization_params (score_thres).
         
     Returns:
         list: Per-class detections [[bbox, score], ...] where bbox is [x1, y1, x2, y2] normalized 0-1.
     """
+    # Read score threshold from shared visualization_params
+    visualization_params = config_data.get("visualization_params", {})
+    score_threshold = visualization_params.get("score_thres", 0.25)
+    
+    # Read model-specific params from ONNX config
     params = onnx_config.get("postprocess_params", {})
-    score_threshold = params.get("score_threshold", 0.25)
     input_size = params.get("input_size", 640)
     
     # Extract detection tensor (assume first output)
