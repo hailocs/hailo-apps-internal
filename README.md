@@ -47,16 +47,6 @@ Before installing hailo-apps, ensure you have the following Hailo packages insta
 - hailort Python wheel
 - hailo_tappas_core_python_binding Python wheel
 
-> **Note:** These packages are available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/). See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
-
-### Prerequisites
-Before installing hailo-apps, ensure you have the following Hailo packages installed:
-- hailort PCIe driver (.deb package)
-- hailort (.deb package)
-- hailo-tappas-core (.deb package)
-- hailort Python wheel
-- hailo_tappas_core_python_binding Python wheel
-
 Installation methods differ between Raspberry Pi and x86 platforms.
 
 See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.

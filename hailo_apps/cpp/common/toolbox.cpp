@@ -100,33 +100,6 @@ static bool is_raspberry_pi()
     return model.find(RPI_POSSIBLE_NAME) != std::string::npos;
 }
 
-static std::string make_rpi_gst_pipeline(int w, int h, int fps)
-{
-    return "libcamerasrc ! "
-           "video/x-raw,format=NV12,width=" + std::to_string(w) +
-           ",height=" + std::to_string(h) +
-           ",framerate=" + std::to_string(fps) + "/1 ! "
-           "videoconvert ! "
-           "video/x-raw,format=BGR ! "
-           "appsink max-buffers=1 drop=true sync=false";
-}
-
-
-static bool is_raspberry_pi()
-{
-    const std::string RPI_POSSIBLE_NAME = "Raspberry Pi";
-
-    std::ifstream f("/proc/device-tree/model");
-    if (!f.is_open()) {
-        return false;
-    }
-
-    std::string model;
-    std::getline(f, model);
-
-    return model.find(RPI_POSSIBLE_NAME) != std::string::npos;
-}
-
 static fs::path executable_dir()
 {
     char buf[4096];

@@ -411,47 +411,6 @@ pip list | grep hailo
 
 ---
 
-## Hailo "Suite Docker" Installation
-
-If you're running inside the **Hailo Software "Suite Docker"** container, some additional packages are required before running the installation.
-
-### Prerequisites for Docker
-
-Run the following commands to install required dependencies:
-
-```bash
-# Update package lists
-sudo apt-get update
-
-# Install Python virtual environment support
-sudo apt install -y python3-venv
-
-# Install required utilities
-sudo apt-get install -y software-properties-common gnupg
-
-# Upgrade libstdc++6 (required for newer C++ features)
-sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-sudo apt-get update
-sudo apt install -y --only-upgrade libstdc++6
-```
-
-### Installation in Docker
-
-After installing the prerequisites, proceed with the standard installation:
-
-```bash
-# Clone the repository (if not already done)
-git clone https://github.com/hailo-ai/hailo-apps.git
-cd hailo-apps
-
-# Run the automated installation script
-sudo ./install.sh
-```
-
-> **Note:** The Hailo "Suite Docker" already has HailoRT and TAPPAS Core pre-installed. The `install.sh` script will detect this and skip those components.
-
----
-
 ## Post-Installation Verification
 
 After running any of the installation methods, you can verify that everything is working correctly.
