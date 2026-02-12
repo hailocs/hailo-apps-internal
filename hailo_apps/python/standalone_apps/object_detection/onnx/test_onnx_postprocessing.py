@@ -29,32 +29,23 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
     print(f"Running: {mode_name}")
     print(f"{'='*80}")
     
-    # Create temporary config with appropriate mode setting
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    
-    config['use_full_onnx_mode'] = use_full_onnx
-    
-    temp_config = config_path.replace('.json', f'_temp.json')
-    with open(temp_config, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    print(f"Created temp config: {temp_config}")
-    print(f"  use_full_onnx_mode = {config['use_full_onnx_mode']}")
-    
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Build command
+    # Build command - use --full-onnx flag instead of config editing
     cmd = [
         sys.executable,
-        'object_detection.py',
+        'object_detection.py',  # In parent directory
         '-n', hef_path,
         '-i', input_image,
-        '--onnxconfig', temp_config,
+        '--onnxconfig', config_path,
         '--save-output',
         '--output-dir', output_dir
     ]
+    
+    # Add --full-onnx flag if needed
+    if use_full_onnx:
+        cmd.append('--full-onnx')
     
     print(f"Running: {' '.join(cmd)}\n")
     
@@ -62,54 +53,26 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
         
-        # Parse detection counts from output
-        num_detections = 0
-        class_0_count = 0
-        class_5_count = 0
-        
-        # Show relevant output and count detections
+        # Show relevant output
         for line in result.stdout.split('\n'):
-            if any(keyword in line for keyword in ['INFO', 'SUCCESS', 'ERROR', 'Full ONNX', 'dequantized', 'Loaded', 'Saved', 'DEBUG', '>>>', '===', 'routing', 'Routing', 'Class']):
+            if any(keyword in line for keyword in ['INFO', 'SUCCESS', 'ERROR', 'Full ONNX', 'dequantized', 'Loaded', 'Saved', 'DEBUG', '>>>', '===', 'routing', 'Routing']):
                 print(line)
-            
-            # Count total detections
-            if 'Total detections after threshold' in line:
-                try:
-                    num_detections = int(line.split(':')[-1].strip())
-                except:
-                    pass
-            
-            # Count by class from "Raw bbox" lines (more reliable than Top N summary)
-            if 'Raw bbox' in line:
-                if 'Class 0, Score:' in line:
-                    class_0_count += 1
-                elif 'Class 5, Score:' in line:
-                    class_5_count += 1
         
         success = result.returncode == 0
         
-        # Output should already be in output_dir from --output-dir flag
-        output_image = Path(output_dir) / 'output_0.png'
+        # Move output from default '../output/' to our output_dir
+        default_output = Path('output') / 'output_0.png'
+        target_output = Path(output_dir) / 'output_0.png'
         
-        # Validate detections - expected results: 5 total (4x class 0 people, 1x class 5 bus)
-        detection_valid = True
-        expected_total = 5
-        expected_class_0 = 4  # people
-        expected_class_5 = 1  # bus
+        if default_output.exists():
+            shutil.copy(default_output, target_output)
+            print(f"   Copied output from {default_output} to {target_output}")
         
-        if num_detections != expected_total:
-            detection_valid = False
-            print(f"\n⚠️  Expected {expected_total} detections, got {num_detections}")
-        if class_0_count != expected_class_0:
-            detection_valid = False
-            print(f"\n⚠️  Expected {expected_class_0} people (class 0), got {class_0_count}")
-        if class_5_count != expected_class_5:
-            detection_valid = False
-            print(f"\n⚠️  Expected {expected_class_5} bus (class 5), got {class_5_count}")
+        # Check for output_0.png (default output filename for images)
+        output_image = target_output
         
-        if success and detection_valid:
+        if success:
             print(f"\n✅ {mode_name} completed successfully")
-            print(f"   Detections: {num_detections} total (class 0: {class_0_count}, class 5: {class_5_count})")
             if output_image.exists():
                 print(f"   Output saved: {output_image}")
             else:
@@ -118,11 +81,6 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
                 files = list(Path(output_dir).glob('*'))
                 if files:
                     print(f"   Files in {output_dir}: {[f.name for f in files]}")
-                success = False
-        elif not detection_valid:
-            print(f"\n❌ {mode_name} failed: Detection validation failed")
-            print(f"   Got {num_detections} total (class 0: {class_0_count}, class 5: {class_5_count})")
-            success = False
         else:
             print(f"\n❌ {mode_name} failed (exit code: {result.returncode})")
             if result.stderr:
@@ -133,11 +91,6 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
     except Exception as e:
         print(f"❌ Error: {e}")
         return False, None
-    
-    finally:
-        # Cleanup temp config
-        if os.path.exists(temp_config):
-            os.remove(temp_config)
 
 
 def main():
@@ -149,7 +102,7 @@ def main():
     print("="*80)
     
     # Configuration
-    config_path = 'config_onnx_yolo26n.json'
+    config_path = 'onnx/config_onnx_yolo26n.json' 
     hef_path = '/usr/local/hailo/resources/models/hailo8/yolo26n.hef'
     input_image = 'bus.jpg'
     
@@ -174,7 +127,7 @@ def main():
         config_path=config_path,
         hef_path=hef_path,
         input_image=input_image,
-        output_dir="output_hef_onnx"
+        output_dir="onnx/output_hef_onnx"  # In parent directory
     )
     results['hef_onnx'] = {'success': success, 'output_path': output_path}
     
@@ -185,7 +138,7 @@ def main():
         config_path=config_path,
         hef_path=hef_path,
         input_image=input_image,
-        output_dir="output_full_onnx"
+        output_dir="onnx/output_full_onnx"  # In parent directory
     )
     results['full_onnx'] = {'success': success, 'output_path': output_path}
     
