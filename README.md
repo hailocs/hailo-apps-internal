@@ -10,8 +10,8 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 **Supports:** Hailo-8, Hailo-8L, and Hailo-10H accelerators
 
 **Supported versions:**
-- **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
-- **Hailo-10H:** HailoRT 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
+- **Hailo-8 / Hailo-8L:** HailoRT & PCIe driver 4.23, TAPPAS Core 5.1.0
+- **Hailo-10H:** HailoRT & PCIe driver 5.1.1 & 5.2.0, TAPPAS Core 5.1.0 & 5.2.0, GenAI Model Zoo 5.1.1 & 5.2.0
 
 > **💡 Running Multiple Apps:** You can run multiple Hailo applications in parallel (e.g., Vision + GenAI). See the [Running Parallel Applications Guide](./doc/user_guide/running_parallel.md) for configuration details.
 
@@ -49,14 +49,24 @@ Before installing hailo-apps, ensure you have the following Hailo packages insta
 
 > **Note:** These packages are available from the [Hailo Developer Zone](https://hailo.ai/developer-zone/). See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
 
-### Installation
+### Prerequisites
+Before installing hailo-apps, ensure you have the following Hailo packages installed:
+- hailort PCIe driver (.deb package)
+- hailort (.deb package)
+- hailo-tappas-core (.deb package)
+- hailort Python wheel
+- hailo_tappas_core_python_binding Python wheel
+
+Installation methods differ between Raspberry Pi and x86 platforms.
+
+See the [Full Installation Guide](./doc/user_guide/installation.md) for detailed setup instructions.
+
+### Installation (Hailo-Apps only)
 ```bash
 git clone https://github.com/hailo-ai/hailo-apps.git
 cd hailo-apps
 sudo ./install.sh
 ```
-
-**Need help?** See the [Full Installation Guide](./doc/user_guide/installation.md) for hardware setup and troubleshooting.
 
 ### Run Your First Application
 ```bash
