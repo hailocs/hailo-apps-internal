@@ -102,8 +102,8 @@ def parse_args():
         help=(
             "Path to ONNX postprocessing configuration file (JSON). "
             "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
-            "The config must include: onnx_model_path, output_tensor_mapping, output_format, "
-            "and postprocess_params. Optionally supports full_onnx_model_path and use_full_onnx_mode "
+            "The config must include: postproc_onnx_path, output_tensor_mapping, output_format, "
+            "and postprocess_params. Optionally supports full_onnx_path and use_full_onnx_mode "
             "for debug mode (bypasses HEF inference entirely)."
         ),
     )
@@ -114,7 +114,7 @@ def parse_args():
         help=(
             "Use full ONNX mode (bypass HEF, run entire model in ONNX). "
             "Overrides use_full_onnx_mode setting in config. "
-            "Requires full_onnx_intermediate_model_path in ONNX config."
+            "Requires hef_like_proc_onnx_path in ONNX config."
         ),
     )
 
@@ -201,35 +201,35 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         
         if use_full_onnx:
             # Load intermediate ONNX model (outputs HEF-like tensors) for Full-ONNX mode
-            intermediate_model_path = onnx_config.get("full_onnx_intermediate_model_path")
+            intermediate_model_path = onnx_config.get("hef_like_proc_onnx_path")
             if not intermediate_model_path:
-                raise ValueError("use_full_onnx_mode is True but full_onnx_intermediate_model_path not specified in config")
+                raise ValueError("use_full_onnx_mode is True but hef_like_proc_onnx_path not specified in config")
             intermediate_model_path = resolve_onnx_path(intermediate_model_path)
             full_onnx_intermediate_session = ort.InferenceSession(intermediate_model_path)
-            logger.info(f"Loaded full ONNX intermediate model: {intermediate_model_path}")
+            logger.info(f"Loaded HEF-like intermediate ONNX model: {intermediate_model_path}")
             
             # Also load postprocessing model to apply to intermediates
-            onnx_model_path = onnx_config.get("onnx_model_path")
-            if not onnx_model_path:
-                raise ValueError("onnx_model_path not specified in ONNX config")
-            onnx_model_path = resolve_onnx_path(onnx_model_path)
-            onnx_session = ort.InferenceSession(onnx_model_path)
-            logger.info(f"Loaded ONNX postprocessing model: {onnx_model_path}")
+            postproc_model_path = onnx_config.get("postproc_onnx_path")
+            if not postproc_model_path:
+                raise ValueError("postproc_onnx_path not specified in ONNX config")
+            postproc_model_path = resolve_onnx_path(postproc_model_path)
+            onnx_session = ort.InferenceSession(postproc_model_path)
+            logger.info(f"Loaded ONNX postprocessing model: {postproc_model_path}")
             
             # Optionally load full model for reference
-            full_model_path = onnx_config.get("full_onnx_model_path")
+            full_model_path = onnx_config.get("full_onnx_path")
             if full_model_path:
                 full_model_path = resolve_onnx_path(full_model_path)
                 full_onnx_session = ort.InferenceSession(full_model_path)
                 logger.info(f"Loaded full ONNX model (reference): {full_model_path}")
         else:
             # Load postprocessing ONNX model (used with HEF outputs)
-            onnx_model_path = onnx_config.get("onnx_model_path")
-            if not onnx_model_path:
-                raise ValueError("onnx_model_path not specified in ONNX config")
-            onnx_model_path = resolve_onnx_path(onnx_model_path)
-            onnx_session = ort.InferenceSession(onnx_model_path)
-            logger.info(f"Loaded ONNX postprocessing model: {onnx_model_path}")
+            postproc_model_path = onnx_config.get("postproc_onnx_path")
+            if not postproc_model_path:
+                raise ValueError("postproc_onnx_path not specified in ONNX config")
+            postproc_model_path = resolve_onnx_path(postproc_model_path)
+            onnx_session = ort.InferenceSession(postproc_model_path)
+            logger.info(f"Loaded ONNX postprocessing model: {postproc_model_path}")
 
     # Initialize input source from string: "camera", video file, or image folder.
     cap, images = init_input_source(input_src, batch_size, camera_resolution)
