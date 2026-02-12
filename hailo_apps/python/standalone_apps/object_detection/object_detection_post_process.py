@@ -38,39 +38,14 @@ def inference_result_handler(original_frame, infer_results, labels, config_data,
     Returns:
         np.ndarray: Frame with detections or tracks drawn.
     """
-    # <DEBUG>
-    DEBUG = True
-    if DEBUG:
-        from hailo_apps.python.core.common.hailo_logger import get_logger
-        logger = get_logger(__name__)
-        logger.info("=" * 80)
-        logger.info(">>> inference_result_handler() called")
-        logger.info(f"  onnx_config: {onnx_config is not None}")
-        if onnx_config is not None:
-            logger.info(f"  use_full_onnx_mode: {onnx_config.get('use_full_onnx_mode', False)}")
-        logger.info(f"  onnx_session: {onnx_session is not None}")
-        logger.info(f"  infer_results type: {type(infer_results)}")
-        if isinstance(infer_results, np.ndarray):
-            logger.info(f"  infer_results shape: {infer_results.shape}")
-        elif isinstance(infer_results, dict):
-            logger.info(f"  infer_results keys: {list(infer_results.keys())}")
-    # </DEBUG>
-    
     # Route to appropriate postprocessing backend
-    # Check if ONNX postprocessing session is available (both HEF+ONNX and Full-ONNX modes)
     if onnx_session is not None:
         # ONNX-based postprocessing (HEF outputs or Full-ONNX intermediates -> ONNX postproc)
-        if DEBUG:
-            use_full = onnx_config.get("use_full_onnx_mode", False) if onnx_config else False
-            mode_str = "Full-ONNX intermediates" if use_full else "HEF outputs"
-            logger.info(f"  -> Routing to extract_detections_onnx ({mode_str} + ONNX postproc)")
         if onnx_config is None:
             raise ValueError("onnx_session provided but onnx_config is None")
         detections = extract_detections_onnx(original_frame, infer_results, onnx_config, onnx_session, config_data)
     else:
         # Default: HailoRT-NMS postprocessing
-        if DEBUG:
-            logger.info("  -> Routing to extract_detections (HailoRT NMS)")
         detections = extract_detections(original_frame, infer_results, config_data)
     
     frame_with_detections = draw_detections(detections, original_frame, labels, tracker=tracker, draw_trail=draw_trail)
@@ -185,16 +160,6 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
     padding_length = int(abs(img_height - img_width) / 2)
 
     all_detections = []
-
-    # Debug: Check structure of detections
-    DEBUG = True
-    if DEBUG:
-        from hailo_apps.python.core.common.hailo_logger import get_logger
-        logger = get_logger(__name__)
-        logger.info("=" * 80)
-        logger.info("DEBUG extract_detections: Input from HailoRT-NMS")
-        logger.info(f"  Image size: {img_width}x{img_height}, size={size}, pad={padding_length}")
-        logger.info(f"  Number of classes: {len(detections)}")
     
     if isinstance(detections, dict):
         # Dict format - likely raw HEF outputs, not HailoRT-NMS
@@ -219,8 +184,6 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
                 )
             bbox, score = det[:4], det[4]
             if score >= score_threshold:
-                if DEBUG and len(all_detections) < 5:  # Print first 5
-                    logger.info(f"  Class {class_id}, Score: {score:.3f}, Raw bbox (normalized 0-1): {bbox}")
                 denorm_bbox = denormalize_and_rm_pad(bbox, size, padding_length, img_height, img_width)
                 all_detections.append((score, class_id, denorm_bbox))
 
@@ -464,16 +427,6 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
         
         onnx_inputs[onnx_name] = hef_tensor
     
-    # Debug: Check HEF outputs before ONNX
-    DEBUG = True
-    if DEBUG:
-        from hailo_apps.python.core.common.hailo_logger import get_logger
-        logger = get_logger(__name__)
-        logger.info("=" * 80)
-        logger.info("DEBUG extract_detections_onnx: HEF outputs before ONNX")
-        for name, tensor in list(onnx_inputs.items()): #[:2]:  # Show first 2
-            logger.info(f"  {name}: shape={tensor.shape}, dtype={tensor.dtype}, min={tensor.min():.3f}, max={tensor.max():.3f}, mean={tensor.mean():.3f}")
-    
     # Run ONNX postprocessing inference
     onnx_output_names = [out.name for out in onnx_session.get_outputs()]
     onnx_results = onnx_session.run(onnx_output_names, onnx_inputs)
@@ -506,14 +459,6 @@ def extract_detections_onnx_direct(image: np.ndarray, onnx_output, onnx_config: 
         dict: Detection results with 'detection_boxes', 'detection_classes', 
               'detection_scores', and 'num_detections'.
     """
-    # <DEBUG>
-    DEBUG = True
-    if DEBUG:
-        from hailo_apps.python.core.common.hailo_logger import get_logger
-        logger = get_logger(__name__)
-        logger.info(">>> extract_detections_onnx_direct() called (Full ONNX mode)")
-    # </DEBUG>
-    
     output_format = onnx_config["output_format"]
     
     # Validate output format
@@ -577,13 +522,6 @@ def parse_yolon26_output(onnx_results, image: np.ndarray, onnx_config: dict, con
     
     # Parse detections: [x1, y1, x2, y2, score, class_id]
     # ONNX outputs are in pixel space (0-640), normalize to 0-1 to match yolov5 format
-    DEBUG = True
-    if DEBUG:
-        from hailo_apps.python.core.common.hailo_logger import get_logger
-        logger = get_logger(__name__)
-        logger.info(f"DEBUG parse_yolon26: Raw ONNX output (pixel coords 0-640)")
-        logger.info(f"  Sample detections[0]: {detections[0]}")
-        logger.info(f"  Sample detections[1]: {detections[1]}")
     
     # Normalize by input_size to get 0-1 range, then clip negatives at 0
     x1s = np.clip(detections[:, 0] / input_size, 0, 1)
@@ -602,21 +540,12 @@ def parse_yolon26_output(onnx_results, image: np.ndarray, onnx_config: dict, con
     confidences = confidences[valid_mask]
     class_ids = class_ids[valid_mask]
     
-    # <DEBUG> Print normalized coordinates
-    DEBUG = True  # Set to False to disable debug logging
-    if DEBUG:
+    # Debug checkpoint: detection count
+    DEBUG = True
+    if DEBUG and len(confidences) > 0:
         from hailo_apps.python.core.common.hailo_logger import get_logger
         logger = get_logger(__name__)
-        logger.info("=" * 80)
-        logger.info("DEBUG parse_yolon26: After normalization (coords 0-1, clipped)")
-        logger.info(f"  Total detections after threshold {score_threshold}: {len(confidences)}")
-        if len(confidences) > 0:
-            top_5 = min(5, len(confidences))
-            top_indices = np.argsort(confidences)[-top_5:][::-1]
-            logger.info(f"  Top {top_5} detections (normalized coords 0-1):")
-            for idx in top_indices:
-                logger.info(f"    Class {class_ids[idx]}, Score: {confidences[idx]:.3f}, Box: [x1={x1s[idx]:.3f}, y1={y1s[idx]:.3f}, x2={x2s[idx]:.3f}, y2={y2s[idx]:.3f}]")
-    # </DEBUG>
+        logger.info(f"YOLOv26n detections after threshold {score_threshold}: {len(confidences)}")
     
     # Group by class ID in HailoRT-NMS format: list of per-class detections
     # Each detection must match HailoRT-NMS output format which is [ymin, xmin, ymax, xmax, score]

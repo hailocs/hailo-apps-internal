@@ -142,13 +142,6 @@ def normalized_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.n
     
     # Convert to float32 and normalize to 0-1
     normalized_image = padded_image.astype(np.float32) / 255.0
-    
-    # <DEBUG>
-    DEBUG = True
-    if DEBUG:
-        logger.info(f"DEBUG normalized_preprocess: output shape={normalized_image.shape}, dtype={normalized_image.dtype}, min={normalized_image.min():.3f}, max={normalized_image.max():.3f}, mean={normalized_image.mean():.3f}")
-    # </DEBUG>
-    
     return normalized_image
 
 
@@ -386,12 +379,6 @@ def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, inpu
     Returns:
         None
     """
-    # <DEBUG>
-    DEBUG = True
-    if DEBUG:
-        logger.info(">>> infer_full_onnx() starting (intermediate + postprocess)")
-    # </DEBUG>
-    
     # Build reverse mapping: ONNX tensor name -> HEF tensor name
     tensor_mapping = onnx_config.get("output_tensor_mapping", {})
     onnx_to_hef = {onnx_name: hef_name for hef_name, (onnx_name, _) in tensor_mapping.items()}
@@ -413,11 +400,6 @@ def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, inpu
             else:
                 onnx_input = np.expand_dims(preprocessed_frame, axis=0)
             
-            # <DEBUG>
-            if DEBUG:
-                logger.info(f"DEBUG infer_full_onnx: onnx_input shape={onnx_input.shape}, dtype={onnx_input.dtype}, min={onnx_input.min():.3f}, max={onnx_input.max():.3f}, mean={onnx_input.mean():.3f}")
-            # </DEBUG>
-            
             # Convert to float32 and normalize to 0-1 if needed
             if onnx_input.dtype == np.uint8:
                 onnx_input = onnx_input.astype(np.float32) / 255.0
@@ -427,13 +409,6 @@ def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, inpu
             intermediate_output_names = [out.name for out in intermediate_session.get_outputs()]
             intermediate_results = intermediate_session.run(intermediate_output_names, {intermediate_input_name: onnx_input})
             
-            # <DEBUG>
-            if DEBUG:
-                logger.info(f"DEBUG infer_full_onnx: Intermediate outputs (HEF-like tensors):")
-                for name, tensor in zip(intermediate_output_names[:2], intermediate_results[:2]):
-                    logger.info(f"  {name}: shape={tensor.shape}, dtype={tensor.dtype}, min={tensor.min():.3f}, max={tensor.max():.3f}, mean={tensor.mean():.3f}")
-            # </DEBUG>
-            
             # Apply sigmoid to specified intermediate tensors (e.g., class score tensors)
             # This is configured via intermediate_tensors_to_add_sigmoid in the ONNX config
             # For YOLOv26n: should be the classifier layers (conv64/80/94) with 80 channels,
@@ -442,10 +417,7 @@ def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, inpu
             if tensors_to_sigmoid:
                 for idx, onnx_name in enumerate(intermediate_output_names):
                     if onnx_name in tensors_to_sigmoid:
-                        tensor = intermediate_results[idx]
-                        intermediate_results[idx] = 1.0 / (1.0 + np.exp(-tensor))  # sigmoid
-                        if DEBUG:
-                            logger.info(f"  Applied sigmoid to '{onnx_name}': min={intermediate_results[idx].min():.3f}, max={intermediate_results[idx].max():.3f}")
+                        intermediate_results[idx] = 1.0 / (1.0 + np.exp(-intermediate_results[idx]))
             
             # Map ONNX tensor names to HEF tensor names for compatibility with extract_detections_onnx
             result = {}
