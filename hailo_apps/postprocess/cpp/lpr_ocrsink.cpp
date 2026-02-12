@@ -63,6 +63,8 @@ static bool g_summary_printed = false;
 
 static void print_final_summary()
 {
+    // Summary printing disabled
+    return;
     if (g_summary_printed)
         return;
     g_summary_printed = true;

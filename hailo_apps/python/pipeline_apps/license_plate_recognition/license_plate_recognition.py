@@ -579,14 +579,12 @@ def app_callback(element, buffer, user_data):
         vehicle_info = user_data.vehicle_tracks.get(track_id, {}) if track_id is not None else {}
         vehicle_conf = vehicle_info.get("confidence")
         
-        # Clean output: Track ID | Vehicle Conf | LP Det Conf | Plate | OCR Conf
-        track_str = f"Track {track_id}" if track_id is not None else "No Track"
-        vehicle_conf_str = f"{vehicle_conf:.2f}" if vehicle_conf is not None else "N/A"
-        plate_det_str = f"{plate_det_conf:.2f}" if plate_det_conf is not None else "N/A"
+        # Clean output: LP Det Conf | Plate | OCR Conf
+        plate_det_pct = f"{plate_det_conf * 100:.0f}%" if plate_det_conf is not None else "N/A"
+        ocr_pct = f"{confidence * 100:.0f}%"
         
         print(
-            f"[LPR] {track_str} | Vehicle: {vehicle_conf_str} | LP Det: {plate_det_str} | "
-            f"Plate: '{normalized_label}' | OCR: {confidence:.2f}"
+            f"LP Det Conf.: {plate_det_pct} | Plate: '{normalized_label}' | OCR Conf.: {ocr_pct}"
         )
         lpr_dbg(
             "callback: accepted track=%s plate='%s' conf=%.3f",
@@ -768,9 +766,7 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         raise
     finally:
-        # Print summary on exit
-        if user_data is not None:
-            print_ocr_summary(user_data)
+        pass
 
 
 if __name__ == "__main__":
