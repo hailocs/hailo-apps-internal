@@ -19,9 +19,6 @@
 #include <mutex>
 #include <vector>
 #include <string>
-#include <set>
-#include <csignal>
-#include <chrono>
 
 // Open source includes (must be before hailomat_internal.hpp)
 #include <opencv2/opencv.hpp>
@@ -47,115 +44,6 @@ const gchar *OCR_LABEL_TYPE = "text_region";
 const gchar *LPR_RESULT_LABEL_TYPE = "lpr_result";
 std::string tracker_name = "hailo_tracker";
 static std::atomic<unsigned long long> g_lpr_frame_counter{0};
-
-// Storage for all detected plates (for final summary)
-struct DetectedPlate
-{
-    int track_id;
-    std::string plate_text;
-    float confidence;
-    unsigned long long first_frame;
-    int count; // How many times this exact plate was seen
-};
-static std::vector<DetectedPlate> g_all_detected_plates;
-static std::mutex g_plates_mutex;
-static bool g_summary_printed = false;
-
-static void print_final_summary()
-{
-    // Summary printing disabled
-    return;
-    if (g_summary_printed)
-        return;
-    g_summary_printed = true;
-
-    std::lock_guard<std::mutex> lock(g_plates_mutex);
-
-    // Count unique tracks
-    std::set<int> unique_tracks;
-    for (const auto &plate : g_all_detected_plates)
-        unique_tracks.insert(plate.track_id);
-
-    std::cout << "\n";
-    std::cout << "╔═══════════════════════════════════════════════════════════════════════╗\n";
-    std::cout << "║                       LPR DETECTION SUMMARY                           ║\n";
-    std::cout << "╠═══════════════════════════════════════════════════════════════════════╣\n";
-    std::cout << "║  Total frames processed: " << std::setw(10) << g_lpr_frame_counter.load() << "                               ║\n";
-    std::cout << "║  Unique vehicles with LP: " << std::setw(9) << unique_tracks.size() << "                               ║\n";
-    std::cout << "║  Total OCR results:       " << std::setw(9) << g_all_detected_plates.size() << "                               ║\n";
-    std::cout << "╠═══════════════════════════════════════════════════════════════════════╣\n";
-
-    if (g_all_detected_plates.empty())
-    {
-        std::cout << "║  No license plates were detected.                                   ║\n";
-    }
-    else
-    {
-        std::cout << "║  Track ID │ Plate Number │ Confidence │ Frame  │ Count              ║\n";
-        std::cout << "╠══════════╪══════════════╪════════════╪════════╪════════════════════╣\n";
-        for (const auto &plate : g_all_detected_plates)
-        {
-            std::cout << "║  " << std::setw(7) << plate.track_id << "  │ "
-                      << std::setw(12) << plate.plate_text << " │ "
-                      << std::fixed << std::setprecision(1) << std::setw(9) << (plate.confidence * 100.0f) << "% │ "
-                      << std::setw(6) << plate.first_frame << " │ "
-                      << std::setw(5) << plate.count << "              ║\n";
-        }
-    }
-
-    std::cout << "╚═══════════════════════════════════════════════════════════════════════╝\n";
-    std::cout << std::flush;
-}
-
-static void add_detected_plate(int track_id, const std::string &plate_text, float confidence, unsigned long long frame_id)
-{
-    std::lock_guard<std::mutex> lock(g_plates_mutex);
-
-    // Check if we already have this exact track_id + plate_text combination
-    for (auto &plate : g_all_detected_plates)
-    {
-        if (plate.track_id == track_id && plate.plate_text == plate_text)
-        {
-            // Same plate seen again - increment count and update confidence if higher
-            plate.count++;
-            if (confidence > plate.confidence)
-                plate.confidence = confidence;
-            return;
-        }
-    }
-
-    // New plate (either new track_id or different plate_text for same track)
-    g_all_detected_plates.push_back({track_id, plate_text, confidence, frame_id, 1});
-}
-
-// Signal handler for graceful shutdown
-static void signal_handler(int signum)
-{
-    (void)signum;
-    print_final_summary();
-    std::exit(0);
-}
-
-// Register handlers for summary printing
-static struct LprSummaryInitializer
-{
-    LprSummaryInitializer()
-    {
-        std::atexit(print_final_summary);
-        std::signal(SIGINT, signal_handler);
-        std::signal(SIGTERM, signal_handler);
-    }
-} g_lpr_summary_initializer;
-
-// Track last frame time for idle detection
-static std::atomic<unsigned long long> g_last_frame_time_ms{0};
-static std::atomic<bool> g_idle_check_started{false};
-
-static unsigned long long get_current_time_ms()
-{
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-}
 
 static bool lpr_debug_enabled()
 {
@@ -765,9 +653,6 @@ void ocr_sink(HailoROIPtr roi, std::shared_ptr<HailoMat> hmat, unsigned long lon
                 lpr_dbg("ocr_sink: [veh %d][lp %d] adding track_id=%d to seen list", veh_idx, lp_idx, track_id);
                 seen_ocr_track_ids.emplace_back(track_id);
 
-                // Store plate for final summary
-                add_detected_plate(track_id, normalized_label, confidence, frame_id);
-
                 lpr_dbg("ocr_sink: [veh %d][lp %d] adding OCR result classification type='%s' label='%s'",
                         veh_idx, lp_idx, LPR_RESULT_LABEL_TYPE, normalized_label.c_str());
                 HailoClassificationPtr final_classification = std::make_shared<HailoClassification>(
@@ -805,78 +690,6 @@ void ocr_sink(HailoROIPtr roi, std::shared_ptr<HailoMat> hmat, unsigned long lon
     return;
 }
 
-extern "C" void lp_only_ocrsink(HailoROIPtr roi, void *params_void_ptr)
-{
-    (void)params_void_ptr;
-    if (!roi)
-        return;
-
-    auto lp_detections = hailo_common::get_hailo_detections(roi);
-    const bool log_enabled = lpr_debug_enabled();
-    if (log_enabled)
-        std::cout << "[LPR_OCSINK_LP] detections=" << lp_detections.size() << " (LP-only path)" << std::endl;
-
-    for (size_t lp_idx = 0; lp_idx < lp_detections.size(); ++lp_idx)
-    {
-        auto lp_detection = lp_detections[lp_idx];
-        auto uid = hailo_common::get_hailo_unique_id(lp_detection);
-        int track_id = uid.empty() ? -1 : uid[0]->get_id();
-
-        auto classifications = hailo_common::get_hailo_classifications(lp_detection);
-        if (log_enabled)
-            std::cout << "[LPR_OCSINK_LP] [lp " << lp_idx << "] track_id=" << track_id
-                      << " cls_count=" << classifications.size() << std::endl;
-        if (classifications.empty())
-            continue;
-
-        // Use first classification (expected OCR)
-        auto cls = classifications[0];
-        std::string cls_type = cls->get_classification_type();
-        std::string raw = cls->get_label();
-        float conf = cls->get_confidence();
-        if (cls_type != OCR_LABEL_TYPE)
-        {
-            if (log_enabled)
-                std::cout << "[LPR_OCSINK_LP] [lp " << lp_idx << "] skip cls_type='" << cls_type << "'" << std::endl;
-            continue;
-        }
-
-        std::string normalized;
-        bool ok = normalize_ocr_label_for_country(get_lpr_country(), raw, normalized);
-        if (!ok)
-        {
-            if (log_enabled)
-                std::cout << "[LPR_OCSINK_LP] [lp " << lp_idx << "] reject raw='" << raw << "'" << std::endl;
-            continue;
-        }
-
-        if (log_enabled)
-            std::cout << "[LPR_OCSINK_LP] [lp " << lp_idx << "] OCR='" << normalized
-                      << "' conf=" << std::fixed << std::setprecision(2) << conf
-                      << " track_id=" << track_id << std::endl;
-
-        auto final_cls = std::make_shared<HailoClassification>(LPR_RESULT_LABEL_TYPE, normalized, conf);
-        lp_detection->add_object(final_cls);
-        seen_ocr_track_ids.emplace_back(track_id);
-
-        // Store plate for final summary
-        add_detected_plate(track_id, normalized, conf, g_lpr_frame_counter.load());
-
-        if (track_id >= 0)
-        {
-            try
-            {
-                HailoTracker::GetInstance().add_object_to_track(tracker_name + "_" + roi->get_stream_id(),
-                                                                track_id,
-                                                                final_cls);
-            }
-            catch (...)
-            {
-            }
-        }
-    }
-}
-
 void filter(HailoROIPtr roi, GstVideoFrame *frame)
 {
     lpr_log_settings();
@@ -911,20 +724,5 @@ void filter(HailoROIPtr roi, GstVideoFrame *frame)
 
     ocr_sink(roi, hmat, frame_id);
 
-    // Update last frame time for idle detection
-    g_last_frame_time_ms.store(get_current_time_ms());
-
     lpr_dbg("========== lpr_ocrsink filter: EXIT ==========");
-}
-
-// Called when EOS is received - print final summary
-extern "C" void lpr_ocrsink_eos()
-{
-    print_final_summary();
-}
-
-// Can be called to force summary print (e.g., from Python)
-extern "C" void lpr_print_summary()
-{
-    print_final_summary();
 }

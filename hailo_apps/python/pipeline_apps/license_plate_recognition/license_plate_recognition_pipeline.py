@@ -177,24 +177,7 @@ class GStreamerLPRApp(GStreamerApp):
         self.create_pipeline()
 
     def on_eos(self):
-        """
-        Handle end of stream event.
-
-        Attempts to print LPR summary from C++ ocrsink and then shuts down the pipeline.
-        """
-        hailo_logger.info("LPR on_eos: End of stream - printing summary and exiting")
-
-        # Print LPR summary from C++ ocrsink
-        try:
-            import ctypes
-            # Use the resolved ocrsink path instead of hardcoded path
-            ocrsink_lib = ctypes.CDLL(self.ocrsink_so)
-            if hasattr(ocrsink_lib, "lpr_print_summary"):
-                ocrsink_lib.lpr_print_summary()
-        except Exception as exc:
-            hailo_logger.debug("Failed to call lpr_print_summary: %s", exc)
-
-        # For LPR pipeline, exit after first video pass instead of looping
+        """Handle end of stream: exit after first video pass instead of looping."""
         hailo_logger.info("LPR pipeline completed - shutting down")
         self.shutdown()
 

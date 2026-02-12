@@ -2,7 +2,6 @@
 import os
 import sys
 import re
-from datetime import datetime
 
 # Third-party imports
 import gi
@@ -10,10 +9,6 @@ import gi
 gi.require_version("Gst", "1.0")
 
 import hailo
-try:
-    from hailo import HailoTracker
-except Exception:  # pragma: no cover
-    HailoTracker = None
 
 # Local application-specific imports
 from hailo_apps.python.pipeline_apps.license_plate_recognition.license_plate_recognition_pipeline import (
@@ -42,51 +37,17 @@ def lpr_dbg(msg: str, *args) -> None:
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
-        self.output_file = "ocr_results.txt"
-        self.save_ocr_results = False  # Enable/disable OCR result saving
-        self.disable_found_lp_gate = False
 
         # Per-track state
         self.found_lp_tracks: set[int] = set()
         self.plate_texts: dict[int, tuple[str, float]] = {}  # track_id -> (plate_text, ocr_confidence)
         self.vehicle_tracks: dict[int, dict] = {}
-        self.ocr_results: dict[int, list] = {}  # track_id -> list of (plate_text, confidence, frame_num, timestamp)
-        self._start_time = datetime.now()
-        
-        # Initialize OCR results file with header
-        if self.save_ocr_results:
-            with open(self.output_file, "w", encoding="utf-8") as f:
-                f.write(f"# LPR OCR Results - Started at {self._start_time.isoformat()}\n")
-                f.write("# Format: Frame | Timestamp | Track_ID | Plate_Text | Confidence\n")
-                f.write("-" * 80 + "\n")
-
-    def write_ocr_text(self, text: str, confidence: float | None = None, track_id: int | None = None) -> None:
-        if not self.save_ocr_results:
-            return
-            
-        frame_num = self.get_count()
-        elapsed = (datetime.now() - self._start_time).total_seconds()
-        timestamp = f"{elapsed:.2f}s"
-        track_str = str(track_id) if track_id is not None else "N/A"
-        conf_str = f"{confidence:.2f}" if confidence is not None else "N/A"
-        
-        # Store in memory for potential later use
-        if track_id is not None:
-            if track_id not in self.ocr_results:
-                self.ocr_results[track_id] = []
-            self.ocr_results[track_id].append((text, confidence, frame_num, elapsed))
-        
-        # Write to file
-        with open(self.output_file, "a", encoding="utf-8") as f:
-            f.write(f"Frame {frame_num:6d} | {timestamp:>8s} | Track {track_str:>4s} | {text:<20s} | Conf: {conf_str}\n")
 
     def reset_state(self) -> None:
         """Reset per-run state when the pipeline restarts (e.g., video loops)."""
         self.found_lp_tracks.clear()
         self.plate_texts.clear()
         self.vehicle_tracks.clear()
-        self.ocr_results.clear()
-        self._start_time = datetime.now()
 
 
 def _iter_classifications(roi):
@@ -139,16 +100,6 @@ def _no_skip_enabled() -> bool:
     return _parse_bool_env("HAILO_LPR_NO_SKIP", False)
 
 
-def _should_hide_lp_overlay() -> bool:
-    """Check if LP overlay should be hidden (only draw vehicles, not license plates)."""
-    return _parse_bool_env("HAILO_LPR_HIDE_LP", False)
-
-
-def _should_update_track_labels() -> bool:
-    """Check if track labels should be updated when a valid plate is found."""
-    return _parse_bool_env("HAILO_LPR_UPDATE_LABELS", True)
-
-
 def _parse_int_env(name: str, default: int) -> int:
     val = os.getenv(name)
     if val is None:
@@ -159,23 +110,7 @@ def _parse_int_env(name: str, default: int) -> int:
         return default
 
 
-def _parse_int_set_env(name: str, default: set[int]) -> set[int]:
-    val = os.getenv(name)
-    if not val:
-        return default
-    out: set[int] = set()
-    for token in val.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            out.add(int(token))
-        except ValueError:
-            continue
-    return out or default
-
-
-def _normalize_ocr_label(raw_label: str, allow_alpha: bool) -> str:
+def _normalize_ocr_label(raw_label: str) -> str:
     # Always keep alphanumeric, uppercase
     return re.sub(r"[^0-9A-Za-z]", "", raw_label).upper()
 
@@ -184,37 +119,31 @@ def _normalize_ocr_label(raw_label: str, allow_alpha: bool) -> str:
 IGNORED_TEXTS = {"TAXI", "BUS", "STOP", "EXIT"}
 
 
-def _is_plate_valid(normalized_label: str, min_len: int, max_len: int, preferred_lens: set[int], 
-                     allow_alpha: bool, country: str, confidence: float) -> bool:
-    """Check if a license plate is valid - simple length check and TAXI filter.
-    
+def _is_plate_valid(normalized_label: str, min_len: int, max_len: int) -> bool:
+    """Check if a license plate text is valid.
+
     Args:
         normalized_label: The normalized plate text
         min_len: Minimum acceptable length
         max_len: Maximum acceptable length
-        preferred_lens: Set of preferred lengths (unused)
-        allow_alpha: Whether alphabetic characters are allowed (unused)
-        country: Country code (unused)
-        confidence: OCR confidence score (unused)
-        
+
     Returns:
         True if the plate is considered valid, False otherwise
     """
     # Filter common false positives
     if normalized_label in IGNORED_TEXTS:
         return False
-    
+
     # Basic length check
     if not (min_len <= len(normalized_label) <= max_len):
         return False
-    
+
     return True
 
 
 def app_callback(element, buffer, user_data):
     frame_count = user_data.get_count() if hasattr(user_data, "get_count") else "n/a"
     lpr_dbg("callback: ENTER frame=%s", getattr(user_data, "get_count", lambda: "n/a")())
-    frame_tag = f"Frame {frame_count} " if (lpr_debug_enabled() or _no_skip_enabled()) else ""
     if buffer is None:
         lpr_dbg("callback: buffer is None => EXIT")
         return
@@ -260,16 +189,13 @@ def app_callback(element, buffer, user_data):
     
     # Collect all classifications for debugging and processing
     all_classifications = list(_iter_classifications(roi))
-    ocr_results = [(det, cls, veh_track) for det, cls, veh_track in all_classifications 
-                   if (cls.get_classification_type() if hasattr(cls, 'get_classification_type') else "") == "text_region"]
-    
+
     # DEBUG: Print frame summary (opt-in via HAILO_LPR_DEBUG)
     if lpr_debug_enabled():
         vehicle_tracks = [t for t, _ in vehicles]
         print(
             f"[DEBUG] Frame {frame_count}: vehicles={len(vehicles)} (tracks={vehicle_tracks}), "
-            f"plates={len(plates)}, nested_plates={sum(len(v) for v in nested_plates_by_track.values())}, "
-            f"OCR_results={len(ocr_results)}"
+            f"plates={len(plates)}, nested_plates={sum(len(v) for v in nested_plates_by_track.values())}"
         )
 
         # DEBUG: Show all classifications found (including non-OCR)
@@ -337,21 +263,9 @@ def app_callback(element, buffer, user_data):
             "found_lp": bool(found),
         }
 
-    # Process OCR results - simple config, no country-specific logic
+    # Process OCR results
     min_len = max(1, _parse_int_env("HAILO_LPR_MIN_LEN", 4))  # Default min 4 chars
     max_len = max(min_len, _parse_int_env("HAILO_LPR_MAX_LEN", 10))  # Default max 10 chars
-    preferred_lens = set()  # Not used
-    allow_alpha = True  # Always allow letters
-    country = "ALL"  # Not used
-    
-    vehicles_by_track = {track_id: vdet for track_id, vdet in vehicles}
-    try:
-        tracker = HailoTracker.get_instance() if HailoTracker is not None else None
-        tracker_names = tracker.get_trackers_list() if tracker is not None else []
-        tracker_name = tracker_names[0] if tracker_names else None
-    except Exception:
-        tracker = None
-        tracker_name = None
 
     accepted_ocr = 0
     best_by_track: dict[int | None, dict] = {}
@@ -366,7 +280,7 @@ def app_callback(element, buffer, user_data):
             continue
 
         raw_label = label.strip()
-        normalized_label = _normalize_ocr_label(raw_label, allow_alpha)
+        normalized_label = _normalize_ocr_label(raw_label)
         confidence = cls.get_confidence()
         track_id = None
         plate_det_conf = None
@@ -381,11 +295,9 @@ def app_callback(element, buffer, user_data):
         # Length check - silently skip if too short/long
         if not (min_len <= len(normalized_label) <= max_len):
             continue
-        score = (len(normalized_label) in preferred_lens, len(normalized_label))
         existing = best_by_track.get(track_id)
-        if existing is None or score > existing["score"]:
+        if existing is None or len(normalized_label) > len(existing["label"]):
             best_by_track[track_id] = {
-                "score": score,
                 "label": normalized_label,
                 "confidence": float(confidence),
                 "track_id": track_id,
@@ -393,12 +305,12 @@ def app_callback(element, buffer, user_data):
                 "plate_det_conf": plate_det_conf,
             }
             lpr_dbg(
-                "callback: candidate track=%s raw='%s' norm='%s' conf=%.3f score=%s",
+                "callback: candidate track=%s raw='%s' norm='%s' conf=%.3f len=%d",
                 track_id if track_id is not None else "None",
                 raw_label,
                 normalized_label,
                 float(confidence),
-                score,
+                len(normalized_label),
             )
 
     for candidate in best_by_track.values():
@@ -416,20 +328,11 @@ def app_callback(element, buffer, user_data):
             normalized_label=normalized_label,
             min_len=min_len,
             max_len=max_len,
-            preferred_lens=preferred_lens,
-            allow_alpha=allow_alpha,
-            country=country,
-            confidence=confidence
         )
         
         if not is_valid:
-            # Silently skip invalid plates (filtered by TAXI etc)
             continue
 
-        # Get vehicle info for this track
-        vehicle_info = user_data.vehicle_tracks.get(track_id, {}) if track_id is not None else {}
-        vehicle_conf = vehicle_info.get("confidence")
-        
         # Clean output: LP Det Conf | Plate | OCR Conf
         plate_det_pct = f"{plate_det_conf * 100:.0f}%" if plate_det_conf is not None else "N/A"
         ocr_pct = f"{confidence * 100:.0f}%"
@@ -451,69 +354,6 @@ def app_callback(element, buffer, user_data):
             skip_lp_tracks.add(track_id)
             if track_id in user_data.vehicle_tracks:
                 user_data.vehicle_tracks[track_id]["found_lp"] = True
-
-        # Attach the accepted plate text to the detection and tracker.
-        if det is not None:
-            try:
-                existing_cls = det.get_objects_typed(hailo.HAILO_CLASSIFICATION)
-                for ec in existing_cls:
-                    if ec.get_classification_type() == "found_lp":
-                        det.remove_object(ec)
-                plate_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
-                det.add_object(plate_cls)
-                
-                # Optionally change the detection label to indicate it has a valid plate
-                if _should_update_track_labels():
-                    try:
-                        current_label = det.get_label()
-                        if current_label == "license_plate":
-                            # Change label to indicate validated plate (optional)
-                            # You can customize this label as needed
-                            det.set_label(f"license_plate_validated")
-                        elif current_label and "license_plate" in current_label.lower():
-                            # Already has some plate-related label, update it
-                            det.set_label(f"license_plate_validated")
-                    except Exception:
-                        # set_label might not be available in Python API, skip silently
-                        lpr_dbg("callback: set_label not available for detection, skipping label update")
-                        pass
-                
-                if tracker and tracker_name and track_id is not None:
-                    try:
-                        tracker.remove_classifications_from_track(tracker_name, track_id, "found_lp")
-                        tracker.add_object_to_track(tracker_name, track_id, plate_cls)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-        # Replace the "yes/100%" overlay with the actual plate text when vehicles exist.
-        if track_id is not None and track_id in vehicles_by_track:
-            vdet = vehicles_by_track[track_id]
-            try:
-                existing_cls = vdet.get_objects_typed(hailo.HAILO_CLASSIFICATION)
-                for ec in existing_cls:
-                    if ec.get_classification_type() == "found_lp":
-                        vdet.remove_object(ec)
-                vehicle_cls = hailo.HailoClassification(type="found_lp", label=normalized_label, confidence=float(confidence))
-                vdet.add_object(vehicle_cls)
-                
-                # Optionally change the vehicle detection label to indicate it has a validated plate
-                if _should_update_track_labels():
-                    try:
-                        current_label = vdet.get_label()
-                        if current_label == "vehicle":
-                            vdet.set_label("vehicle_with_plate")
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-        
-        # Save to file
-        try:
-            user_data.write_ocr_text(normalized_label, confidence, track_id)
-        except Exception as e:
-            hailo_logger.debug(f"Failed writing OCR text: {e}")
 
     lpr_dbg("callback: accepted_ocr=%d", accepted_ocr)
 
@@ -538,51 +378,6 @@ def app_callback(element, buffer, user_data):
     return
 
 
-def print_ocr_summary(user_data):
-    """Print a summary of all OCR results at the end of the run."""
-    if os.getenv("HAILO_LPR_SILENT", "0").lower() not in ("", "0", "false", "no"):
-        return
-    if not hasattr(user_data, 'ocr_results') or not user_data.ocr_results:
-        print("\n" + "=" * 60)
-        print("LPR Summary: No license plates detected")
-        print("=" * 60)
-        return
-    
-    print("\n" + "=" * 60)
-    print("LPR Summary - Detected License Plates")
-    print("=" * 60)
-    
-    total_detections = 0
-    unique_plates = set()
-    
-    for track_id, results in user_data.ocr_results.items():
-        if results:
-            # Get the most confident result for this track
-            best_result = max(results, key=lambda x: x[1] if x[1] else 0)
-            plate_text, confidence, frame_num, elapsed = best_result
-            unique_plates.add(plate_text)
-            total_detections += len(results)
-            print(f"  Track {track_id:4d}: {plate_text:<15s} (Best conf: {confidence:.2f}, First seen: frame {frame_num})")
-    
-    print("-" * 60)
-    print(f"Total unique tracks with LP: {len(user_data.ocr_results)}")
-    print(f"Total unique plate texts:    {len(unique_plates)}")
-    print(f"Total OCR detections:        {total_detections}")
-    print(f"Results saved to:            {user_data.output_file}")
-    print("=" * 60)
-    
-    # Also append summary to the output file
-    if user_data.save_ocr_results:
-        with open(user_data.output_file, "a", encoding="utf-8") as f:
-            f.write("\n" + "-" * 80 + "\n")
-            f.write(f"# Summary - {datetime.now().isoformat()}\n")
-            f.write(f"# Unique tracks with LP: {len(user_data.ocr_results)}\n")
-            f.write(f"# Unique plate texts: {len(unique_plates)}\n")
-            f.write(f"# Total OCR detections: {total_detections}\n")
-            if unique_plates:
-                f.write(f"# Unique plates: {', '.join(sorted(unique_plates))}\n")
-
-
 def main():
     hailo_logger.info("Starting Hailo LPR App...")
     user_data = None
@@ -597,8 +392,6 @@ def main():
         hailo_logger.error(f"Error in main: {e}", exc_info=True)
         print(f"Error: {e}", file=sys.stderr)
         raise
-    finally:
-        pass
 
 
 if __name__ == "__main__":

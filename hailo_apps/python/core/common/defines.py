@@ -350,7 +350,6 @@ LPR_PLATE_MODEL_NAME = "hailo_yolov8n_4_classes_vga"
 LPR_YOLO_POSTPROCESS_SO_FILENAME = "libyolo_hailortpp_postprocess.so"
 LPR_PLATE_POSTPROCESS_FUNCTION = "filter_letterbox"
 LPR_CROPPERS_SO_FILENAME = "liblpr_croppers.so"
-LPR_LP_CROPPER_FUNCTION = "license_plate_cropper"
 LPR_OCRSINK_SO_FILENAME = "liblpr_ocrsink.so"
 LPR_VIDEO_NAME = "lpr_video.mp4"
 

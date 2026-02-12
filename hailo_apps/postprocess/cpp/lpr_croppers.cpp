@@ -9,7 +9,6 @@
 #include <mutex>
 
 #define LICENSE_PLATE_LABEL "license_plate"
-#define RECOGNIZED_LABEL "hailo_lpr_recognized"
 
 // Static ROI rectangle - covers the full frame
 static constexpr float STATIC_ROI_XMIN = 0.0f;
@@ -34,7 +33,7 @@ std::vector<HailoROIPtr> license_plate_cropper(std::shared_ptr<HailoMat> image, 
         // So we set main_class == crop_class to search at the top level
         config.main_class = LICENSE_PLATE_LABEL;
         config.crop_class = LICENSE_PLATE_LABEL;
-        config.recognition_type = RECOGNIZED_LABEL;
+        config.recognition_type = "hailo_lpr_recognized";
         config.max_crops_per_frame = 4;
         config.min_width_px = 40.0f;
         config.min_height_px = 15.0f;
