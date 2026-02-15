@@ -1738,11 +1738,11 @@ extern "C" void lpr_post_process(HailoROIPtr roi, void *params_void_ptr)
                 std::cout << "[lpr_ocr_pp][ocr] cache_hit invoke=" << invoke_id
                           << " track_id=" << track_id
                           << " plate='" << it->second.text << "' -> skip decode" << std::endl;
+                std::cout << "[lpr_post_process] text='" << it->second.text
+                          << "' conf=" << std::fixed << std::setprecision(3) << it->second.confidence
+                          << " track_id=" << track_id
+                          << " stream_id='" << roi->get_stream_id() << "' cache=hit" << std::endl;
             }
-            std::cout << "[lpr_post_process] text='" << it->second.text
-                      << "' conf=" << std::fixed << std::setprecision(3) << it->second.confidence
-                      << " track_id=" << track_id
-                      << " stream_id='" << roi->get_stream_id() << "' cache=hit" << std::endl;
             return;
         }
         if (track_id >= 0)
