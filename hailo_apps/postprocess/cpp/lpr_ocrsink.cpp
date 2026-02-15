@@ -29,7 +29,7 @@
 // Hailo includes
 #include "hailo_objects.hpp"
 #include "hailo_common.hpp"
-#include "hailomat.hpp"
+#include "hailomat_compat.hpp"
 #include "lpr_ocrsink.hpp"
 #include "hailo_cv_singleton.hpp"
 #include "hailo_tracker.hpp"
@@ -331,7 +331,7 @@ void catalog_license_plate(std::string label, float confidence, HailoBBox licens
         lpr_dbg("catalog_license_plate: null HailoMat (label='%s')", label.c_str());
         return;
     }
-    cv::Mat &mat = hmat->get_matrices()[0];
+    cv::Mat &mat = get_cv_matrices(*hmat)[0];
     // Prepare the cropped license plate and text
     std::string text = label + " " + std::to_string((int)(confidence * 100)) + "%";
     cv::Rect rect;
@@ -372,7 +372,7 @@ void catalog_license_plate(std::string label, float confidence, HailoBBox licens
     std::vector<cv::Mat> cropped_image_vec;
     try
     {
-        cropped_image_vec = hmat->crop(safe_crop_roi);
+        cropped_image_vec = crop_to_cv_matrices(*hmat, safe_crop_roi);
     }
     catch (const cv::Exception &e)
     {

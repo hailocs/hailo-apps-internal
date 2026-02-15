@@ -9,7 +9,7 @@
 
 #include "generic_cropper.hpp"
 #include "hailo_common.hpp"
-#include "hailomat.hpp"
+#include "hailomat_compat.hpp"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -134,7 +134,7 @@ cv::Mat GenericCropper::get_crop_cv(std::shared_ptr<HailoMat> image, const Hailo
         return gray;
 
     auto crop_roi = std::make_shared<HailoROI>(bbox);
-    std::vector<cv::Mat> cropped = image->crop(crop_roi);
+    std::vector<cv::Mat> cropped = crop_to_cv_matrices(*image, crop_roi);
     if (cropped.empty() || cropped[0].empty())
         return gray;
 
@@ -212,7 +212,7 @@ void GenericCropper::save_crop(std::shared_ptr<HailoMat> image, const HailoBBox 
         return;
 
     auto crop_roi = std::make_shared<HailoROI>(bbox);
-    std::vector<cv::Mat> cropped = image->crop(crop_roi);
+    std::vector<cv::Mat> cropped = crop_to_cv_matrices(*image, crop_roi);
     if (cropped.empty() || cropped[0].empty())
         return;
 
