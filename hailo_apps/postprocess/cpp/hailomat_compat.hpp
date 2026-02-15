@@ -50,7 +50,9 @@ inline std::vector<cv::Mat> &get_cv_matrices(HailoMat &mat)
 
 inline const std::vector<cv::Mat> &get_cv_matrices(const HailoMat &mat)
 {
-    return mat.get_matrices();
+    // The old TAPPAS API only provides a non-const get_matrices().
+    // const_cast is safe here because we return a const reference.
+    return const_cast<HailoMat &>(mat).get_matrices();
 }
 
 #endif
