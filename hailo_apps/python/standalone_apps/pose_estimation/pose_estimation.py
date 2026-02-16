@@ -18,6 +18,7 @@ try:
         init_input_source,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
     )
 
@@ -38,6 +39,7 @@ except ImportError:
         init_input_source,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
     )
 
@@ -101,7 +103,7 @@ def inference_callback(
 
 
 
-def infer(hailo_inference, input_queue, output_queue):
+def infer(hailo_inference, input_queue, output_queue, stop_event):
     """
     Main inference loop that pulls data from the input queue, runs asynchronous
     inference, and pushes results to the output queue.
@@ -124,6 +126,9 @@ def infer(hailo_inference, input_queue, output_queue):
         if not next_batch:
             break  # Stop signal received
 
+        if stop_event.is_set():
+            continue  # Skip processing if stop signal is set
+
         input_batch, preprocessed_batch = next_batch
 
         # Prepare the callback for handling the inference result
@@ -138,7 +143,7 @@ def infer(hailo_inference, input_queue, output_queue):
 
     # Release resources and context
     hailo_inference.close()
-
+    output_queue.put(None)
 
 
 def run_inference_pipeline(
@@ -171,8 +176,8 @@ def run_inference_pipeline(
     Returns:
         None
     """
-    input_queue = Queue()
-    output_queue = Queue()
+    input_queue = Queue(60)
+    output_queue = Queue(60)
 
 
     pose_post_processing = PoseEstPostProcessing(
@@ -184,8 +189,12 @@ def run_inference_pipeline(
     )
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input_src, batch_size, camera_resolution)
+    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
+    cap_processing_mode = None
+    if cap is not None:
+        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
 
+    stop_event = threading.Event()
     fps_tracker = None
     if show_fps:
         fps_tracker = FrameRateTracker()
@@ -203,18 +212,18 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height)
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event)
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
+            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event)
         )
 
     infer_thread = threading.Thread(
         target=infer,
-        args=(hailo_inference, input_queue, output_queue)
+        args=(hailo_inference, input_queue, output_queue, stop_event)
     )
 
     infer_thread.start()
@@ -225,7 +234,6 @@ def run_inference_pipeline(
         fps_tracker.start()
     infer_thread.join()
     preprocess_thread.join()
-    output_queue.put(None)     # To signal processing process to exit
     postprocess_thread.join()
 
     if show_fps:
