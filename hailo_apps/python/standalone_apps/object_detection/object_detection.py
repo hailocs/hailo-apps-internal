@@ -7,7 +7,7 @@ from functools import partial
 from types import SimpleNamespace
 import numpy as np
 from pathlib import Path
-
+import collections
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
@@ -168,7 +168,6 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         logger.info(f"Results have been saved in {output_dir}")
 
 
-
 def infer(hailo_inference, input_queue, output_queue, stop_event):
     """
     Main inference loop that pulls data from the input queue, runs asynchronous
@@ -187,8 +186,11 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
     Returns:
         None
     """
-    while True:
+    # Limit number of concurrent async inferences
+    max_async_jobs = 20
+    pending_jobs = collections.deque()
 
+    while True:
         next_batch = input_queue.get()
         if not next_batch:
             break  # Stop signal received
@@ -205,13 +207,18 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
             output_queue=output_queue
         )
 
-        # Run async inference
-        hailo_inference.run(preprocessed_batch, inference_callback_fn)
 
+        while len(pending_jobs) >= max_async_jobs:
+            pending_jobs.popleft().wait(10000)
+
+        # Run async inference
+        job = hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        pending_jobs.append(job)
 
     # Release resources and context
     hailo_inference.close()
     output_queue.put(None)
+
 
 def inference_callback(
     completion_info,
