@@ -8,7 +8,7 @@ import numpy as np
 import threading
 from pathlib import Path
 from pose_estimation_utils import PoseEstPostProcessing
-
+import collections
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
@@ -121,6 +121,10 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
     Returns:
         None
     """
+    # Limit number of concurrent async inferences
+    max_async_jobs = 20
+    pending_jobs = collections.deque()
+
     while True:
         next_batch = input_queue.get()
         if not next_batch:
@@ -138,8 +142,13 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
             output_queue=output_queue
         )
 
+
+        while len(pending_jobs) >= max_async_jobs:
+            pending_jobs.popleft().wait(10000)
+
         # Run async inference
-        hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        job = hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        pending_jobs.append(job)
 
     # Release resources and context
     hailo_inference.close()

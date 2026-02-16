@@ -141,6 +141,7 @@ class HailoInfer:
             bindings_list,
             partial(inference_callback_fn, bindings_list=bindings_list)
         )
+        return self.last_infer_job
 
     def create_bindings(self, configured_model, input_batch):
         """
