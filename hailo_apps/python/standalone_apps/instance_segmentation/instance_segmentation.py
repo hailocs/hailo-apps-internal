@@ -22,6 +22,11 @@ try:
         select_cap_processing_mode,
         FrameRateTracker,
     )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )
     from hailo_apps.python.core.common.core import handle_and_resolve_args
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
@@ -43,6 +48,11 @@ except ImportError:
         preprocess,
         select_cap_processing_mode,
         FrameRateTracker,
+    )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
     )
     from hailo_apps.python.core.common.core import handle_and_resolve_args
     from hailo_apps.python.core.common.parser import get_standalone_parser
@@ -170,8 +180,8 @@ def run_inference_pipeline(
         tracker_config = config_data.get("visualization_params", {}).get("tracker", {})
         tracker = BYTETracker(SimpleNamespace(**tracker_config))
 
-    input_queue = queue.Queue(60)
-    output_queue = queue.Queue(60)
+    input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
+    output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
 
     hailo_inference = HailoInfer(
         net,
@@ -243,7 +253,6 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
         None
     """
     # Limit number of concurrent async inferences
-    max_async_jobs = 20
     pending_jobs = collections.deque()
 
     while True:
@@ -264,7 +273,7 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
         )
 
 
-        while len(pending_jobs) >= max_async_jobs:
+        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
             pending_jobs.popleft().wait(10000)
 
         # Run async inference

@@ -528,7 +528,7 @@ def id_to_color(idx):
 ####################################################################
 
 def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, framerate: float, batch_size: int,
-               input_queue: queue.Queue, width: int, height: int, cap_processing_mode: Optional[str],
+               input_queue: queue.Queue, width: int, height: int, cap_processing_mode: Optional[CapProcessingMode],
                preprocess_fn: Optional[Callable[[np.ndarray, int, int], np.ndarray]] = None,
                stop_event: Optional[threading.Event] = None) -> None:
 
@@ -838,17 +838,25 @@ def visualize(
             if result is None:
                 break
 
-            original_frame, inference_result, *rest = result
+            # result format:
+            # (frame, inference_result)                     → standard pipelines
+            # (frame, inference_result, extra_metadata...)  → pipelines that attach additional context
+            original_frame, inference_result, *metadata = result
 
+            # Quit mode:
+            # Frames may still arrive from other threads.
+            # We skip processing but keep draining the queue to prevent blocking.
             if quitting:
                 continue
-            # Normalize inference result
+
+            # Some pipelines return [tensor] instead of tensor → normalize format
             if isinstance(inference_result, list) and len(inference_result) == 1:
                 inference_result = inference_result[0]
 
             # Run visualization callback
-            if rest:
-                frame_with_detections = callback(original_frame, inference_result, rest[0])
+            # If extra metadata exists, pass it to the callback.
+            if metadata:
+                frame_with_detections = callback(original_frame, inference_result, metadata[0])
             else:
                 frame_with_detections = callback(original_frame, inference_result)
 
@@ -865,6 +873,8 @@ def visualize(
                 if save_stream_output and out is not None and frame_width and frame_height:
                     out.write(cv2.resize(frame_to_show, (frame_width, frame_height)))
 
+                # User pressed 'q' → start shutdown:
+                # set stop_event for other threads and skip further processing.
                 if (cv2.waitKey(1) & 0xFF) == ord("q"):
                     quitting = True
                     if stop_event is not None:
