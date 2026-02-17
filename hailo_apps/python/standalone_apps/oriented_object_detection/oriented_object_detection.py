@@ -37,6 +37,11 @@ try:
         select_cap_processing_mode,
         FrameRateTracker
     )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )
     from hailo_apps.python.core.common.defines import REPO_ROOT
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
@@ -61,6 +66,11 @@ except ImportError:
         visualize,
         select_cap_processing_mode,
         FrameRateTracker
+    )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
     )
     from hailo_apps.python.core.common.defines import REPO_ROOT
     from hailo_apps.python.core.common.parser import get_standalone_parser
@@ -93,7 +103,6 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     return args
-
 
 
 def oriented_object_detection_preprocess(image: np.ndarray, model_w: int, model_h: int, config_data: dict) -> np.ndarray:
@@ -152,8 +161,8 @@ def run_inference_pipeline(
     if show_fps:
         fps_tracker = FrameRateTracker()
 
-    input_queue = queue.Queue(60)
-    output_queue = queue.Queue(60)
+    input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
+    output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
 
     preprocess_callback_fn = partial(
         oriented_object_detection_preprocess,
@@ -238,7 +247,7 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
         )
 
 
-        while len(pending_jobs) >= max_async_jobs:
+        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
             pending_jobs.popleft().wait(10000)
 
         # Run async inference

@@ -21,7 +21,11 @@ try:
         select_cap_processing_mode,
         FrameRateTracker,
     )
-
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )
 except ImportError:
     repo_root = None
     for p in Path(__file__).resolve().parents:
@@ -42,7 +46,11 @@ except ImportError:
         select_cap_processing_mode,
         FrameRateTracker,
     )
-
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -122,7 +130,6 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
         None
     """
     # Limit number of concurrent async inferences
-    max_async_jobs = 20
     pending_jobs = collections.deque()
 
     while True:
@@ -143,7 +150,7 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
         )
 
 
-        while len(pending_jobs) >= max_async_jobs:
+        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
             pending_jobs.popleft().wait(10000)
 
         # Run async inference
@@ -185,8 +192,8 @@ def run_inference_pipeline(
     Returns:
         None
     """
-    input_queue = Queue(60)
-    output_queue = Queue(60)
+    input_queue = Queue(MAX_INPUT_QUEUE_SIZE)
+    output_queue = Queue(MAX_OUTPUT_QUEUE_SIZE)
 
 
     pose_post_processing = PoseEstPostProcessing(
