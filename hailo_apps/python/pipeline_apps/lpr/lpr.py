@@ -23,8 +23,16 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import GStreamerLPRApp
 
 # endregion imports
 
-# PaddleOCR character set (97 classes: blank at index 0, then printable ASCII)
-OCR_CHARACTERS = [
+# ---------------------------------------------------------------------------
+# LPRNet character set (digits only, CTC blank is last)
+# ---------------------------------------------------------------------------
+LPRNET_CHARS = "0123456789-"
+LPRNET_BLANK_IDX = len(LPRNET_CHARS) - 1
+
+# ---------------------------------------------------------------------------
+# PaddleOCR character set (97 classes: blank at index 0, full ASCII)
+# ---------------------------------------------------------------------------
+PADDLE_CHARACTERS = [
     "blank", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
     ":", ";", "<", "=", ">", "?", "@",
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -35,7 +43,7 @@ OCR_CHARACTERS = [
     "{", "|", "}", "~", "!", '"', "#", "$", "%", "&",
     "'", "(", ")", "*", "+", ",", "-", ".", "/", " ", " ",
 ]
-BLANK_IDX = 0
+PADDLE_BLANK_IDX = 0
 MIN_OCR_CONFIDENCE = 0.78
 MIN_LENGTH = 4
 SUMMARY_INTERVAL = 30  # seconds
@@ -49,24 +57,49 @@ MAX_LP_WIDTH_PIXELS = 600
 MAX_LP_HEIGHT_PIXELS = 200
 
 
-def ctc_greedy_decode(output_data):
-    """Decode PaddleOCR recognition output (1,40,97) to text with confidence."""
+def ctc_decode_lprnet(output_data):
+    """Decode LPRNet output (1,19,11) to license plate string (digits only)."""
+    data = np.array(output_data, dtype=np.float32)
+    if data.ndim == 3:
+        data = data[0]
+    data = data.reshape(19, 11)
+    # Softmax per time-step
+    data -= data.max(axis=1, keepdims=True)
+    exp_data = np.exp(data)
+    probs = exp_data / exp_data.sum(axis=1, keepdims=True)
+
+    indices = np.argmax(probs, axis=1)
+    max_probs = probs[np.arange(19), indices]
+
+    chars, confs = [], []
+    prev = LPRNET_BLANK_IDX
+    for i, idx in enumerate(indices):
+        if idx != prev and idx != LPRNET_BLANK_IDX:
+            chars.append(LPRNET_CHARS[idx])
+            confs.append(float(max_probs[i]))
+        prev = idx
+
+    text = "".join(chars)
+    conf = float(np.mean(confs)) if confs else 0.0
+    return text, conf
+
+
+def ctc_decode_paddle(output_data):
+    """Decode PaddleOCR recognition output (1,40,97) to text (full charset)."""
     data = np.array(output_data, dtype=np.float32)
     if data.ndim == 2:
         data = np.expand_dims(data, axis=0)
-    # data shape: (batch, 40, 97)
-    text_index = data.argmax(axis=2)  # (batch, 40)
-    text_prob = data.max(axis=2)      # (batch, 40)
+    text_index = data.argmax(axis=2)
+    text_prob = data.max(axis=2)
 
-    # CTC collapse: remove consecutive duplicates and blanks
     indices = text_index[0]
     probs = text_prob[0]
     chars, confs = [], []
-    prev = BLANK_IDX
+    prev = PADDLE_BLANK_IDX
     for i, idx in enumerate(indices):
-        if idx != prev and idx != BLANK_IDX:
-            if idx < len(OCR_CHARACTERS):
-                chars.append(OCR_CHARACTERS[idx])
+        if idx != prev and idx != PADDLE_BLANK_IDX:
+            if idx < len(PADDLE_CHARACTERS):
+                chars.append(PADDLE_CHARACTERS[idx])
                 confs.append(float(probs[i]))
         prev = idx
 
@@ -76,20 +109,22 @@ def ctc_greedy_decode(output_data):
 
 
 class user_app_callback_class(app_callback_class):
-    def __init__(self, ocr_hef_path):
+    def __init__(self, ocr_hef_path, ocr_engine="lprnet"):
         super().__init__()
         self.seen_plates = {}  # track_id -> plate text (OCR >= threshold)
         self.vehicles_seen = set()  # all unique vehicle track IDs seen
         self.last_summary_time = time.time()
-        # Initialize PaddleOCR recognition inference via HailoRT
+        self.ocr_engine = ocr_engine
+        self.decode_fn = ctc_decode_lprnet if ocr_engine == "lprnet" else ctc_decode_paddle
+        # Initialize OCR inference via HailoRT
         self.ocr_infer = HailoInfer(ocr_hef_path, batch_size=1, output_type="FLOAT32")
-        self.ocr_input_shape = self.ocr_infer.get_input_shape()  # (48, 320, 3)
+        self.ocr_input_shape = self.ocr_infer.get_input_shape()
         self.ocr_h = self.ocr_input_shape[0]
         self.ocr_w = self.ocr_input_shape[1]
         self.ocr_result = None  # stores latest inference result
 
     def ocr_callback(self, completion_info, bindings_list):
-        """Called when PaddleOCR async inference completes."""
+        """Called when OCR async inference completes."""
         if bindings_list:
             buf = bindings_list[0].output().get_buffer()
             if isinstance(buf, dict):
@@ -175,13 +210,13 @@ def app_callback(element, buffer, user_data):
             if crop_w > MAX_LP_WIDTH_PIXELS or crop_h > MAX_LP_HEIGHT_PIXELS:
                 continue
 
-            # Crop and resize for PaddleOCR recognition
+            # Crop and resize for OCR
             lp_crop = frame[y1:y2, x1:x2]
             lp_resized = cv2.resize(
                 lp_crop, (user_data.ocr_w, user_data.ocr_h)
             )
 
-            # Run PaddleOCR recognition inference
+            # Run OCR inference
             user_data.ocr_result = None
             user_data.ocr_infer.run(
                 [lp_resized], user_data.ocr_callback
@@ -192,7 +227,7 @@ def app_callback(element, buffer, user_data):
             if user_data.ocr_result is None:
                 continue
 
-            text, ocr_conf = ctc_greedy_decode(user_data.ocr_result)
+            text, ocr_conf = user_data.decode_fn(user_data.ocr_result)
 
             if len(text) < MIN_LENGTH:
                 continue
@@ -212,7 +247,8 @@ def app_callback(element, buffer, user_data):
 
 
 def main():
-    # Pre-parse to get HEF path before creating user_data
+    from pathlib import Path
+
     from hailo_apps.python.core.common.core import (
         configure_multi_model_hef_path,
         get_pipeline_parser,
@@ -220,10 +256,18 @@ def main():
         resolve_hef_paths,
     )
     from hailo_apps.python.core.common.core import detect_hailo_arch
+    from hailo_apps.python.core.common.defines import RESOURCES_ROOT_PATH_DEFAULT
     from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import LPR_PIPELINE
 
     parser = get_pipeline_parser()
     configure_multi_model_hef_path(parser)
+    parser.add_argument(
+        "--ocr-engine",
+        type=str,
+        choices=["lprnet", "paddle"],
+        default="lprnet",
+        help="OCR engine: 'lprnet' (digits only, default) or 'paddle' (full charset)",
+    )
     handle_list_models_flag(parser, LPR_PIPELINE)
     args, _ = parser.parse_known_args()
     arch = detect_hailo_arch()
@@ -232,9 +276,20 @@ def main():
         app_name=LPR_PIPELINE,
         arch=arch,
     )
-    lprnet_hef = models[2].path  # 3rd model is OCR recognition
 
-    user_data = user_app_callback_class(lprnet_hef)
+    ocr_engine = args.ocr_engine
+    if ocr_engine == "lprnet":
+        ocr_hef = models[2].path  # 3rd model from resources_config (lprnet)
+    else:
+        # PaddleOCR recognition model — resolve from standard resources path
+        ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "ocr.hef")
+        if not Path(ocr_hef).exists():
+            print(f"ERROR: PaddleOCR model not found at {ocr_hef}")
+            print("Run: sudo ./install.sh to download paddle_ocr resources")
+            return
+
+    print(f"LPR using OCR engine: {ocr_engine}")
+    user_data = user_app_callback_class(ocr_hef, ocr_engine=ocr_engine)
     app = GStreamerLPRApp(app_callback, user_data, parser=parser)
     app.run()
 

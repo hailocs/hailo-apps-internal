@@ -493,24 +493,24 @@ lpr: &lpr_app
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
-        - name: ocr
-          source: s3
+        - name: lprnet
+          source: mz
     hailo8l:
       default:
         - name: yolov5m_vehicles
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
-        - name: ocr
-          source: s3
+        - name: lprnet
+          source: mz
     hailo10h:
       default:
         - name: yolov5m_vehicles
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
-        - name: ocr
-          source: s3
+        - name: lprnet
+          source: mz
 
 instance_segmentation: &instance_segmentation_app
   models:
