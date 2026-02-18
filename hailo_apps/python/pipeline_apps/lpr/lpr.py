@@ -253,6 +253,11 @@ def app_callback(element, buffer, user_data):
             with user_data.plate_log_lock:
                 user_data.plate_log.insert(0, (crop_bgr, text, ocr_conf, track_id))
 
+    # Remove LP sub-detections so hailooverlay only draws vehicle boxes
+    for detection in detections:
+        for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
+            detection.remove_object(sub)
+
 
 # ---------------------------------------------------------------------------
 # LPR display panel — separate OpenCV window showing recognized plates
@@ -345,7 +350,10 @@ def lpr_display_thread(user_data):
         elif key == ord("j") or key == 84:  # j or Down arrow
             scroll_offset += 1
 
-    cv2.destroyWindow("LPR Panel")
+    try:
+        cv2.destroyWindow("LPR Panel")
+    except Exception:
+        pass
 
 
 def main():

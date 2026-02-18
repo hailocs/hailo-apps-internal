@@ -619,7 +619,10 @@ class GStreamerApp:
             self.watchdog_thread = None
 
         print("Shutting down... Hit Ctrl-C again to force quit.")
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+        except ValueError:
+            pass  # Not in main thread — ignore
         self.pipeline.set_state(Gst.State.PAUSED)
         GLib.usleep(100000)
 
