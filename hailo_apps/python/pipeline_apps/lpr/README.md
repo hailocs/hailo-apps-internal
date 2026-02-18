@@ -1,11 +1,11 @@
 # License Plate Recognition (LPR)
 
-Real-time license plate recognition on Hailo accelerators using a three-stage GStreamer pipeline with tracker-based deduplication and a live display panel.
+Real-time license plate recognition on Hailo accelerators using a three-stage GStreamer pipeline with tracker-based deduplication, a center-frame ROI gate, and a live display panel.
 
 ## Pipeline Architecture
 
 ```
-Source → Vehicle Detection (YOLOv5m) → Tracker → Crop Vehicles → LP Detection (Tiny-YOLOv4) → User Callback (OCR) → Display
+Source → Vehicle Detection (YOLOv5m) → Tracker → Crop Vehicles → LP Detection (Tiny-YOLOv4) → User Callback (OCR) → Overlay → Display
 ```
 
 | Stage | Model | Runs On |
@@ -33,7 +33,7 @@ hailo-lpr --input /path/to/video.mp4 --width 1920 --height 1080
 
 ### CLI Arguments
 
-All standard pipeline arguments (`--input`, `--width`, `--height`, `--show-fps`, `--sync`, etc.) are supported. Additional LPR-specific arguments:
+All standard pipeline arguments (`--input`, `--width`, `--height`, `--show-fps`, `--sync`, etc.) are supported. Additional LPR-specific argument:
 
 | Argument | Default | Description |
 |---|---|---|
@@ -55,52 +55,55 @@ All standard pipeline arguments (`--input`, `--width`, `--height`, `--show-fps`,
 
 Both engines use CTC greedy decoding (collapse repeated characters, remove blanks).
 
-## Quality Gates
+## Center 1/3 ROI Gate
 
-Recognition uses a two-layer filtering approach:
+Only vehicles whose **vertical center** falls within the **middle third** of the frame (Y 33%–66%) are processed for LP detection and OCR. This focuses recognition on the zone where plates are large enough for reliable reads and filters out distant or very close vehicles.
 
-### Pre-OCR: Bounding Box Size Filter
-Crops that are too small or too large are skipped before running OCR inference:
+The gate is defined by two constants in `lpr.py`:
 
-| Parameter | Value | Rationale |
-|---|---|---|
-| `MIN_LP_WIDTH_PIXELS` | 20 | Below this, the plate is too small for any OCR model to decode |
-| `MIN_LP_HEIGHT_PIXELS` | 8 | Minimum height for character features |
-| `MAX_LP_WIDTH_PIXELS` | 600 | A plate this large is likely a false-positive detection |
-| `MAX_LP_HEIGHT_PIXELS` | 200 | Same — rejects implausibly large detections |
+```python
+ROI_Y_START = 1.0 / 3.0   # top of ROI zone (normalized)
+ROI_Y_END   = 2.0 / 3.0   # bottom of ROI zone (normalized)
+```
 
-### Post-OCR: Confidence Threshold
-Only plates with **OCR confidence ≥ 78%** (`MIN_OCR_CONFIDENCE = 0.78`) are accepted. Below this threshold, the result is discarded and the vehicle will be retried on subsequent frames.
+Vehicles outside this band are still detected and tracked (bounding boxes visible), but OCR is not attempted.
 
-A minimum text length of **4 characters** (`MIN_LENGTH = 4`) is also enforced.
+## 78% Confidence Threshold
+
+Only plates with **OCR confidence ≥ 78%** are accepted. Below this threshold, the result is discarded and the vehicle will be retried on subsequent frames until either:
+- A read exceeds 78%, or
+- The vehicle leaves the frame
+
+This is the key quality gate. A minimum text length of **4 characters** is also enforced.
+
+The threshold is set at the top of `lpr.py`:
+```python
+MIN_OCR_CONFIDENCE = 0.78
+```
 
 ## Tracker Deduplication
 
-The pipeline uses `hailotracker` to assign persistent IDs to vehicles. Once a plate is recognized with ≥ 78% confidence for a given track ID, that vehicle is never re-processed — OCR inference is skipped entirely on future frames for that vehicle.
+The pipeline uses `hailotracker` to assign persistent IDs to vehicles. Once a plate is recognized with ≥ 78% confidence for a given track ID, that vehicle is never re-processed — OCR inference is skipped entirely on future frames.
 
-This means each unique vehicle is recognized **at most once**, keeping compute usage proportional to unique vehicles rather than total frames.
+Each unique vehicle is recognized **at most once**, keeping compute usage proportional to unique vehicles rather than total frames.
 
 ## Display Panel
 
 A separate OpenCV window ("LPR Panel") shows all recognized plates in real time:
 
-- Each row contains the LP crop image, decoded text, OCR confidence, and vehicle track ID
+- Each row contains the LP crop image and decoded text (bold)
 - Newest plates appear at the top
 - **Scroll**: Mouse wheel, `j`/`k` keys, or arrow keys
 - **Close panel**: `ESC` (pipeline continues running)
 
-The header shows the running count of recognized plates.
-
 ## Console Output
 
 ### Per-Plate Output
-Each recognized plate prints a single line:
 ```
 Vehicle #42   | ABC12345   | conf  92% | len 8
 ```
 
 ### 30-Second Summary
-Every 30 seconds, a summary line is printed:
 ```
 --- Summary (30s) | Vehicles detected: 127 | Plates recognized (>78%): 43 ---
 ```
@@ -109,4 +112,4 @@ Every 30 seconds, a summary line is printed:
 
 - **Higher resolution = better crops**: Use `--width 1920 --height 1080` if your source is 1080p. The default 1280×720 downscale produces smaller LP crops.
 - **LPRNet vs PaddleOCR**: LPRNet is optimized for license plates and generally produces better results on small crops. PaddleOCR recognizes letters but is trained on general scene text.
-- **Confidence threshold**: The 78% threshold balances recall vs. accuracy. Lower it in the source code if you need more aggressive recognition at the cost of occasional misreads.
+- **Confidence threshold**: The 78% threshold balances recall vs. accuracy. Lower it in `lpr.py` if you need more aggressive recognition at the cost of occasional misreads.

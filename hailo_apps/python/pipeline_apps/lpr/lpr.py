@@ -3,10 +3,6 @@ import os
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
-import gi
-
-gi.require_version("Gst", "1.0")
-
 import cv2
 import numpy as np
 import time
@@ -56,6 +52,10 @@ MIN_LP_HEIGHT_PIXELS = 8
 # Maximum plate crop size — a plate covering most of the frame is a false positive.
 MAX_LP_WIDTH_PIXELS = 600
 MAX_LP_HEIGHT_PIXELS = 200
+
+# ROI zone: only process vehicles whose center falls in the center 1/3 of the frame.
+ROI_Y_START = 1.0 / 3.0
+ROI_Y_END = 2.0 / 3.0
 
 
 def ctc_decode_lprnet(output_data):
@@ -163,10 +163,13 @@ def app_callback(element, buffer, user_data):
         return
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
-    # Only extract frame if we have vehicle detections with LP sub-detections
     frame = None
     pad = element.get_static_pad("src")
-    frame_format, frame_w, frame_h = None, None, None
+    frame_format, frame_w, frame_h = get_caps_from_pad(pad)
+    if frame_format is not None:
+        frame = get_numpy_from_buffer_efficient(
+            buffer, frame_format, frame_w, frame_h
+        )
 
     for detection in detections:
         label = detection.get_label()
@@ -180,6 +183,12 @@ def app_callback(element, buffer, user_data):
 
         user_data.vehicles_seen.add(track_id)
 
+        # Only process vehicles whose center is inside the ROI zone (center 1/3)
+        vbox = detection.get_bbox()
+        vehicle_center_y = vbox.ymin() + vbox.height() / 2.0
+        if vehicle_center_y < ROI_Y_START or vehicle_center_y > ROI_Y_END:
+            continue
+
         # Skip OCR entirely for vehicles already recognized
         if track_id in user_data.seen_plates:
             continue
@@ -189,18 +198,10 @@ def app_callback(element, buffer, user_data):
             if lp.get_label() != "license_plate":
                 continue
 
-            # Lazy frame extraction
             if frame is None:
-                frame_format, frame_w, frame_h = get_caps_from_pad(pad)
-                if frame_format is None:
-                    break
-                frame = get_numpy_from_buffer_efficient(
-                    buffer, frame_format, frame_w, frame_h
-                )
+                break
 
-            # Compute absolute LP coordinates
-            # LP bbox is relative to the vehicle crop — scale to full frame
-            vbox = detection.get_bbox()
+            # Compute absolute LP coordinates (LP bbox is relative to the vehicle crop)
             lpbox = lp.get_bbox()
             x1 = max(0, int((vbox.xmin() + lpbox.xmin() * vbox.width()) * frame_w))
             y1 = max(0, int((vbox.ymin() + lpbox.ymin() * vbox.height()) * frame_h))
@@ -268,7 +269,6 @@ CROP_DISPLAY_W = 140
 CROP_DISPLAY_H = 48
 BG_COLOR = (30, 30, 30)
 TEXT_COLOR = (220, 220, 220)
-CONF_COLOR = (100, 220, 100)
 HEADER_HEIGHT = 36
 
 

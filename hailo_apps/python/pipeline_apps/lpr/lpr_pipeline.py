@@ -28,7 +28,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
-    QUEUE,
     SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
