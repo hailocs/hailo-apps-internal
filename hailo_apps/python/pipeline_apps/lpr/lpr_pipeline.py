@@ -28,6 +28,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
+    QUEUE,
     SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
@@ -158,8 +159,12 @@ class GStreamerLPRApp(GStreamerApp):
 
         # OCR (LPRNet) runs in Python callback via HailoRT API, not in the pipeline
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
+
+        # Display with overlay — bounding boxes drawn on video
         display_pipeline = DISPLAY_PIPELINE(
-            video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps
+            video_sink=self.video_sink,
+            sync=self.sync,
+            show_fps=self.show_fps,
         )
 
         pipeline_string = (
