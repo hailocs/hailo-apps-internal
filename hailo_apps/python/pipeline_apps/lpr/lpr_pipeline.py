@@ -52,9 +52,6 @@ LP_DETECTION_POSTPROCESS_FUNC = "tiny_yolov4_license_plates"
 # LP detection config JSON
 LP_DETECTION_CONFIG_JSON = "yolov4_license_plate.json"
 
-# LPRNet character set (CTC blank is last)
-LPRNET_CHARS = "0123456789-"
-
 # Cropper functions
 VEHICLE_CROPPER_FUNC = "all_detections"  # repo: 1 vehicle/frame, fair rotation
 
