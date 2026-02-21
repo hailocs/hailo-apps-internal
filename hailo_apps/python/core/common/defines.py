@@ -266,6 +266,12 @@ TERM_TIMEOUT = 5  # seconds
 # USB device discovery
 UDEV_CMD = "udevadm"
 
+
+# Queue and async inference defaults
+MAX_INPUT_QUEUE_SIZE = 60
+MAX_OUTPUT_QUEUE_SIZE = 60
+MAX_ASYNC_INFER_JOBS = 20
+
 # Video format defaults
 HAILO_RGB_VIDEO_FORMAT = "RGB"
 HAILO_YUYV_VIDEO_FORMAT = "YUYV"
