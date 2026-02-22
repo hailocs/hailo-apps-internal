@@ -730,9 +730,13 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
         sys.exit(1)
 
     # ------------------------------------------------
-    # Case B: Camera keywords
+    # Case B: Camera input
     # ------------------------------------------------
-    if input_arg in CAMERA_KEYWORDS:
+    # Accept camera-related inputs:
+    #   - Keywords: "usb", "rpi"
+    #   - Linux device path: "/dev/videoX"
+    #   - Windows camera index: "0", "1", ...
+    if input_arg in CAMERA_KEYWORDS or input_arg.startswith("/dev/video") or input_arg.isdigit():
         return input_arg
 
     path_candidate = Path(input_arg)

@@ -11,7 +11,7 @@ Requirements
 
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.1.1 (for Hailo-10H devices)
+    - 5.2.0 (for Hailo-10H devices)
 - Pillow
 - opencv-python
 
@@ -88,12 +88,6 @@ Arguments
 - `-f, --frame-rate`: [optional][Camera only] Override the camera input framerate.
 - `--list-models`: [optional] Print all supported models for this application (from `resources_config.yaml`) and exit.
 - `--list-inputs`: [optional] Print the available predefined input resources (images/videos) defined in `resources_config.yaml` for this application, then exit.
-
-
-
-### Environment Variables
-- `CAMERA_INDEX`: [Camera input only] Select which usb camera index to use when -i camera is specified. Defaults to 0 if not set.
-    - Example: `CAMERA_INDEX=1 ./super_resolution.py -n model.hef -i usb`
 
 
 For more information:

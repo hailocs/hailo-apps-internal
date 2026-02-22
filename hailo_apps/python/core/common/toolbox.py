@@ -4,13 +4,14 @@ import sys
 import time
 import queue
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
+from typing import Dict, Generator, List, Optional, Tuple, Callable, Any, Union
 import subprocess
 import cv2
 import numpy as np
 import re
 import threading
 from enum import Enum
+import platform
 
 try:
     from hailo_apps.python.core.common.defines import (
@@ -115,125 +116,218 @@ class CapProcessingMode(str, Enum):
     VIDEO_PACE = "video_pace"
 
 
-def get_usb_video_devices() -> dict[int, str]:
+def get_windows_usb_video_devices(first_only: bool = True, max_indices: int = 10) -> Union[Optional[int], List[int]]:
     """
-    Return {video_index: device_header} for USB-backed V4L2 devices only.
+    Detect available usb cameras indices on Windows.
 
-    Works with v4l2-ctl output styles like:
-      - "Camera Name (046d:0825):"
-      - "Camera Name (usb-xhci-hcd.1-1):"
+    Args:
+        first_only (bool):
+            - True  → return the first available index (int or None)
+            - False → return list of all available indices (List[int])
+        max_indices (int): Number of indices to probe.
+
+    Returns:
+        int | List[int] | None
+    """
+    import cv2
+
+    available = []
+
+    for i in range(max_indices):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            cap.release()
+
+            if first_only:
+                return i
+            available.append(i)
+        else:
+            cap.release()
+
+    return None if first_only else available
+
+
+def get_linux_usb_video_devices(first_only: bool = False) -> Union[Optional[int], List[int]]:
+    """
+    Detect USB-backed V4L2 camera indices on Linux.
+
+    Args:
+        first_only (bool):
+            True  -> return the first detected USB camera index (int) or None.
+            False -> return a list of all detected USB camera indices.
+
+    Returns:
+        int | List[int] | None
+            - First camera index when `first_only=True`
+            - List of indices when `first_only=False`
+            - None if no device is found and `first_only=True`
     """
     try:
-        out = subprocess.check_output(
+        output = subprocess.check_output(
             ["v4l2-ctl", "--list-devices"],
             stderr=subprocess.STDOUT,
             text=True,
         )
-    except Exception as e:
-        logger.error(f"Failed to run v4l2-ctl --list-devices: {e}")
-        return {}
+    except Exception as exc:
+        logger.error(f"Failed to execute 'v4l2-ctl --list-devices': {exc}")
+        return None if first_only else []
 
-    usb_devices: dict[int, str] = {}
-    current_header: str = ""
+    usb_indices: List[int] = []
     is_usb_section = False
 
-    for line in out.splitlines():
+    for line in output.splitlines():
         if not line.strip():
             continue
 
-        # Header lines are not tab-indented
+        # Header lines (not tab-indented)
         if not line.startswith("\t"):
-            current_header = line.strip().rstrip(":")
-            lower = current_header.lower()
-
-            # USB detection: either VID:PID OR "(usb-...)" style
-            has_vid_pid = bool(re.search(r"\([0-9a-f]{4}:[0-9a-f]{4}\)", current_header, re.I))
-            has_usb_bus = ("(usb-" in lower) or (" usb-" in lower) or ("(usb:" in lower)
-
+            lower = line.lower()
+            has_vid_pid = bool(re.search(r"\([0-9a-f]{4}:[0-9a-f]{4}\)", line, re.I))
+            has_usb_bus = "(usb-" in lower or " usb-" in lower or "(usb:" in lower
             is_usb_section = has_vid_pid or has_usb_bus
             continue
 
-        # Device node lines (tab-indented)
-        if is_usb_section and "/dev/video" in line:
-            # line looks like "\t/dev/video8"
-            m = re.search(r"/dev/video(\d+)", line)
-            if m:
-                idx = int(m.group(1))
-                usb_devices[idx] = current_header
+        # Device node lines
+        if is_usb_section:
+            match = re.search(r"/dev/video(\d+)", line)
+            if match:
+                idx = int(match.group(1))
+                if first_only:
+                    return idx
+                
+                usb_indices.append(idx)
 
-    return usb_devices
+    return None if first_only else usb_indices
 
 
-def open_usb_camera(resolution: Optional[str]):
+def open_usb_camera(input_src: str, resolution: Optional[str]):
     """
     USB camera open .
 
     Behavior:
-      - Detect REAL USB cameras via v4l2-ctl
-      - If CAMERA_INDEX env var exists -> use it
-      - Else -> auto-pick FIRST USB camera
-      - Ignore CSI/RPi cameras completely
-      - Apply resolution if requested
-      - Ensure camera actually streams frames
+    - "usb":
+        * Linux  -> Detect REAL USB cameras via v4l2-ctl
+        * Windows -> Probe camera indices via OpenCV (DirectShow)
+        * If CAMERA_INDEX env var exists -> use it
+        * Else -> auto-pick FIRST available USB camera
+    - "/dev/videoX":
+        * Linux explicit camera device
+    - "0"/"1"/...:
+        * Windows explicit camera index
+    - Apply resolution if requested
+    - Ensure camera actually streams frames
+    
     """
-    usb_devices = get_usb_video_devices()
-    if not usb_devices:
-        logger.error("USB mode requested, but NO USB cameras detected.")
-        logger.error("Run: v4l2-ctl --list-devices")
+    system = platform.system()
+    # -----------------------------
+    # Helper: apply resolution + validate
+    # -----------------------------
+    def _apply_and_validate(cap):
+        if resolution in CAMERA_RESOLUTION_MAP:
+            w, h = CAMERA_RESOLUTION_MAP[resolution]
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            logger.debug(f"Camera resolution forced to {w}x{h}")
+
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            cap.release()
+            logger.error("Camera opened but produced no frames.")
+            sys.exit(1)
+        return cap
+
+    # =========================================================
+    # 1) Explicit Linux device path: /dev/videoX
+    # =========================================================
+    if str(input_src).startswith("/dev/video"):
+        if system == "Windows":
+            logger.error("On Windows, '/dev/videoX' is not supported. Use '-i 0' or '-i usb'.")
+            sys.exit(1)
+
+        cap = cv2.VideoCapture(str(input_src))
+        if not cap.isOpened():
+            logger.error(f"Failed to open Linux camera device: {input_src}")
+
+            # Only check available cameras AFTER failure
+            available = get_linux_usb_video_devices(first_only=False)
+            if available:
+                logger.error(f"Available USB camera indices: {available}")
+            else:
+                logger.error("No USB cameras detected.")
+
+            sys.exit(1)
+
+        logger.info(f"Using USB camera device: {input_src}")
+        return _apply_and_validate(cap)
+
+
+    # =========================================================
+    # 2) Explicit Windows numeric index: 0/1/2...
+    # =========================================================
+    if str(input_src).isdigit():
+        if system == "Linux":
+            logger.error("On Linux, numeric camera index is not supported. Use '-i /dev/videoX' or '-i usb'.")
+            sys.exit(1)
+
+        cam_index = int(str(input_src))
+        cap = cv2.VideoCapture(cam_index)
+
+        if not cap.isOpened():
+            logger.error(f"Failed to open Windows camera index: {cam_index}")
+
+            # Only scan cameras AFTER failure
+            available = get_windows_usb_video_devices(first_only=False, max_indices=20)
+            if available:
+                logger.error(f"Available camera indices detected: {available}")
+            else:
+                logger.error("No cameras detected on Windows.")
+
+            sys.exit(1)
+
+        logger.info(f"Using USB camera index: {cam_index}")
+        return _apply_and_validate(cap)
+
+    # =========================================================
+    # 3) Auto USB selection: "usb"
+    # =========================================================
+    if input_src != "usb":
+        logger.error(f"open_usb_camera received invalid camera input: '{input_src}'")
         sys.exit(1)
 
-    # --------------------------------------------
-    # Select camera index (env override OR auto)
-    # --------------------------------------------
-    env_val = os.environ.get("CAMERA_INDEX")
-    if env_val is None:
-        camera_index = sorted(usb_devices.keys())[0]
-        logger.debug(
-                f"No CAMERA_INDEX provided. "
-                f"Auto-selected USB camera index {camera_index} "
-                f"({usb_devices[camera_index]})"
-            )
-    else:
-        try:
-            camera_index = int(env_val)
-        except ValueError:
-            logger.error(f"Invalid CAMERA_INDEX value: {env_val}")
+    # ---------------------------------------------------------
+    # 3.1 Windows: select first available camera index
+    # ---------------------------------------------------------
+    if system == "Windows":
+        cam_index = get_windows_usb_video_devices(first_only=True)
+        if cam_index is None:
+            logger.error("USB mode requested, but no cameras detected on Windows.")
             sys.exit(1)
 
-        if camera_index not in usb_devices:
-            logger.error(
-                f"CAMERA_INDEX={camera_index} is NOT a USB camera.\n"
-                f"Available USB camera indices: {sorted(usb_devices.keys())}"
-            )
+        cap = cv2.VideoCapture(cam_index)
+        if not cap.isOpened():
+            logger.error(f"Failed to open USB camera index {cam_index} on Windows.")
             sys.exit(1)
 
-    # --------------------------------------------
-    # Open camera
-    # --------------------------------------------
-    cap = cv2.VideoCapture(camera_index)
+        logger.info(f"Using USB camera index: {cam_index}")
+        return _apply_and_validate(cap)
+
+    # ---------------------------------------------------------
+    # 3.2 Linux: select first USB /dev/videoX (v4l2-ctl)
+    # ---------------------------------------------------------
+    cam_index = get_linux_usb_video_devices(first_only=True)
+    if cam_index is None:
+        logger.error("USB mode requested, but no USB cameras detected on Linux.")
+        logger.error("Tip: run `v4l2-ctl --list-devices` to see available cameras.")
+        sys.exit(1)
+
+    cap = cv2.VideoCapture(cam_index)
     if not cap.isOpened():
-        logger.error(f"Failed to open USB camera index {camera_index}")
+        logger.error(f"Failed to open USB camera index {cam_index} on Linux.")
         sys.exit(1)
 
-    # --------------------------------------------
-    # Apply resolution (USB only)
-    # --------------------------------------------
-    if resolution in CAMERA_RESOLUTION_MAP:
-        w, h = CAMERA_RESOLUTION_MAP[resolution]
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-        logger.debug(f"USB camera resolution forced to {w}x{h}")
+    logger.info(f"Using USB camera index: {cam_index}")
+    return _apply_and_validate(cap)
 
-    # --------------------------------------------
-    # Validate stream (real camera test)
-    # --------------------------------------------
-    ok, frame = cap.read()
-    if not ok or frame is None:
-        cap.release()
-        logger.error("USB camera opened but produced no frames.")
-        sys.exit(1)
-
-    return cap
 
 
 def open_rpi_camera():
@@ -277,13 +371,13 @@ def init_input_source(input_src: str, batch_size: int, resolution: Optional[str]
     Initialize input source based on user-provided `input`.
 
     Supported values:
-      - "usb" : Open a USB/UVC camera using OpenCV (cv2.VideoCapture).
-              `resolution` applies here (sd/hd/fhd) or native if None.
-      - "rpi" : Open Raspberry Pi camera using Picamera2 (fixed 1280x720).
-              `resolution` is ignored by design.
-      - http(s):// or rtsp://: Network stream.
-      - Video file path (.mp4/.avi/.mov/.mkv) : Open as cv2.VideoCapture(file).
-      - Directory path : Load images from the directory.
+        - "usb" : Open a USB/UVC camera using OpenCV (cv2.VideoCapture).
+        - "rpi" : Open Raspberry Pi camera using Picamera2 (fixed 1280x720).
+        - "0", "1", ... : (Windows only) Open camera by device index using OpenCV.
+        - "/dev/videoX" : (Linux only) Open a specific V4L2 camera device.
+        - http(s):// or rtsp://: Open a network video stream.
+        - Video file path (.mp4/.avi/.mov/.mkv) : Open a video file via OpenCV.
+        - Directory path : Load images from the specified directory.
 
     Returns:
         (cap, images)
@@ -295,9 +389,8 @@ def init_input_source(input_src: str, batch_size: int, resolution: Optional[str]
     # ------------------------------------------------
     # 1) USB camera
     # ------------------------------------------------
-    if src == "usb":
-        cap = open_usb_camera(resolution)
-        logger.info("Using USB camera")
+    if src == "usb" or src.startswith("/dev/video") or src.isdigit():
+        cap = open_usb_camera(src, resolution)
         return cap, None, "usb"
 
     # ------------------------------------------------
