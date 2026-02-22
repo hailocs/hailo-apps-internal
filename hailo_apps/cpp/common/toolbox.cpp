@@ -6,11 +6,30 @@
 #include <fstream>
 #include <string>
 #include <stdexcept>
-#include <nlohmann/json.hpp>
+#include "third_party/json.hpp"
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <process.h>
+#define popen  _popen
+#define pclose _pclose
+#else
+#include <unistd.h>
+#include <sys/wait.h>
+#endif
+
+
 
 namespace hailo_utils {
 
 namespace fs = std::filesystem;
+const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
+    {"sd",  {640, 480}},
+    {"hd",  {1280, 720}},
+    {"fhd", {1920, 1080}}
+};
 
 
 VisualizationParams load_visualization_params(const std::string &path)
@@ -102,10 +121,22 @@ static bool is_raspberry_pi()
 
 static fs::path executable_dir()
 {
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    DWORD len = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (len == 0 || len == MAX_PATH) {
+        throw std::runtime_error("GetModuleFileNameA failed");
+    }
+    return fs::path(std::string(buf, len)).parent_path();
+#else
     char buf[4096];
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0) {
+        throw std::runtime_error("readlink(/proc/self/exe) failed");
+    }
     buf[len] = '\0';
     return fs::path(buf).parent_path();
+#endif
 }
 
 static fs::path find_scripts(const fs::path &start)
@@ -358,7 +389,7 @@ static std::string find_usb_camera()
     }
 
     for (const auto &entry : fs::directory_iterator(v4l_path)) {
-        const std::string video_name = entry.path().filename(); // videoX
+        const std::string video_name = entry.path().filename().string();
         const fs::path dev_path = entry.path() / "device";
 
         if (!fs::exists(dev_path)) {
@@ -402,6 +433,15 @@ InputType determine_input_type(const std::string& input_path,
 
     } else if (input_path == "usb") {
         input_type.is_camera = true;
+
+    #ifdef _WIN32
+        const int camera_index = 0;
+        std::cout << "Using USB camera: index " << camera_index << "\n";
+        capture = open_video_capture(std::to_string(camera_index), capture,
+                                     org_height, org_width, frame_count,
+                                     true, camera_resolution);
+    #else
+        // Linux / RPi: cameras are /dev/video*
         std::string video_device = "/dev/video0";
         if (is_raspberry_pi()) {
             video_device = find_usb_camera();
@@ -410,8 +450,9 @@ InputType determine_input_type(const std::string& input_path,
             }
         }
         std::cout << "Using USB camera: " << video_device << "\n";
-        capture = open_video_capture(video_device, capture, org_height, org_width, frame_count, true, camera_resolution);
-
+        capture = open_video_capture(video_device, capture, org_height, org_width,
+                                     frame_count, true, camera_resolution);
+    #endif
     } else if (input_path.rfind("/dev/video", 0) == 0) { // user gave explicit device like /dev/video1
         input_type.is_camera = true;
         capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, true, camera_resolution);
@@ -468,12 +509,19 @@ static ProcessResult run_bash_helper(const fs::path &script_path,
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         result.stdout_str += buffer;
     }
+
     int status = pclose(pipe);
+
+    #ifdef _WIN32
+    // _pclose returns the process exit code directly
+    result.exit_code = status;
+    #else
     if (WIFEXITED(status)) {
         result.exit_code = WEXITSTATUS(status);
     } else {
         result.exit_code = 1;
     }
+    #endif
 
     // For simplicity, treat everything as stderr on error
     if (result.exit_code != 0) {
@@ -942,9 +990,24 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
         std::string pipeline = make_rpi_gst_pipeline(width, height, fps);
         capture.open(pipeline, cv::CAP_GSTREAMER);
     } else {
+    #ifdef _WIN32
+        if (is_camera) {
+            // Windows: open camera by index (e.g. "0"), not by a device path
+            int idx = 0;
+            try { idx = std::stoi(input_path); } catch (...) { idx = 0; }
+    
+            // Prefer DirectShow; if it fails on some machines you can try MSMF
+            capture.open(idx, cv::CAP_DSHOW);
+        } else {
+            // Video/image file path
+            capture.open(input_path, cv::CAP_ANY);
+        }
+    #else
+        // Linux: camera can be /dev/video0, or file path
         capture.open(input_path, cv::CAP_ANY);
-
-        if (is_camera) { //usb camera
+    #endif
+    
+        if (is_camera) { // apply camera settings
             capture.set(cv::CAP_PROP_FRAME_WIDTH,  width);
             capture.set(cv::CAP_PROP_FRAME_HEIGHT, height);
             capture.set(cv::CAP_PROP_FPS, fps);
@@ -1018,7 +1081,6 @@ void preprocess_video_frames(cv::VideoCapture &capture,
         }
     }
 }
-
 
 
 void preprocess_image_frames(const std::string &input_path,

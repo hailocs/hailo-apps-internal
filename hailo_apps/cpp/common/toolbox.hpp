@@ -1,6 +1,11 @@
 #ifndef _HAILO_COMMON_TOOLBOX_HPP_
 #define _HAILO_COMMON_TOOLBOX_HPP_
 
+#include <unordered_map>
+#include <sstream>
+#include <iomanip>
+#include <cmath>
+#include <cctype>
 #include <string>
 #include <iostream>
 #include <vector>
@@ -31,6 +36,7 @@
 #define BOLDMAGENTA   "\033[1m\033[35m"
 
 extern std::vector<cv::Scalar> COLORS;
+using Clock = std::chrono::steady_clock;
 
 namespace hailo_utils {
 
@@ -38,12 +44,8 @@ namespace hailo_utils {
     // Resolved paths (toolbox resolves automatically at startup)
     extern const fs::path GET_HEF_BASH_SCRIPT_PATH;
     extern const fs::path GET_INPUT_BASH_SCRIPT_PATH;
+    extern const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP;
 
-    const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
-        {"sd",  {640, 480}},
-        {"hd",  {1280, 720}},
-        {"fhd", {1920, 1080}}
-    };
 
     struct InferenceResult {
         cv::Mat org_frame;
