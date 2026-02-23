@@ -56,15 +56,6 @@ void draw_single_bbox(cv::Mat& frame, const NamedBbox& named_bbox, const cv::Sca
     draw_label(frame, label, bbox_rect.tl(), color);
 }
 
-void draw_bounding_boxes(cv::Mat& frame, const std::vector<NamedBbox>& bboxes) {
-    std::unordered_map<int, cv::Scalar> class_colors;
-    initialize_class_colors(class_colors);
-    for (const auto& named_bbox : bboxes) {
-        const auto& color = class_colors[named_bbox.class_id];
-        draw_single_bbox(frame, named_bbox, color);
-    }
-}
-
 void draw_bounding_boxes(cv::Mat &frame,
                          const std::vector<NamedBbox> &bboxes,
                          const VisualizationParams &vis)

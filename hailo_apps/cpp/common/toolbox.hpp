@@ -41,11 +41,7 @@ using Clock = std::chrono::steady_clock;
 namespace hailo_utils {
 
     namespace fs = std::filesystem;
-    // Resolved paths (toolbox resolves automatically at startup)
-    extern const fs::path GET_HEF_BASH_SCRIPT_PATH;
-    extern const fs::path GET_INPUT_BASH_SCRIPT_PATH;
     extern const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP;
-
 
     struct InferenceResult {
         cv::Mat org_frame;
@@ -109,51 +105,6 @@ namespace hailo_utils {
     CommandLineArgs parse_command_line_arguments(int argc, char **argv);
     void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, char **argv);
     std::string parse_output_resolution_arg(int argc, char **argv);
-
-    // Resolve -n/--net into a concrete .hef path.
-    //
-    // Accepted values:
-    //   • Local HEF file:   path/to/model.hef
-    //   • Model name:       logical name from networks.json (e.g., “yolov8n”)
-    //                       → use --list-nets to see all available models.
-    //
-    // Behavior:
-    //   - If a local .hef is provided: use it directly (after architecture check).
-    //   - If a model name is provided:
-    //        * Reuse existing downloaded HEF (if present), or
-    //        * Download the correct HEF via get_hef.sh.
-    //   - Returns the resolved absolute .hef path.
-    std::string resolve_net_arg(const std::string &app,
-                                const std::string &net_arg,
-                                const std::string &dest_dir = ".");
-
-
-    // Resolve -i/--input into a concrete input source.
-    //
-    // Accepted values:
-    //   • Local file:      image.jpg, video.mp4
-    //   • Directory:       folder/ (all images inside)
-    //   • Camera:          "camera" or /dev/video*
-    //   • Resource name:   logical ID from inputs.json (e.g., “bus”, “street”)
-    //                      → use --list-inputs to see all available names.
-    //
-    // Behavior:
-    //   - Uses local paths directly.
-    //   - Downloads resource inputs via get_input.sh when needed.
-    //   - Returns the resolved full path or "camera".
-    std::string resolve_input_arg(const std::string &app,
-                                const std::string &input_arg);  
-                                
-    // Print supported networks for this app (delegates to get_hef.sh list --app <app>)
-    void list_networks(const std::string &app);
-
-    // Print predefined inputs for this app (delegates to get_input.sh list --app <app>)
-    void list_inputs(const std::string &app);
-    std::string get_network_meta_value(const std::string &app,
-                                    const std::string &model_name,
-                                    const std::string &key,
-                                    const std::string &sub_key = "");
-
 
     // ─────────────────────────────────────────────────────────────────────────────
     // DISPLAY & VIDEO

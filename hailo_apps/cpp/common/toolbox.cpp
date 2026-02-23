@@ -1,11 +1,15 @@
 #include "toolbox.hpp"
 #include "hailo_infer.hpp"
+#include "resources_manager.hpp"
 #include <chrono>
 #include <thread>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <stdexcept>
+#include <regex>
+#include <sstream>
+#include <unordered_set>
 #include "third_party/json.hpp"
 
 #ifdef _WIN32
@@ -20,11 +24,9 @@
 #include <sys/wait.h>
 #endif
 
-
-
 namespace hailo_utils {
-
 namespace fs = std::filesystem;
+
 const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
     {"sd",  {640, 480}},
     {"hd",  {1280, 720}},
@@ -106,6 +108,9 @@ static std::string make_rpi_gst_pipeline(int w, int h, int fps)
 
 static bool is_raspberry_pi()
 {
+#ifdef _WIN32
+    return false;
+#else
     const std::string RPI_POSSIBLE_NAME = "Raspberry Pi";
 
     std::ifstream f("/proc/device-tree/model");
@@ -117,54 +122,9 @@ static bool is_raspberry_pi()
     std::getline(f, model);
 
     return model.find(RPI_POSSIBLE_NAME) != std::string::npos;
-}
-
-static fs::path executable_dir()
-{
-#ifdef _WIN32
-    char buf[MAX_PATH];
-    DWORD len = GetModuleFileNameA(nullptr, buf, MAX_PATH);
-    if (len == 0 || len == MAX_PATH) {
-        throw std::runtime_error("GetModuleFileNameA failed");
-    }
-    return fs::path(std::string(buf, len)).parent_path();
-#else
-    char buf[4096];
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len <= 0) {
-        throw std::runtime_error("readlink(/proc/self/exe) failed");
-    }
-    buf[len] = '\0';
-    return fs::path(buf).parent_path();
 #endif
 }
 
-static fs::path find_scripts(const fs::path &start)
-{
-    fs::path dir = start;
-    for (int i = 0; i < 10; i++) {
-        fs::path config_dir = dir / "config";
-        if (fs::exists(config_dir / "get_hef.sh") && fs::exists(config_dir / "get_input.sh")) {
-            return config_dir;
-        }
-
-        if (!dir.has_parent_path()) break;
-        dir = dir.parent_path();
-    }
-    throw std::runtime_error("Could not find get_hef.sh / get_input.sh folder.");
-}
-
-const fs::path GET_HEF_BASH_SCRIPT_PATH = find_scripts(executable_dir()) / "get_hef.sh";
-const fs::path GET_INPUT_BASH_SCRIPT_PATH = find_scripts(executable_dir()) / "get_input.sh";
-
-
-hailo_status check_status(const hailo_status &status, const std::string &message) {
-    if (HAILO_SUCCESS != status) {
-        std::cerr << message << " with status " << status << std::endl;
-        return status;
-    }
-    return HAILO_SUCCESS;
-}
 
 hailo_status wait_and_check_threads(
     std::future<hailo_status> &f1, const std::string &name1,
@@ -364,18 +324,25 @@ CommandLineArgs parse_command_line_arguments(int argc, char** argv) {
 
 void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, char **argv)
 {
-    if (has_flag(argc, argv, "--list-nets")) {
-        list_networks(app);
-        std::exit(0);
-    }
+    try {
+        hailo_apps::ResourcesManager rm;
+        if (has_flag(argc, argv, "--list-models")) {
+            rm.print_models(app);
+            std::exit(0);
+        }
 
-    if (has_flag(argc, argv, "--list-inputs")) {
-        list_inputs(app);
-        std::exit(0);
-    }
+        if (has_flag(argc, argv, "--list-inputs")) {
+            rm.print_inputs(app);
+            std::exit(0);
+        }
 
-    args.net = resolve_net_arg(app, args.net);
-    args.input = resolve_input_arg(app, args.input);
+        args.net = rm.resolve_net_arg(app, args.net);
+        args.input = rm.resolve_input_arg(app, args.input);
+    }
+    catch (const std::exception &e) {
+            std::cerr << "ResourcesManager ERROR: " << e.what() << std::endl;
+            std::exit(1);
+    }
 }
 
 static std::string find_usb_camera()
@@ -408,6 +375,11 @@ static std::string find_usb_camera()
     return ""; // none found
 }
 
+static bool is_digits_only(const std::string &s)
+{
+    return !s.empty() && std::all_of(s.begin(), s.end(),
+                                    [](unsigned char c){ return std::isdigit(c); });
+}
 
 InputType determine_input_type(const std::string& input_path,
                                cv::VideoCapture &capture,
@@ -419,30 +391,58 @@ InputType determine_input_type(const std::string& input_path,
 {
     InputType input_type;
 
+    // --------------------------------------------
+    // 1) Images / directory / video
+    // --------------------------------------------
     if (is_directory_of_images(input_path, frame_count, batch_size)) {
         input_type.is_directory = true;
 
     } else if (is_image(input_path)) {
         input_type.is_image = true;
-        frame_count = 1; // Single image
+        frame_count = 1;
 
     } else if (is_video(input_path)) {
-        std::cout << "Detected video file input: " << input_path << "\n";
         input_type.is_video = true;
-        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, false);
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
+                                     false /*is_camera*/);
+    // --------------------------------------------
+    // 2) Camera inputs
+    // --------------------------------------------
 
+    //1. Windows camera index: "0", "1", ...
+    } else if (is_digits_only(input_path)) {
+        input_type.is_camera = true;
+    #ifdef _WIN32
+        std::cout << "Using USB camera: index " << input_path << "\n";
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
+                                    true /*is_camera*/, camera_resolution);
+    #else
+        // On Linux this is not a valid camera spec; keep it strict
+        throw std::runtime_error("Numeric camera index is supported only on Windows. Use /dev/videoX or 'usb'.");
+    #endif
+
+    //2. Linux explicit device: /dev/videoX
+    } else if (input_path.rfind("/dev/video", 0) == 0) {
+        input_type.is_camera = true;
+    #ifdef _WIN32
+        throw std::runtime_error("'/dev/videoX' is supported only on Linux. On Windows use 'usb' or a camera index.");
+    #else
+        std::cout << "Using USB camera: " << input_path << "\n";
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
+                                    true /*is_camera*/, camera_resolution);
+    #endif
+
+    //3. "usb" shortcut: auto-select default camera
     } else if (input_path == "usb") {
         input_type.is_camera = true;
 
     #ifdef _WIN32
-        const int camera_index = 0;
+        const std::string camera_index = "0"; // default if user didn't pass "0"/"1"/...
         std::cout << "Using USB camera: index " << camera_index << "\n";
-        capture = open_video_capture(std::to_string(camera_index), capture,
-                                     org_height, org_width, frame_count,
-                                     true, camera_resolution);
+        capture = open_video_capture(camera_index, capture, org_height, org_width, frame_count,
+                                     true /*is_camera*/, camera_resolution);
     #else
-        // Linux / RPi: cameras are /dev/video*
-        std::string video_device = "/dev/video0";
+        std::string video_device = "/dev/video0"; // default
         if (is_raspberry_pi()) {
             video_device = find_usb_camera();
             if (video_device.empty()) {
@@ -450,435 +450,28 @@ InputType determine_input_type(const std::string& input_path,
             }
         }
         std::cout << "Using USB camera: " << video_device << "\n";
-        capture = open_video_capture(video_device, capture, org_height, org_width,
-                                     frame_count, true, camera_resolution);
+        capture = open_video_capture(video_device, capture, org_height, org_width, frame_count,
+                                     true /*is_camera*/, camera_resolution);
     #endif
-    } else if (input_path.rfind("/dev/video", 0) == 0) { // user gave explicit device like /dev/video1
-        input_type.is_camera = true;
-        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, true, camera_resolution);
 
+    //4. RPI camera shortcut
     } else if (input_path == "rpi") {
+        if (!is_raspberry_pi()) {
+            throw std::runtime_error(
+                "'rpi' camera input is supported only on Raspberry Pi devices.");
+        }
         input_type.is_camera = true;
-        std::cout << "Using RPI camera"<< "\n";
-        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count, true, camera_resolution);
-    }
-    else {
+        std::cout << "Using RPI camera\n";
+        capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
+                                     true /*is_camera*/, camera_resolution);
+
+    } else {
         throw std::runtime_error("Unsupported input type: " + input_path);
     }
 
     return input_type;
 }
 
-struct ProcessResult {
-    int exit_code = -1;
-    std::string stdout_str;
-    std::string stderr_str;
-};
-
-// run a bash script and capture output (stdout + stderr)
-static ProcessResult run_bash_helper(const fs::path &script_path,
-                                     const std::vector<std::string> &args)
-{
-    ProcessResult result;
-
-    if (!fs::exists(script_path)) {
-        std::ostringstream oss;
-        oss << "File not found: " << script_path;
-        result.exit_code = 1;
-        result.stderr_str = oss.str();
-        std::cerr << oss.str() << std::endl;
-        return result;
-    }
-
-    std::ostringstream cmd;
-    cmd << script_path.string();
-    for (const auto &a : args) {
-        cmd << " " << a;   // simple join; args are simple flags/words
-    }
-    cmd << " 2>&1";       // redirect stderr to stdout
-
-    FILE *pipe = popen(cmd.str().c_str(), "r");
-    if (!pipe) {
-        result.exit_code = 1;
-        result.stderr_str = "Failed to run helper script";
-        std::cerr << result.stderr_str << std::endl;
-        return result;
-    }
-
-    char buffer[1024];
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        result.stdout_str += buffer;
-    }
-
-    int status = pclose(pipe);
-
-    #ifdef _WIN32
-    // _pclose returns the process exit code directly
-    result.exit_code = status;
-    #else
-    if (WIFEXITED(status)) {
-        result.exit_code = WEXITSTATUS(status);
-    } else {
-        result.exit_code = 1;
-    }
-    #endif
-
-    // For simplicity, treat everything as stderr on error
-    if (result.exit_code != 0) {
-        result.stderr_str = result.stdout_str;
-    }
-
-    return result;
-}
-
-static ProcessResult run_get_hef_command(const std::vector<std::string> &args)
-{
-    auto result = run_bash_helper(GET_HEF_BASH_SCRIPT_PATH, args);
-    if (result.exit_code != 0) {
-        const std::string &stderr_str = result.stderr_str;
-
-        if (stderr_str.find("No device detected") != std::string::npos) {
-            std::cerr
-                << "\nNo Hailo device was detected.\n"
-                << "This application uses the connected device to choose the correct HEF "
-                << "(e.g., hailo8 vs hailo10h).\n"
-                << "Please plug in a Hailo device and run the app again.\n"
-                << "If you want to download a model without hardware, run get_hef.sh directly "
-                << "and pass --hw-arch explicitly (e.g., hailo8).\n";
-        } else if (!stderr_str.empty()) {
-            std::cerr << stderr_str << std::endl;
-        }
-        std::exit(result.exit_code);
-    }
-    return result;
-}
-
-static ProcessResult run_get_input_command(const std::vector<std::string> &args)
-{
-    auto result = run_bash_helper(GET_INPUT_BASH_SCRIPT_PATH, args);
-    if (result.exit_code != 0) {
-        if (!result.stdout_str.empty())
-            std::cerr << result.stdout_str << std::endl;
-        if (!result.stderr_str.empty())
-            std::cerr << result.stderr_str << std::endl;
-        std::exit(result.exit_code);
-    }
-    return result;
-}
-
-// --- list_networks / list_inputs ---
-
-void list_networks(const std::string &app)
-{
-    std::vector<std::string> cmd_args = {"list", "--app", app};
-    std::cout << "Fetching networks list... please wait\n";
-    auto result = run_get_hef_command(cmd_args);
-
-    std::string out = result.stdout_str;
-    if (!out.empty()) {
-        std::string footer =
-            "\n\033[33mPick any network name from the list above and pass it with --net "
-            "(without extension).\n"
-            "Example:  --net <name>\033[0m\n";
-        std::cout << "\n" << out << footer << std::endl;
-    }
-}
-
-void list_inputs(const std::string &app)
-{
-    std::cout << "Listing predefined inputs for app '" << app << "'...\n";
-    auto result = run_get_input_command({"list", "--app", app});
-
-    std::string out = result.stdout_str;
-    if (!out.empty()) {
-        std::string footer =
-            "\n\n\033[33mPick any name from the list above and pass it with -i/--input "
-            "(without extension).\n"
-            "Example:  -i <name>\033[0m\n";
-        std::cout << "\n" << out << footer << std::endl;
-    }
-}
-
-// --- HEF helpers (verify arch + get hef) ---
-static void verify_hef_arch(const std::string &app, const fs::path &hef_path)
-{
-    (void)app; // kept for symmetry with Python; not needed by the script itself
-    std::vector<std::string> args = {
-        "verify-arch",
-        "--hef", hef_path.string()
-    };
-
-    auto result = run_get_hef_command(args);
-    if (result.exit_code != 0) {
-        if (!result.stderr_str.empty())
-            std::cerr << result.stderr_str << std::endl;
-        std::exit(result.exit_code);
-    }
-}
-
-static std::string get_hef(const std::string &app,
-                           const std::string &net,
-                           const std::string &dest_dir = "hefs")
-{
-    fs::path dest(dest_dir);
-    fs::create_directories(dest);
-
-    std::vector<std::string> args = {
-        "get",
-        "--app", app,
-        "--net", net,
-        "--dest", dest.string()
-    };
-
-    auto result = run_get_hef_command(args);
-    std::string stdout_str = result.stdout_str;
-    if (stdout_str.empty()) {
-        std::cerr << "get_hef.sh returned empty stdout; cannot determine downloaded path.\n";
-        std::exit(1);
-    }
-
-    // Last line is the path
-    std::istringstream iss(stdout_str);
-    std::string line, last_line;
-    while (std::getline(iss, line)) {
-        if (!line.empty()) last_line = line;
-    }
-
-    fs::path hef_path = fs::path(last_line).lexically_normal();
-    hef_path = fs::absolute(hef_path);
-
-    std::cout << "\033[32mDownload complete: " << hef_path << "\033[0m\n";
-    return hef_path.string();
-}
-
-// --- resolve_net_arg ---
-std::string resolve_net_arg(const std::string &app,
-                            const std::string &net_arg_in,
-                            const std::string &dest_dir)
-{
-    if (net_arg_in.empty()) {
-        std::cerr << "No --net was provided.\n";
-        list_networks(app);
-        std::exit(1);
-    }
-
-    fs::path dest(dest_dir);
-    fs::create_directories(dest);
-
-    fs::path candidate(net_arg_in);
-
-    // 1) Existing path case
-    if (fs::exists(candidate)) {
-        if (fs::is_regular_file(candidate) && candidate.extension() == ".hef") {
-            fs::path hef_path = fs::absolute(candidate);
-            std::cout << "Using local HEF file: " << hef_path << std::endl;
-            // verify_hef_arch(app, hef_path);
-            return hef_path.string();
-        } else {
-            std::cerr
-                << "Path '" << net_arg_in << "' exists but is not a .hef file.\n"
-                << "Please provide either:\n"
-                << "  • A valid .hef file\n"
-                << "  • OR a network name (without extension)\n"
-                << "\033[33mTo see all available network names, run:  --list-nets\033[0m\n";
-            std::exit(1);
-        }
-    }
-
-    // 2) Non-existing .hef
-    if (candidate.extension() == ".hef") {
-        std::cerr << "HEF file not found: " << net_arg_in << "\n"
-                  << "\033[33mTo see all available network names, run:  --list-nets\033[0m\n";
-        std::exit(1);
-    }
-
-    // 3) Treat as model name
-    std::string net_name = net_arg_in;
-    fs::path existing_hef = dest / (net_name + ".hef");
-
-    std::cout << "You passed a model name: '" << net_name
-              << "'. Searching for this model in the supported networks... please wait.\n";
-
-    if (fs::exists(existing_hef)) {
-        std::string answer;
-        std::cout
-            << "A HEF file already exists for network '" << net_name << "': " << existing_hef << "\n"
-            << "Do you want to reuse this file instead of downloading it again? [Y/n]: ";
-        if (!std::getline(std::cin, answer)) {
-            answer = "y"; // non-interactive -> reuse
-        }
-
-        auto to_lower = [](std::string s) {
-            std::transform(s.begin(), s.end(), s.begin(),
-                           [](unsigned char c){ return std::tolower(c); });
-            return s;
-        };
-
-        if (answer.empty() || to_lower(answer) == "y" || to_lower(answer) == "yes") {
-            fs::path hef_path = fs::absolute(existing_hef);
-            std::cout << "Reusing existing HEF: " << hef_path << std::endl;
-            verify_hef_arch(app, hef_path);
-            return hef_path.string();
-        }
-
-        std::string answer2;
-        std::cout << "Do you want to re-download and replace '" << existing_hef << "'? [Y/n]: ";
-        if (!std::getline(std::cin, answer2)) {
-            answer2 = "n";
-        }
-        std::string a2 = to_lower(answer2);
-
-        if (a2.empty() || a2 == "y" || a2 == "yes") {
-            std::cout << "Re-downloading network '" << net_name
-                      << "' and replacing existing HEF...\n";
-            std::string hef_path_str = get_hef(app, net_name, dest_dir);
-            fs::path hef_path = fs::absolute(hef_path_str);
-            verify_hef_arch(app, hef_path);
-            return hef_path.string();
-        } else {
-            std::cerr
-                << "Aborting: existing HEF was neither reused nor replaced. "
-                << "Please provide a different --net or remove the file manually.\n";
-            std::exit(1);
-        }
-    }
-
-    // 4) No existing HEF -> download
-    std::cout << "Downloading model name " << net_name << ", please wait...\n";
-    std::string hef_path_str = get_hef(app, net_name, dest_dir);
-    fs::path hef_path = fs::absolute(hef_path_str);
-    verify_hef_arch(app, hef_path);
-    return hef_path.string();
-}
-
-// --- resolve_input_arg ---
-
-static std::string download_input(const std::string &app,
-                                  const std::string &input_id,
-                                  const std::string &target_dir = "inputs")
-{
-    fs::path target(target_dir);
-    fs::create_directories(target);
-
-    std::cout << "Downloading input '" << input_id
-              << "' for app '" << app << "' from resources...\n";
-
-    auto result = run_get_input_command({
-        "get",
-        "--app", app,
-        "--target-dir", target.string(),
-        "--i", input_id
-    });
-
-    std::string stdout_str = result.stdout_str;
-    if (stdout_str.empty()) {
-        std::cerr << "get_input.sh returned empty stdout; cannot determine downloaded path.\n";
-        std::exit(1);
-    }
-
-    std::istringstream iss(stdout_str);
-    std::string line, last_line;
-    while (std::getline(iss, line)) {
-        if (!line.empty()) last_line = line;
-    }
-
-    fs::path downloaded_path = fs::absolute(last_line);
-    std::cout << "\033[32mDownload complete: " << downloaded_path << "\033[0m\n";
-    return downloaded_path.string();
-}
-
-std::string resolve_input_arg(const std::string &app,
-                              const std::string &input_arg_in)
-{
-    // No input -> offer default resource
-    if (input_arg_in.empty()) {
-        std::string answer;
-        std::cout
-            << "No --input was provided for app '" << app << "'. "
-            << "Do you want to download and use the default input from resources? [Y/n]: ";
-        if (!std::getline(std::cin, answer)) {
-            std::cerr << "No input provided and cannot prompt interactively. "
-                      << "Please specify -i/--input explicitly.\n";
-            std::exit(1);
-        }
-
-        auto to_lower = [](std::string s) {
-            std::transform(s.begin(), s.end(), s.begin(),
-                           [](unsigned char c){ return std::tolower(c); });
-            return s;
-        };
-        std::string a = to_lower(answer);
-
-        if (a.empty() || a == "y" || a == "yes") {
-            return download_input(app, "default", "inputs");
-        }
-
-        std::cerr
-            << "No input provided. Please run again with -i/--input or accept the default resource.\n";
-        std::exit(1);
-    }
-
-    if (input_arg_in == "usb" || input_arg_in == "rpi") {
-        return input_arg_in;
-    }
-
-    fs::path candidate(input_arg_in);
-
-    if (fs::exists(candidate)) {
-        return fs::absolute(candidate).string();
-    }
-
-    // Has extension but doesn't exist -> error + list
-    if (!candidate.extension().empty()) {
-        std::cerr << "Input file not found: " << input_arg_in << "\n";
-        std::cout << "Available predefined inputs for this app:\n";
-        list_inputs(app);
-        std::exit(1);
-    }
-
-    // No extension and doesn't exist -> treat as logical ID in resources
-    std::cout
-        << "Input '" << input_arg_in
-        << "' does not exist as a local file or directory. "
-        << "Assuming this is a resource ID and downloading from inputs.json...\n";
-
-    return download_input(app, input_arg_in, "inputs");
-}
-
-// Safely query a metadata value from networks.json via get_hef.sh get_key_value.
-// - If the script succeeds → return the raw first token exactly as printed.
-// - If anything goes wrong → return "N/A".
-std::string get_network_meta_value(const std::string &app,
-                                   const std::string &model_name,
-                                   const std::string &key,
-                                   const std::string &sub_key)
-{
-    std::vector<std::string> args = {
-        "get_key_value",
-        "--app",  app,
-        "--name", model_name,
-        "--key",  key
-    };
-    if (!sub_key.empty()) {
-        args.push_back("--sub_key");
-        args.push_back(sub_key);
-    }
-
-    ProcessResult result = run_bash_helper(GET_HEF_BASH_SCRIPT_PATH, args);
-
-    // Any error or empty output → "N/A"
-    if (result.exit_code != 0 || result.stdout_str.empty()) {
-        return "N/A";
-    }
-
-    // Return the FIRST token exactly as-is
-    std::istringstream iss(result.stdout_str);
-    std::string token;
-    if (!(iss >> token)) {
-        return "N/A";
-    }
-    return token;
-}
 
 void show_progress_helper(size_t current, size_t total)
 {
