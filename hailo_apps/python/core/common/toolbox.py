@@ -895,8 +895,7 @@ def visualize(
 
     # Window + writer init (only for camera/video, not images)
     if cap is not None:
-        cv2.namedWindow("Output", cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty("Output", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
 
         base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
         base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
