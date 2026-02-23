@@ -13,8 +13,11 @@ from hailo_apps.python.core.common.core import (
 )
 from hailo_apps.python.core.common.defines import (
     ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
+    BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
     DEFAULT_LOCAL_RESOURCES_PATH,
+    LPR_VIDEO_NAME,
     RESOURCES_SO_DIR_NAME,
+    RESOURCES_VIDEOS_DIR_NAME,
     TAPPAS_POSTPROC_PATH_KEY,
 )
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -66,6 +69,12 @@ class GStreamerLPRApp(GStreamerApp):
 
         super().__init__(parser, user_data)
         setproctitle.setproctitle(LPR_APP_TITLE)
+
+        if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
+            self.video_source = get_resource_path(
+                pipeline_name=None, resource_type=RESOURCES_VIDEOS_DIR_NAME,
+                arch=self.arch, model=LPR_VIDEO_NAME,
+            )
 
         self.batch_size = 2
         nms_score_threshold = 0.3

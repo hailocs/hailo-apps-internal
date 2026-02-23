@@ -102,6 +102,10 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: lpr_ayalon.mp4
+    source: s3
+    tag:
+      - lpr
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
