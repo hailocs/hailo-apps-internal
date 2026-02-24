@@ -273,9 +273,8 @@ HEADER_HEIGHT = 36
 
 
 def lpr_display_thread(user_data):
-    """Runs in a separate thread. Shows a scrollable panel of recognized plates."""
-    cv2.namedWindow("LPR Panel", cv2.WINDOW_NORMAL)
-    cv2.resizeWindow("LPR Panel", PANEL_WIDTH, 700)
+    """Runs in a separate thread. Shows a scrollable panel of recognized plates.
+    Note: cv2.namedWindow must be called from the main thread before starting this thread."""
     scroll_offset = 0  # 0 = top (newest)
 
     def on_mouse(event, x, y, flags, param):
@@ -400,6 +399,10 @@ def main():
 
     print(f"LPR using OCR engine: {ocr_engine}")
     user_data = user_app_callback_class(ocr_hef, ocr_engine=ocr_engine)
+
+    # Create display window on main thread to avoid Qt threading warnings
+    cv2.namedWindow("LPR Panel", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("LPR Panel", PANEL_WIDTH, 700)
 
     # Start display panel thread
     panel_thread = threading.Thread(target=lpr_display_thread, args=(user_data,), daemon=True)
