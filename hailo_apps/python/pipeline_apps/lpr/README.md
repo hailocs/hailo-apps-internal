@@ -2,21 +2,31 @@
 
 > ⚠️ **Beta:** This application is currently in beta. Features and APIs may change.
 
-Real-time license plate recognition on Hailo accelerators using a three-stage GStreamer pipeline with tracker-based deduplication, a center-frame ROI gate, and a live display panel.
+Real-time license plate recognition on Hailo accelerators using a three-stage pipeline with tracker-based deduplication, a center-frame ROI gate, and a live display panel.
+
+![LPR Demo](../../../../doc/images/lpr.gif)
 
 ## Pipeline Architecture
 
+The pipeline adapts automatically based on the detected Hailo device:
+
+**Hailo-10H:**
 ```
 Source → Vehicle Detection (YOLOv5m) → Tracker → Crop Vehicles → LP Detection (Tiny-YOLOv4) → User Callback (OCR) → Overlay → Display
 ```
 
-| Stage | Model | Runs On |
-|---|---|---|
-| Vehicle detection | `yolov5m_vehicles` (640×640) | Hailo (GStreamer `hailonet`) |
-| LP detection | `tiny_yolov4_license_plates` (416×416) | Hailo (GStreamer `hailonet` inside cropper) |
-| OCR | LPRNet (300×75) or PaddleOCR (320×48) | Hailo (HailoRT Python API in callback) |
+**Hailo-8 / Hailo-8L:**
+```
+Source → Vehicle Detection (YOLOv5m) → Tracker → User Callback (LP Detection + OCR) → Overlay → Display
+```
 
-OCR runs outside the GStreamer pipeline — the user callback crops the license plate from the frame, resizes it, and runs synchronous inference via `HailoInfer`.
+| Stage | Model | Hailo-10H | Hailo-8 / Hailo-8L |
+|---|---|---|---|
+| Vehicle detection | `yolov5m_vehicles` (640×640) | GStreamer `hailonet` | GStreamer `hailonet` |
+| LP detection | `tiny_yolov4_license_plates` (416×416) | GStreamer `hailonet` inside cropper | HailoRT Python API in callback |
+| OCR | LPRNet (300×75) or PaddleOCR (320×48) | HailoRT Python API in callback | HailoRT Python API in callback |
+
+On **Hailo-10H**, LP detection runs inside a GStreamer `hailocropper` element using the TAPPAS `libyolo_post.so` postprocess. On **Hailo-8/8L**, the TAPPAS postprocess SO is incompatible with the model output, so LP detection runs in the Python callback using `HailoInfer` with a built-in YOLOv4 postprocess implementation. The switch is automatic — no user configuration needed.
 
 ## Usage
 
