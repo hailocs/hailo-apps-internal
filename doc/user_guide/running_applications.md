@@ -28,6 +28,7 @@ The following applications are available as command-line tools. Each one is a se
 | `hailo-face-recon`    | [Face Recognition](../../hailo_apps/python/pipeline_apps/face_recognition/README.md)           | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA.                                            |
 | `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)                        | Text detection and recognition using PaddleOCR models.  This application is currently in BETA.                                                                    |
 | `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)           | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.              |
+| `hailo-lpr`           | [License Plate Recognition](../../hailo_apps/python/pipeline_apps/lpr/README.md)               | Real-time license plate detection and OCR recognition using a three-stage pipeline (vehicle detection, LP detection, OCR).                                        |
 
 ### GenAI Standalone Applications
 
