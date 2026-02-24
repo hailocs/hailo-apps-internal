@@ -48,7 +48,7 @@ LPR_PIPELINE = "lpr"
 VEHICLE_DETECTION_POSTPROCESS_SO = "libyolo_hailortpp_postprocess.so"
 VEHICLE_DETECTION_POSTPROCESS_FUNC = "yolov5m_vehicles"
 
-# License plate detection postprocess (from TAPPAS)
+# License plate detection postprocess (from TAPPAS — used on hailo10h only)
 LP_DETECTION_POSTPROCESS_SO = "libyolo_post.so"
 LP_DETECTION_POSTPROCESS_FUNC = "tiny_yolov4_license_plates"
 
@@ -87,23 +87,32 @@ class GStreamerLPRApp(GStreamerApp):
             arch=self.arch,
         )
         self.vehicle_detection_hef = models[0].path
-        self.lp_detection_hef = models[1].path
+
+        # On hailo10h, LP detection runs in the GStreamer pipeline via TAPPAS postprocess.
+        # On hailo8/hailo8l, LP detection runs in the Python callback (TAPPAS SO is incompatible).
+        self.use_gst_lp_detection = self.arch == "hailo10h"
+        if self.use_gst_lp_detection:
+            self.lp_detection_hef = models[1].path
 
         # Resolve postprocess .so paths
         self.vehicle_detection_post_so = get_resource_path(
             pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
             arch=self.arch, model=VEHICLE_DETECTION_POSTPROCESS_SO,
         )
-        tappas_post_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, "")
-        self.lp_detection_post_so = os.path.join(tappas_post_dir, LP_DETECTION_POSTPROCESS_SO)
-
-        # Cropper .so paths
-        self.vehicle_cropper_so = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
-        )
-        # LP detection config JSON
-        self.lp_detection_config_json = Path(DEFAULT_LOCAL_RESOURCES_PATH) / LP_DETECTION_CONFIG_JSON
+        if self.use_gst_lp_detection:
+            tappas_post_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, "")
+            self.lp_detection_post_so = os.path.join(
+                tappas_post_dir, LP_DETECTION_POSTPROCESS_SO
+            )
+            # Cropper .so paths
+            self.vehicle_cropper_so = get_resource_path(
+                pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
+                arch=self.arch, model=ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
+            )
+            # LP detection config JSON
+            self.lp_detection_config_json = (
+                Path(DEFAULT_LOCAL_RESOURCES_PATH) / LP_DETECTION_CONFIG_JSON
+            )
 
         self.app_callback = app_callback
 
@@ -148,24 +157,25 @@ class GStreamerLPRApp(GStreamerApp):
             name="hailo_tracker",
         )
 
-        # Stage 2: Crop vehicles → LP detection
-        lp_detection_pipeline = INFERENCE_PIPELINE(
-            hef_path=self.lp_detection_hef,
-            post_process_so=self.lp_detection_post_so,
-            post_function_name=LP_DETECTION_POSTPROCESS_FUNC,
-            batch_size=self.batch_size,
-            config_json=self.lp_detection_config_json,
-            name="lp_detection",
-        )
-        vehicle_cropper = CROPPER_PIPELINE(
-            inner_pipeline=lp_detection_pipeline,
-            so_path=self.vehicle_cropper_so,
-            function_name=VEHICLE_CROPPER_FUNC,
-            internal_offset=True,
-            name="vehicle_cropper",
-        )
+        # On hailo10h: crop vehicles → LP detection in GStreamer pipeline
+        # On hailo8/8l: LP detection runs in Python callback (TAPPAS SO incompatible)
+        if self.use_gst_lp_detection:
+            lp_detection_pipeline = INFERENCE_PIPELINE(
+                hef_path=self.lp_detection_hef,
+                post_process_so=self.lp_detection_post_so,
+                post_function_name=LP_DETECTION_POSTPROCESS_FUNC,
+                batch_size=self.batch_size,
+                config_json=self.lp_detection_config_json,
+                name="lp_detection",
+            )
+            vehicle_cropper = CROPPER_PIPELINE(
+                inner_pipeline=lp_detection_pipeline,
+                so_path=self.vehicle_cropper_so,
+                function_name=VEHICLE_CROPPER_FUNC,
+                internal_offset=True,
+                name="vehicle_cropper",
+            )
 
-        # OCR (LPRNet) runs in Python callback via HailoRT API, not in the pipeline
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
 
         # Display with overlay — bounding boxes drawn on video
@@ -175,14 +185,23 @@ class GStreamerLPRApp(GStreamerApp):
             show_fps=self.show_fps,
         )
 
-        pipeline_string = (
-            f"{source_pipeline} ! "
-            f"{vehicle_detection_wrapper} ! "
-            f"{tracker_pipeline} ! "
-            f"{vehicle_cropper} ! "
-            f"{user_callback_pipeline} ! "
-            f"{display_pipeline}"
-        )
+        if self.use_gst_lp_detection:
+            pipeline_string = (
+                f"{source_pipeline} ! "
+                f"{vehicle_detection_wrapper} ! "
+                f"{tracker_pipeline} ! "
+                f"{vehicle_cropper} ! "
+                f"{user_callback_pipeline} ! "
+                f"{display_pipeline}"
+            )
+        else:
+            pipeline_string = (
+                f"{source_pipeline} ! "
+                f"{vehicle_detection_wrapper} ! "
+                f"{tracker_pipeline} ! "
+                f"{user_callback_pipeline} ! "
+                f"{display_pipeline}"
+            )
         return pipeline_string
 
 
