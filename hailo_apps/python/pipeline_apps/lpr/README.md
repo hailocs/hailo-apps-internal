@@ -1,5 +1,7 @@
 # License Plate Recognition (LPR)
 
+> ⚠️ **Beta:** This application is currently in beta. Features and APIs may change.
+
 Real-time license plate recognition on Hailo accelerators using a three-stage GStreamer pipeline with tracker-based deduplication, a center-frame ROI gate, and a live display panel.
 
 ## Pipeline Architecture
