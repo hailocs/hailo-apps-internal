@@ -20,13 +20,13 @@ Supported Models
 
 - real_esrgan_x2
 
-## Installation and Usage
+## Linux Installation
 
 Run this app in one of two ways:
 1. Standalone installation in a clean virtual environment (no TAPPAS required) — see [Option 1](#option-1-standalone-installation)
 2. From an installed `hailo-apps` repository — see [Option 2](#option-2-inside-an-installed-hailo-apps-repository)
 
-## Option 1: Standalone Installation
+### Option 1: Standalone Installation
 
 To avoid compatibility issues, it's recommended to use a clean virtual environment.
 
@@ -48,7 +48,7 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
     pip install -r requirements.txt
     ```
 
-## Option 2: Inside an Installed hailo-apps Repository
+### Option 2: Inside an Installed hailo-apps Repository
 If you installed the full repository:
 ```shell script
 git clone https://github.com/hailo-ai/hailo-apps.git
@@ -61,10 +61,44 @@ Then the app is already ready for usage:
 cd hailo-apps/python/standalone_apps/super_resolution
 ```
 
+
+
+## Windows Installation
+
+To avoid compatibility issues, it's recommended to use a clean virtual environment.
+
+0. Install HailoRT (MSI) + PyHailoRT
+    1. Download and install the **HailoRT Windows MSI** from the Hailo website.
+    2. During the installation, make sure **PyHailoRT** is selected (in the MSI “Custom Setup” tree).
+    3. After installation, the PyHailoRT wheel is located under:
+       `C:\Program Files\HailoRT\python`
+
+    4. Create and activate a virtual environment:
+    ```powershell
+    python -m venv wind_venv
+    .\wind_venv\Scripts\Activate.ps1
+    ```
+
+    5. Install the PyHailoRT wheel from the MSI installation folder:
+    ```powershell
+    pip install "C:\Program Files\HailoRT\python\hailort-*.whl"
+    ```
+
+1. Clone the repository:
+    ```powershell
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps\hailo_apps\python\standalone_apps\super_resolution
+    ```
+
+2. Install dependencies:
+    ```powershell
+    pip install -r requirements.txt
+
+
 ## Run
 After completing either installation option, run from the application folder:
 ```shell script
-./super_resolution.py -n <model_path> -i <input_image_path> -o <output_path>
+python .\super_resolution.py -n <model_path> -i <input_image_path> -o <output_path>
 ```
 
 Arguments
@@ -74,11 +108,13 @@ Arguments
     - A **model name** (e.g., `real_esrgan_x2`) → the script will automatically download and resolve the correct HEF for your device.
     - A **file path** to a local HEF → the script will use the specified network directly.
 - `-i, --input`:
-  - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `usb` to use the system camera.
+  - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `usb` to auto-select the first available USB camera.
+    - On Linux, you can also use /dev/vidoeX (e.g., `/dev/video0`) to select a specific camera.
+    - On Windows, you can also use a camera index (`0`, `1`, `2`, ...) to select a specific camera.
     - On Raspberry Pi, you can also use `rpi` to enable the Raspberry Pi camera.
   - A **predefined input name** from `resources_config.yaml` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
-  - Use `--list-inputs` to display all available predefined inputs.
+    - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
 - `-s, --save-output`: [optional] Save the output of the inference from a stream.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.

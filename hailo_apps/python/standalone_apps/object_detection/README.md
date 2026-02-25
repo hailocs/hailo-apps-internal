@@ -132,7 +132,7 @@ Arguments
     - On Raspberry Pi, you can also use `rpi` to enable the Raspberry Pi camera.
   - A **predefined input name** from `resources_config.yaml` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
-  - Use `--list-inputs` to display all available predefined inputs.
+    - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
 - `-l, --labels`: [optional] Path to a text file containing class labels. If not provided, default COCO labels are used.
 - `-s, --save-output`: [optional] Save the output of the inference from a stream.
