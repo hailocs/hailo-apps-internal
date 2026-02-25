@@ -209,6 +209,10 @@ json:
     source: s3
     tag:
       - clip
+  - name: yolov4_license_plate.json
+    source: s3
+    tag:
+      - lpr
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)

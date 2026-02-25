@@ -14,8 +14,8 @@ from hailo_apps.python.core.common.core import (
 from hailo_apps.python.core.common.defines import (
     ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
-    DEFAULT_LOCAL_RESOURCES_PATH,
     LPR_VIDEO_NAME,
+    RESOURCES_JSON_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
     TAPPAS_POSTPROC_PATH_KEY,
@@ -110,8 +110,9 @@ class GStreamerLPRApp(GStreamerApp):
                 arch=self.arch, model=ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
             )
             # LP detection config JSON
-            self.lp_detection_config_json = (
-                Path(DEFAULT_LOCAL_RESOURCES_PATH) / LP_DETECTION_CONFIG_JSON
+            self.lp_detection_config_json = get_resource_path(
+                pipeline_name=None, resource_type=RESOURCES_JSON_DIR_NAME,
+                arch=self.arch, model=LP_DETECTION_CONFIG_JSON,
             )
 
         self.app_callback = app_callback
