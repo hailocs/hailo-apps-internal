@@ -142,7 +142,8 @@ def run_inference_pipeline(
     output_resolution,
     framerate,
     save_output=False,
-    show_fps=False
+    show_fps=False,
+    no_display=False
 ) -> None:
 
     labels = get_labels(labels_file)
@@ -179,9 +180,10 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess, args=(images, cap, framerate, batch_size, input_queue, width, height, cap_processing_mode, preprocess_callback_fn, stop_event))
+    
     postprocess_thread = threading.Thread(
         target=visualize, args=(output_queue, cap, save_output,
-                                output_dir, post_process_callback_fn, fps_tracker, output_resolution, framerate, False, stop_event)
+                                output_dir, post_process_callback_fn, fps_tracker, output_resolution, framerate, False, stop_event, no_display)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
@@ -194,16 +196,22 @@ def run_inference_pipeline(
     if show_fps:
         fps_tracker.start()
 
-    preprocess_thread.join()
-    infer_thread.join()
-    postprocess_thread.join()
+    try:
+        preprocess_thread.join()
+        infer_thread.join()
+        postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
+
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
 
 
 
@@ -295,7 +303,8 @@ def main() -> None:
         args.output_resolution,
         args.frame_rate,
         args.save_output,
-        args.show_fps
+        args.show_fps,
+        args.no_display
     )
 
 

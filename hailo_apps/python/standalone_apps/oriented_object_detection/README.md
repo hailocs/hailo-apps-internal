@@ -132,6 +132,7 @@ Arguments
 - `cr, --camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
 - `or, --output-resolution`: [optional] Set output size using `sd|hd|fhd`, or pass custom width/height (e.g., `--output-resolution 1920 1080`).
 - `--show-fps`: [optional] Display FPS performance metrics for video/camera input.
+- `--no-display`: [optional] Run without opening a display window. Useful for headless or performance testing.
 - `-f, --frame-rate`: [optional][Camera only] Override the camera input framerate.
 - `--list-models`: [optional] Print all supported models for this application (from `resources_config.yaml`) and exit.
 - `--list-inputs`: [optional] Print the available predefined input resources (images/videos) defined in `resources_config.yaml` for this application, then exit.

@@ -245,6 +245,7 @@ def run_inference_pipeline(
     save_output=False,
     show_fps=False,
     use_corrector=False,
+    no_display=False
 ) -> None:
     """
     Run full detector + OCR inference pipeline with multi-threading and streaming.
@@ -344,7 +345,7 @@ def run_inference_pipeline(
     vis_postprocess_thread = threading.Thread(
         target=visualize,
         args=(vis_output_queue, cap, save_output, output_dir,
-              post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True, stop_event)
+              post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True, stop_event, no_display)
     )
 
     det_thread = threading.Thread(
@@ -367,37 +368,42 @@ def run_inference_pipeline(
     vis_postprocess_thread.start()
 
 
-    ##### Join Threads and Shutdown Queues ######
+    try:
 
-    # Wait for input preprocessing to finish
-    preprocess_thread.join()
+        ##### Join Threads and Shutdown Queues ######
+        # Wait for input preprocessing to finish
+        preprocess_thread.join()
 
-    # Wait for detector inference to finish
-    det_thread.join()
+        # Wait for detector inference to finish
+        det_thread.join()
 
-    # Tell detection postprocess thread to exit
-    det_postprocess_queue.put(None)
-    detection_postprocess_thread.join()
+        # Tell detection postprocess thread to exit
+        det_postprocess_queue.put(None)
+        detection_postprocess_thread.join()
 
-    # Signal OCR inference thread to stop (no more crops coming)
-    ocr_input_queue.put(None)
-    ocr_thread.join()
+        # Signal OCR inference thread to stop (no more crops coming)
+        ocr_input_queue.put(None)
+        ocr_thread.join()
 
-    # Signal OCR postprocess thread to stop
-    ocr_postprocess_queue.put(None)
-    ocr_postprocess_thread.join()
+        # Signal OCR postprocess thread to stop
+        ocr_postprocess_queue.put(None)
+        ocr_postprocess_thread.join()
 
-    # Signal visualization thread that everything is done
-    vis_output_queue.put(None)
-    vis_postprocess_thread.join()
+        # Signal visualization thread that everything is done
+        vis_output_queue.put(None)
+        vis_postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
 
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
 
 
 def detector_inference_callback(
@@ -578,6 +584,7 @@ def main() -> None:
         args.save_output,
         args.show_fps,
         args.use_corrector,
+        args.no_display
     )
 
 

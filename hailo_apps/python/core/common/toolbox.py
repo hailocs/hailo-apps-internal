@@ -871,7 +871,8 @@ def visualize(
     output_resolution: Optional[Tuple[int, int]] = None,
     framerate: Optional[float] = None,
     side_by_side: bool = False,
-    stop_event: Optional[threading.Event] = None
+    stop_event: Optional[threading.Event] = None,
+    no_display: bool = False
 ) -> None:
     """
     Visualize inference results: draw detections, show them on screen,
@@ -895,7 +896,9 @@ def visualize(
 
     # Window + writer init (only for camera/video, not images)
     if cap is not None:
-        cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
+        # Create a window only if display is enabled
+        if not no_display:
+            cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
 
         base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
         base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
@@ -908,6 +911,7 @@ def visualize(
         frame_width  = target_w * (2 if side_by_side else 1)
         frame_height = target_h
 
+        # VideoWriter depends ONLY on save_stream_output (works even with --no-display)
         if save_stream_output:
             cam_fps   = cap.get(cv2.CAP_PROP_FPS)
             final_fps = framerate or (cam_fps if cam_fps and cam_fps > 1 else 30.0)
@@ -921,7 +925,6 @@ def visualize(
                 (frame_width, frame_height),
             )
 
-    quitting = False
     # Main loop
     while True:
         result = output_queue.get()
@@ -938,7 +941,7 @@ def visualize(
             # Quit mode:
             # Frames may still arrive from other threads.
             # We skip processing but keep draining the queue to prevent blocking.
-            if quitting:
+            if stop_event is not None and stop_event.is_set():
                 continue
 
             # Some pipelines return [tensor] instead of tensor → normalize format
@@ -959,21 +962,30 @@ def visualize(
             bgr_frame = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
             frame_to_show = resize_frame_for_output(bgr_frame, output_resolution)
 
+            # -----------------
             # Display / Save
+            # -----------------
             if cap is not None:
-                cv2.imshow("Output", frame_to_show)
-                if save_stream_output and out is not None and frame_width and frame_height:
-                    out.write(cv2.resize(frame_to_show, (frame_width, frame_height)))
+                # 1) Optional display
+                if not no_display:
+                    cv2.imshow("Output", frame_to_show)
 
-                # User pressed 'q' → start shutdown:
-                # set stop_event for other threads and skip further processing.
-                if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                    quitting = True
-                    if stop_event is not None:
-                        stop_event.set()
-                    continue
+                    # Allow user to quit only when a window exists
+                    if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                        if stop_event is not None:
+                            stop_event.set()
+                        continue
+
+                # 2) Optional video writing (independent of display)
+                if save_stream_output and out is not None and frame_width and frame_height:
+                    # Ensure the written frame matches the VideoWriter size
+                    frame_to_write = cv2.resize(frame_to_show, (frame_width, frame_height))
+                    out.write(frame_to_write)
+
             else:
-                cv2.imwrite(os.path.join(output_dir, f"output_{image_id}.png"), frame_to_show)
+                # Image mode: write individual output frames
+                out_path = os.path.join(output_dir, f"output_{image_id}.png")
+                cv2.imwrite(out_path, frame_to_show)
 
             image_id += 1
 
@@ -987,9 +999,8 @@ def visualize(
     if cap is not None:
         cap.release()
 
-    cv2.destroyAllWindows()
-
-
+    if not no_display:
+        cv2.destroyAllWindows()
 
 
 ####################################################################
