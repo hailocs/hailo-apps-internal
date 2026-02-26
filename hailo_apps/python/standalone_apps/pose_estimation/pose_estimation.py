@@ -20,6 +20,12 @@ try:
         visualize,
         FrameRateTracker,
     )
+    from hailo_apps.python.core.common.onnx_utils import (
+        load_onnx_config,
+        init_onnx_sessions,
+        normalized_preprocess,
+        infer_full_onnx,
+    )
 
 except ImportError:
     repo_root = None
@@ -39,6 +45,12 @@ except ImportError:
         preprocess,
         visualize,
         FrameRateTracker,
+    )
+    from hailo_apps.python.core.common.onnx_utils import (
+        load_onnx_config,
+        init_onnx_sessions,
+        normalized_preprocess,
+        infer_full_onnx,
     )
 
 
@@ -63,6 +75,28 @@ def parse_args():
         type=int,
         default=1,
         help="The number of classes the model is trained on. Defaults to 1.",
+    )
+
+    parser.add_argument(
+        "--onnxconfig",
+        type=str,
+        default=None,
+        help=(
+            "Path to ONNX postprocessing configuration file (JSON). "
+            "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
+            "The config must include: postproc_onnx_path, output_tensor_mapping, output_format, "
+            "and postprocess_params."
+        ),
+    )
+
+    parser.add_argument(
+        "--full-onnx",
+        action="store_true",
+        help=(
+            "Use full ONNX mode (bypass HEF, run entire model in ONNX). "
+            "Overrides use_full_onnx_mode setting in config. "
+            "Requires hef_like_proc_onnx_path in ONNX config."
+        ),
     )
 
     args = parser.parse_args()
@@ -152,9 +186,11 @@ def run_inference_pipeline(
     frame_rate: float,
     save_output: bool,
     show_fps: bool,
+    onnxconfig=None,
+    args=None,
 ) -> None:
     """
-    Run the inference pipeline using HailoInfer.
+    Run the inference pipeline using HailoInfer, with optional ONNX postprocessing.
 
     Args:
         net_path (str): Path to the HEF model file.
@@ -167,6 +203,8 @@ def run_inference_pipeline(
         frame_rate (float): Target frame rate for processing.
         save_output (bool): If True, saves the output stream as a video file.
         show_fps (bool): If True, display real-time FPS on the output.
+        onnxconfig (str): Path to ONNX postprocessing config JSON (or None).
+        args: Full parsed CLI args (for --full-onnx flag).
 
     Returns:
         None
@@ -174,7 +212,23 @@ def run_inference_pipeline(
     input_queue = Queue()
     output_queue = Queue()
 
+    # --- ONNX setup ---
+    onnx_config = None
+    onnx_session = None
+    full_onnx_intermediate_session = None
+    use_full_onnx = False
 
+    if onnxconfig:
+        onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
+        use_full_onnx = (
+            getattr(args, "full_onnx", False)
+            or onnx_config.get("use_full_onnx_mode", False)
+        )
+        sessions = init_onnx_sessions(onnx_config, config_path, use_full_onnx)
+        onnx_session = sessions["onnx_session"]
+        full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
+
+    # --- Post-processing ---
     pose_post_processing = PoseEstPostProcessing(
         max_detections=300,
         score_threshold=0.001,
@@ -190,32 +244,59 @@ def run_inference_pipeline(
     if show_fps:
         fps_tracker = FrameRateTracker()
 
-    hailo_inference = HailoInfer(
-        net_path, batch_size, output_type="FLOAT32")
-    height, width, _ = hailo_inference.get_input_shape()
+    # --- Model / shape setup ---
+    hailo_inference = None
+    if use_full_onnx:
+        # Derive input shape from the intermediate ONNX model
+        input_info = full_onnx_intermediate_session.get_inputs()[0]
+        input_shape = input_info.shape
+        if len(input_shape) == 4:
+            if input_shape[1] in [1, 3]:  # NCHW
+                height, width = input_shape[2], input_shape[3]
+            else:  # NHWC
+                height, width = input_shape[1], input_shape[2]
+        else:
+            raise ValueError(f"Unexpected full ONNX input shape: {input_shape}")
+        logger.info(
+            f"Full ONNX mode enabled – intermediate + ONNX postproc (input {height}x{width})"
+        )
+    else:
+        output_type = "FLOAT32" if onnx_session is not None else "FLOAT32"
+        hailo_inference = HailoInfer(net_path, batch_size, output_type=output_type)
+        height, width, _ = hailo_inference.get_input_shape()
 
     post_process_callback_fn = partial(
         pose_post_processing.inference_result_handler,
         model_height=height,
         model_width=width,
-        class_num = class_num
+        class_num=class_num,
+        onnx_config=onnx_config,
+        onnx_session=onnx_session,
     )
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height)
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height),
+        kwargs={"preprocess_fn": normalized_preprocess if use_full_onnx else None},
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
-        )
-
-    infer_thread = threading.Thread(
-        target=infer,
-        args=(hailo_inference, input_queue, output_queue)
+              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
     )
+
+    if use_full_onnx:
+        infer_thread = threading.Thread(
+            target=infer_full_onnx,
+            args=(full_onnx_intermediate_session, onnx_session,
+                  onnx_config, input_queue, output_queue),
+        )
+    else:
+        infer_thread = threading.Thread(
+            target=infer,
+            args=(hailo_inference, input_queue, output_queue),
+        )
 
     infer_thread.start()
     preprocess_thread.start()
@@ -251,6 +332,8 @@ def main() -> None:
         args.frame_rate,
         args.save_output,
         args.show_fps,
+        onnxconfig=args.onnxconfig,
+        args=args,
     )
 
 

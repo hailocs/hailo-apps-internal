@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 try:
     from hailo_apps.python.core.common.toolbox import id_to_color
+    from hailo_apps.python.core.common.onnx_utils import map_hef_outputs_to_onnx_inputs
 except ImportError:
     from pathlib import Path
     import sys
@@ -9,6 +10,7 @@ except ImportError:
     core_dir = Path(__file__).resolve().parents[2] / "core"
     sys.path.insert(0, str(core_dir))
     from common.toolbox import id_to_color
+    from common.onnx_utils import map_hef_outputs_to_onnx_inputs
 
 import os
 from collections import deque
@@ -371,61 +373,8 @@ def extract_detections_onnx(image: np.ndarray, hailo_outputs: dict, onnx_config:
             f"Supported formats: {SUPPORTED_OUTPUT_FORMATS}"
         )
     
-    # Map HEF outputs to ONNX inputs with shape validation
-    onnx_inputs = {}
-    for hef_name, (onnx_name, expected_shape) in tensor_mapping.items():
-        if hef_name not in hailo_outputs:
-            raise ValueError(
-                f"Expected HEF output '{hef_name}' not found in inference results. "
-                f"Available outputs: {list(hailo_outputs.keys())}"
-            )
-        
-        hef_tensor = hailo_outputs[hef_name]
-        
-        # Validate shape (allow batch dimension to be flexible)
-        actual_shape = list(hef_tensor.shape)
-        if len(actual_shape) == 4:  # Remove batch dimension for comparison
-            actual_shape_no_batch = actual_shape[1:]
-        else:
-            actual_shape_no_batch = actual_shape
-        
-        # HEF outputs are in NHWC format, but expected_shape might be in HWC or CHW
-        # Check if we need to transpose from NHWC to NCHW
-        needs_transpose = False
-        if len(actual_shape) == 4 and len(expected_shape) == 3:
-            # HEF: [N, H, W, C], expected: [H, W, C]
-            if actual_shape_no_batch != expected_shape:
-                # Try transposing to [N, C, H, W] format
-                if [actual_shape[3], actual_shape[1], actual_shape[2]] == expected_shape:
-                    needs_transpose = True
-                else:
-                    raise ValueError(
-                        f"Shape mismatch for HEF output '{hef_name}': "
-                        f"expected {expected_shape}, got {actual_shape_no_batch} (NHWC format). "
-                        f"Full tensor shape: {hef_tensor.shape}"
-                    )
-            # else: shape matches as-is
-        else:
-            if actual_shape_no_batch != expected_shape:
-                raise ValueError(
-                    f"Shape mismatch for HEF output '{hef_name}': "
-                    f"expected {expected_shape}, got {actual_shape_no_batch}. "
-                    f"Full tensor shape: {hef_tensor.shape}"
-                )
-        
-        # Note: HEF outputs should be FLOAT32 when HailoInfer is initialized with output_type="FLOAT32"
-        # If they're still UINT8, ensure object_detection.py passes output_type="FLOAT32" to HailoInfer
-        if hef_tensor.dtype == np.uint8:
-            raise ValueError(
-                f"HEF output '{hef_name}' is UINT8. ONNX postprocessing requires dequantized (FLOAT32) outputs. "
-                f"Ensure HailoInfer is initialized with output_type='FLOAT32' when using ONNX postprocessing."
-            )
-        
-        # Transpose from NHWC to NCHW if needed
-        if needs_transpose:
-            hef_tensor = np.transpose(hef_tensor, (0, 3, 1, 2))  # NHWC -> NCHW
-        
-        onnx_inputs[onnx_name] = hef_tensor
+    # Map HEF outputs to ONNX inputs (handles NHWC->NCHW, shape/dtype validation)
+    onnx_inputs = map_hef_outputs_to_onnx_inputs(hailo_outputs, tensor_mapping)
     
     # Run ONNX postprocessing inference
     onnx_output_names = [out.name for out in onnx_session.get_outputs()]

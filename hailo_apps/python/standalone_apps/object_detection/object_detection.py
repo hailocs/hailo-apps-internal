@@ -23,6 +23,12 @@ try:
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
     from hailo_apps.python.core.common.core import handle_and_resolve_args
+    from hailo_apps.python.core.common.onnx_utils import (
+        load_onnx_config,
+        init_onnx_sessions,
+        normalized_preprocess,
+        infer_full_onnx,
+    )
 except ImportError:
     # Running as a plain script: add repo root so `import hailo_apps` works.
     repo_root = None
@@ -47,6 +53,12 @@ except ImportError:
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
+    from hailo_apps.python.core.common.onnx_utils import (
+        load_onnx_config,
+        init_onnx_sessions,
+        normalized_preprocess,
+        infer_full_onnx,
+    )
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -122,29 +134,6 @@ def parse_args():
     return args
 
 
-def normalized_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
-    """
-    Resize image with letterbox padding and normalize to float32 [0-1] range.
-    Used for ONNX models and HEF models compiled with [0,0,0]/[1,1,1] normalization.
-    
-    Args:
-        image (np.ndarray): Input image (uint8, 0-255).
-        model_w (int): Model input width.
-        model_h (int): Model input height.
-    
-    Returns:
-        np.ndarray: Preprocessed padded image as float32 normalized 0-1.
-    """
-    from hailo_apps.python.core.common.toolbox import default_preprocess
-    
-    # First apply standard letterbox preprocessing (uint8)
-    padded_image = default_preprocess(image, model_w, model_h)
-    
-    # Convert to float32 and normalize to 0-1
-    normalized_image = padded_image.astype(np.float32) / 255.0
-    return normalized_image
-
-
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
           enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False, onnxconfig=None, onnxconfig_args=None) -> None:
@@ -157,79 +146,18 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     # Load ONNX config and initialize sessions if specified
     onnx_config = None
     onnx_session = None
-    full_onnx_session = None
     full_onnx_intermediate_session = None
     use_full_onnx = False
     
     if onnxconfig:
-        import json
-        import onnxruntime as ort
-        
-        # Load ONNX config with permissive path resolution
-        onnx_config_path = Path(onnxconfig)
-        if not onnx_config_path.is_absolute():
-            # Try relative to current directory first
-            if not onnx_config_path.exists():
-                # Try relative to object_detection directory
-                onnx_config_path = Path(__file__).parent / onnxconfig
-        
-        if not onnx_config_path.exists():
-            raise FileNotFoundError(f"ONNX config file not found: {onnxconfig}")
-        
-        with open(onnx_config_path, 'r') as f:
-            onnx_config = json.load(f)
-        
-        logger.info(f"Loaded ONNX config from: {onnx_config_path}")
-        
-        # Helper function for permissive ONNX model path resolution
-        def resolve_onnx_path(model_path_str):
-            model_path = Path(model_path_str)
-            if model_path.is_absolute() and model_path.exists():
-                return str(model_path)
-            # Try relative to config file directory
-            config_dir_path = onnx_config_path.parent / model_path
-            if config_dir_path.exists():
-                return str(config_dir_path)
-            # Try relative to current directory
-            if model_path.exists():
-                return str(model_path)
-            raise FileNotFoundError(f"ONNX model file not found: {model_path_str}")
-        
-        # Check for full ONNX mode (debug mode)
-        # CLI argument overrides config setting
-        use_full_onnx = onnxconfig_args.full_onnx if hasattr(onnxconfig_args, 'full_onnx') and onnxconfig_args.full_onnx else onnx_config.get("use_full_onnx_mode", False)
-        
-        if use_full_onnx:
-            # Load intermediate ONNX model (outputs HEF-like tensors) for Full-ONNX mode
-            intermediate_model_path = onnx_config.get("hef_like_proc_onnx_path")
-            if not intermediate_model_path:
-                raise ValueError("use_full_onnx_mode is True but hef_like_proc_onnx_path not specified in config")
-            intermediate_model_path = resolve_onnx_path(intermediate_model_path)
-            full_onnx_intermediate_session = ort.InferenceSession(intermediate_model_path)
-            logger.info(f"Loaded HEF-like intermediate ONNX model: {intermediate_model_path}")
-            
-            # Also load postprocessing model to apply to intermediates
-            postproc_model_path = onnx_config.get("postproc_onnx_path")
-            if not postproc_model_path:
-                raise ValueError("postproc_onnx_path not specified in ONNX config")
-            postproc_model_path = resolve_onnx_path(postproc_model_path)
-            onnx_session = ort.InferenceSession(postproc_model_path)
-            logger.info(f"Loaded ONNX postprocessing model: {postproc_model_path}")
-            
-            # Optionally load full model for reference
-            full_model_path = onnx_config.get("full_onnx_path")
-            if full_model_path:
-                full_model_path = resolve_onnx_path(full_model_path)
-                full_onnx_session = ort.InferenceSession(full_model_path)
-                logger.info(f"Loaded full ONNX model (reference): {full_model_path}")
-        else:
-            # Load postprocessing ONNX model (used with HEF outputs)
-            postproc_model_path = onnx_config.get("postproc_onnx_path")
-            if not postproc_model_path:
-                raise ValueError("postproc_onnx_path not specified in ONNX config")
-            postproc_model_path = resolve_onnx_path(postproc_model_path)
-            onnx_session = ort.InferenceSession(postproc_model_path)
-            logger.info(f"Loaded ONNX postprocessing model: {postproc_model_path}")
+        onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
+        use_full_onnx = (
+            getattr(onnxconfig_args, "full_onnx", False)
+            or onnx_config.get("use_full_onnx_mode", False)
+        )
+        sessions = init_onnx_sessions(onnx_config, config_path, use_full_onnx)
+        onnx_session = sessions["onnx_session"]
+        full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
 
     # Initialize input source from string: "camera", video file, or image folder.
     cap, images = init_input_source(input_src, batch_size, camera_resolution)
@@ -362,73 +290,6 @@ def infer(hailo_inference, input_queue, output_queue):
 
     # Release resources and context
     hailo_inference.close()
-
-
-def infer_full_onnx(intermediate_session, postprocess_session, onnx_config, input_queue, output_queue):
-    """
-    Full ONNX inference loop that runs intermediate model + ONNX postprocessing.
-    This matches the HEF+ONNX flow but using ONNX for both stages.
-    
-    Args:
-        intermediate_session: ONNXRuntime session for model that outputs HEF-like intermediates.
-        postprocess_session: ONNXRuntime session for ONNX postprocessing.
-        onnx_config: ONNX configuration with tensor mapping.
-        input_queue (queue.Queue): Provides (input_batch, preprocessed_batch) tuples.
-        output_queue (queue.Queue): Collects (input_frame, result) tuples for visualization.
-
-    Returns:
-        None
-    """
-    # Build reverse mapping: ONNX tensor name -> HEF tensor name
-    tensor_mapping = onnx_config.get("output_tensor_mapping", {})
-    onnx_to_hef = {onnx_name: hef_name for hef_name, (onnx_name, _) in tensor_mapping.items()}
-    
-    while True:
-        next_batch = input_queue.get()
-        if not next_batch:
-            break  # Stop signal received
-
-        input_batch, preprocessed_batch = next_batch
-
-        # Process each frame in the batch
-        for i, preprocessed_frame in enumerate(preprocessed_batch):
-            # Prepare input for ONNX (may need to transpose/reshape depending on model)
-            # Assuming model expects NCHW format [1, 3, H, W] with float32 values 0-1
-            if preprocessed_frame.ndim == 3:  # HWC format
-                onnx_input = np.transpose(preprocessed_frame, (2, 0, 1))  # CHW
-                onnx_input = np.expand_dims(onnx_input, axis=0)  # NCHW
-            else:
-                onnx_input = np.expand_dims(preprocessed_frame, axis=0)
-            
-            # Convert to float32 and normalize to 0-1 if needed
-            if onnx_input.dtype == np.uint8:
-                onnx_input = onnx_input.astype(np.float32) / 255.0
-            
-            # Run intermediate ONNX model (get HEF-like outputs)
-            intermediate_input_name = intermediate_session.get_inputs()[0].name
-            intermediate_output_names = [out.name for out in intermediate_session.get_outputs()]
-            intermediate_results = intermediate_session.run(intermediate_output_names, {intermediate_input_name: onnx_input})
-            
-            # Apply sigmoid to specified intermediate tensors (e.g., class score tensors)
-            # This is configured via intermediate_tensors_to_add_sigmoid in the ONNX config
-            # For YOLOv26n: should be the classifier layers (conv64/80/94) with 80 channels,
-            # NOT the box regression layers (conv61/77/91) with 4 channels
-            tensors_to_sigmoid = onnx_config.get("intermediate_tensors_to_add_sigmoid", [])
-            if tensors_to_sigmoid:
-                for idx, onnx_name in enumerate(intermediate_output_names):
-                    if onnx_name in tensors_to_sigmoid:
-                        intermediate_results[idx] = 1.0 / (1.0 + np.exp(-intermediate_results[idx]))
-            
-            # Map ONNX tensor names to HEF tensor names for compatibility with extract_detections_onnx
-            result = {}
-            for onnx_name, tensor in zip(intermediate_output_names, intermediate_results):
-                hef_name = onnx_to_hef.get(onnx_name)
-                if hef_name:
-                    result[hef_name] = tensor
-                else:
-                    logger.warning(f"ONNX intermediate output '{onnx_name}' not found in tensor mapping")
-            
-            output_queue.put((input_batch[i], result))
 
 
 def inference_callback(

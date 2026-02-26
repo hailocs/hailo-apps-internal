@@ -9,12 +9,17 @@ from typing import List, Dict, Tuple
 
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger
+    from hailo_apps.python.core.common.onnx_utils import map_hef_outputs_to_onnx_inputs
 except ImportError:
     core_dir = Path(__file__).resolve().parents[2] / "core"
     sys.path.insert(0, str(core_dir))
     from common.hailo_logger import get_logger
+    from common.onnx_utils import map_hef_outputs_to_onnx_inputs
 
 logger = get_logger(__name__)
+
+# Supported ONNX output format parsers for pose estimation
+SUPPORTED_POSE_OUTPUT_FORMATS = ["yolo26_pose"]
 
 # Joint pairs used for drawing pose estimations
 JOINT_PAIRS = [
@@ -45,10 +50,14 @@ class PoseEstPostProcessing:
         self.strides = strides
 
     def inference_result_handler(
-            self, image, raw_detections: dict, model_height: int, model_width: int, class_num: int = 1
+            self, image, raw_detections: dict, model_height: int, model_width: int,
+            class_num: int = 1, onnx_config=None, onnx_session=None,
     ) -> None:
         """
         Post-process the inference results and return the output image with visualizations.
+
+        When onnx_session is provided, routes through ONNX postprocessing.
+        Otherwise falls back to the legacy HEF-based post-processing.
 
         Args:
             image (np.ndarray): The input image frame.
@@ -56,17 +65,62 @@ class PoseEstPostProcessing:
             model_height (int): The height of the model input.
             model_width (int): The width of the model input.
             class_num (int, optional): Number of output classes. Defaults to 1.
+            onnx_config (dict, optional): ONNX config with tensor mapping and format.
+            onnx_session: ONNX Runtime session for postprocessing (or None).
 
         Returns:
             np.ndarray: The image with visualized inference results.
         """
-        # Post-process results
-        results = self.post_process(raw_detections, model_height, model_width, class_num)
+        if onnx_session is not None:
+            results = self.extract_pose_onnx(raw_detections, onnx_config, onnx_session,
+                                            model_height, model_width)
+        else:
+            results = self.post_process(raw_detections, model_height, model_width, class_num)
 
-        # Visualize and save results
         output_image = self.visualize_pose_estimation_result(results, image, model_height, model_width)
+        return output_image
 
-        return  output_image
+    def extract_pose_onnx(
+            self, hailo_outputs: dict, onnx_config: dict, onnx_session,
+            model_height: int, model_width: int,
+    ) -> dict:
+        """
+        Run ONNX postprocessing on HEF (or intermediate-ONNX) outputs and parse
+        the result into the standard pose-estimation dict.
+
+        Args:
+            hailo_outputs: Dict of tensors ``{hef_name: ndarray}``.
+            onnx_config: ONNX config dict with ``output_tensor_mapping`` and ``output_format``.
+            onnx_session: ONNX Runtime inference session for the postprocessing model.
+            model_height: Model input height (for coordinate scaling).
+            model_width: Model input width (for coordinate scaling).
+
+        Returns:
+            dict with keys ``bboxes``, ``keypoints``, ``joint_scores``, ``scores``.
+        """
+        tensor_mapping = onnx_config["output_tensor_mapping"]
+        output_format = onnx_config["output_format"]
+
+        if output_format not in SUPPORTED_POSE_OUTPUT_FORMATS:
+            raise ValueError(
+                f"Unsupported pose output_format '{output_format}'. "
+                f"Supported: {SUPPORTED_POSE_OUTPUT_FORMATS}"
+            )
+
+        # Map HEF tensors -> ONNX inputs (handles NHWC->NCHW)
+        onnx_inputs = map_hef_outputs_to_onnx_inputs(hailo_outputs, tensor_mapping)
+
+        # Run ONNX postprocessing
+        onnx_output_names = [o.name for o in onnx_session.get_outputs()]
+        onnx_results = onnx_session.run(onnx_output_names, onnx_inputs)
+
+        # Dispatch to format-specific parser
+        if output_format == "yolo26_pose":
+            return parse_yolo26_pose_output(onnx_results, onnx_config,
+                                           model_height, model_width,
+                                           self.max_detections)
+
+        raise NotImplementedError(f"Parser for pose format '{output_format}' not implemented")
 
     def post_process(self, raw_detections: dict, height: int, width: int, class_num: int) -> dict:
         """
@@ -540,3 +594,91 @@ class PoseEstPostProcessing:
             })
 
         return output
+
+
+def parse_yolo26_pose_output(
+    onnx_results: list,
+    onnx_config: dict,
+    model_height: int,
+    model_width: int,
+    max_detections: int = 300,
+    score_threshold: float = 0.3,
+) -> dict:
+    """
+    Parse YOLOv26-pose ONNX postprocessing output (300x57) into the standard
+    pose-estimation result dict consumed by ``visualize_pose_estimation_result``.
+
+    The ONNX postprocessor outputs a tensor of shape ``(300, 57)`` where each
+    row is::
+
+        [x1, y1, x2, y2, score, class_id, kp0_x, kp0_y, kp0_conf, ..., kp16_x, kp16_y, kp16_conf]
+
+    Coordinates are in pixel space relative to ``input_size`` (from config).
+
+    Args:
+        onnx_results: List of ONNX output arrays; first element is ``(300, 57)`` or ``(1, 300, 57)``.
+        onnx_config: Config dict (must contain ``postprocess_params.input_size``).
+        model_height: Model input height (used for coordinate scaling).
+        model_width: Model input width (used for coordinate scaling).
+        max_detections: Max detections to keep in the output arrays.
+        score_threshold: Minimum confidence to keep a detection.
+
+    Returns:
+        dict with keys:
+            ``bboxes``  – shape ``(1, max_detections, 4)``
+            ``keypoints``  – shape ``(1, max_detections, 17, 2)``
+            ``joint_scores``  – shape ``(1, max_detections, 17, 1)``
+            ``scores``  – shape ``(1, max_detections, 1)``
+    """
+    detections = onnx_results[0]
+    if detections.ndim == 3:
+        detections = detections[0]  # remove batch dim
+
+    params = onnx_config.get("postprocess_params", {})
+    input_size = params.get("input_size", 640)
+
+    # Filter by score
+    scores = detections[:, 4]
+    valid = scores >= score_threshold
+    detections = detections[valid]
+
+    # Sort descending by score and cap at max_detections
+    order = np.argsort(-detections[:, 4])[:max_detections]
+    detections = detections[order]
+
+    num_det = detections.shape[0]
+
+    # Pre-allocate output arrays (batch=1)
+    output = {
+        "bboxes": np.zeros((1, max_detections, 4), dtype=np.float32),
+        "keypoints": np.zeros((1, max_detections, 17, 2), dtype=np.float32),
+        "joint_scores": np.zeros((1, max_detections, 17, 1), dtype=np.float32),
+        "scores": np.zeros((1, max_detections, 1), dtype=np.float32),
+    }
+
+    if num_det == 0:
+        return output
+
+    # Bboxes: [x1, y1, x2, y2] in pixel coords -> scale from input_size to model dims
+    scale_x = model_width / input_size
+    scale_y = model_height / input_size
+    bboxes = detections[:, :4].copy()
+    bboxes[:, 0] *= scale_x
+    bboxes[:, 2] *= scale_x
+    bboxes[:, 1] *= scale_y
+    bboxes[:, 3] *= scale_y
+
+    output["bboxes"][0, :num_det] = bboxes
+    output["scores"][0, :num_det, 0] = detections[:, 4]
+
+    # Keypoints: 17 x (x, y, conf) starting at column 6
+    kpt_raw = detections[:, 6:].reshape(num_det, 17, 3)
+    kpt_xy = kpt_raw[:, :, :2].copy()
+    kpt_xy[:, :, 0] *= scale_x
+    kpt_xy[:, :, 1] *= scale_y
+    kpt_conf = kpt_raw[:, :, 2:3]  # keep (17,1) shape
+
+    output["keypoints"][0, :num_det] = kpt_xy
+    output["joint_scores"][0, :num_det] = kpt_conf
+
+    return output
