@@ -1059,25 +1059,54 @@ std::string ResourcesManager::resolve_net_arg(const std::string &app,
     return download_hef_yaml(root, app, model_name_for_yaml, resources_dir);
 }
 
-
-std::string ResourcesManager::get_network_meta_value(const std::string &app,
+std::string ResourcesManager::get_model_meta_value(const std::string &app,
                                                      const std::string &model_name,
                                                      const std::string &key) const
 {
     try {
         const YAML::Node root = load_yaml_resource_file(m_yaml_path);
-        std::string hw_arch = detect_device_arch();
-        if (hw_arch.empty()) return "N/A";
-        hw_arch = validate_arch(hw_arch);
 
-        const auto m = find_model_entry(root, app, hw_arch, model_name);
-        const std::string k = to_lower(key);
+        std::string arch = detect_device_arch();
+        if (arch.empty()) {
+            std::cerr << "Warning: failed to detect device arch\n";
+            return "N/A";
+        }
+        arch = validate_arch(arch);
+        const YAML::Node models = root[app]["models"][arch];
+        auto find_in_group = [&](const YAML::Node &group) -> std::string {
+            if (!group || !group.IsSequence()) return "N/A";
 
-        if (k == "source") return m.source.empty() ? "N/A" : m.source;
-        if (k == "url")    return m.url.empty() ? "N/A" : m.url;
+            for (const auto &m : group) {
+                if (!m["name"] || !m["name"].IsScalar()) continue;
+                if (m["name"].as<std::string>() != model_name) continue;
 
+                const YAML::Node meta = m["meta_data"];
+                if (!meta || !meta.IsMap()) return "N/A";
+
+                const YAML::Node val = meta[key];
+                if (!val || !val.IsScalar()) return "N/A";
+
+                return val.as<std::string>();
+            }
+            return "N/A";
+        };
+
+        std::string v = find_in_group(models["default"]);
+        if (v != "N/A") return v;
+
+        v = find_in_group(models["extra"]);
+        if (v != "N/A") return v;
+
+        std::cerr << "Warning: model '" << model_name << "' not found for app '" << app
+                  << "' arch '" << arch << "'\n";
         return "N/A";
-    } catch (...) {
+    }
+    catch (const std::exception &e) {
+        std::cerr << "Warning: get_model_meta_value failed: " << e.what() << "\n";
+        return "N/A";
+    }
+    catch (...) {
+        std::cerr << "Warning: get_model_meta_value failed (unknown error)\n";
         return "N/A";
     }
 }

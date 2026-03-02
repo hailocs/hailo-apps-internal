@@ -115,10 +115,9 @@ public:
                                 const std::filesystem::path &dest_dir = "hefs") const;
 
     /**
-     * @brief Best-effort metadata query for a network entry in YAML.
-     * Supported keys: "source", "url" (returns "N/A" if not found).
+     * @brief Best-effort metadata query for a model entry in YAML.
      */
-    std::string get_network_meta_value(const std::string &app,
+    std::string get_model_meta_value(const std::string &app,
                                        const std::string &model_name,
                                        const std::string &key) const;
 

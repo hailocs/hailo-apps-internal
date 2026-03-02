@@ -13,8 +13,6 @@
 #include <yaml-cpp/yaml.h>
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <windows.h>
 #include <process.h>
 #define popen  _popen
@@ -54,7 +52,7 @@ VisualizationParams load_visualization_params(const std::string &path)
 
     VisualizationParams params;
 
-    // ───────── Required Fields ─────────
+    // Required Fields
     if (!vp["score_thresh"]) {
         throw std::runtime_error(
             "Missing visualization_params.score_thresh");
@@ -68,7 +66,7 @@ VisualizationParams load_visualization_params(const std::string &path)
     params.score_thresh = vp["score_thresh"].as<float>();
     params.max_boxes_to_draw = vp["max_boxes_to_draw"].as<int>();
 
-    // ───────── Optional Fields (Instance Segmentation) ─────────
+    // Optional Fields (Instance Segmentation)
     if (vp["mask_thresh"]) {
         params.mask_thresh = vp["mask_thresh"].as<float>();
     }
@@ -354,6 +352,25 @@ void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, ch
     catch (const std::exception &e) {
             std::cerr << "ResourcesManager ERROR: " << e.what() << std::endl;
             std::exit(1);
+    }
+}
+
+std::string get_model_meta_value(const std::string &app,
+                                  const std::string &model_name,
+                                  const std::string &key)
+{
+    try {
+        hailo_apps::ResourcesManager rm;
+        return rm.get_model_meta_value(app, model_name, key);
+    } catch (const std::exception &e) {
+        std::cerr << "get_model_meta_value error: "
+                  << e.what() << std::endl;
+        return "N/A";
+    }
+    catch (...) {
+        std::cerr << "get_model_meta_value unknown error."
+                  << std::endl;
+        return "N/A";
     }
 }
 

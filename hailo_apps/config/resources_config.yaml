@@ -224,47 +224,85 @@ classifier: &classifier_app
       default:
         - name: fastvit_sa12
           source: mz
+          meta_data:
+            apply-softmax: true
       extra:
         - name: hardnet39ds
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: hardnet68
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_18
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_34
           source: mz
+          meta_data:
+            apply-softmax: false
         - name: resnet_v1_50
           source: mz
+          meta_data:
+            apply-softmax: false
+
     hailo8l:
       default:
         - name: fastvit_sa12
           source: mz
+          meta_data:
+            apply-softmax: true
       extra:
         - name: hardnet39ds
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: hardnet68
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_18
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_34
           source: mz
+          meta_data:
+            apply-softmax: false
         - name: resnet_v1_50
           source: mz
+          meta_data:
+            apply-softmax: false
+
     hailo10h:
       default:
         - name: fastvit_sa12
           source: mz
+          meta_data:
+            apply-softmax: true
       extra:
         - name: hardnet39ds
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: hardnet68
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_18
           source: mz
+          meta_data:
+            apply-softmax: true
         - name: resnet_v1_34
           source: mz
+          meta_data:
+            apply-softmax: false
         - name: resnet_v1_50
           source: mz
+          meta_data:
+            apply-softmax: false
 
 semantic_segmentation: &semantic_segmentation_app
   models:

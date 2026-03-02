@@ -90,7 +90,7 @@ int main(int argc, char** argv)
         post_parse_args(APP_NAME, args, argc, argv);
         HailoInfer model(args.net, args.batch_size);
 
-        // Load visualization config
+        // Load visualization config params
         VisualizationParams vis_param = load_visualization_params("visualization_config.yaml");
         validate_visualization_params(vis_param, AppVisMode::object_detection);
 

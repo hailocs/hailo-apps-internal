@@ -106,6 +106,10 @@ namespace hailo_utils {
     void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, char **argv);
     std::string parse_output_resolution_arg(int argc, char **argv);
 
+    std::string get_model_meta_value(const std::string &app,
+        const std::string &model_name,
+        const std::string &key);
+
     // ─────────────────────────────────────────────────────────────────────────────
     // DISPLAY & VIDEO
     // ─────────────────────────────────────────────────────────────────────────────
