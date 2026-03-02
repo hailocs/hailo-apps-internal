@@ -89,6 +89,12 @@ class GStreamerTilingApp(GStreamerApp):
         parser.add_argument("--scale-levels", type=int, default=1, choices=[1, 2, 3],
                           help="Scale levels for multi-scale mode: 1={1x1}, 2={1x1+2x2}, 3={1x1+2x2+3x3}. Default: 1")
 
+        # Mirror options
+        parser.add_argument("--horizontal-mirror", action="store_true", default=False,
+                          help="Enable horizontal mirror (flip) of the video source")
+        parser.add_argument("--vertical-mirror", action="store_true", default=False,
+                          help="Enable vertical mirror (flip) of the video source")
+
         # Detection options
         parser.add_argument("--iou-threshold", type=float, default=0.3,
                           help="NMS IOU threshold (default: 0.3)")
@@ -211,6 +217,8 @@ class GStreamerTilingApp(GStreamerApp):
             video_height=self.video_height,
             frame_rate=self.frame_rate,
             sync=self.sync,
+            mirror_image=self.options_menu.horizontal_mirror,
+            vertical_mirror=self.options_menu.vertical_mirror,
         )
 
         detection_pipeline = INFERENCE_PIPELINE(
