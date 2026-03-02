@@ -278,8 +278,10 @@ namespace hailo_utils {
         std::optional<float> mask_alpha;
     };
 
+    // Load visualization parameters from YAML config file
     VisualizationParams load_visualization_params(const std::string &path);
     enum class AppVisMode { object_detection, instance_seg };
+    // Validate parameters according to application mode
     void validate_visualization_params(const VisualizationParams &vis, AppVisMode mode);
 }
 

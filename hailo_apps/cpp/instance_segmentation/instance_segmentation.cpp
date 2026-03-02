@@ -146,16 +146,8 @@ int main(int argc, char** argv)
     SegType seg_model_type = detect_seg_model_type(model);
 
     // Load Visualization config params
-    VisualizationParams vis_param;
-    try {
-        vis_param = load_visualization_params("visualization_config.json");
-    } catch (const std::exception &e) {
-        std::cerr << "ERROR: failed to load visualization_config.json: "
-                << e.what() << "\n";
-        return EXIT_FAILURE;
-    }
-
-    validate_visualization_params(vis_param, AppVisMode::instance_seg);
+    VisualizationParams vis_param = load_visualization_params("visualization_config.yaml");
+    validate_visualization_params(vis_param, AppVisMode::object_detection);
 
     input_type = determine_input_type(std::ref(args.input),
                                     std::ref(capture),

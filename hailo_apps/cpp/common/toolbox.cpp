@@ -10,7 +10,7 @@
 #include <regex>
 #include <sstream>
 #include <unordered_set>
-#include "third_party/json.hpp"
+#include <yaml-cpp/yaml.h>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -33,41 +33,53 @@ const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
     {"fhd", {1920, 1080}}
 };
 
-
 VisualizationParams load_visualization_params(const std::string &path)
 {
-    std::ifstream f(path);
-    if (!f.is_open())
-        throw std::runtime_error("Failed to open config file: " + path);
+    YAML::Node root;
 
-    nlohmann::json j;
-    f >> j;
+    try {
+        root = YAML::LoadFile(path);
+    } catch (const std::exception &e) {
+        throw std::runtime_error(
+            "Failed to load visualization config file: " + path +
+            " | " + e.what());
+    }
 
-    if (!j.contains("visualization_params"))
-        throw std::runtime_error("Missing 'visualization_params' section");
+    if (!root["visualization_params"]) {
+        throw std::runtime_error(
+            "Missing 'visualization_params' section in config file");
+    }
 
-    const auto &vp = j["visualization_params"];
+    const YAML::Node vp = root["visualization_params"];
 
-    VisualizationParams p;
+    VisualizationParams params;
 
-    // ---- required ----
-    if (!vp.contains("score_thresh"))
-        throw std::runtime_error("Missing visualization_params.score_thresh");
-    if (!vp.contains("max_boxes_to_draw"))
-        throw std::runtime_error("Missing visualization_params.max_boxes_to_draw");
+    // ───────── Required Fields ─────────
+    if (!vp["score_thresh"]) {
+        throw std::runtime_error(
+            "Missing visualization_params.score_thresh");
+    }
 
-    p.score_thresh = vp["score_thresh"].get<float>();
-    p.max_boxes_to_draw = vp["max_boxes_to_draw"].get<int>();
+    if (!vp["max_boxes_to_draw"]) {
+        throw std::runtime_error(
+            "Missing visualization_params.max_boxes_to_draw");
+    }
 
-    // ---- optional (ex. instance-seg) ----
-    if (vp.contains("mask_thresh"))
-        p.mask_thresh = vp["mask_thresh"].get<float>();
+    params.score_thresh = vp["score_thresh"].as<float>();
+    params.max_boxes_to_draw = vp["max_boxes_to_draw"].as<int>();
 
-    if (vp.contains("mask_alpha"))
-        p.mask_alpha = vp["mask_alpha"].get<float>();
+    // ───────── Optional Fields (Instance Segmentation) ─────────
+    if (vp["mask_thresh"]) {
+        params.mask_thresh = vp["mask_thresh"].as<float>();
+    }
 
-    return p;
+    if (vp["mask_alpha"]) {
+        params.mask_alpha = vp["mask_alpha"].as<float>();
+    }
+
+    return params;
 }
+
 
 void validate_visualization_params(const VisualizationParams &vis, AppVisMode mode)
 {

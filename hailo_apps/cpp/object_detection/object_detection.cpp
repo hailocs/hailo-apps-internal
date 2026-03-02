@@ -91,7 +91,7 @@ int main(int argc, char** argv)
         HailoInfer model(args.net, args.batch_size);
 
         // Load visualization config
-        VisualizationParams vis_param = load_visualization_params("visualization_config.json");
+        VisualizationParams vis_param = load_visualization_params("visualization_config.yaml");
         validate_visualization_params(vis_param, AppVisMode::object_detection);
 
         auto post_cb = std::bind(postprocess_callback,
@@ -158,10 +158,6 @@ int main(int argc, char** argv)
     }
     catch (const std::exception &e) {
         std::cerr << "ERROR: " << e.what() << "\n";
-        return HAILO_INTERNAL_FAILURE;
-    }
-    catch (...) {
-        std::cerr << "ERROR: Unknown exception\n";
         return HAILO_INTERNAL_FAILURE;
     }
 }
