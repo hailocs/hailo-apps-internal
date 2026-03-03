@@ -112,7 +112,8 @@ def parse_args():
 
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
-          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False) -> None:
+          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False,
+          no_display=False) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
@@ -153,7 +154,7 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     postprocess_thread = threading.Thread(
         target=visualize, 
         args=(output_queue, cap, save_output, output_dir,
-               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event)
+               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display)
     )
     infer_thread = threading.Thread(
         target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
@@ -166,16 +167,22 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     if show_fps:
         fps_tracker.start()
 
-    preprocess_thread.join()
-    infer_thread.join()
-    postprocess_thread.join()
+    try:
+        preprocess_thread.join()
+        infer_thread.join()
+        postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
+
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -278,7 +285,8 @@ def main() -> None:
         args.track,
         args.show_fps,
         args.frame_rate,
-        args.draw_trail
+        args.draw_trail,
+        args.no_display
     )
 
 
