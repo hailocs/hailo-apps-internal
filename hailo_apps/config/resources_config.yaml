@@ -669,6 +669,20 @@ onnxrt_hailo_pipeline: &onnxrt_hailo_pipeline_app
     hailo10h:
       default: None
 
+zero_shot_classification: &zero_shot_classification
+  models:
+    hailo8:
+      default:
+        - name: clip_text_encoder_vit_l_14_laion2B
+          source: s3
+        - name: clip_vit_l_14_laion2B_image_encoder
+          source: s3
+    hailo8l:
+      default:
+        default: None
+    hailo10h:
+      default: None
+
 tiling: &tiling_app
   models:
     hailo8:

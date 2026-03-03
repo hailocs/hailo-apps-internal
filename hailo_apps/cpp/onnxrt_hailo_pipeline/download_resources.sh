@@ -10,4 +10,3 @@ else
 	sudo rm onnxruntime-linux-x64-1.18.1.tgz
 fi
 wget https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/onnxs/yolov8m-seg_post.onnx
-wget https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8/yolov8m_seg.hef

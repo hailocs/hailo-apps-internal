@@ -431,18 +431,26 @@ static std::string detect_hef_arch(const std::filesystem::path &hef_path)
     std::string out = run("hailortcli parse-hef \"" + p + "\"");
     if (out.empty()) return "";
 
-    // Match: "HEF Compatible for: HAILO15H, HAILO10H"
-    std::regex re(R"(HEF\s+Compatible\s+for\s*:\s*([A-Za-z0-9_,\s]+))", std::regex::icase);
     std::smatch m;
-    if (!std::regex_search(out, m, re)) return "";
 
-    std::string list = to_lower(m[1].str()); // e.g. "hailo15h, hailo10h"
-    // Prefer hailo10h if present (since you normalize 15h->10h anyway)
+    // Match either:
+    // 1) "HEF Compatible for: HAILO15H, HAILO10H"
+    // 2) "Architecture HEF was compiled for: HAILO8"
+    {
+        std::regex re(R"(HEF\s+Compatible\s+for\s*:\s*([^\r\n]+))", std::regex::icase);
+        if (!std::regex_search(out, m, re)) {
+            re = std::regex(R"(Architecture\s+HEF\s+was\s+compiled\s+for\s*:\s*([^\r\n]+))", std::regex::icase);
+            if (!std::regex_search(out, m, re)) return "";
+        }
+    }
+
+    std::string list = to_lower(m[1].str());
+
     if (list.find("hailo10h") != std::string::npos) return "hailo10h";
+    if (list.find("hailo15h") != std::string::npos) return "hailo10h";
     if (list.find("hailo8l")  != std::string::npos) return "hailo8l";
     if (list.find("hailo8")   != std::string::npos) return "hailo8";
 
-    // fallback: first token
     std::regex tok(R"(([A-Za-z0-9]+))");
     if (std::regex_search(list, m, tok)) {
         std::string arch = to_lower(m[1].str());
@@ -456,6 +464,7 @@ static bool is_hef_compatible_with_device(const std::filesystem::path &hef_path,
                                            const std::string &device_arch)
 {
     const std::string hef_arch = detect_hef_arch(hef_path);
+
 
     // ❌ if arch detection failed → ERROR immediately
     if (hef_arch.empty()) {
