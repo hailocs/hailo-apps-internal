@@ -608,8 +608,8 @@ static std::string build_hef_url(const std::string &source,
     }
 
     if (source == "s3") {
-        // Example style: https://hailo-csdata.s3.amazonaws.com/hefs/<mz_ver>/<arch>/<name>
-        return "https://hailo-csdata.s3.amazonaws.com/hefs/" + mz_ver + "/" + hw_arch + "/" + name;
+        // Example style: https://hailo-csdata.s3.amazonaws.com/resources/hefs/<mz_ver>/<arch>/<name>
+        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + mz_ver + "/" + hw_arch + "/" + name;
     }
 
     if (source == "gen-ai-mz") {

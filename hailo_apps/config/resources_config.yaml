@@ -882,7 +882,7 @@ clip: &clip_app
 metadata:
   # S3 base URLs for dynamic URL construction
   s3_endpoints:
-    cs_bucket: "https://hailo-csdata.s3.eu-west-2.amazonaws.com"
+    cs_bucket: "https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources"
     model_zoo_h8: "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
     gen_ai_mz: "https://dev-public.hailo.ai"
 
