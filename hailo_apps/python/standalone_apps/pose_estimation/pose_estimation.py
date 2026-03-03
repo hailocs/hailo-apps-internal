@@ -173,6 +173,7 @@ def run_inference_pipeline(
     frame_rate: float,
     save_output: bool,
     show_fps: bool,
+    no_display: bool
 ) -> None:
     """
     Run the inference pipeline using HailoInfer.
@@ -234,8 +235,8 @@ def run_inference_pipeline(
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event)
-        )
+            output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display)
+    )
 
     infer_thread = threading.Thread(
         target=infer,
@@ -248,16 +249,24 @@ def run_inference_pipeline(
 
     if show_fps:
         fps_tracker.start()
-    infer_thread.join()
-    preprocess_thread.join()
-    postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    try:
+        preprocess_thread.join()
+        infer_thread.join()
+        postprocess_thread.join()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
+
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
+
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
+
 
 
 def main() -> None:
@@ -275,6 +284,7 @@ def main() -> None:
         args.frame_rate,
         args.save_output,
         args.show_fps,
+        args.no_display
     )
 
 
