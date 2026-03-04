@@ -98,6 +98,19 @@ A simple example demonstrating audio transcription using Hailo's Whisper speech-
 
 **Documentation:** See [simple_whisper_chat/README.md](simple_whisper_chat/README.md) for usage instructions.
 
+#### 🎤 [Simple Whisper Chat — H8 Edition](simple_whisper_chat_h8/README.md)
+
+Same Whisper speech-to-text functionality, but runs on **Hailo-8/8L** (in addition to 10H) using the low-level HailoRT InferModel API with separate encoder/decoder HEFs.
+
+**Features:**
+- Compatible with Hailo-8, Hailo-8L, and Hailo-10H
+- Live microphone recording with interactive Enter-to-record loop
+- Audio file transcription (WAV or any ffmpeg-supported format)
+- Auto-detects hardware architecture
+- Models auto-downloaded via central resource system
+
+**Documentation:** See [simple_whisper_chat_h8/README.md](simple_whisper_chat_h8/README.md) for usage instructions.
+
 ### 🔌 [Hailo Ollama](hailo_ollama/README.md)
 
 Integration guide for using Hailo-Ollama with Open WebUI for an interactive AI chat interface.

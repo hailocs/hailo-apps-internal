@@ -22,7 +22,7 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 ✨ **20+ Ready-to-Run Applications**
 - **🎯 GenAI - Voice to Action (Featured):** AI agents that convert natural language into hardware control - talk to your devices and make things happen
 - **Computer Vision:** Object detection, pose estimation, instance segmentation, face recognition, depth estimation, OCR
-- **More GenAI:** Voice assistants, VLM chat, Whisper speech recognition
+- **More GenAI:** Voice assistants, VLM chat, speech recognition (Whisper)
 - **Advanced:** Multi-camera tracking, zero-shot classification (CLIP), tiling for high-res processing
 
 🚀 **Production-Ready Infrastructure**
@@ -210,6 +210,7 @@ Use GenAI apps for **Hailo-10H** generative AI features:
 - Voice assistants with speech recognition
 - Vision-Language Models (VLM) chat
 - Voice-to-action AI agents
+- Whisper-based speech recognition
 
 **📚 See all applications:** [Running Applications Guide](./doc/user_guide/running_applications.md)
 

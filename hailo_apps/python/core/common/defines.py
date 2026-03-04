@@ -309,6 +309,7 @@ GST_VIDEO_SINK = "autovideosink"
 VLM_CHAT_APP = "vlm_chat"
 LLM_CHAT_APP = "llm_chat"
 WHISPER_CHAT_APP = "whisper_chat"
+WHISPER_CHAT_H8_APP = "whisper_chat_h8"
 AGENT_APP = "agent"
 
 # Gen AI model defaults

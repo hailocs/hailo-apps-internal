@@ -217,6 +217,37 @@ npy:
     source: s3
     tag:
       - clip
+  # Whisper decoder tokenization assets (whisper_chat_h8)
+  - name: token_embedding_weight_base.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/token_embedding_weight_base.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
+  - name: onnx_add_input_base.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/onnx_add_input_base.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
+  - name: token_embedding_weight_tiny.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny/decoder_tokenization/token_embedding_weight_tiny.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
+  - name: onnx_add_input_tiny.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny/decoder_tokenization/onnx_add_input_tiny.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
+  - name: token_embedding_weight_tiny.en.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny.en/decoder_tokenization/token_embedding_weight_tiny.en.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
+  - name: onnx_add_input_tiny.en.npy
+    url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny.en/decoder_tokenization/onnx_add_input_tiny.en.npy
+    source: s3
+    tag:
+      - whisper_chat_h8
 
 classifier: &classifier_app
   models:
@@ -785,6 +816,61 @@ whisper_chat: &whisper_chat_app
       default:
         - name: Whisper-Base
           source: gen-ai-mz
+
+# Whisper on H8/H8L/H10H using separate encoder+decoder HEFs (InferModel API)
+whisper_chat_h8:
+  models:
+    hailo8:
+      default:
+        - name: base-whisper-encoder-5s
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8/base-whisper-encoder-5s.hef
+          source: s3
+        - name: base-whisper-decoder-fixed-sequence-matmul-split
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8/base-whisper-decoder-fixed-sequence-matmul-split.hef
+          source: s3
+      extra:
+        - name: tiny-whisper-encoder-10s_15dB
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8/tiny-whisper-encoder-10s_15dB.hef
+          source: s3
+        - name: tiny-whisper-decoder-fixed-sequence-matmul-split
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8/tiny-whisper-decoder-fixed-sequence-matmul-split.hef
+          source: s3
+    hailo8l:
+      default:
+        - name: base-whisper-encoder-5s_h8l
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8l/base-whisper-encoder-5s_h8l.hef
+          source: s3
+        - name: base-whisper-decoder-fixed-sequence-matmul-split_h8l
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8l/base-whisper-decoder-fixed-sequence-matmul-split_h8l.hef
+          source: s3
+      extra:
+        - name: tiny-whisper-encoder-10s_15dB_h8l
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8l/tiny-whisper-encoder-10s_15dB_h8l.hef
+          source: s3
+        - name: tiny-whisper-decoder-fixed-sequence-matmul-split_h8l
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h8l/tiny-whisper-decoder-fixed-sequence-matmul-split_h8l.hef
+          source: s3
+    hailo10h:
+      default:
+        - name: base-whisper-encoder-10s
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/base-whisper-encoder-10s.hef
+          source: s3
+        - name: base-whisper-decoder-10s-out-seq-64
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/base-whisper-decoder-10s-out-seq-64.hef
+          source: s3
+      extra:
+        - name: tiny-whisper-encoder-10s
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/tiny-whisper-encoder-10s.hef
+          source: s3
+        - name: tiny-whisper-decoder-fixed-sequence
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/tiny-whisper-decoder-fixed-sequence.hef
+          source: s3
+        - name: tiny_en-whisper-encoder-10s
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/tiny_en-whisper-encoder-10s.hef
+          source: s3
+        - name: tiny_en-whisper-decoder-fixed-sequence
+          url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/whisper/h10h/tiny_en-whisper-decoder-fixed-sequence.hef
+          source: s3
 
 # Voice assistant uses whisper for speech recognition and LLM for responses
 voice_assistant:
