@@ -63,6 +63,7 @@ namespace hailo_utils {
         std::string camera_resolution;
         std::string output_resolution;
         bool save_stream_output;
+        bool no_display;
         size_t batch_size;
         double framerate;
     };
@@ -263,13 +264,11 @@ namespace hailo_utils {
                                 PreprocessCallback preprocess_callback);
 
     // Resource management
-    void release_resources(cv::VideoCapture &capture,
-                            cv::VideoWriter &video,
-                            InputType &input_type,
-                            std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>,
-                            std::vector<cv::Mat>>>> preprocessed_batch_queue,
-                            std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue);
-
+    void release_resources(cv::VideoCapture &capture, cv::VideoWriter &video, InputType &input_type,
+                        bool no_display,
+                        std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>,
+                        std::vector<cv::Mat>>>> preprocessed_batch_queue,
+                        std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue)
     // ─────────────────────────────────────────────────────────────────────────────
     // VISUALIZATION PARAMETERS
     // ─────────────────────────────────────────────────────────────────────────────

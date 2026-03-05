@@ -177,6 +177,7 @@ int main(int argc, char** argv)
                                     std::ref(args.framerate),
                                     std::ref(args.batch_size),
                                     std::ref(args.save_stream_output),
+                                    std::ref(args.no_display),
                                     std::ref(args.output_dir),
                                     std::ref(args.output_resolution),
                                     results_queue,

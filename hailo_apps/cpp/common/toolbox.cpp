@@ -327,6 +327,7 @@ CommandLineArgs parse_command_line_arguments(int argc, char** argv) {
         getCmdOptionWithShortFlag(argc, argv, "--camera-resolution", "-cr"),
         out_res_str,
         has_flag(argc, argv, "-s") || has_flag(argc, argv, "--save-stream-output"),
+        has_flag(argc, argv, "--no-display"),
         batch_size,
         framerate,
     };
@@ -867,6 +868,7 @@ hailo_status run_post_process(
     double &framerate,
     size_t &batch_size,
     const bool &save_stream_output,
+    const bool &no_display
     const std::string &output_dir,
     const std::string &output_resolution,
     std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
@@ -928,17 +930,21 @@ hailo_status run_post_process(
         if (have_output_res && !frame.empty()) {
             frame = resize_with_letterbox(frame, out_w, out_h);
         }
-        
-        cv::imshow(kWindowName, frame);
+
+        if (!no_display) {
+            cv::imshow(kWindowName, frame);
+
+            const int key = cv::waitKey(1);
+            if (key == 'q' || key == 27) {
+                std::cout << "\nUser requested stop.\n";
+                return false;
+            }
+        }
+
         if (save_stream_output) {
             video.write(frame);
         }
 
-        const int key = cv::waitKey(1);
-        if (key == 'q' || key == 27) { // 'q' or ESC
-            std::cout << "\n\033[31mUser requested stop.\033[0m\n";
-            return false;
-        }
         return true;
     };
 
@@ -1071,21 +1077,23 @@ hailo_status run_preprocess(const std::string& input_path,
 }
 
 void release_resources(cv::VideoCapture &capture, cv::VideoWriter &video, InputType &input_type,
+                      bool no_display,
                       std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>, std::vector<cv::Mat>>>> preprocessed_batch_queue,
                       std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue) {
-    if (input_type.is_video) {
-        video.release();
-        capture.release();
-        cv::destroyAllWindows();
-    }
-    if (input_type.is_camera) {
+
+    if (input_type.is_video || input_type.is_camera) {
         capture.release();
         video.release();
-        cv::destroyAllWindows();
+
+        if (!no_display) {
+            cv::destroyAllWindows();
+        }
     }
+
     if (preprocessed_batch_queue) {
         preprocessed_batch_queue->stop();
     }
+
     if (results_queue) {
         results_queue->stop();
     }
