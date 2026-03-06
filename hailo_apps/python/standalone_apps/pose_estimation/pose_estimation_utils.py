@@ -1,4 +1,5 @@
 import sys
+from collections import deque
 from pathlib import Path
 from multiprocessing import Process
 import numpy as np
@@ -32,7 +33,8 @@ JOINT_PAIRS = [
 
 class PoseEstPostProcessing:
     def __init__(self, max_detections: int, score_threshold: float, nms_iou_thresh: float,
-                 regression_length: int, strides: List[int]):
+                 regression_length: int, strides: List[int], trail_length: int = 0,
+                 bg_alpha: float | None = None):
         """
         Initialize the post-processing configuration.
 
@@ -42,12 +44,19 @@ class PoseEstPostProcessing:
             nms_iou_thresh (float): IoU threshold for NMS.
             regression_length (int): Maximum regression value for bounding boxes.
             strides (list[int]): Stride values for each prediction scale.
+            trail_length (int): Number of previous frames to keep for pose trail
+                visualization. 0 disables trail (default).
+            bg_alpha (float | None): Background dimming factor. When set, the
+                original frame is blended toward black before drawing skeletons.
+                0.0 = fully black, 1.0 = unchanged. None disables dimming.
         """
         self.max_detections = max_detections
         self.score_threshold = score_threshold
         self.nms_iou_thresh = nms_iou_thresh
         self.regression_length = regression_length
         self.strides = strides
+        self.pose_history = deque(maxlen=trail_length) if trail_length > 0 else None
+        self.bg_alpha = bg_alpha
 
     def inference_result_handler(
             self, image, raw_detections: dict, model_height: int, model_width: int,
@@ -294,6 +303,39 @@ class PoseEstPostProcessing:
 
         return keypoints
 
+    # ----- Trail / history drawing helpers -----
+
+    KEYPOINTS_COLOR = (0, 200, 200)    # cyan – keypoint dots
+    SKELETON_COLOR = (255, 0, 255)     # magenta – current-frame skeleton lines
+
+    def _draw_skeleton(self, image: np.ndarray, keypoints: np.ndarray,
+                       joint_visible: np.ndarray, color: tuple,
+                       line_thickness: int = 3, dot_radius: int = 7,
+                       dot_color: tuple | None = None) -> None:
+        """
+        Draw keypoint dots and skeleton lines for a single detection onto *image*.
+
+        Args:
+            image: Canvas to draw on (modified in-place).
+            keypoints: (17, 2) array of (x, y) in original-image coords.
+            joint_visible: (17,) bool mask – True when joint confidence is above threshold.
+            color: BGR color for skeleton lines.
+            line_thickness: Thickness of skeleton lines.
+            dot_radius: Radius of keypoint circles.
+            dot_color: Color for keypoint dots (defaults to *color* if None).
+        """
+        dot_color = dot_color or color
+        for idx in range(keypoints.shape[0]):
+            if joint_visible[idx]:
+                pt = (int(keypoints[idx, 0]), int(keypoints[idx, 1]))
+                cv2.circle(image, pt, dot_radius, dot_color, -1)
+
+        for j0, j1 in JOINT_PAIRS:
+            if joint_visible[j0] and joint_visible[j1]:
+                pt1 = (int(keypoints[j0, 0]), int(keypoints[j0, 1]))
+                pt2 = (int(keypoints[j1, 0]), int(keypoints[j1, 1]))
+                cv2.line(image, pt1, pt2, color, line_thickness)
+
     def visualize_pose_estimation_result(
             self,
             results: dict,
@@ -305,7 +347,8 @@ class PoseEstPostProcessing:
     ) -> np.ndarray:
         """
         Visualize pose estimation results by drawing bounding boxes, keypoints, and joint connections
-        on the original input image.
+        on the original input image.  When a pose trail buffer is active (trail_length > 0),
+        previous frames' skeletons are drawn with increasing transparency before the current frame.
 
         Args:
             results (dict): Dictionary containing processed pose estimation results, including
@@ -333,32 +376,71 @@ class PoseEstPostProcessing:
 
         box, score, keypoint, keypoint_score = bboxes[0], scores[0], keypoints[0], joint_scores[0]
 
+        # --- Mute / dim background if requested ---
+        if self.bg_alpha is not None:
+            image[:] = cv2.addWeighted(
+                image, self.bg_alpha,
+                np.zeros_like(image), 1.0 - self.bg_alpha, 0,
+            )
+
+        # --- Collect current-frame poses (mapped to original coords) ---
+        current_poses = []   # list of (mapped_keypoints, joint_visible_mask)
+        current_boxes = []   # list of (xmin, ymin, xmax, ymax, score)
+
         for (detection_box, detection_score, detection_keypoints,
              detection_keypoints_score) in zip(box, score, keypoint, keypoint_score):
             if detection_score < detection_threshold:
                 continue
-            detection_box = self.map_box_to_original_coords(detection_box, orig_w, orig_h, model_width, model_height)
+            detection_box = self.map_box_to_original_coords(
+                detection_box, orig_w, orig_h, model_width, model_height
+            )
             xmin, ymin, xmax, ymax = [int(x) for x in detection_box]
+            current_boxes.append((xmin, ymin, xmax, ymax, detection_score))
 
-            cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 1)
-            cv2.putText(image, str(detection_score), (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 1)
-
-            joint_visible = detection_keypoints_score > joint_threshold
+            joint_visible = (detection_keypoints_score > joint_threshold).flatten()
             detection_keypoints = detection_keypoints.reshape(17, 2)
             detection_keypoints = self.map_keypoints_to_original_coords(
                 detection_keypoints, orig_w, orig_h, model_width, model_height
             )
+            current_poses.append((detection_keypoints.copy(), joint_visible.copy()))
 
-            for joint, joint_score in zip(detection_keypoints, detection_keypoints_score):
-                if joint_score < joint_threshold:
-                    continue
-                cv2.circle(image, (int(joint[0]), int(joint[1])), 1, (255, 0, 255), -1)
+        # --- Draw trail from history buffer (oldest -> newest, increasing opacity) ---
+        if self.pose_history is not None and len(self.pose_history) > 0:
+            n_hist = len(self.pose_history)
+            for age_idx, past_poses in enumerate(self.pose_history):
+                # Linear alpha: oldest ~ 0.1, most recent trail frame ~ 0.9
+                #alpha = (age_idx + 1) / (n_hist + 1)
+                alpha = 0.6 - 0.4 * (age_idx + 1) / (n_hist + 1)
+                overlay = image.copy()
+                for kps, vis in past_poses:
+                    self._draw_skeleton(
+                        overlay, kps, vis,
+                        color=self.SKELETON_COLOR,
+                        line_thickness=2,
+                        dot_radius=4,
+                        dot_color=self.KEYPOINTS_COLOR,
+                    )                
+                cv2.addWeighted(overlay, alpha, image, 1.0 - alpha, 0, image)
 
-            for joint0, joint1 in JOINT_PAIRS:
-                if joint_visible[joint0] and joint_visible[joint1]:
-                    pt1 = (int(detection_keypoints[joint0][0]), int(detection_keypoints[joint0][1]))
-                    pt2 = (int(detection_keypoints[joint1][0]), int(detection_keypoints[joint1][1]))
-                    cv2.line(image, pt1, pt2, (255, 0, 255), 3)
+        # Store current frame's poses in history
+        if self.pose_history is not None:
+            self.pose_history.append(current_poses)
+
+        # --- Draw current-frame bounding boxes ---
+        for (xmin, ymin, xmax, ymax, det_score) in current_boxes:
+            cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 1)
+            cv2.putText(image, str(det_score), (xmin, ymin),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 1)
+
+        # --- Draw current-frame skeletons (full strength) ---
+        for kps, vis in current_poses:
+            self._draw_skeleton(
+                image, kps, vis,
+                color=self.SKELETON_COLOR,
+                line_thickness=3,
+                dot_radius=7,
+                dot_color=self.KEYPOINTS_COLOR,   # cyan dots for consistency
+            )
 
         return image
 

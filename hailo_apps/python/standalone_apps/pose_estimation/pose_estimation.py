@@ -78,6 +78,30 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--pose-trail",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Number of previous frames whose pose skeletons are kept and drawn "
+            "as a fading trail behind the current detection. "
+            "0 (default) disables the trail. Typical value: 10."
+        ),
+    )
+
+    parser.add_argument(
+        "--mute-background",
+        type=float,
+        default=None,
+        metavar="ALPHA",
+        help=(
+            "Dim the background image to emphasize pose skeletons. "
+            "ALPHA is the blending factor for the original frame (0.0 = black, 1.0 = unchanged). "
+            "Typical value: 0.3. Omit to keep the background at full brightness."
+        ),
+    )
+
+    parser.add_argument(
         "--onnxconfig",
         type=str,
         default=None,
@@ -186,6 +210,9 @@ def run_inference_pipeline(
     frame_rate: float,
     save_output: bool,
     show_fps: bool,
+    no_display: bool = False,
+    pose_trail: int = 0,
+    mute_background: float | None = None,
     onnxconfig=None,
     args=None,
 ) -> None:
@@ -234,7 +261,9 @@ def run_inference_pipeline(
         score_threshold=0.001,
         nms_iou_thresh=0.7,
         regression_length=15,
-        strides=[8, 16, 32]
+        strides=[8, 16, 32],
+        trail_length=pose_trail,
+        bg_alpha=mute_background,
     )
 
     # Initialize input source from string: "camera", video file, or image folder.
@@ -283,7 +312,8 @@ def run_inference_pipeline(
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
+              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate),
+        kwargs={"no_display": no_display},
     )
 
     if use_full_onnx:
@@ -321,6 +351,11 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
+
+    # --no-display implies --save-output
+    no_display = getattr(args, "no_display", False)
+    save_output = args.save_output or no_display
+
     run_inference_pipeline(
         args.hef_path,
         args.input,
@@ -330,8 +365,11 @@ def main() -> None:
         args.camera_resolution,
         args.output_resolution,
         args.frame_rate,
-        args.save_output,
+        save_output,
         args.show_fps,
+        no_display=no_display,
+        pose_trail=args.pose_trail,
+        mute_background=args.mute_background,
         onnxconfig=args.onnxconfig,
         args=args,
     )

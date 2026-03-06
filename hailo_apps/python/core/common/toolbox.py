@@ -688,7 +688,8 @@ def visualize(
     fps_tracker: Optional["FrameRateTracker"] = None,
     output_resolution: Optional[Tuple[int, int]] = None,
     framerate: Optional[float] = None,
-    side_by_side: bool = False
+    side_by_side: bool = False,
+    no_display: bool = False,
 ) -> None:
     """
     Visualize inference results: draw detections, show them on screen,
@@ -712,8 +713,9 @@ def visualize(
 
     # Window + writer init (only for camera/video, not images)
     if cap is not None:
-        cv2.namedWindow("Output", cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty("Output", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        if not no_display:
+            cv2.namedWindow("Output", cv2.WND_PROP_FULLSCREEN)
+            cv2.setWindowProperty("Output", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
         base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
         base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
@@ -764,7 +766,8 @@ def visualize(
         frame_to_show = resize_frame_for_output(bgr_frame, output_resolution)
 
         if cap is not None:
-            cv2.imshow("Output", frame_to_show)
+            if not no_display:
+                cv2.imshow("Output", frame_to_show)
             if save_stream_output and out is not None and frame_width and frame_height:
                 frame_to_save = cv2.resize(frame_to_show, (frame_width, frame_height))
                 out.write(frame_to_save)
@@ -774,7 +777,7 @@ def visualize(
         image_id += 1
         output_queue.task_done()
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        if not no_display and cv2.waitKey(1) & 0xFF == ord("q"):
             if save_stream_output and out is not None:
                 out.release()
             if cap is not None:
