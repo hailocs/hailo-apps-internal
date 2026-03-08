@@ -1,7 +1,7 @@
 License Plate Recognition (LPR)
 ================================
-This example demonstrates real-time license plate recognition using a Hailo-8, Hailo-8L, or Hailo-10H device.<br>
-It processes input videos or camera streams through a three-stage pipeline (vehicle detection → LP detection → OCR), with tracker-based deduplication, a center-frame ROI gate, and a live display panel.
+Real-time license plate recognition using Hailo-8, Hailo-8L, or Hailo-10H.<br>
+Three-stage pipeline: vehicle detection → LP detection → OCR, with tracker-based deduplication, center-frame ROI gate, and a live display panel.
 
 ![LPR Demo](../../../../doc/images/lpr.gif)
 
@@ -11,6 +11,7 @@ Requirements
     - 4.23.0 (for Hailo-8 devices)
     - 5.1.1 (for Hailo-10H devices)
 - opencv-python
+- Custom postprocess SO (`libyolov4_lp_postprocess.so`) — built automatically during installation
 
 Supported Models
 ----------------
@@ -75,6 +76,9 @@ hailo-lpr --input /path/to/video.mp4 --ocr-engine paddle
 
 # Higher resolution for better LP crops on highway footage
 hailo-lpr --input /path/to/video.mp4 --width 1920 --height 1080
+
+# Disable display sync for faster throughput (no frame-rate cap)
+hailo-lpr --input /path/to/video.mp4 --disable-sync --show-fps
 ```
 
 Arguments
@@ -88,6 +92,7 @@ All standard pipeline arguments (`--input`, `--width`, `--height`, `--show-fps`,
 | `--width` | `1280` | Input width in pixels |
 | `--height` | `720` | Input height in pixels |
 | `--show-fps` | — | Display FPS performance metrics |
+| `--disable-sync` | — | Disable display sync for maximum throughput |
 | `--list-models` | — | Print all supported models for this application and exit |
 | `--list-inputs` | — | Print available predefined input resources and exit |
 
@@ -98,25 +103,33 @@ hailo-lpr -h
 
 ## Pipeline Architecture
 
-The pipeline adapts automatically based on the detected Hailo device:
+The pipeline is **unified across all Hailo architectures** (H8, H8L, H10H). There are no architecture-specific code paths or conditional logic.
 
-**Hailo-10H:**
 ```
 Source → Vehicle Detection (YOLOv5m) → Tracker → Crop Vehicles → LP Detection (Tiny-YOLOv4) → User Callback (OCR) → Overlay → Display
 ```
 
-**Hailo-8 / Hailo-8L:**
-```
-Source → Vehicle Detection (YOLOv5m) → Tracker → User Callback (LP Detection + OCR) → Overlay → Display
-```
-
-| Stage | Model | Hailo-10H | Hailo-8 / Hailo-8L |
+| Stage | Model | Implementation | Runs On |
 |---|---|---|---|
-| Vehicle detection | `yolov5m_vehicles` (640×640) | GStreamer `hailonet` | GStreamer `hailonet` |
-| LP detection | `tiny_yolov4_license_plates` (416×416) | GStreamer `hailonet` inside cropper | HailoRT Python API in callback |
-| OCR | LPRNet (300×75) or PaddleOCR (320×48) | HailoRT Python API in callback | HailoRT Python API in callback |
+| Vehicle detection | `yolov5m_vehicles` (640×640) | GStreamer `hailonet` | Hailo device |
+| LP detection | `tiny_yolov4_license_plates` (416×416) | GStreamer `hailonet` + custom `libyolov4_lp_postprocess.so` | Hailo device |
+| OCR | LPRNet (300×75) or PaddleOCR (320×48) | Python `HailoInfer` in callback | Hailo device |
 
-On **Hailo-10H**, LP detection runs inside a GStreamer `hailocropper` element using the TAPPAS `libyolo_post.so` postprocess. On **Hailo-8/8L**, the TAPPAS postprocess SO is incompatible with the model output, so LP detection runs in the Python callback using `HailoInfer` with a built-in YOLOv4 postprocess implementation. The switch is automatic — no user configuration needed.
+All three stages run on the Hailo device via the GStreamer pipeline. LP detection runs inside a `hailocropper` element that crops each tracked vehicle and infers on the cropped region.
+
+### Custom LP Postprocess SO
+
+The `libyolov4_lp_postprocess.so` shared object replaces the TAPPAS `libyolo_post.so` for LP detection. It was written to solve a **cross-architecture compatibility issue** where the TAPPAS SO failed on Hailo-8/8L (details in the [Development History](#development-history) section below).
+
+**Key features:**
+- Handles UINT8, UINT16, and FLOAT32 tensor data types
+- Detects per-channel quantization (invalid single-QP sentinel `qp_scale=0`) and reads data as float32
+- Full YOLOv4 decode: sigmoid activation, anchor-based box regression, NMS
+- Works on all Hailo architectures without any conditional logic
+
+**Source:** `hailo_apps/postprocess/cpp/yolov4_lp_postprocess.cpp`<br>
+**Build:** `cd hailo_apps/postprocess && ./compile_postprocess.sh`<br>
+**Install location:** `/usr/local/hailo/resources/so/libyolov4_lp_postprocess.so`
 
 ## OCR Engines
 
@@ -214,16 +227,3 @@ hailo-lpr --input /path/to/video.mp4 --ocr-engine paddle
 ```shell script
 hailo-lpr --input usb --width 1920 --height 1080
 ```
-
-Additional Notes
-----------------
-- **Higher resolution = better crops**: Use `--width 1920 --height 1080` if your source is 1080p. The default 1280×720 downscale produces smaller LP crops.
-- **LPRNet vs PaddleOCR**: LPRNet is optimized for license plates and generally produces better results on small crops. PaddleOCR recognizes letters but is trained on general scene text.
-- **Confidence threshold**: The 78% threshold balances recall vs. accuracy. Lower it in `lpr.py` if you need more aggressive recognition at the cost of occasional misreads.
-- The list of supported models is defined in `resources_config.yaml`.
-- For any issues, open a post on the [Hailo Community](https://community.hailo.ai).
-
-Disclaimer
-----------
-This code example is provided by Hailo solely on an "AS IS" basis and "with all faults". No responsibility or liability is accepted or shall be imposed upon Hailo regarding the accuracy, merchantability, completeness or suitability of the code example. Hailo shall not have any liability or responsibility for errors or omissions in, or any business decisions made by you in reliance on this code example or any part of it. If an error occurs when running this example, please open a ticket in the "Issues" tab.<br />
-Please note that this example was tested on specific versions and we can only guarantee the expected results using the exact version mentioned above on the exact environment. The example might work for other versions, other environment or other HEF file, but there is no guarantee that it will.

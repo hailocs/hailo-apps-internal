@@ -38,12 +38,11 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
     ctc_decode_lprnet,
     ctc_decode_paddle,
     detect_lps_gstreamer,
-    detect_lps_python,
 )
 
 
 class user_app_callback_class(app_callback_class):
-    def __init__(self, ocr_hef_path, ocr_engine="lprnet", lp_hef_path=None):
+    def __init__(self, ocr_hef_path, ocr_engine="lprnet"):
         super().__init__()
         self.seen_plates = {}  # track_id -> plate text (OCR >= threshold)
         self.vehicles_seen = set()  # all unique vehicle track IDs seen
@@ -54,48 +53,12 @@ class user_app_callback_class(app_callback_class):
         self.plate_log = []
         self.plate_log_lock = threading.Lock()
 
-        # When lp_hef_path is provided, LP detection runs in Python (hailo8/8l).
-        # When None, LP detection runs in GStreamer pipeline via TAPPAS (hailo10h).
-        self.use_python_lp = lp_hef_path is not None
-        if self.use_python_lp:
-            self.lp_infer = HailoInfer(lp_hef_path, batch_size=1, output_type="FLOAT32")
-            lp_input_shape = self.lp_infer.get_input_shape()
-            self.lp_h = lp_input_shape[0]
-            self.lp_w = lp_input_shape[1]
-            self.lp_output_names = [
-                info.name for info in self.lp_infer.get_hef().get_output_vstream_infos()
-            ]
-            self.lp_result = None
-        else:
-            self.lp_infer = None
-
         # Initialize OCR inference via HailoRT
         self.ocr_infer = HailoInfer(ocr_hef_path, batch_size=1, output_type="FLOAT32")
         self.ocr_input_shape = self.ocr_infer.get_input_shape()
         self.ocr_h = self.ocr_input_shape[0]
         self.ocr_w = self.ocr_input_shape[1]
         self.ocr_result = None  # stores latest inference result
-
-    def _infer_callback(self, completion_info, bindings_list, target_attr):
-        """Generic callback for async inference — stores all output buffers."""
-        if bindings_list:
-            result = {}
-            for name in (
-                self.lp_output_names if target_attr == "lp_result" else [None]
-            ):
-                buf = bindings_list[0].output(name).get_buffer() if name else None
-                if buf is not None:
-                    result[name] = buf
-            if not result:
-                # Single-output model (OCR)
-                buf = bindings_list[0].output().get_buffer()
-                setattr(self, target_attr, buf)
-            else:
-                setattr(self, target_attr, result)
-
-    def lp_callback(self, completion_info, bindings_list):
-        """Called when LP detection async inference completes."""
-        self._infer_callback(completion_info, bindings_list, "lp_result")
 
     def ocr_callback(self, completion_info, bindings_list):
         """Called when OCR async inference completes."""
@@ -167,12 +130,8 @@ def app_callback(element, buffer, user_data):
         if frame is None:
             continue
 
-        if user_data.use_python_lp:
-            # --- Hailo-8/8L path: LP detection via HailoInfer (Python) ---
-            lp_crops = detect_lps_python(user_data, detection, frame, frame_w, frame_h)
-        else:
-            # --- Hailo-10H path: LP sub-detections from GStreamer cropper ---
-            lp_crops = detect_lps_gstreamer(detection, frame, frame_w, frame_h)
+        # LP sub-detections come from GStreamer cropper pipeline (all archs)
+        lp_crops = detect_lps_gstreamer(detection, frame, frame_w, frame_h)
 
         # --- Stage 3: OCR on each detected license plate ---
         for lp_crop, lp_x1, lp_y1, lp_x2, lp_y2 in lp_crops:
@@ -213,11 +172,10 @@ def app_callback(element, buffer, user_data):
             with user_data.plate_log_lock:
                 user_data.plate_log.insert(0, (crop_bgr, text, ocr_conf, track_id))
 
-    # On hailo10h, remove LP sub-detections so hailooverlay only draws vehicle boxes
-    if not user_data.use_python_lp:
-        for detection in detections:
-            for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
-                detection.remove_object(sub)
+    # Remove LP sub-detections so hailooverlay only draws vehicle boxes
+    for detection in detections:
+        for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
+            detection.remove_object(sub)
 
 
 def main():
@@ -252,12 +210,10 @@ def main():
 
     print(f"LPR using OCR engine: {ocr_engine}")
 
-    # On hailo8/8l, LP detection runs in Python (TAPPAS SO is incompatible).
-    # On hailo10h, LP detection runs in the GStreamer pipeline via TAPPAS.
-    use_python_lp = arch != "hailo10h"
-    lp_hef = models[1].path if use_python_lp else None
+    # LP detection runs in the GStreamer pipeline on all architectures
+    # via our custom libyolov4_lp_postprocess.so.
     user_data = user_app_callback_class(
-        ocr_hef, ocr_engine=ocr_engine, lp_hef_path=lp_hef
+        ocr_hef, ocr_engine=ocr_engine
     )
 
     # Create display window on main thread to avoid Qt threading warnings
