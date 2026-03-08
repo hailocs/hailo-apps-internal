@@ -8,6 +8,7 @@ import numpy as np
 import threading
 from pathlib import Path
 from pose_estimation_utils import PoseEstPostProcessing
+from aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
 
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
@@ -123,6 +124,20 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "--aigym",
+        type=str,
+        default=None,
+        choices=list(EXERCISE_PRESETS.keys()),
+        metavar="EXERCISE",
+        help=(
+            "Enable exercise rep-counting mode.  "
+            "Adds ByteTrack multi-person tracking and angle-based "
+            "hysteresis counting.  "
+            f"Choices: {', '.join(EXERCISE_PRESETS.keys())}."
+        ),
+    )
+
     args = parser.parse_args()
     return args
 
@@ -214,6 +229,7 @@ def run_inference_pipeline(
     pose_trail: int = 0,
     mute_background: float | None = None,
     onnxconfig=None,
+    aigym: str | None = None,
     args=None,
 ) -> None:
     """
@@ -294,14 +310,32 @@ def run_inference_pipeline(
         hailo_inference = HailoInfer(net_path, batch_size, output_type=output_type)
         height, width, _ = hailo_inference.get_input_shape()
 
-    post_process_callback_fn = partial(
-        pose_post_processing.inference_result_handler,
-        model_height=height,
-        model_width=width,
-        class_num=class_num,
-        onnx_config=onnx_config,
-        onnx_session=onnx_session,
-    )
+    # --- Choose callback: AIGym mode vs. regular pose visualization ---
+    if aigym is not None:
+        from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
+
+        tracker = BYTETracker(make_tracker_args(), frame_rate=int(frame_rate or 30))
+        aigym_cb = AIGymCallback(
+            pose_processor=pose_post_processing,
+            tracker=tracker,
+            exercise=aigym,
+            model_height=height,
+            model_width=width,
+            class_num=class_num,
+            onnx_config=onnx_config,
+            onnx_session=onnx_session,
+        )
+        post_process_callback_fn = aigym_cb
+        logger.info(f"AIGym mode enabled – exercise: {aigym}")
+    else:
+        post_process_callback_fn = partial(
+            pose_post_processing.inference_result_handler,
+            model_height=height,
+            model_width=width,
+            class_num=class_num,
+            onnx_config=onnx_config,
+            onnx_session=onnx_session,
+        )
 
     preprocess_thread = threading.Thread(
         target=preprocess,
@@ -371,6 +405,7 @@ def main() -> None:
         pose_trail=args.pose_trail,
         mute_background=args.mute_background,
         onnxconfig=args.onnxconfig,
+        aigym=args.aigym,
         args=args,
     )
 
