@@ -307,6 +307,13 @@ class PoseEstPostProcessing:
 
     KEYPOINTS_COLOR = (0, 200, 200)    # cyan – keypoint dots
     SKELETON_COLOR = (255, 0, 255)     # magenta – current-frame skeleton lines
+    TRAIL_COLOR_START = (0, 200, 0)    # green  – oldest trail frame
+    TRAIL_COLOR_END   = (255, 0, 255)  # magenta – newest trail frame (matches current)
+
+    @staticmethod
+    def _lerp_color(c0: tuple, c1: tuple, t: float) -> tuple:
+        """Linearly interpolate between two RGB colors. t=0 -> c0, t=1 -> c1."""
+        return tuple(int(a + (b - a) * t) for a, b in zip(c0, c1))
 
     def _draw_skeleton(self, image: np.ndarray, keypoints: np.ndarray,
                        joint_visible: np.ndarray, color: tuple,
@@ -408,18 +415,19 @@ class PoseEstPostProcessing:
         if self.pose_history is not None and len(self.pose_history) > 0:
             n_hist = len(self.pose_history)
             for age_idx, past_poses in enumerate(self.pose_history):
-                # Linear alpha: oldest ~ 0.1, most recent trail frame ~ 0.9
-                #alpha = (age_idx + 1) / (n_hist + 1)
+                # t goes from 0 (oldest) to ~1 (newest trail frame)
+                t = age_idx / max(n_hist, 1)
+                trail_color = self._lerp_color(self.TRAIL_COLOR_START, self.TRAIL_COLOR_END, t)
                 alpha = 0.6 - 0.4 * (age_idx + 1) / (n_hist + 1)
                 overlay = image.copy()
                 for kps, vis in past_poses:
                     self._draw_skeleton(
                         overlay, kps, vis,
-                        color=self.SKELETON_COLOR,
+                        color=trail_color,
                         line_thickness=2,
                         dot_radius=4,
-                        dot_color=self.KEYPOINTS_COLOR,
-                    )                
+                        dot_color=trail_color,
+                    )
                 cv2.addWeighted(overlay, alpha, image, 1.0 - alpha, 0, image)
 
         # Store current frame's poses in history
