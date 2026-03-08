@@ -34,6 +34,10 @@ endif
 # Option 3: If you want to force static linking and fail if not available, use:
 # opencv_dep = dependency('opencv4', required : true, static : true)
 
+gst_dep = dependency('gstreamer-1.0', required : false)
+gst_base_dep = dependency('gstreamer-base-1.0', required : false)
+gst_video_dep = dependency('gstreamer-video-1.0', required : false)
+
 if postprocess_dep.found()
     rapidjson_inc_dir = postprocess_dep.get_variable(pkgconfig: 'rapidjson_includedir', default_value: '')
     rapidjson_inc = include_directories(rapidjson_inc_dir, is_system: true)

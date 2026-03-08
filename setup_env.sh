@@ -91,3 +91,9 @@ if [ -f "$ENV_FILE" ]; then
     done < "$ENV_FILE"
     echo "Environment variables loaded from $ENV_FILE"
 fi
+
+# Add community GStreamer plugins to the plugin path
+COMMUNITY_GST_PLUGIN_DIR="/usr/local/hailo/resources/gstreamer-1.0"
+if [ -d "$COMMUNITY_GST_PLUGIN_DIR" ]; then
+    export GST_PLUGIN_PATH="${COMMUNITY_GST_PLUGIN_DIR}:${GST_PLUGIN_PATH}"
+fi

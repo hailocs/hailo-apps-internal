@@ -267,3 +267,118 @@ shared_library('ocr_postprocess',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
 )
+
+################################################
+# PALM DETECTION POSTPROCESS
+################################################
+palm_detection_post_sources = [
+    'palm_detection_postprocess.cpp',
+]
+shared_library('palm_detection_postprocess',
+    palm_detection_post_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# PALM CROPPERS (palm → hand ROI for hailocropper)
+################################################
+palm_croppers_sources = [
+    'palm_croppers.cpp',
+]
+shared_library('palm_croppers',
+    palm_croppers_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# HAND AFFINE WARP (rotation correction, use-gst-buffer=true)
+################################################
+hand_affine_warp_sources = [
+    'hand_affine_warp.cpp',
+]
+
+hand_affine_warp_deps = [postprocess_dep]
+if opencv_dep.found()
+    hand_affine_warp_deps += opencv_dep
+endif
+if zlib_dep.found()
+    hand_affine_warp_deps += zlib_dep
+endif
+
+shared_library('hand_affine_warp',
+    hand_affine_warp_sources,
+    dependencies : hand_affine_warp_deps,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# HAND LANDMARK POSTPROCESS
+################################################
+hand_landmark_post_sources = [
+    'hand_landmark_postprocess.cpp',
+]
+shared_library('hand_landmark_postprocess',
+    hand_landmark_post_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# HAND CROPPERS (person pose → hand ROI for hailocropper)
+################################################
+hand_croppers_sources = [
+    'hand_croppers.cpp',
+]
+shared_library('hand_croppers',
+    hand_croppers_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# GESTURE CLASSIFICATION (hand landmarks → gesture label)
+################################################
+gesture_classification_sources = [
+    'gesture_classification.cpp',
+]
+shared_library('gesture_classification',
+    gesture_classification_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
+# HAILOOVERLAY COMMUNITY (GStreamer plugin - local fork of hailooverlay)
+################################################
+overlay_community_inc = include_directories('overlay_community')
+
+overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    overlay_community_deps += opencv_dep
+endif
+
+shared_library('gsthailooverlay_community',
+    ['overlay_community/gsthailooverlay_community.cpp',
+     'overlay_community/overlay.cpp'],
+    include_directories : overlay_community_inc,
+    dependencies : overlay_community_deps,
+    c_args : ['-DPACKAGE="hailooverlay_community"'],
+    cpp_args : ['-DPACKAGE="hailooverlay_community"'],
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/gstreamer-1.0',
+)
