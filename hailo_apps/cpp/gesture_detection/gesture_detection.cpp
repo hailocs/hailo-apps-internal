@@ -28,6 +28,7 @@
 #include "palm_detection.hpp"
 #include "hand_landmark.hpp"
 #include "gesture_classify.hpp"
+#include "camera_utils.hpp"
 
 // Drawing constants
 static const cv::Scalar COLOR_PALM_BOX(0, 255, 0);
@@ -82,7 +83,11 @@ static Args parse_args(int argc, char** argv)
             std::cout << "Usage: gesture_detection [options]\n"
                       << "  --palm-model PATH   Palm detection HEF (default: " << DEFAULT_PALM_MODEL << ")\n"
                       << "  --hand-model PATH   Hand landmark HEF (default: " << DEFAULT_HAND_MODEL << ")\n"
-                      << "  --input PATH        Video/image/camera index (default: 0)\n"
+                      << "  --input SOURCE      Input source (default: 0)\n"
+                      << "                        usb  - auto-detect USB camera\n"
+                      << "                        rpi  - RPi CSI camera (libcamerasrc)\n"
+                      << "                        0-9  - camera index\n"
+                      << "                        path - video file or image\n"
                       << "  --headless          No display window\n";
             std::exit(0);
         }
@@ -277,15 +282,8 @@ int main(int argc, char** argv)
     }
     else
     {
-        int cam_idx = -1;
-        try { cam_idx = std::stoi(args.input); } catch (...) {}
-
-        if (cam_idx >= 0)
-            cap.open(cam_idx);
-        else
-            cap.open(args.input);
-
-        if (!cap.isOpened())
+        std::string source_desc;
+        if (!resolve_input(args.input, cap, source_desc))
         {
             std::cerr << "Error: Cannot open video source: " << args.input << std::endl;
             return 1;
@@ -294,7 +292,7 @@ int main(int argc, char** argv)
         int w = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
         int h = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
         double fps = cap.get(cv::CAP_PROP_FPS);
-        std::cout << "Source: " << args.input << " (" << w << "x" << h
+        std::cout << "Source: " << source_desc << " (" << w << "x" << h
                   << " @ " << fps << "fps)" << std::endl;
     }
 

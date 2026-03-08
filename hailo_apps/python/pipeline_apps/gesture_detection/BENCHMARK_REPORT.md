@@ -1,71 +1,133 @@
 # Gesture Detection — Benchmark Report
 
 **Date:** 2026-03-08
-**Comparison:** Native MediaPipe (CPU) vs Hailo-8 Python vs Hailo-8 C++ Standalone
 
-## System
+## Summary
 
-| Parameter | Value |
-|-----------|-------|
-| CPU | 12th Gen Intel Core i7-1270P |
-| Cores | 12 physical / 16 logical |
-| RAM | 30.6 GB |
-| OS | Ubuntu 22.04 (Linux 5.15.0-60-generic, x86_64) |
-| Python | 3.10.12 |
-| numpy | 1.26.4 |
-| Hailo device | Hailo-8 (M.2 M-key), FW 4.23.0 |
-| HailoRT | 4.23.0 |
-| MediaPipe | 0.10.32 (TFLite + XNNPACK CPU backend) |
-| OpenCV | 4.5.4 |
-| GCC | 11.4.0 |
+| Platform | Native CPU | Hailo-8 Python | Hailo-8 C++ | Speedup (C++ vs Native) |
+|----------|-----------|----------------|-------------|-------------------------|
+| **Raspberry Pi 5** | **26 FPS** | **50 FPS** | **62 FPS** | **2.4x** |
+| Intel i7-1270P | 46 FPS | 70 FPS | 72 FPS | 1.6x |
+
+The Hailo-8 NPU runs at the same speed on both platforms (~11 ms inference). The weaker the host CPU, the larger the Hailo advantage.
+
+---
 
 ## Test Setup
 
-- **Input:** 300 frames, 640x480, 30fps (cycling 3 test photos: open hand, thumbs up, peace sign)
-- **Mode:** Headless (no display overhead)
-- **Native config:** MediaPipe HandLandmarker task, `hand_landmarker.task` float16, `num_hands=2`. All pre/post processing runs inside MediaPipe's C++ graph (TFLite + XNNPACK).
-- **Hailo Python config:** `palm_detection_lite.hef` + `hand_landmark_lite.hef`, InferVStreams API, shared VDevice. Pre/post processing (resize, anchor decode, NMS, affine warp, landmark denorm) runs in **Python/numpy**.
-- **Hailo C++ config:** Same HEF models, HailoRT async C++ API with `group_id` shared VDevice. All pre/post processing (resize, anchor decode, NMS, affine warp, landmark denorm) runs in **C++ with OpenCV**. No GStreamer, no xtensor, no TAPPAS dependencies.
+**Input:** 300 frames, 640x480, headless mode (no display overhead).
 
-## Results — Side by Side
+**Pipelines tested:**
 
-### Frame Throughput
+| Pipeline | Inference backend | Pre/post processing | Notes |
+|----------|-------------------|---------------------|-------|
+| Native CPU | TFLite XNNPACK (float16) | Python / numpy | x86: `mediapipe` package. RPi: `ai-edge-litert` + same models |
+| Hailo-8 Python | HailoRT InferVStreams | Python / numpy | `palm_detection_lite.hef` + `hand_landmark_lite.hef` |
+| Hailo-8 C++ | HailoRT async API | C++ / OpenCV | Same HEFs. No GStreamer or TAPPAS deps |
 
-| Metric | Native CPU | Hailo-8 Python | Hailo-8 C++ | C++ vs Native |
-|--------|-----------|----------------|-------------|---------------|
-| Total frames | 300 | 300 | 300 | — |
-| Wall time | 6.5 s | 4.3 s | **4.1 s** | **1.6x faster** |
-| **Avg FPS** | **46.1** | **69.9** | **72.3** | **1.57x** |
-| Avg frame time | 21.3 ms | 13.9 ms | **13.2 ms** | 38% faster |
-| Median frame time | 19.4 ms | 13.5 ms | **13.2 ms** | 32% faster |
-| P5 frame time (best) | 17.7 ms | 12.2 ms | **11.4 ms** | 36% faster |
-| P95 frame time (worst) | 31.2 ms | 15.6 ms | **14.8 ms** | **2.1x better** |
+All pipelines run the same two-stage architecture: palm detection (192x192) followed by hand landmark (224x224) per detected hand.
 
-### Hailo-8 Python Timing Breakdown
+---
 
-| Stage | Avg | Median | Notes |
-|-------|-----|--------|-------|
-| Pre-process (Python) | 0.2 ms | 0.2 ms | BGR→RGB, resize_pad to 192x192 |
-| Palm detect (Hailo) | 7.2 ms | 6.8 ms | HailoRT InferVStreams + anchor decode + NMS |
-| Post-process (Python) | 0.9 ms | 0.9 ms | detection2roi, affine warp, landmark denorm |
-| Hand landmark (Hailo) | 5.6 ms | 5.5 ms | HailoRT InferVStreams per detected hand |
-| **Hailo inference total** | **12.7 ms** | | Palm + hand landmark on NPU |
-| **Python pre/post total** | **1.1 ms** | | Resize, decode, warp, denorm |
+## Raspberry Pi 5 Results
 
-Note: "Palm detect" time includes both the HailoRT inference call and the Python anchor decoding + NMS postprocess, since `BlazePalmDetector.detect()` wraps both.
+### System
 
-### Hailo-8 C++ Timing Breakdown
+| | |
+|-|-|
+| Board | Raspberry Pi 5 Model B Rev 1.1 |
+| CPU | Cortex-A76, 4 cores (aarch64) |
+| RAM | 7.9 GB |
+| OS | Debian 13, Linux 6.12.62 |
+| Hailo | Hailo-8 PCIe, FW 4.23.0, HailoRT 4.23.0 |
+| OpenCV | 4.10.0, GCC 14.2.0, Python 3.13.5 |
 
-| Stage | Avg | Median | Notes |
-|-------|-----|--------|-------|
-| Pre-process (C++) | 0.5 ms | 0.5 ms | BGR→RGB, resize_pad to 192x192 |
-| Palm detect (Hailo) | 6.0 ms | 6.0 ms | HailoRT async API + anchor decode + NMS |
-| Post-process (C++) | 1.5 ms | 1.5 ms | detection2roi, affine warp, landmark denorm, draw |
-| Hand landmark (Hailo) | 5.2 ms | 5.2 ms | HailoRT async API per detected hand |
-| **Hailo inference total** | **11.2 ms** | | Palm + hand landmark on NPU |
-| **C++ pre/post total** | **2.0 ms** | | Resize, decode, warp, denorm, draw |
+### Throughput
 
-### Native MediaPipe Inference
+| Metric | Native CPU | Hailo-8 Python | Hailo-8 C++ |
+|--------|-----------|----------------|-------------|
+| **Avg FPS** | **26.3** | **50.4** | **62.4** |
+| Wall time | 11.4 s | 6.0 s | 4.8 s |
+| Avg frame time | 36.4 ms | 18.1 ms | 14.1 ms |
+| Median frame time | 35.6 ms | 17.3 ms | 13.8 ms |
+| P5 (best) | 32.1 ms | 16.8 ms | 13.5 ms |
+| P95 (worst) | 43.8 ms | 22.3 ms | 15.6 ms |
+
+### Timing Breakdown
+
+#### Native CPU (TFLite/XNNPACK)
+
+| Stage | Avg | Median |
+|-------|-----|--------|
+| Pre-process | 0.8 ms | 0.8 ms |
+| Palm detect (CPU) | 19.8 ms | 19.5 ms |
+| Post-process | 2.0 ms | 1.9 ms |
+| Hand landmark (CPU) | 13.7 ms | 13.5 ms |
+| **Inference total** | **33.6 ms** | |
+| **Pre/post total** | **2.8 ms** | |
+
+#### Hailo-8 Python
+
+| Stage | Avg | Median |
+|-------|-----|--------|
+| Pre-process | 0.9 ms | 0.8 ms |
+| Palm detect (NPU) | 7.9 ms | 7.5 ms |
+| Post-process | 2.5 ms | 2.5 ms |
+| Hand landmark (NPU) | 6.7 ms | 6.3 ms |
+| **Inference total** | **14.6 ms** | |
+| **Pre/post total** | **3.4 ms** | |
+
+#### Hailo-8 C++
+
+| Stage | Avg | Median |
+|-------|-----|--------|
+| Pre-process | 0.8 ms | 0.7 ms |
+| Palm detect (NPU) | 6.1 ms | 6.0 ms |
+| Post-process | 1.8 ms | 1.8 ms |
+| Hand landmark (NPU) | 5.3 ms | 5.2 ms |
+| **Inference total** | **11.4 ms** | |
+| **Pre/post total** | **2.6 ms** | |
+
+### CPU Usage
+
+| Metric | Native CPU | Hailo-8 Python |
+|--------|-----------|----------------|
+| Process avg | 271.7% | 73.1% |
+| Process max | 288.4% | 76.5% |
+| System avg | 81.9% | 24.6% |
+| System max | 85.5% | 28.3% |
+
+Native TFLite uses ~2.7 of 4 cores. Hailo offloads inference to the NPU, using <1 core.
+
+---
+
+## x86_64 Dev Machine Results
+
+### System
+
+| | |
+|-|-|
+| CPU | 12th Gen Intel Core i7-1270P, 12P/16L cores |
+| RAM | 30.6 GB |
+| OS | Ubuntu 22.04, Linux 5.15.0 |
+| Hailo | Hailo-8 M.2 M-key, FW 4.23.0, HailoRT 4.23.0 |
+| MediaPipe | 0.10.32 (TFLite + XNNPACK) |
+| OpenCV | 4.5.4, GCC 11.4.0, Python 3.10.12 |
+
+### Throughput
+
+| Metric | Native CPU | Hailo-8 Python | Hailo-8 C++ |
+|--------|-----------|----------------|-------------|
+| **Avg FPS** | **46.1** | **69.9** | **72.3** |
+| Wall time | 6.5 s | 4.3 s | 4.1 s |
+| Avg frame time | 21.3 ms | 13.9 ms | 13.2 ms |
+| Median frame time | 19.4 ms | 13.5 ms | 13.2 ms |
+| P5 (best) | 17.7 ms | 12.2 ms | 11.4 ms |
+| P95 (worst) | 31.2 ms | 15.6 ms | 14.8 ms |
+
+### Timing Breakdown
+
+#### Native MediaPipe (CPU)
 
 | Metric | Value |
 |--------|-------|
@@ -73,89 +135,105 @@ Note: "Palm detect" time includes both the HailoRT inference call and the Python
 | Median inference | 19.0 ms |
 | P95 inference | 30.9 ms |
 
-MediaPipe's `detect()` call includes all pre/post processing in C++ — there is no separate Python overhead.
+MediaPipe's `detect()` includes all pre/post processing in its C++ graph — no separate Python overhead.
 
-### CPU & Memory Usage
+#### Hailo-8 Python
+
+| Stage | Avg | Median |
+|-------|-----|--------|
+| Pre-process | 0.2 ms | 0.2 ms |
+| Palm detect (NPU) | 7.2 ms | 6.8 ms |
+| Post-process | 0.9 ms | 0.9 ms |
+| Hand landmark (NPU) | 5.6 ms | 5.5 ms |
+| **Inference total** | **12.7 ms** | |
+| **Pre/post total** | **1.1 ms** | |
+
+#### Hailo-8 C++
+
+| Stage | Avg | Median |
+|-------|-----|--------|
+| Pre-process | 0.5 ms | 0.5 ms |
+| Palm detect (NPU) | 6.0 ms | 6.0 ms |
+| Post-process | 1.5 ms | 1.5 ms |
+| Hand landmark (NPU) | 5.2 ms | 5.2 ms |
+| **Inference total** | **11.2 ms** | |
+| **Pre/post total** | **2.0 ms** | |
+
+### CPU Usage
 
 | Metric | Native CPU | Hailo-8 Python | Hailo-8 C++ |
 |--------|-----------|----------------|-------------|
 | Process avg | 109.5% | 76.6% | ~104% |
 | Process max | 112.0% | 81.4% | — |
-| System avg | 12.7% | 21.1% | — |
-| System max | 19.8% | 28.1% | — |
 | Peak RSS | — | — | 120 MB |
 
-*Process CPU >100% means multi-threaded. Native MediaPipe XNNPACK uses ~1.1 cores; Hailo-8 Python uses ~0.8 cores. C++ process CPU measured via `/usr/bin/time -v` (includes HailoRT internal threads).*
+---
 
-### Detection
+## Cross-Platform Comparison
 
-| Metric | Native CPU | Hailo-8 Python | Hailo-8 C++ |
-|--------|-----------|----------------|-------------|
-| Frames with hand | 300/300 (100%) | 300/300 (100%) | 300/300 (100%) |
+| Metric | x86 Native | x86 C++ | RPi Native | RPi C++ | RPi Python |
+|--------|-----------|---------|------------|---------|------------|
+| **Avg FPS** | **46.1** | **72.3** | **26.3** | **62.4** | **50.4** |
+| Inference total | 21.0 ms | 11.2 ms | 33.6 ms | 11.4 ms | 14.6 ms |
+| Pre/post total | — | 2.0 ms | 2.8 ms | 2.6 ms | 3.4 ms |
+| P95 frame time | 31.2 ms | 14.8 ms | 43.8 ms | 15.6 ms | 22.3 ms |
+| CPU (process) | 110% | ~104% | 272% | — | 73% |
+
+---
 
 ## Key Observations
 
-1. **Hailo-8 C++ is 1.57x faster than native MediaPipe** — 72.3 FPS vs 46.1 FPS on a strong x86 laptop CPU. The advantage would be much larger on weaker CPUs (Raspberry Pi).
+**Hailo-8 NPU is platform-independent.** C++ inference totals are 11.4 ms (RPi) vs 11.2 ms (x86) — virtually identical. The NPU runs at full speed regardless of the host CPU.
 
-2. **C++ is 5% faster than Python+Hailo** — 72.3 vs 69.9 FPS. The gain comes primarily from lower HailoRT API overhead (async C++ API vs Python InferVStreams): 11.2 ms vs 12.7 ms total Hailo time.
+**The weaker the CPU, the bigger the Hailo win.** On x86 (strong i7), Hailo C++ is 1.6x faster than native. On RPi 5 (Cortex-A76), it jumps to 2.4x. The CPU inference slowdown (21→34 ms) is fully absorbed by the NPU.
 
-3. **Hailo-8 uses ~30% less CPU** — 76.6% vs 109.5% process CPU. The NPU handles inference, freeing CPU for application logic.
+**Hailo frees the CPU.** Native TFLite on RPi saturates ~2.7 of 4 cores (272% process CPU, 82% system). Hailo Python uses <1 core (73%), leaving 3+ cores for application logic — critical for robotics workloads.
 
-4. **Native MediaPipe benefits from C++ pre/post processing** — The entire MediaPipe pipeline (detection, NMS, crop, landmark) runs as an optimized C++ graph. The Hailo Python pipeline only offloads inference to the NPU; all pre/post (anchor decode, NMS, affine warp) runs in Python. Despite this disadvantage, Hailo-8 is still 1.5x faster.
+**C++ vs Python matters more on RPi.** On x86, C++ is only 5% faster than Python (72 vs 70 FPS). On RPi, the gap grows to 24% (62 vs 50 FPS). ARM's weaker single-core performance amplifies Python/numpy overhead: pre/post processing takes 3.4 ms on RPi vs 1.1 ms on x86.
 
-5. **P95 latency is the biggest Hailo win** — 14.8 ms (C++) vs 31.2 ms (native). The Hailo pipeline is **2.1x more consistent** in worst-case frame times. Native MediaPipe alternates between palm detection and tracking, causing more variance.
+**P95 latency is the biggest win.** RPi Hailo C++ P95 is 15.6 ms vs 43.8 ms native — **2.8x more consistent**. Native CPU jitter comes from OS scheduling pressure at high utilization.
 
-6. **C++ pre/post is slightly slower than Python/numpy** — 2.0 ms vs 1.1 ms. This includes `frame.clone()` for display buffer and OpenCV's affine warp. NumPy's vectorized operations are highly optimized on x86. However, the C++ Hailo inference time is 1.5 ms faster, more than compensating.
+**RPi C++ is within 14% of x86 C++.** 62.4 vs 72.3 FPS — the small gap is entirely from pre/post processing overhead (2.6 ms vs 2.0 ms), not from the NPU.
 
-7. **Native MediaPipe is fast on x86** — XNNPACK is highly optimized for Intel CPUs. On ARM (RPi), expect 5-10x slower, making the Hailo-8 advantage much larger.
-
-## Expected Performance on Other Platforms
-
-| Platform | Native CPU FPS | Hailo-8 C++ FPS | Speedup |
-|----------|---------------|-----------------|---------|
-| Intel i7-1270P (this test) | ~46 | ~72 | 1.6x |
-| Raspberry Pi 5 + Hailo-8 | ~5-8 | ~30-50* | 5-8x |
-| Raspberry Pi 4 + Hailo-8 | ~2-4 | ~20-35* | 7-12x |
-
-*RPi Hailo-8 estimates assume C++ standalone app. Python overhead would reduce FPS by ~5%.
+---
 
 ## How to Reproduce
 
+Prepare a 300-frame 640x480 benchmark video (use any video with hands visible, or record from camera).
+
 ```bash
 source setup_env.sh
+INPUT=path/to/benchmark_video.avi
 
-# Create benchmark video (or use your own)
-python3 -c "
-import cv2, os
-photos = ['photo.jpg', 'photo1.jpg', 'photo2.jpg']
-d = 'hailo_apps/python/pipeline_apps/gesture_detection'
-frames = [cv2.resize(cv2.imread(os.path.join(d, p)), (640,480)) for p in photos]
-w = cv2.VideoWriter(os.path.join(d, 'benchmark_input.mp4'), cv2.VideoWriter_fourcc(*'mp4v'), 30, (640,480))
-for i in range(300): w.write(frames[i % len(frames)])
-w.release()
-"
-
-# 1. Native CPU baseline
-pip install mediapipe psutil
-python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_native \
-    --input hailo_apps/python/pipeline_apps/gesture_detection/benchmark_input.mp4 \
-    --headless
-
-# 2. Hailo-8 Python
-python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 \
-    --input hailo_apps/python/pipeline_apps/gesture_detection/benchmark_input.mp4 \
-    --headless
-
-# 3. Hailo-8 C++ standalone
+# --- Hailo-8 C++ (recommended) ---
 cd hailo_apps/cpp/gesture_detection && ./build.sh && cd -
 hailo_apps/cpp/gesture_detection/build/gesture_detection \
     --palm-model hailo_apps/python/pipeline_apps/gesture_detection/models/palm_detection_lite.hef \
     --hand-model hailo_apps/python/pipeline_apps/gesture_detection/models/hand_landmark_lite.hef \
-    --input hailo_apps/python/pipeline_apps/gesture_detection/benchmark_input.mp4 \
-    --headless
+    --input $INPUT --headless
+
+# --- Hailo-8 Python ---
+python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 \
+    --input $INPUT --headless
+
+# --- Native CPU baseline (x86, uses mediapipe package) ---
+pip install mediapipe psutil
+python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_native \
+    --input $INPUT --headless
+
+# --- Native CPU baseline (RPi / aarch64, uses TFLite directly) ---
+# Run in a separate venv to avoid dependency conflicts:
+python3 -m venv /tmp/mp_bench --system-site-packages
+/tmp/mp_bench/bin/pip install ai-edge-litert opencv-python-headless numpy psutil
+curl -sL -o /tmp/hand_landmarker.task \
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task"
+python3 -c "import zipfile; zipfile.ZipFile('/tmp/hand_landmarker.task').extractall('/tmp/mediapipe_models')"
+/tmp/mp_bench/bin/python3 benchmark_native_tflite.py --input $INPUT
 ```
 
 ## Notes
 
-- `mediapipe 0.10.32` installs `numpy>=2.0` but HailoRT 4.23.0 requires `numpy<2`. After installing mediapipe, downgrade: `pip install "numpy<2"`. MediaPipe works fine with numpy 1.26.x.
-- The C++ standalone app requires only OpenCV4 + HailoRT. No GStreamer, xtensor, or TAPPAS postprocess headers needed.
+- On RPi, use MJPEG codec (`.avi`) — OpenCV's RPi build may not support `mp4v`.
+- The `mediapipe` PyPI package has no aarch64 wheels. The RPi native benchmark uses `ai-edge-litert` (Google's TFLite runtime with XNNPACK) with models extracted from `hand_landmarker.task`. Pre/post processing uses the same `blaze_base.py` as the Hailo pipeline.
+- On x86, `mediapipe 0.10.32` pulls `numpy>=2.0` but HailoRT needs `numpy<2`. Fix: `pip install "numpy<2"` after installing mediapipe.
+- The C++ app requires only OpenCV4 + HailoRT — no GStreamer, xtensor, or TAPPAS.
