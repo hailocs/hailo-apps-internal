@@ -38,6 +38,16 @@ gst_dep = dependency('gstreamer-1.0', required : false)
 gst_base_dep = dependency('gstreamer-base-1.0', required : false)
 gst_video_dep = dependency('gstreamer-video-1.0', required : false)
 
+# Resolve the system GStreamer plugin directory (same location as tappas-core plugins)
+gst_plugins_dir = '/usr/lib/gstreamer-1.0'
+if gst_dep.found()
+    gst_plugins_dir_result = run_command('pkg-config', '--variable=pluginsdir', 'gstreamer-1.0', check: false)
+    if gst_plugins_dir_result.returncode() == 0
+        gst_plugins_dir = gst_plugins_dir_result.stdout().strip()
+    endif
+endif
+message('GStreamer plugin install dir: @0@'.format(gst_plugins_dir))
+
 if postprocess_dep.found()
     rapidjson_inc_dir = postprocess_dep.get_variable(pkgconfig: 'rapidjson_includedir', default_value: '')
     rapidjson_inc = include_directories(rapidjson_inc_dir, is_system: true)
