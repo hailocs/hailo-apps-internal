@@ -116,12 +116,17 @@ def iou_matrix(boxes_a: np.ndarray, boxes_b: np.ndarray) -> np.ndarray:
 # Per-person exercise state
 # ===================================================================
 
+# How many consecutive frames a person can be missing before state is discarded.
+_STALE_GRACE_FRAMES = 60
+
+
 @dataclass
 class PersonState:
     """Mutable exercise state for a single tracked person."""
     count: int = 0
     stage: str = ""       # "up" or "down"
     angle: float = 0.0    # current average joint angle
+    missing_frames: int = 0  # frames since last seen (for grace-period cleanup)
 
 
 # ===================================================================
@@ -207,10 +212,14 @@ class ExerciseCounter:
         return state
 
     def cleanup_stale(self, active_ids: set[int]) -> None:
-        """Drop internal state for tracks that no longer exist."""
+        """Drop state for tracks missing longer than the grace period."""
         for tid in list(self.persons):
-            if tid not in active_ids:
-                del self.persons[tid]
+            if tid in active_ids:
+                self.persons[tid].missing_frames = 0
+            else:
+                self.persons[tid].missing_frames += 1
+                if self.persons[tid].missing_frames > _STALE_GRACE_FRAMES:
+                    del self.persons[tid]
 
 
 # ===================================================================
