@@ -1,0 +1,53 @@
+version: "1.0"
+
+tuning_recipes: []
+
+bottleneck_patterns:
+  - pattern: "queue_fill_pct > 80 on bypass queue"
+    suggestion: "Increase bypass queue max_size_buffers (INFERENCE_PIPELINE_WRAPPER default is 20)"
+    confidence: 0.8
+    times_confirmed: 0
+
+  - pattern: "videoconvert in top 3 proctime"
+    suggestion: "Increase n-threads to 3-4, consider using NV12 format to reduce conversion overhead"
+    confidence: 0.8
+    times_confirmed: 0
+
+  - pattern: "videoscale in top 3 proctime"
+    suggestion: "Increase n-threads to 3-4, reduce input resolution at source if possible"
+    confidence: 0.7
+    times_confirmed: 0
+
+  - pattern: "hailonet highest proctime"
+    suggestion: "Tune batch-size and scheduler-timeout-ms, verify HEF model is optimized for target arch"
+    confidence: 0.9
+    times_confirmed: 0
+
+  - pattern: "element proctime p95 > 2x mean"
+    suggestion: "Add leaky queue before element to absorb jitter spikes"
+    confidence: 0.7
+    times_confirmed: 0
+
+  - pattern: "all_cpus > 90%"
+    suggestion: "Reduce source resolution or frame rate, pipeline is CPU-bound"
+    confidence: 0.9
+    times_confirmed: 0
+
+insights:
+  - text: "QUEUE() defaults: max_size_buffers=3, max_size_bytes=0, max_size_time=0, leaky=no"
+    tags: ["queue", "defaults"]
+    timestamp: "2026-03-09"
+
+  - text: "INFERENCE_PIPELINE_WRAPPER bypass_max_size_buffers default is 20"
+    tags: ["queue", "bypass", "inference"]
+    timestamp: "2026-03-09"
+
+  - text: "GStreamerApp default pipeline_latency=300ms"
+    tags: ["latency", "pipeline"]
+    timestamp: "2026-03-09"
+
+  - text: "SOURCE_PIPELINE uses videoscale n-threads=2 and videoconvert n-threads=3"
+    tags: ["source", "threads", "videoconvert"]
+    timestamp: "2026-03-09"
+
+experiment_history: []
