@@ -7,9 +7,13 @@
 
 #include <opencv2/opencv.hpp>
 #include <algorithm>
+#include <cstdio>
+#include <glib.h>
 #include "overlay.hpp"
 #include "overlay_utils.hpp"
 #include "hailo_common.hpp"
+#include "sprite_cache.hpp"
+#include "style_config.hpp"
 
 #define SPACE " "
 #define TEXT_CLS_FONT_SCALE_FACTOR (0.0025f)
@@ -30,6 +34,8 @@
 
 #define DEPTH_MIN_DISTANCE 0.5
 #define DEPTH_MAX_DISTANCE 3
+
+#define STATS_RING_SIZE 30
 
 static const std::vector<cv::Scalar> tile_layer_color_table = {
     cv::Scalar(0, 0, 255), cv::Scalar(200, 100, 120), cv::Scalar(255, 0, 0), cv::Scalar(120, 0, 0), cv::Scalar(0, 0, 120)};
@@ -88,7 +94,13 @@ static std::string get_classification_text(HailoClassificationPtr result, bool s
     return text;
 }
 
-static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmarks, HailoROIPtr roi, float landmark_point_radius)
+// Forward declaration (defined below, needed by draw_landmarks)
+static void draw_sprite(cv::Mat &frame, const cv::Rect &bbox, const cv::Mat &sprite_bgra);
+
+static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmarks, HailoROIPtr roi,
+                                       float landmark_point_radius,
+                                       SpriteCache *sprite_cache = nullptr,
+                                       const std::unordered_map<int, std::string> *keypoint_sprites = nullptr)
 {
     HailoBBox bbox = roi->get_bbox();
     int thickness;
@@ -105,13 +117,19 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
     if (threshold <= 0.0f)
         threshold = 0.5f;
 
-    int skipped_pairs = 0;
+    // Determine which keypoint indices have sprites (for skipping skeleton lines)
+    bool has_kp_sprites = sprite_cache && keypoint_sprites && !keypoint_sprites->empty();
+
     for (auto &pair : pairs)
     {
-        float conf1 = points.at(pair.first).confidence();
-        float conf2 = points.at(pair.second).confidence();
-        if ((conf1 >= threshold) && (conf2 >= threshold))
+        if ((points.at(pair.first).confidence() >= threshold) &&
+            (points.at(pair.second).confidence() >= threshold))
         {
+            // Skip skeleton lines that connect two sprite-replaced keypoints
+            if (has_kp_sprites &&
+                keypoint_sprites->count(pair.first) && keypoint_sprites->count(pair.second))
+                continue;
+
             uint x1 = ((points.at(pair.first).x() * bbox.width()) + bbox.xmin()) * hmat.native_width();
             uint y1 = ((points.at(pair.first).y() * bbox.height()) + bbox.ymin()) * hmat.native_height();
 
@@ -124,26 +142,36 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
             thickness = (bbox.width() < 0.05) ? 1 : 2;
             hmat.draw_line(joint1, joint2, get_color(4), thickness, cv::LINE_4);
         }
-        else
-        {
-            skipped_pairs++;
-        }
     }
-    if (skipped_pairs > 0)
+
+    // Compute sprite size proportional to detection bbox (bbox_height / 6)
+    int sprite_sz = has_kp_sprites ? std::max(8, (int)(bbox.height() * hmat.native_height() / 6)) : 0;
+
+    for (int idx = 0; idx < (int)points.size(); idx++)
     {
-        std::cerr << "[OVERLAY] " << landmarks->get_landmarks_type()
-                  << ": skipped " << skipped_pairs << "/" << pairs.size()
-                  << " pairs (threshold=" << threshold << ")" << std::endl;
-    }
-    for (auto &point : points)
-    {
-        if (point.confidence() >= threshold)
-        {
-            uint x = ((point.x() * bbox.width()) + bbox.xmin()) * hmat.native_width();
-            uint y = ((point.y() * bbox.height()) + bbox.ymin()) * hmat.native_height();
-            auto center = cv::Point(x, y);
-            hmat.draw_ellipse(center, {R, R}, 0, 0, 360, get_color(7), landmark_point_radius);
+        auto &point = points[idx];
+        if (point.confidence() < threshold) continue;
+
+        uint x = ((point.x() * bbox.width()) + bbox.xmin()) * hmat.native_width();
+        uint y = ((point.y() * bbox.height()) + bbox.ymin()) * hmat.native_height();
+
+        // Check for keypoint sprite
+        if (has_kp_sprites) {
+            auto kp_it = keypoint_sprites->find(idx);
+            if (kp_it != keypoint_sprites->end()) {
+                const cv::Mat *sprite = sprite_cache->get_sprite(kp_it->second, sprite_sz, sprite_sz);
+                if (sprite) {
+                    // Center sprite on keypoint
+                    cv::Rect sprite_rect(x - sprite->cols / 2, y - sprite->rows / 2,
+                                         sprite->cols, sprite->rows);
+                    draw_sprite(hmat.get_matrices()[0], sprite_rect, *sprite);
+                    continue;  // skip default dot
+                }
+            }
         }
+
+        auto center = cv::Point(x, y);
+        hmat.draw_ellipse(center, {R, R}, 0, 0, 360, get_color(7), landmark_point_radius);
     }
     return OVERLAY_STATUS_OK;
 }
@@ -299,7 +327,82 @@ static overlay_status_t draw_conf_class_mask(cv::Mat &image_planes, HailoConfCla
     return OVERLAY_STATUS_OK;
 }
 
-overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, float landmark_point_radius, bool show_confidence, bool local_gallery, const uint mask_overlay_n_threads)
+static bool try_get_custom_color(HailoDetectionPtr det, cv::Scalar &out)
+{
+    for (auto &obj : det->get_objects()) {
+        if (obj->get_type() != HAILO_CLASSIFICATION) continue;
+        auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
+        if (!cls || cls->get_classification_type() != "overlay_color") continue;
+        // Fast path: packed 0xRRGGBB in class_id
+        int cid = cls->get_class_id();
+        if (cid > 0) {
+            out = cv::Scalar((cid >> 16) & 0xFF, (cid >> 8) & 0xFF, cid & 0xFF);
+            return true;
+        }
+        // Fallback: parse "R,G,B" from label
+        int r, g, b;
+        if (sscanf(cls->get_label().c_str(), "%d,%d,%d", &r, &g, &b) == 3) {
+            out = cv::Scalar(r, g, b);
+            return true;
+        }
+    }
+    return false;
+}
+
+static std::string try_get_sprite_key(HailoDetectionPtr det)
+{
+    for (auto &obj : det->get_objects()) {
+        if (obj->get_type() != HAILO_CLASSIFICATION) continue;
+        auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
+        if (cls && cls->get_classification_type() == "overlay_sprite")
+            return cls->get_label();
+    }
+    return "";
+}
+
+static void draw_sprite(cv::Mat &frame, const cv::Rect &bbox, const cv::Mat &sprite_bgra)
+{
+    if (sprite_bgra.empty() || sprite_bgra.channels() != 4) return;
+
+    // Clip bbox to frame bounds
+    int x0 = std::max(bbox.x, 0);
+    int y0 = std::max(bbox.y, 0);
+    int x1 = std::min(bbox.x + sprite_bgra.cols, frame.cols);
+    int y1 = std::min(bbox.y + sprite_bgra.rows, frame.rows);
+    if (x0 >= x1 || y0 >= y1) return;
+
+    int sx = x0 - bbox.x;
+    int sy = y0 - bbox.y;
+    int w = x1 - x0;
+    int h = y1 - y0;
+
+    for (int row = 0; row < h; row++) {
+        const cv::Vec4b *sptr = sprite_bgra.ptr<cv::Vec4b>(sy + row) + sx;
+        uchar *dptr = frame.ptr<uchar>(y0 + row) + x0 * frame.channels();
+        int channels = frame.channels();
+        for (int col = 0; col < w; col++) {
+            uchar alpha = sptr[col][3];
+            if (alpha == 0) {
+                dptr += channels;
+                continue;
+            }
+            if (alpha == 255) {
+                dptr[0] = sptr[col][2]; // B->R (BGR to RGB)
+                dptr[1] = sptr[col][1]; // G
+                dptr[2] = sptr[col][0]; // R->B
+            } else {
+                uint a = alpha;
+                uint inv_a = 255 - a;
+                dptr[0] = (sptr[col][2] * a + dptr[0] * inv_a) / 255;
+                dptr[1] = (sptr[col][1] * a + dptr[1] * inv_a) / 255;
+                dptr[2] = (sptr[col][0] * a + dptr[2] * inv_a) / 255;
+            }
+            dptr += channels;
+        }
+    }
+}
+
+overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &params)
 {
     overlay_status_t ret = OVERLAY_STATUS_UNINITIALIZED;
     uint number_of_classifications = 0;
@@ -312,9 +415,27 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, float landmark_point_
         {
             HailoDetectionPtr detection = std::dynamic_pointer_cast<HailoDetection>(obj);
 
+            // Confidence filter
+            if (detection->get_confidence() < params.min_confidence)
+                continue;
+
+            // Label filter
+            const std::string &label = detection->get_label();
+            if (params.show_labels_set && params.show_labels_set->find(label) == params.show_labels_set->end())
+                continue;
+            if (params.hide_labels_set && params.hide_labels_set->find(label) != params.hide_labels_set->end())
+                continue;
+
+            // Style config lookup
+            const StyleEntry *style = nullptr;
+            if (params.style_config) {
+                auto *sc = static_cast<StyleConfig*>(params.style_config);
+                style = sc->lookup(label, detection->get_class_id());
+            }
+
             cv::Scalar color = NO_GLOBAL_ID_COLOR;
             std::string text = "";
-            if (local_gallery)
+            if (params.local_gallery)
             {
                 auto global_ids = hailo_common::get_hailo_global_id(detection);
                 if (global_ids.size() > 1)
@@ -325,24 +446,111 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, float landmark_point_
             else
             {
                 color = get_color((size_t)detection->get_class_id());
-                text = get_detection_text(detection, show_confidence);
+                text = get_detection_text(detection, params.show_confidence);
+            }
+
+            // Color priority: overlay_color metadata > style config > default
+            if (style && style->color[0] >= 0)
+                color = style->color;
+            if (params.use_custom_colors) {
+                cv::Scalar custom;
+                if (try_get_custom_color(detection, custom))
+                    color = custom;
             }
 
             auto rect = get_rect(hmat, detection, roi);
-            hmat.draw_rectangle(rect, color);
 
-            auto text_position = cv::Point(rect.x - log(rect.width), rect.y - log(rect.width));
-            float font_scale = TEXT_FONT_FACTOR * log(rect.width);
-            hmat.draw_text(text, text_position, font_scale, color);
+            // Per-class visibility overrides from style config
+            bool draw_bbox = params.show_bbox;
+            bool draw_label = params.show_labels_text;
+            bool draw_lm = params.show_landmarks;
+            if (style) {
+                if (style->show_bbox >= 0) draw_bbox = (style->show_bbox == 1);
+                if (style->show_label >= 0) draw_label = (style->show_label == 1);
+                if (style->show_landmarks >= 0) draw_lm = (style->show_landmarks == 1);
+            }
 
-            ret = draw_all(hmat, detection, landmark_point_radius, show_confidence, local_gallery, mask_overlay_n_threads);
+            // Check if bbox sprite will replace bbox+text
+            bool bbox_replaced_by_sprite = false;
+            if (params.sprite_replace_bbox && params.sprite_cache) {
+                std::string skey = try_get_sprite_key(detection);
+                if (skey.empty() && style && !style->sprite_key.empty())
+                    skey = style->sprite_key;
+                if (!skey.empty()) {
+                    auto *cache = static_cast<SpriteCache*>(params.sprite_cache);
+                    if (cache->get_sprite(skey, rect.width, rect.height))
+                        bbox_replaced_by_sprite = true;
+                }
+            }
+
+            // Bbox
+            if (draw_bbox && !bbox_replaced_by_sprite)
+                hmat.draw_rectangle(rect, color);
+
+            // Detection text
+            if (draw_label && !bbox_replaced_by_sprite && !text.empty()) {
+                auto text_position = cv::Point(rect.x - log(rect.width), rect.y - log(rect.width));
+                float font_scale = (params.text_font_scale > 0)
+                    ? params.text_font_scale
+                    : TEXT_FONT_FACTOR * log(rect.width);
+
+                cv::Scalar text_col = color;
+                if (style && style->text_color[0] >= 0)
+                    text_col = style->text_color;
+
+                if (params.text_background) {
+                    int baseline = 0;
+                    cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+                        font_scale, 1, &baseline);
+                    cv::Rect bg_rect(text_position.x, text_position.y - text_size.height,
+                        text_size.width, text_size.height + baseline);
+                    cv::rectangle(hmat.get_matrices()[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+                }
+
+                hmat.draw_text(text, text_position, font_scale, text_col);
+            }
+
+            // Recurse into sub-objects (with landmark/keypoint sprite overrides)
+            {
+                const std::unordered_map<int, std::string> *kp_sprites = nullptr;
+                if (style && !style->keypoint_sprites.empty())
+                    kp_sprites = &style->keypoint_sprites;
+
+                if (draw_lm == params.show_landmarks && !kp_sprites) {
+                    ret = draw_all(hmat, detection, params);
+                } else {
+                    OverlayParams sub_params = params;
+                    sub_params.show_landmarks = draw_lm;
+                    sub_params.keypoint_sprites = kp_sprites;
+                    ret = draw_all(hmat, detection, sub_params);
+                }
+            }
+
+            // Sprite rendering on bbox
+            if (params.sprite_cache) {
+                std::string sprite_key = try_get_sprite_key(detection);
+                // Fallback to style config sprite_key
+                if (sprite_key.empty() && style && !style->sprite_key.empty())
+                    sprite_key = style->sprite_key;
+                if (!sprite_key.empty()) {
+                    auto *cache = static_cast<SpriteCache*>(params.sprite_cache);
+                    const cv::Mat *sprite = cache->get_sprite(sprite_key, rect.width, rect.height);
+                    if (sprite)
+                        draw_sprite(mat, rect, *sprite);
+                }
+            }
             break;
         }
         case HAILO_CLASSIFICATION:
         {
-            number_of_classifications++;
             HailoClassificationPtr classification = std::dynamic_pointer_cast<HailoClassification>(obj);
-            if (classification->get_classification_type() == "tracking")
+            const std::string &cls_type = classification->get_classification_type();
+            // Skip metadata classifications not meant for display
+            if (cls_type == "overlay_color" || cls_type == "overlay_sprite")
+                break;
+
+            number_of_classifications++;
+            if (cls_type == "tracking")
             {
                 std::string text = get_classification_text(classification, false);
                 if (text == "lost")
@@ -354,47 +562,53 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, float landmark_point_
             }
             else
             {
-                std::string text = get_classification_text(classification, show_confidence);
+                std::string text = get_classification_text(classification, params.show_confidence);
                 ret = draw_classification(hmat, roi, text, number_of_classifications);
             }
             break;
         }
         case HAILO_LANDMARKS:
         {
-            HailoLandmarksPtr landmarks = std::dynamic_pointer_cast<HailoLandmarks>(obj);
-            draw_landmarks(hmat, landmarks, roi, landmark_point_radius);
+            if (params.show_landmarks) {
+                HailoLandmarksPtr landmarks = std::dynamic_pointer_cast<HailoLandmarks>(obj);
+                auto *kp_sprites = static_cast<const std::unordered_map<int, std::string>*>(params.keypoint_sprites);
+                SpriteCache *cache = params.sprite_cache ? static_cast<SpriteCache*>(params.sprite_cache) : nullptr;
+                draw_landmarks(hmat, landmarks, roi, params.landmark_point_radius, cache, kp_sprites);
+            }
             break;
         }
         case HAILO_TILE:
         {
             HailoTileROIPtr tile = std::dynamic_pointer_cast<HailoTileROI>(obj);
             draw_tile(hmat, tile);
-            draw_all(hmat, tile, landmark_point_radius, show_confidence, local_gallery, mask_overlay_n_threads);
+            draw_all(hmat, tile, params);
             break;
         }
         case HAILO_UNIQUE_ID:
         {
-            HailoUniqueIDPtr id = std::dynamic_pointer_cast<HailoUniqueID>(obj);
-            if ((local_gallery && id->get_mode() == GLOBAL_ID) || (!local_gallery && id->get_mode() == TRACKING_ID))
-                draw_id(hmat, id, roi);
+            if (params.show_tracking_id) {
+                HailoUniqueIDPtr id = std::dynamic_pointer_cast<HailoUniqueID>(obj);
+                if ((params.local_gallery && id->get_mode() == GLOBAL_ID) || (!params.local_gallery && id->get_mode() == TRACKING_ID))
+                    draw_id(hmat, id, roi);
+            }
             break;
         }
         case HAILO_DEPTH_MASK:
         {
             HailoDepthMaskPtr mask = std::dynamic_pointer_cast<HailoDepthMask>(obj);
-            draw_depth_mask(mat, mask, roi, mask_overlay_n_threads);
+            draw_depth_mask(mat, mask, roi, params.mask_overlay_n_threads);
             break;
         }
         case HAILO_CLASS_MASK:
         {
             HailoClassMaskPtr mask = std::dynamic_pointer_cast<HailoClassMask>(obj);
-            draw_class_mask(mat, mask, roi, mask_overlay_n_threads);
+            draw_class_mask(mat, mask, roi, params.mask_overlay_n_threads);
             break;
         }
         case HAILO_CONF_CLASS_MASK:
         {
             HailoConfClassMaskPtr mask = std::dynamic_pointer_cast<HailoConfClassMask>(obj);
-            draw_conf_class_mask(mat, mask, roi, mask_overlay_n_threads);
+            draw_conf_class_mask(mat, mask, roi, params.mask_overlay_n_threads);
             break;
         }
         default:
@@ -403,6 +617,46 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, float landmark_point_
     }
     ret = OVERLAY_STATUS_OK;
     return ret;
+}
+
+void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
+                        uint64_t *timestamps, int &index, int &count)
+{
+    // Record timestamp
+    uint64_t now = g_get_monotonic_time();
+    timestamps[index] = now;
+    index = (index + 1) % STATS_RING_SIZE;
+    if (count < STATS_RING_SIZE)
+        count++;
+
+    // Calculate FPS
+    float fps = 0.0f;
+    if (count > 1) {
+        int oldest = (index - count + STATS_RING_SIZE) % STATS_RING_SIZE;
+        int newest = (index - 1 + STATS_RING_SIZE) % STATS_RING_SIZE;
+        uint64_t elapsed = timestamps[newest] - timestamps[oldest];
+        if (elapsed > 0)
+            fps = (count - 1) * 1000000.0f / elapsed;
+    }
+
+    // Count detections
+    size_t num_objects = hailo_common::get_hailo_detections(roi).size();
+
+    // Format text
+    char buf[64];
+    snprintf(buf, sizeof(buf), "FPS: %.0f | Objects: %zu", fps, num_objects);
+    std::string text(buf);
+
+    // Draw background + text at top-left
+    double font_scale = 0.6;
+    int font_thickness = 1;
+    int baseline = 0;
+    cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+        font_scale, font_thickness, &baseline);
+    cv::Point text_pos(10, 10 + text_size.height);
+    cv::Rect bg_rect(8, 8, text_size.width + 4, text_size.height + baseline + 4);
+    cv::rectangle(hmat.get_matrices()[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+    hmat.draw_text(text, text_pos, font_scale, cv::Scalar(255, 255, 255));
 }
 
 void face_blur(HailoMat &hmat, HailoROIPtr roi)

@@ -24,6 +24,7 @@ typedef struct _GstHailoOverlayCommunityClass GstHailoOverlayCommunityClass;
 struct _GstHailoOverlayCommunity
 {
     GstBaseTransform base_hailooverlay;
+    // Existing
     gint line_thickness;
     gint font_thickness;
     gfloat landmark_point_radius;
@@ -31,6 +32,31 @@ struct _GstHailoOverlayCommunity
     gboolean show_confidence;
     gboolean local_gallery;
     guint mask_overlay_n_threads;
+    // Phase 1: Visibility controls
+    gboolean show_bbox;
+    gboolean show_labels_text;
+    gboolean show_landmarks;
+    gboolean show_tracking_id;
+    gfloat min_confidence;
+    gchar *show_labels_str;
+    gchar *hide_labels_str;
+    gboolean text_background;
+    gfloat text_font_scale;
+    gboolean stats_overlay;
+    // Phase 2: Custom colors
+    gboolean use_custom_colors;
+    // Phase 3: Config file paths and sprite options
+    gchar *sprite_config_path;
+    gchar *style_config_path;
+    gboolean sprite_replace_bbox;
+    // Internal state (not GObject properties)
+    void *show_labels_set;      // std::unordered_set<std::string>*
+    void *hide_labels_set;      // std::unordered_set<std::string>*
+    void *sprite_cache;         // SpriteCache*
+    void *style_config;         // StyleConfig*
+    uint64_t stats_timestamps[30];
+    int stats_index;
+    int stats_count;
 };
 
 struct _GstHailoOverlayCommunityClass

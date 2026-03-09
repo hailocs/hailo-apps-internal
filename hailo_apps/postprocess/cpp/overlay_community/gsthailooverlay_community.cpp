@@ -2,15 +2,20 @@
  * Copyright (c) 2021-2022 Hailo Technologies Ltd. All rights reserved.
  * Distributed under the LGPL license (https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt)
  *
- * Community fork: hailooverlay_community - a locally modifiable overlay element.
+ * hailooverlay_community - overlay element with confidence-based landmark filtering.
  **/
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <opencv2/opencv.hpp>
+#include <string>
+#include <sstream>
+#include <unordered_set>
 #include "gsthailooverlay_community.hpp"
 #include "image.hpp"
 #include "overlay.hpp"
 #include "gst_hailo_meta.hpp"
+#include "sprite_cache.hpp"
+#include "style_config.hpp"
 
 GST_DEBUG_CATEGORY_STATIC(gst_hailooverlay_community_debug_category);
 #define GST_CAT_DEFAULT gst_hailooverlay_community_debug_category
@@ -29,6 +34,22 @@ static gboolean gst_hailooverlay_community_stop(GstBaseTransform *trans);
 static GstFlowReturn gst_hailooverlay_community_transform_ip(GstBaseTransform *trans,
                                                    GstBuffer *buffer);
 
+/* helpers */
+
+static void parse_label_set(const gchar *csv, std::unordered_set<std::string> *out)
+{
+    out->clear();
+    if (!csv || csv[0] == '\0') return;
+    std::istringstream ss(csv);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        auto start = token.find_first_not_of(" ");
+        auto end = token.find_last_not_of(" ");
+        if (start != std::string::npos)
+            out->insert(token.substr(start, end - start + 1));
+    }
+}
+
 /* class initialization */
 
 G_DEFINE_TYPE_WITH_CODE(GstHailoOverlayCommunity, gst_hailooverlay_community, GST_TYPE_BASE_TRANSFORM,
@@ -45,6 +66,20 @@ enum
     PROP_SHOW_CONF,
     PROP_MASK_OVERLAY_N_THREADS,
     PROP_LOCAL_GALLERY,
+    PROP_SHOW_BBOX,
+    PROP_SHOW_LABELS_TEXT,
+    PROP_SHOW_LANDMARKS,
+    PROP_SHOW_TRACKING_ID,
+    PROP_MIN_CONFIDENCE,
+    PROP_SHOW_LABELS,
+    PROP_HIDE_LABELS,
+    PROP_TEXT_BACKGROUND,
+    PROP_TEXT_FONT_SCALE,
+    PROP_STATS_OVERLAY,
+    PROP_USE_CUSTOM_COLORS,
+    PROP_SPRITE_CONFIG,
+    PROP_STYLE_CONFIG,
+    PROP_SPRITE_REPLACE_BBOX,
 };
 
 static void
@@ -54,7 +89,7 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
     GstBaseTransformClass *base_transform_class =
         GST_BASE_TRANSFORM_CLASS(klass);
 
-    const char *description = "Community fork of hailooverlay. Draws post-processing results for networks inferred by hailonet elements."
+    const char *description = "Draws post-processing results for networks inferred by hailonet elements."
                               "\n\t\t\t   "
                               "Draws classes contained by HailoROI objects attached to incoming frames.";
     gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass),
@@ -72,6 +107,8 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
 
     gobject_class->set_property = gst_hailooverlay_community_set_property;
     gobject_class->get_property = gst_hailooverlay_community_get_property;
+
+    /* Existing properties */
     g_object_class_install_property(gobject_class, PROP_LINE_THICKNESS,
                                     g_param_spec_int("line-thickness", "line-thickness", "The thickness when drawing lines. Default 1.", 0, G_MAXINT, 1,
                                                      (GParamFlags)(GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
@@ -94,6 +131,54 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
                                     g_param_spec_float("landmark-point-radius", "landmark-point-radius", "The radius of the points when drawing landmarks. Default 3.", 0, G_MAXFLOAT, 3,
                                                        (GParamFlags)(GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+    /* Phase 1: Visibility controls */
+    g_object_class_install_property(gobject_class, PROP_SHOW_BBOX,
+                                    g_param_spec_boolean("show-bbox", "show-bbox", "Whether to draw bounding boxes.", true,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SHOW_LABELS_TEXT,
+                                    g_param_spec_boolean("show-labels-text", "show-labels-text", "Whether to draw detection label text.", true,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SHOW_LANDMARKS,
+                                    g_param_spec_boolean("show-landmarks", "show-landmarks", "Whether to draw landmarks/skeletons.", true,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SHOW_TRACKING_ID,
+                                    g_param_spec_boolean("show-tracking-id", "show-tracking-id", "Whether to draw tracking IDs.", true,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_MIN_CONFIDENCE,
+                                    g_param_spec_float("min-confidence", "min-confidence", "Minimum confidence threshold to display a detection. Default 0.0 (show all).", 0.0f, 1.0f, 0.0f,
+                                                       (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SHOW_LABELS,
+                                    g_param_spec_string("show-labels", "show-labels", "Comma-separated list of labels to show (empty = show all).", "",
+                                                        (GParamFlags)(GST_PARAM_MUTABLE_PLAYING | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_HIDE_LABELS,
+                                    g_param_spec_string("hide-labels", "hide-labels", "Comma-separated list of labels to hide (empty = hide none).", "",
+                                                        (GParamFlags)(GST_PARAM_MUTABLE_PLAYING | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_TEXT_BACKGROUND,
+                                    g_param_spec_boolean("text-background", "text-background", "Whether to draw a dark background behind label text.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_TEXT_FONT_SCALE,
+                                    g_param_spec_float("text-font-scale", "text-font-scale", "Fixed font scale for text. 0 = auto (default).", 0.0f, 10.0f, 0.0f,
+                                                       (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_STATS_OVERLAY,
+                                    g_param_spec_boolean("stats-overlay", "stats-overlay", "Whether to display FPS and object count overlay.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+    /* Phase 2: Custom colors */
+    g_object_class_install_property(gobject_class, PROP_USE_CUSTOM_COLORS,
+                                    g_param_spec_boolean("use-custom-colors", "use-custom-colors", "Whether to use custom colors from overlay_color classification metadata.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
+    /* Phase 3: Config files */
+    g_object_class_install_property(gobject_class, PROP_SPRITE_CONFIG,
+                                    g_param_spec_string("sprite-config", "sprite-config", "Path to YAML file mapping sprite keys to PNG image paths.", "",
+                                                        (GParamFlags)(GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_STYLE_CONFIG,
+                                    g_param_spec_string("style-config", "style-config", "Path to YAML file with per-class style overrides (color, visibility, sprite).", "",
+                                                        (GParamFlags)(GST_PARAM_MUTABLE_READY | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SPRITE_REPLACE_BBOX,
+                                    g_param_spec_boolean("sprite-replace-bbox", "sprite-replace-bbox", "When true, a bbox sprite replaces the bounding box and label text instead of overlaying on top.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
     gobject_class->dispose = gst_hailooverlay_community_dispose;
     gobject_class->finalize = gst_hailooverlay_community_finalize;
     base_transform_class->start = GST_DEBUG_FUNCPTR(gst_hailooverlay_community_start);
@@ -112,6 +197,31 @@ gst_hailooverlay_community_init(GstHailoOverlayCommunity *hailooverlay)
     hailooverlay->local_gallery = false;
     hailooverlay->landmark_point_radius = 3;
     hailooverlay->mask_overlay_n_threads = 0;
+    // Phase 1
+    hailooverlay->show_bbox = true;
+    hailooverlay->show_labels_text = true;
+    hailooverlay->show_landmarks = true;
+    hailooverlay->show_tracking_id = true;
+    hailooverlay->min_confidence = 0.0f;
+    hailooverlay->show_labels_str = g_strdup("");
+    hailooverlay->hide_labels_str = g_strdup("");
+    hailooverlay->text_background = false;
+    hailooverlay->text_font_scale = 0.0f;
+    hailooverlay->stats_overlay = false;
+    // Phase 2
+    hailooverlay->use_custom_colors = false;
+    // Phase 3
+    hailooverlay->sprite_config_path = g_strdup("");
+    hailooverlay->style_config_path = g_strdup("");
+    hailooverlay->sprite_replace_bbox = false;
+    // Internal state
+    hailooverlay->show_labels_set = new std::unordered_set<std::string>();
+    hailooverlay->hide_labels_set = new std::unordered_set<std::string>();
+    hailooverlay->sprite_cache = nullptr;
+    hailooverlay->style_config = nullptr;
+    hailooverlay->stats_index = 0;
+    hailooverlay->stats_count = 0;
+    memset(hailooverlay->stats_timestamps, 0, sizeof(hailooverlay->stats_timestamps));
 }
 
 void gst_hailooverlay_community_set_property(GObject *object, guint property_id,
@@ -143,6 +253,74 @@ void gst_hailooverlay_community_set_property(GObject *object, guint property_id,
         break;
     case PROP_LOCAL_GALLERY:
         hailooverlay->local_gallery = g_value_get_boolean(value);
+        break;
+    case PROP_SHOW_BBOX:
+        hailooverlay->show_bbox = g_value_get_boolean(value);
+        break;
+    case PROP_SHOW_LABELS_TEXT:
+        hailooverlay->show_labels_text = g_value_get_boolean(value);
+        break;
+    case PROP_SHOW_LANDMARKS:
+        hailooverlay->show_landmarks = g_value_get_boolean(value);
+        break;
+    case PROP_SHOW_TRACKING_ID:
+        hailooverlay->show_tracking_id = g_value_get_boolean(value);
+        break;
+    case PROP_MIN_CONFIDENCE:
+        hailooverlay->min_confidence = g_value_get_float(value);
+        break;
+    case PROP_SHOW_LABELS:
+        g_free(hailooverlay->show_labels_str);
+        hailooverlay->show_labels_str = g_value_dup_string(value);
+        parse_label_set(hailooverlay->show_labels_str,
+                        static_cast<std::unordered_set<std::string>*>(hailooverlay->show_labels_set));
+        break;
+    case PROP_HIDE_LABELS:
+        g_free(hailooverlay->hide_labels_str);
+        hailooverlay->hide_labels_str = g_value_dup_string(value);
+        parse_label_set(hailooverlay->hide_labels_str,
+                        static_cast<std::unordered_set<std::string>*>(hailooverlay->hide_labels_set));
+        break;
+    case PROP_TEXT_BACKGROUND:
+        hailooverlay->text_background = g_value_get_boolean(value);
+        break;
+    case PROP_TEXT_FONT_SCALE:
+        hailooverlay->text_font_scale = g_value_get_float(value);
+        break;
+    case PROP_STATS_OVERLAY:
+        hailooverlay->stats_overlay = g_value_get_boolean(value);
+        break;
+    case PROP_USE_CUSTOM_COLORS:
+        hailooverlay->use_custom_colors = g_value_get_boolean(value);
+        break;
+    case PROP_SPRITE_CONFIG:
+    {
+        g_free(hailooverlay->sprite_config_path);
+        hailooverlay->sprite_config_path = g_value_dup_string(value);
+        delete static_cast<SpriteCache*>(hailooverlay->sprite_cache);
+        hailooverlay->sprite_cache = nullptr;
+        if (hailooverlay->sprite_config_path && hailooverlay->sprite_config_path[0] != '\0') {
+            auto *cache = new SpriteCache();
+            cache->load_config(hailooverlay->sprite_config_path);
+            hailooverlay->sprite_cache = cache;
+        }
+        break;
+    }
+    case PROP_STYLE_CONFIG:
+    {
+        g_free(hailooverlay->style_config_path);
+        hailooverlay->style_config_path = g_value_dup_string(value);
+        delete static_cast<StyleConfig*>(hailooverlay->style_config);
+        hailooverlay->style_config = nullptr;
+        if (hailooverlay->style_config_path && hailooverlay->style_config_path[0] != '\0') {
+            auto *cfg = new StyleConfig();
+            cfg->load(hailooverlay->style_config_path);
+            hailooverlay->style_config = cfg;
+        }
+        break;
+    }
+    case PROP_SPRITE_REPLACE_BBOX:
+        hailooverlay->sprite_replace_bbox = g_value_get_boolean(value);
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -180,6 +358,48 @@ void gst_hailooverlay_community_get_property(GObject *object, guint property_id,
     case PROP_MASK_OVERLAY_N_THREADS:
         g_value_set_uint(value, hailooverlay->mask_overlay_n_threads);
         break;
+    case PROP_SHOW_BBOX:
+        g_value_set_boolean(value, hailooverlay->show_bbox);
+        break;
+    case PROP_SHOW_LABELS_TEXT:
+        g_value_set_boolean(value, hailooverlay->show_labels_text);
+        break;
+    case PROP_SHOW_LANDMARKS:
+        g_value_set_boolean(value, hailooverlay->show_landmarks);
+        break;
+    case PROP_SHOW_TRACKING_ID:
+        g_value_set_boolean(value, hailooverlay->show_tracking_id);
+        break;
+    case PROP_MIN_CONFIDENCE:
+        g_value_set_float(value, hailooverlay->min_confidence);
+        break;
+    case PROP_SHOW_LABELS:
+        g_value_set_string(value, hailooverlay->show_labels_str);
+        break;
+    case PROP_HIDE_LABELS:
+        g_value_set_string(value, hailooverlay->hide_labels_str);
+        break;
+    case PROP_TEXT_BACKGROUND:
+        g_value_set_boolean(value, hailooverlay->text_background);
+        break;
+    case PROP_TEXT_FONT_SCALE:
+        g_value_set_float(value, hailooverlay->text_font_scale);
+        break;
+    case PROP_STATS_OVERLAY:
+        g_value_set_boolean(value, hailooverlay->stats_overlay);
+        break;
+    case PROP_USE_CUSTOM_COLORS:
+        g_value_set_boolean(value, hailooverlay->use_custom_colors);
+        break;
+    case PROP_SPRITE_CONFIG:
+        g_value_set_string(value, hailooverlay->sprite_config_path);
+        break;
+    case PROP_STYLE_CONFIG:
+        g_value_set_string(value, hailooverlay->style_config_path);
+        break;
+    case PROP_SPRITE_REPLACE_BBOX:
+        g_value_set_boolean(value, hailooverlay->sprite_replace_bbox);
+        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
         break;
@@ -198,6 +418,15 @@ void gst_hailooverlay_community_finalize(GObject *object)
 {
     GstHailoOverlayCommunity *hailooverlay = GST_HAILO_OVERLAY_COMMUNITY(object);
     GST_DEBUG_OBJECT(hailooverlay, "finalize");
+
+    g_free(hailooverlay->show_labels_str);
+    g_free(hailooverlay->hide_labels_str);
+    g_free(hailooverlay->sprite_config_path);
+    g_free(hailooverlay->style_config_path);
+    delete static_cast<std::unordered_set<std::string>*>(hailooverlay->show_labels_set);
+    delete static_cast<std::unordered_set<std::string>*>(hailooverlay->hide_labels_set);
+    delete static_cast<SpriteCache*>(hailooverlay->sprite_cache);
+    delete static_cast<StyleConfig*>(hailooverlay->style_config);
 
     G_OBJECT_CLASS(gst_hailooverlay_community_parent_class)->finalize(object);
 }
@@ -251,9 +480,40 @@ gst_hailooverlay_community_transform_ip(GstBaseTransform *trans,
         {
             face_blur(*hmat.get(), hailo_roi);
         }
-        ret = draw_all(*hmat.get(), hailo_roi, hailooverlay->landmark_point_radius, hailooverlay->show_confidence, hailooverlay->local_gallery, hailooverlay->mask_overlay_n_threads);
-        // DEBUG: draw a marker so we know the community overlay is active
-        hmat->draw_text("COMMUNITY", cv::Point(10, 30), 1.0, cv::Scalar(0, 255, 0));
+
+        // Build OverlayParams
+        OverlayParams params;
+        params.landmark_point_radius = hailooverlay->landmark_point_radius;
+        params.show_confidence = hailooverlay->show_confidence;
+        params.local_gallery = hailooverlay->local_gallery;
+        params.mask_overlay_n_threads = hailooverlay->mask_overlay_n_threads;
+        params.show_bbox = hailooverlay->show_bbox;
+        params.show_labels_text = hailooverlay->show_labels_text;
+        params.show_landmarks = hailooverlay->show_landmarks;
+        params.show_tracking_id = hailooverlay->show_tracking_id;
+        params.min_confidence = hailooverlay->min_confidence;
+        params.use_custom_colors = hailooverlay->use_custom_colors;
+        params.text_background = hailooverlay->text_background;
+        params.text_font_scale = hailooverlay->text_font_scale;
+        params.stats_overlay = hailooverlay->stats_overlay;
+        auto *show_set = static_cast<std::unordered_set<std::string>*>(hailooverlay->show_labels_set);
+        auto *hide_set = static_cast<std::unordered_set<std::string>*>(hailooverlay->hide_labels_set);
+        params.show_labels_set = show_set->empty() ? nullptr : show_set;
+        params.hide_labels_set = hide_set->empty() ? nullptr : hide_set;
+        params.sprite_cache = hailooverlay->sprite_cache;
+        params.style_config = hailooverlay->style_config;
+        params.sprite_replace_bbox = hailooverlay->sprite_replace_bbox;
+        params.keypoint_sprites = nullptr;
+
+        ret = draw_all(*hmat.get(), hailo_roi, params);
+
+        if (hailooverlay->stats_overlay)
+        {
+            draw_stats_overlay(*hmat.get(), hailo_roi,
+                               hailooverlay->stats_timestamps,
+                               hailooverlay->stats_index,
+                               hailooverlay->stats_count);
+        }
     }
     if (ret != OVERLAY_STATUS_OK)
     {
@@ -278,7 +538,7 @@ GST_PLUGIN_DEFINE(
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,
     hailooverlay_community,
-    "Community fork of hailooverlay - locally modifiable overlay element",
+    "Overlay element with confidence-based landmark filtering",
     plugin_init,
     "1.0",
     "LGPL",
