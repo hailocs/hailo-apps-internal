@@ -249,7 +249,7 @@ class GStreamerPoseHandApp(GStreamerApp):
         palm_infer = INFERENCE_PIPELINE(
             hef_path=self.palm_hef,
             post_process_so=PALM_DETECTION_POST_SO,
-            batch_size=1,
+            batch_size=2,
             name="palm_detection",
         )
         palm_wrapper = INFERENCE_PIPELINE_WRAPPER(palm_infer, name="palm_wrapper")
@@ -265,7 +265,7 @@ class GStreamerPoseHandApp(GStreamerApp):
             f"{QUEUE(name='hand_hailonet_q')} ! "
             f"hailonet name=hand_landmark_hailonet "
             f"hef-path={self.hand_hef} "
-            f"batch-size=1 "
+            f"batch-size=2 "
             f"vdevice-group-id={SHARED_VDEVICE_GROUP_ID} "
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "
