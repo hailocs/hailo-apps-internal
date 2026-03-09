@@ -6,10 +6,12 @@ import numpy as np
 import hailo
 
 # ---------------------------------------------------------------------------
-# LPRNet character set (digits only, CTC blank is last)
+# LPRNet character sets (CTC blank is always the last character '-')
 # ---------------------------------------------------------------------------
-LPRNET_CHARS = "0123456789-"
-LPRNET_BLANK_IDX = len(LPRNET_CHARS) - 1
+# Original digits-only model (11 classes: 0-9 + blank)
+LPRNET_CHARS_11 = "0123456789-"
+# International model (37 classes: 0-9, A-Z + blank)
+LPRNET_CHARS_37 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-"
 
 # ---------------------------------------------------------------------------
 # PaddleOCR character set (97 classes: blank at index 0, full ASCII)
@@ -51,11 +53,30 @@ ROI_Y_END = 2.0 / 3.0
 # CTC decoders
 # ---------------------------------------------------------------------------
 def ctc_decode_lprnet(output_data):
-    """Decode LPRNet output (1,19,11) to license plate string (digits only)."""
+    """Decode LPRNet output to license plate string.
+
+    Automatically selects the character set based on the output shape:
+      - (1, 19, 11) or (19, 11) → digits-only model (LPRNET_CHARS_11)
+      - (1, 37, 19) or (1, 19, 37) or (19, 37) → international model (LPRNET_CHARS_37)
+    """
     data = np.array(output_data, dtype=np.float32)
     if data.ndim == 3:
         data = data[0]
-    data = data.reshape(19, 11)
+
+    # Auto-detect model variant from output shape
+    # HEF output may be (19, num_classes) or (num_classes, 19)
+    if data.shape == (37, 19):
+        data = data.T  # → (19, 37)
+    num_classes = data.shape[-1]
+
+    if num_classes == 37:
+        lprnet_chars = LPRNET_CHARS_37
+    else:
+        lprnet_chars = LPRNET_CHARS_11
+
+    blank_idx = len(lprnet_chars) - 1
+    data = data.reshape(19, num_classes)
+
     # Softmax per time-step
     data -= data.max(axis=1, keepdims=True)
     exp_data = np.exp(data)
@@ -65,10 +86,10 @@ def ctc_decode_lprnet(output_data):
     max_probs = probs[np.arange(19), indices]
 
     chars, confs = [], []
-    prev = LPRNET_BLANK_IDX
+    prev = blank_idx
     for i, idx in enumerate(indices):
-        if idx != prev and idx != LPRNET_BLANK_IDX:
-            chars.append(LPRNET_CHARS[idx])
+        if idx != prev and idx != blank_idx:
+            chars.append(lprnet_chars[idx])
             confs.append(float(max_probs[i]))
         prev = idx
 

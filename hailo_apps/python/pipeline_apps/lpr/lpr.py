@@ -42,7 +42,7 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
 
 
 class user_app_callback_class(app_callback_class):
-    def __init__(self, ocr_hef_path, ocr_engine="lprnet"):
+    def __init__(self, ocr_hef_path, ocr_engine="lprnet", save_crops_dir=None):
         super().__init__()
         self.seen_plates = {}  # track_id -> plate text (OCR >= threshold)
         self.vehicles_seen = set()  # all unique vehicle track IDs seen
@@ -52,6 +52,8 @@ class user_app_callback_class(app_callback_class):
         # Plate log for display panel: list of (crop_bgr, text, conf, track_id)
         self.plate_log = []
         self.plate_log_lock = threading.Lock()
+        self.save_crops_dir = save_crops_dir
+        self.crop_counter = 0
 
         # Initialize OCR inference via HailoRT
         self.ocr_infer = HailoInfer(ocr_hef_path, batch_size=1, output_type="FLOAT32")
@@ -135,8 +137,20 @@ def app_callback(element, buffer, user_data):
 
         # --- Stage 3: OCR on each detected license plate ---
         for lp_crop, lp_x1, lp_y1, lp_x2, lp_y2 in lp_crops:
+            # Convert RGB (from GStreamer) to BGR (model trained on cv2.imread BGR images)
+            lp_crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
+
+            # Save crop to disk if --save-crops is enabled
+            if user_data.save_crops_dir:
+                crop_path = os.path.join(
+                    user_data.save_crops_dir,
+                    f"vehicle_{track_id}_plate_{user_data.crop_counter}.png",
+                )
+                cv2.imwrite(crop_path, lp_crop_bgr)
+                user_data.crop_counter += 1
+
             lp_resized = cv2.resize(
-                lp_crop, (user_data.ocr_w, user_data.ocr_h)
+                lp_crop_bgr, (user_data.ocr_w, user_data.ocr_h)
             )
 
             # Run OCR inference
@@ -188,6 +202,14 @@ def main():
         default="lprnet",
         help="OCR engine: 'lprnet' (digits only, default) or 'paddle' (full charset)",
     )
+    parser.add_argument(
+        "--save-crops",
+        type=str,
+        default=None,
+        nargs="?",
+        const="/tmp/lpr_crops",
+        help="Save LP crops to directory (default: /tmp/lpr_crops)",
+    )
     handle_list_models_flag(parser, LPR_PIPELINE)
     args, _ = parser.parse_known_args()
     arch = detect_hailo_arch()
@@ -210,10 +232,16 @@ def main():
 
     print(f"LPR using OCR engine: {ocr_engine}")
 
+    # Handle --save-crops
+    save_crops_dir = args.save_crops
+    if save_crops_dir:
+        os.makedirs(save_crops_dir, exist_ok=True)
+        print(f"Saving LP crops to: {save_crops_dir}")
+
     # LP detection runs in the GStreamer pipeline on all architectures
     # via our custom libyolov4_lp_postprocess.so.
     user_data = user_app_callback_class(
-        ocr_hef, ocr_engine=ocr_engine
+        ocr_hef, ocr_engine=ocr_engine, save_crops_dir=save_crops_dir
     )
 
     # Create display window on main thread to avoid Qt threading warnings
