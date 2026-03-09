@@ -115,7 +115,9 @@ The Hailo-8 NPU runs at the same speed on both platforms (~11 ms inference). C++
 |------|-------------|
 | `../../cpp/gesture_detection/` | **C++ standalone app (recommended)** — HailoRT + OpenCV, best performance |
 | `gesture_detection_gst.py` | GStreamer pipeline app |
+| `gesture_detection_cpp_pipeline.py` | GStreamer pipeline with all C++ postprocess filters |
 | `gesture_detection_h8.py` | Python standalone app (OpenCV, reference/debug) |
+| `pose_hand_detection.py` | Combined pose estimation + hand gesture detection |
 | `blaze_base.py` | Core math: SSD anchors, box decoding, weighted NMS, affine warp ROI |
 | `blaze_palm_detector.py` | Palm detection model wrapper (`InferVStreams`) |
 | `blaze_hand_landmark.py` | Hand landmark model wrapper (`InferVStreams`) |
