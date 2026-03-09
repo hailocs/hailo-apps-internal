@@ -17,6 +17,7 @@ set(SOURCES
     palm_detection.cpp
     hand_landmark.cpp
     gesture_classify.cpp
+    camera_utils.cpp
     ../common/hailo_infer.cpp
 )
 
