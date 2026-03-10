@@ -14,7 +14,7 @@ from hailo_platform import (HEF, VDevice, HailoStreamInterface,
                             InputVStreamParams, OutputVStreamParams,
                             FormatType)
 
-from . import blaze_base
+from hailo_apps.python.pipeline_apps.gesture_detection import blaze_base
 
 
 class BlazePalmDetector:

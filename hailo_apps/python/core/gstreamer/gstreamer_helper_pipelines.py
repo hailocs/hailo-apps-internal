@@ -198,6 +198,7 @@ def INFERENCE_PIPELINE(
     scheduler_priority=None,
     vdevice_group_id=SHARED_VDEVICE_GROUP_ID,  # Don't change it - this is aligned across multiple apps
     multi_process_service=None,
+    letterbox=False,
 ):
     """Creates a GStreamer pipeline string for inference and post-processing using a user-provided shared object file.
     This pipeline includes videoscale and videoconvert elements to convert the video frame to the required format.
@@ -218,6 +219,9 @@ def INFERENCE_PIPELINE(
         scheduler_timeout_ms (int or None): hailonet scheduler-timeout-ms. Default=None.
         scheduler_priority (int or None): hailonet scheduler-priority. Default=None.
         multi_process_service (bool or None): hailonet multi-process-service. Default=None.
+        letterbox (bool): If True, videoscale adds black borders to preserve aspect ratio
+            instead of stretching. Use for models sensitive to aspect ratio (e.g. palm detection).
+            Default=False.
 
     Returns:
         str: A string representing the GStreamer pipeline for inference.
@@ -264,9 +268,10 @@ def INFERENCE_PIPELINE(
         f"force-writable=true "
     )
 
+    add_borders_str = "add-borders=true " if letterbox else ""
     inference_pipeline = (
         f"{QUEUE(name=f'{name}_scale_q')} ! "
-        f"videoscale name={name}_videoscale n-threads=2 qos=false ! "
+        f"videoscale name={name}_videoscale n-threads=2 {add_borders_str}qos=false ! "
         f"{QUEUE(name=f'{name}_convert_q')} ! "
         f"video/x-raw, pixel-aspect-ratio=1/1 ! "
         f"videoconvert name={name}_videoconvert n-threads=2 ! "

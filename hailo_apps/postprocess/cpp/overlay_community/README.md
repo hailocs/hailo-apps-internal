@@ -371,37 +371,36 @@ section above.
     ! ...
 ```
 
-## Python Demo: Pose Estimation with Overlay Features
+## Examples
 
-A complete demo is provided at:
+All examples live in the [`examples/`](examples/) directory alongside this README.
 
-```
-hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_overlay_demo.py
-```
+| File | Description |
+|---|---|
+| [`pose_estimation_overlay_demo.py`](examples/pose_estimation_overlay_demo.py) | Full Python demo: custom colors per pose, text backgrounds, stats overlay |
+| [`overlay_style.yaml`](examples/overlay_style.yaml) | Sample per-class style config |
+| [`sprites.yaml`](examples/sprites.yaml) | Sample sprite key-to-PNG mapping |
+| [`generate_sprites.py`](examples/generate_sprites.py) | Utility to generate emoji-style PNG sprites |
 
-This demo uses the pose estimation pipeline with `hailooverlay_community` to:
+### Pose Estimation Overlay Demo
 
-- **Color persons by pose**: Arms raised = green, crouching = yellow, default = cyan
-- **Text backgrounds** for readability
-- **Stats overlay** showing live FPS and object count
-- **Min-confidence filter** at 0.5
+A complete Python demo showing custom colors, text backgrounds, stats overlay,
+and min-confidence filtering with the pose estimation pipeline.
 
-### Running the Demo
+**Run it:**
 
 ```bash
-python -m hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_overlay_demo
+python hailo_apps/postprocess/cpp/overlay_community/examples/pose_estimation_overlay_demo.py
 ```
 
 With a YAML style config:
 
 ```bash
-python -m hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_overlay_demo \
+python hailo_apps/postprocess/cpp/overlay_community/examples/pose_estimation_overlay_demo.py \
     --style-config hailo_apps/postprocess/cpp/overlay_community/examples/overlay_style.yaml
 ```
 
-### How It Works
-
-The callback analyzes COCO pose keypoints for each person detection:
+**How it works:** The callback analyzes COCO pose keypoints for each person:
 
 | Pose | Condition | Color |
 |---|---|---|
@@ -442,6 +441,8 @@ Existing pipelines require no changes.
 | `style_config.hpp` | Per-class style config parsing and lookup. Header-only, included from overlay.cpp. |
 | `examples/overlay_style.yaml` | Sample per-class style config. |
 | `examples/sprites.yaml` | Sample sprite key-to-file mapping. |
+| `examples/generate_sprites.py` | Utility to generate emoji-style PNG sprites. |
+| `examples/pose_estimation_overlay_demo.py` | Full Python demo: custom colors, stats, filtering. |
 
 ### OverlayParams
 

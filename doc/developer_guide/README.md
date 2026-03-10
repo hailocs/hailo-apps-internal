@@ -18,3 +18,4 @@ The Developer Guide provides comprehensive technical documentation for building 
 
 *   [Main Documentation](../README.md) - Return to the main documentation index
 *   [User Guide](../user_guide/README.md) - Installation and usage guides for end-users
+*   [Community Overlay Element](../../hailo_apps/postprocess/cpp/overlay_community/README.md) - Custom overlay with advanced features (custom colors, sprites, style config, filtering)
