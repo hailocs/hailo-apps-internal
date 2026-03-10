@@ -189,6 +189,11 @@ The application operates in two modes:
     - `2`: Adds 1×1 + 2×2 = +5 tiles
     - `3`: Adds 1×1 + 2×2 + 3×3 = +14 tiles
 
+### Mirror Options
+
+*   `--horizontal-mirror` - Enable horizontal mirror (flip) of the video source. Useful for camera inputs where the image appears mirrored.
+*   `--vertical-mirror` - Enable vertical mirror (flip) of the video source. Useful when the camera is mounted upside down.
+
 ### Detection Options
 
 *   `--iou-threshold` - NMS IOU threshold for filtering overlapping detections (default: 0.3)
