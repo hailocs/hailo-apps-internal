@@ -33,6 +33,11 @@
 - `hailo_common::add_landmarks_to_detection()` normalizes coords relative to detection bbox
 - For plain HailoROI (no detection), create HailoLandmarks manually and `roi->add_object()`
 
+## Audio & Microphone Issues
+- See detailed notes: [audio_issues.md](audio_issues.md)
+- AudioPlayer race conditions: queue items lost during stream reinit (voice_assistant)
+- Headset mic: wrong PulseAudio port (`headset-mic` vs `headphone-mic`), boost levels, persistence across reboots
+
 ## Critical: TAPPAS Coordinate Spaces & scaling_bbox
 - See detailed notes: [tappas_coordinate_spaces.md](tappas_coordinate_spaces.md)
 - `INFERENCE_PIPELINE_WRAPPER` sets a non-identity `scaling_bbox` on the ROI (letterbox transform)
