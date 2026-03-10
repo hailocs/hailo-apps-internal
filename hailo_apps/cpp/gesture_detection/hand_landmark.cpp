@@ -25,8 +25,9 @@ HandROI detection2roi(const PalmDetection& det)
 
     float theta = std::atan2(kp1_y - kp2_y, kp1_x - kp2_x) - ROI_THETA0;
 
-    // Apply offsets (matches blaze_base.detection2roi)
-    yc += ROI_DY * scale;
+    // Apply offsets along the hand axis (rotated coordinate frame)
+    xc += -ROI_DY * scale * std::sin(theta);
+    yc += ROI_DY * scale * std::cos(theta);
     scale *= ROI_DSCALE;
 
     HandROI roi;

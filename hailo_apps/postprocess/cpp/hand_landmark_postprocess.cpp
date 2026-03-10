@@ -117,8 +117,8 @@ void hand_landmark_postprocess(HailoROIPtr roi)
     float theta = get_palm_angle(roi);
     float cos_t = std::cos(theta);
     float sin_t = std::sin(theta);
-    float expand = std::abs(cos_t) + std::abs(sin_t);
-    if (expand < 1.0f) expand = 1.0f;  // safety
+    // Fixed expand = sqrt(2), matching palm_croppers.cpp and hand_affine_warp.cpp
+    static const float expand = 1.41421356f; // sqrt(2)
 
     std::vector<HailoPoint> points;
     points.reserve(NUM_HAND_LANDMARKS);

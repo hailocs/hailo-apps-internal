@@ -82,23 +82,35 @@ std::vector<HailoROIPtr> palm_to_hand_crop(std::shared_ptr<HailoMat> image, Hail
         // Box center and scale in pixel space
         float xc_px = (xmin + xmax) / 2.0f * frame_w;
         float yc_px = (ymin + ymax) / 2.0f * frame_h;
-        float scale_px = (xmax - xmin) * frame_w;  // palm width in pixels
+        // Use max of width/height in pixels to handle non-square palm bboxes
+        // (can happen due to frame aspect ratio or model stretching)
+        float width_px = (xmax - xmin) * frame_w;
+        float height_px = (ymax - ymin) * frame_h;
+        float scale_px = std::max(width_px, height_px);
 
-        // Apply offsets in pixel space
-        yc_px += DY * scale_px;
+        // Apply offsets along the hand axis (rotated coordinate frame)
+        xc_px += -DY * scale_px * std::sin(theta);
+        yc_px += DY * scale_px * std::cos(theta);
         scale_px *= DSCALE;
 
-        // AABB that encloses the rotated square (square in pixel space)
-        float abs_cos = std::abs(std::cos(theta));
-        float abs_sin = std::abs(std::sin(theta));
-        float expand = abs_cos + abs_sin;
-        float half_side_px = scale_px * expand / 2.0f;
+        // Use fixed maximum expansion (sqrt2) so the crop size doesn't
+        // depend on rotation. hand_affine_warp handles the actual rotation
+        // inside the crop buffer. This ensures a stable, always-square crop.
+        static const float FIXED_EXPAND = 1.41421356f; // sqrt(2)
+        float half_side_px = scale_px * FIXED_EXPAND / 2.0f;
 
-        // Convert back to normalized [0,1] coords for HailoBBox
-        float crop_xmin = clamp01((xc_px - half_side_px) / frame_w);
-        float crop_ymin = clamp01((yc_px - half_side_px) / frame_h);
-        float crop_xmax = clamp01((xc_px + half_side_px) / frame_w);
-        float crop_ymax = clamp01((yc_px + half_side_px) / frame_h);
+        // Compute normalized crop ensuring it's square in pixel space.
+        // Use separate half-widths in normalized coords to guarantee the
+        // hailocropper extracts a square crop.
+        float half_norm_x = half_side_px / frame_w;
+        float half_norm_y = half_side_px / frame_h;
+        float cx_norm = xc_px / frame_w;
+        float cy_norm = yc_px / frame_h;
+
+        float crop_xmin = clamp01(cx_norm - half_norm_x);
+        float crop_ymin = clamp01(cy_norm - half_norm_y);
+        float crop_xmax = clamp01(cx_norm + half_norm_x);
+        float crop_ymax = clamp01(cy_norm + half_norm_y);
         float crop_w = crop_xmax - crop_xmin;
         float crop_h = crop_ymax - crop_ymin;
 

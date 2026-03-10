@@ -81,27 +81,12 @@ static std::string classify(const std::vector<HailoPoint> &pts)
 }
 
 /**
- * @brief Remove all "palm_angle" classifications from a detection.
- */
-static void remove_palm_angle(HailoDetectionPtr det)
-{
-    std::vector<HailoObjectPtr> to_remove;
-    for (auto &obj : det->get_objects_typed(HAILO_CLASSIFICATION))
-    {
-        auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
-        if (cls && cls->get_classification_type() == "palm_angle")
-            to_remove.push_back(obj);
-    }
-    for (auto &obj : to_remove)
-        det->remove_object(obj);
-}
-
-/**
  * @brief Walk all detections on the ROI:
  *  1. Classify gesture from hand_landmarks on hand detections
  *  2. Tighten hand bbox to fit landmarks (matching Python pipeline)
  *  3. Remove palm_angle classifications (internal metadata)
  *  4. Remove palm detections (only needed for the cropping stage)
+ *  5. Clear scaling_bbox (palm wrapper's letterbox transform, no longer needed)
  */
 void gesture_classification_filter(HailoROIPtr roi)
 {
@@ -223,6 +208,15 @@ void gesture_classification_filter(HailoROIPtr roi)
         roi->remove_object(obj);
     for (auto &det : to_add)
         roi->add_object(det);
+
+    // Reset scaling_bbox to identity. The INFERENCE_PIPELINE_WRAPPER for palm
+    // detection leaves a letterbox scaling_bbox on the ROI. Palm detections
+    // (in letterbox space) have been removed above. The new tight hand detections
+    // are in frame-absolute normalized coords, so no scaling_bbox is needed.
+    // Without this, hailooverlay applies the letterbox scaling to the hand bbox
+    // (stretching Y by the aspect ratio), while landmarks bypass it — causing
+    // the bbox to appear non-tight around correctly-positioned landmarks.
+    roi->clear_scaling_bbox();
 }
 
 void filter(HailoROIPtr roi)

@@ -37,11 +37,11 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class
 from hailo_apps.python.core.common.core import get_pipeline_parser
 
-from . import blaze_base
-from .blaze_palm_detector import BlazePalmDetector
-from .blaze_hand_landmark import BlazeHandLandmark
-from .gesture_recognition import classify_hand_gesture, count_fingers
-from .gesture_detection_h8 import landmarks_to_gesture_points
+from hailo_apps.python.pipeline_apps.gesture_detection import blaze_base
+from hailo_apps.python.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
+from hailo_apps.python.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
+from hailo_apps.python.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
+from hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 import landmarks_to_gesture_points
 
 hailo_logger = get_logger(__name__)
 # endregion imports

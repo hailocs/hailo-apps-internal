@@ -384,8 +384,9 @@ def detection2roi(detection, config):
 
     theta = np.arctan2(kp1_y - kp2_y, kp1_x - kp2_x) - theta0
 
-    # Apply offsets
-    yc += dy * scale
+    # Apply offsets — shift along the hand axis (rotated coordinate frame)
+    xc += -dy * scale * np.sin(theta)
+    yc += dy * scale * np.cos(theta)
     scale *= dscale
 
     return xc, yc, scale, theta

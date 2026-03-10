@@ -57,8 +57,9 @@ static cv::Mat compute_warp_matrix(int width, int height, float theta)
     float cx = width / 2.0f;
     float cy = height / 2.0f;
 
-    // The AABB is expand times larger than the actual rotated square
-    float expand = std::abs(std::cos(theta)) + std::abs(std::sin(theta));
+    // Fixed expand = sqrt(2), matching palm_croppers.cpp which uses a fixed
+    // maximum expansion so the crop size doesn't depend on rotation.
+    static const float expand = 1.41421356f; // sqrt(2)
 
     // Source points: the rotated square content inscribed in the AABB.
     // half_content_* is the half-size of the actual content in pixel coords.

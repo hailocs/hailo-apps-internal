@@ -27,10 +27,10 @@ import numpy as np
 import psutil
 from hailo_platform import VDevice
 
-from . import blaze_base
-from .blaze_palm_detector import BlazePalmDetector
-from .blaze_hand_landmark import BlazeHandLandmark
-from .gesture_recognition import classify_hand_gesture, count_fingers
+from hailo_apps.python.pipeline_apps.gesture_detection import blaze_base
+from hailo_apps.python.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
+from hailo_apps.python.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
+from hailo_apps.python.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
 
 
 # Hand skeleton connections for drawing (MediaPipe topology)
@@ -142,7 +142,166 @@ def draw_palm_box(frame, detection):
     cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), COLOR_PALM_BOX, 2)
 
 
-def process_frame(frame, palm_detector, hand_landmark, config, headless=False, timings=None):
+def save_debug_stages(frame, rgb, padded, config, detections, xc, yc, roi_scale, theta,
+                      roi_imgs, landmarks, landmarks_img, flags, handedness, debug_dir):
+    """Save annotated images for each pipeline stage to debug_dir.
+
+    Args:
+        frame: Original BGR frame.
+        rgb: RGB version of frame.
+        padded: 192x192 padded input to palm detection.
+        config: Palm model config dict.
+        detections: Denormalized palm detections in image pixels.
+        xc, yc, roi_scale, theta: ROI parameters from detection2roi.
+        roi_imgs: Extracted 224x224 crops (N, 224, 224, 3) float [0,1].
+        landmarks: Raw landmarks from model (N, 21, 3) in [0,1] crop coords.
+        landmarks_img: Denormalized landmarks in image pixels.
+        flags: Hand confidence flags.
+        handedness: Handedness scores.
+        debug_dir: Directory to save images.
+    """
+    os.makedirs(debug_dir, exist_ok=True)
+    h, w = frame.shape[:2]
+    res = blaze_base.HAND_LANDMARK_RESOLUTION
+
+    # Stage 1: Original frame
+    cv2.imwrite(os.path.join(debug_dir, "1_original.jpg"), frame)
+
+    # Stage 2: Padded 192x192 input (save as BGR)
+    padded_bgr = cv2.cvtColor(padded, cv2.COLOR_RGB2BGR)
+    # Scale up for visibility
+    padded_vis = cv2.resize(padded_bgr, (384, 384), interpolation=cv2.INTER_NEAREST)
+    cv2.putText(padded_vis, "192x192 padded input", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.imwrite(os.path.join(debug_dir, "2_padded_192x192.jpg"), padded_vis)
+
+    # Stage 3: Palm detections on original frame
+    stage3 = frame.copy()
+    kp1_idx = config["kp1"]
+    kp2_idx = config["kp2"]
+    for i in range(len(detections)):
+        det = detections[i]
+        ymin, xmin, ymax, xmax = det[:4].astype(int)
+        cv2.rectangle(stage3, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
+        cv2.putText(stage3, f"palm {i}", (xmin, ymin - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        # Draw keypoints (7 keypoints: wrist, index/middle/ring/pinky base, etc.)
+        for k in range(config["num_keypoints"]):
+            kx = int(det[4 + k * 2])
+            ky = int(det[4 + k * 2 + 1])
+            color = (0, 0, 255)  # red
+            if k == kp1_idx:
+                color = (255, 0, 0)  # blue = kp1 (wrist)
+            elif k == kp2_idx:
+                color = (255, 255, 0)  # cyan = kp2 (middle finger)
+            cv2.circle(stage3, (kx, ky), 4, color, -1)
+            cv2.putText(stage3, str(k), (kx + 5, ky - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, color, 1)
+        # Draw rotation line from kp1 to kp2
+        kp1_x = int(det[4 + kp1_idx * 2])
+        kp1_y = int(det[4 + kp1_idx * 2 + 1])
+        kp2_x = int(det[4 + kp2_idx * 2])
+        kp2_y = int(det[4 + kp2_idx * 2 + 1])
+        cv2.line(stage3, (kp1_x, kp1_y), (kp2_x, kp2_y), (0, 255, 255), 2)
+    cv2.putText(stage3, "Palm detections + keypoints", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(stage3, "Blue=kp0(wrist) Cyan=kp2(middle) Red=other", (10, 55),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 200), 1)
+    cv2.imwrite(os.path.join(debug_dir, "3_palm_detections.jpg"), stage3)
+
+    # Stage 4: ROI rectangles (oriented) on original frame
+    stage4 = frame.copy()
+    for i in range(len(xc)):
+        cos_t = np.cos(theta[i])
+        sin_t = np.sin(theta[i])
+        half = roi_scale[i] / 2.0
+        # 4 corners of the oriented ROI rectangle
+        corners = np.array([
+            [xc[i] - half * cos_t + half * sin_t, yc[i] - half * sin_t - half * cos_t],
+            [xc[i] + half * cos_t + half * sin_t, yc[i] + half * sin_t - half * cos_t],
+            [xc[i] + half * cos_t - half * sin_t, yc[i] + half * sin_t + half * cos_t],
+            [xc[i] - half * cos_t - half * sin_t, yc[i] - half * sin_t + half * cos_t],
+        ], dtype=np.int32)
+        cv2.polylines(stage4, [corners], True, (0, 255, 255), 2)
+        # Draw center
+        cv2.circle(stage4, (int(xc[i]), int(yc[i])), 5, (0, 0, 255), -1)
+        # Show rotation angle
+        angle_deg = np.degrees(theta[i])
+        cv2.putText(stage4, f"ROI {i}: {angle_deg:.1f}deg scale={roi_scale[i]:.0f}px",
+                    (int(xc[i]) - 50, int(yc[i]) - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+    cv2.putText(stage4, "Oriented ROI (detection2roi)", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(stage4, f"dscale={config['dscale']} dy={config['dy']} theta0=pi/2", (10, 55),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 200), 1)
+    cv2.imwrite(os.path.join(debug_dir, "4_roi_oriented.jpg"), stage4)
+
+    # Stage 5: Extracted 224x224 crops
+    for i in range(roi_imgs.shape[0]):
+        crop_bgr = cv2.cvtColor((roi_imgs[i] * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+        # Scale up for visibility
+        crop_vis = cv2.resize(crop_bgr, (448, 448), interpolation=cv2.INTER_LINEAR)
+        cv2.putText(crop_vis, f"224x224 crop #{i} (affine warped)", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(crop_vis, "Fingers should point UP", (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 200), 1)
+        cv2.imwrite(os.path.join(debug_dir, f"5_crop_{i}.jpg"), crop_vis)
+
+    # Stage 6: Landmarks on crop (raw model output in [0,1] coords)
+    for i in range(landmarks.shape[0]):
+        flag_val = float(flags[i].flatten()[0])
+        if flag_val < -10 or flag_val > 10:
+            flag_val = 1.0 / (1.0 + np.exp(-flag_val))
+
+        crop_bgr = cv2.cvtColor((roi_imgs[i] * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+        crop_vis = cv2.resize(crop_bgr, (448, 448), interpolation=cv2.INTER_LINEAR)
+        scale_factor = 448.0 / res
+        lm = landmarks[i]  # (21, 3) in [0,1]
+        pts = (lm[:, :2] * res * scale_factor).astype(int)
+        for j, k in HAND_CONNECTIONS:
+            cv2.line(crop_vis, tuple(pts[j]), tuple(pts[k]), (0, 200, 200), 2)
+        for j, pt in enumerate(pts):
+            cv2.circle(crop_vis, tuple(pt), 4, (255, 0, 0), -1)
+            cv2.putText(crop_vis, str(j), (pt[0] + 3, pt[1] - 3),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+        hs = float(handedness[i].flatten()[0]) if len(handedness) > i else -1
+        hand_str = "L" if hs > 0.5 else "R" if hs >= 0 else "?"
+        cv2.putText(crop_vis, f"Landmarks on crop #{i} (flag={flag_val:.2f} {hand_str})", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.imwrite(os.path.join(debug_dir, f"6_landmarks_crop_{i}.jpg"), crop_vis)
+
+    # Stage 7: Final - landmarks mapped back to original frame
+    stage7 = frame.copy()
+    for i in range(len(flags)):
+        flag_val = float(flags[i].flatten()[0])
+        if flag_val < -10 or flag_val > 10:
+            flag_val = 1.0 / (1.0 + np.exp(-flag_val))
+        if flag_val < HAND_FLAG_THRESHOLD:
+            continue
+        hand_lm = landmarks_img[i]
+        draw_palm_box(stage7, detections[i])
+        gesture_points = landmarks_to_gesture_points(hand_lm)
+        gesture = classify_hand_gesture(gesture_points)
+        fingers = count_fingers(gesture_points)
+        hs = float(handedness[i].flatten()[0]) if len(handedness) > i else None
+        draw_hand(stage7, hand_lm, gesture, fingers, hs)
+    cv2.putText(stage7, "Final: landmarks in image coords", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.imwrite(os.path.join(debug_dir, "7_final_result.jpg"), stage7)
+
+    print(f"\nDebug images saved to: {debug_dir}/")
+    print(f"  1_original.jpg          - Input frame ({w}x{h})")
+    print(f"  2_padded_192x192.jpg    - resize_pad to 192x192")
+    print(f"  3_palm_detections.jpg   - Palm boxes + 7 keypoints")
+    print(f"  4_roi_oriented.jpg      - Oriented ROI (rotated rectangle)")
+    for i in range(roi_imgs.shape[0]):
+        print(f"  5_crop_{i}.jpg            - 224x224 affine-warped crop")
+        print(f"  6_landmarks_crop_{i}.jpg  - Landmarks on crop")
+    print(f"  7_final_result.jpg      - Landmarks mapped to image")
+
+
+def process_frame(frame, palm_detector, hand_landmark, config, headless=False, timings=None,
+                  debug_dir=None):
     """Process a single frame through the full pipeline.
 
     Args:
@@ -152,9 +311,11 @@ def process_frame(frame, palm_detector, hand_landmark, config, headless=False, t
         config: Palm model config dict.
         headless: If True, skip drawing and return None as display.
         timings: Optional dict to accumulate timing breakdown (keys: preprocess, palm_infer, postprocess, hand_infer).
+        debug_dir: If set, save annotated images for each stage to this directory (first detection only).
 
     Returns:
-        (display_frame, num_hands_detected) tuple.
+        (display_frame, num_hands_detected, debug_saved) tuple.
+        debug_saved is True if debug images were actually written.
     """
     display = None if headless else frame.copy()
     h, w = frame.shape[:2]
@@ -181,7 +342,7 @@ def process_frame(frame, palm_detector, hand_landmark, config, headless=False, t
             timings["palm_infer"].append((t2 - t1) * 1000)
             timings["postprocess"].append(0)
             timings["hand_infer"].append(0)
-        return display, 0
+        return display, 0, False
 
     # 2. Denormalize detections to image coordinates
     detections = blaze_base.denormalize_detections(
@@ -202,7 +363,7 @@ def process_frame(frame, palm_detector, hand_landmark, config, headless=False, t
             timings["palm_infer"].append((t2 - t1) * 1000)
             timings["postprocess"].append((t3 - t2) * 1000)
             timings["hand_infer"].append(0)
-        return display, 0
+        return display, 0, False
 
     # 5. Hand landmark inference
     flags, landmarks, handedness = hand_landmark.predict(roi_imgs)
@@ -219,6 +380,19 @@ def process_frame(frame, palm_detector, hand_landmark, config, headless=False, t
         timings["palm_infer"].append((t2 - t1) * 1000)
         timings["postprocess"].append((t3 - t2) * 1000 + (t5 - t4) * 1000)
         timings["hand_infer"].append((t4 - t3) * 1000)
+
+    # Save debug images — only when hand orientation meets the angle filter
+    did_save_debug = False
+    if debug_dir is not None:
+        # Check if any detection has a hand rotated ~90 degrees (sideways)
+        # theta is the rotation computed by detection2roi; near 0 = upright hand
+        max_angle_deg = np.max(np.abs(np.degrees(theta))) if len(theta) > 0 else 0
+        if max_angle_deg >= 60:
+            save_debug_stages(frame, rgb, padded, config, detections, xc, yc, roi_scale, theta,
+                              roi_imgs, landmarks, landmarks_img, flags, handedness, debug_dir)
+            did_save_debug = True
+        else:
+            print(f"  [debug] frame skipped: max hand angle = {max_angle_deg:.1f}deg (need >= 60deg)")
 
     # 7. Classify gestures and draw
     num_valid_hands = 0
@@ -248,7 +422,7 @@ def process_frame(frame, palm_detector, hand_landmark, config, headless=False, t
 
             draw_hand(display, hand_lm, gesture, fingers, hand_side)
 
-    return display, num_valid_hands
+    return display, num_valid_hands, did_save_debug
 
 
 def get_system_info():
@@ -355,6 +529,11 @@ def run(args):
         print("Running in headless mode (no display)")
     print("Starting gesture detection — Hailo-8 (press 'q' to quit)...\n")
 
+    debug_dir = os.path.abspath(args.debug_dir) if args.debug else None
+    if debug_dir:
+        print(f"Debug mode: will save stage images at frame 50 to {debug_dir}/")
+    debug_saved = False
+
     fps_smoothed = 0.0
     alpha = 0.1
     prev_time = time.time()
@@ -373,10 +552,18 @@ def run(args):
 
         t_start = time.time()
 
-        display, n_hands = process_frame(frame, palm_detector, hand_landmark, config, headless=headless, timings=timings)
+        # In debug mode, save stage images on first sideways hand after frame 50
+        frame_debug_dir = None
+        if debug_dir and not debug_saved and total_processed >= 50:
+            frame_debug_dir = debug_dir
+        display, n_hands, did_save = process_frame(frame, palm_detector, hand_landmark, config,
+                                                   headless=headless, timings=timings,
+                                                   debug_dir=frame_debug_dir)
 
         if n_hands > 0:
             hands_detected_count += 1
+        if did_save:
+            debug_saved = True
 
         t_end = time.time()
         frame_time_ms = (t_end - t_start) * 1000
@@ -490,6 +677,10 @@ def parse_args():
                         help="Path to hand_landmark_lite.hef")
     parser.add_argument("--headless", action="store_true",
                         help="Run without display window (for benchmarking)")
+    parser.add_argument("--debug", action="store_true",
+                        help="Save annotated images for each pipeline stage (first detection)")
+    parser.add_argument("--debug-dir", type=str, default="debug_stages",
+                        help="Directory to save debug stage images (default: debug_stages)")
     return parser.parse_args()
 
 
