@@ -20,6 +20,7 @@ When invoked, parse the user's arguments and pick the right flow:
 | `/profile-pipeline <trace_dir>` (existing dir with traces) | Analyze that trace dir → suggest |
 | `/profile-pipeline setup` | Run setup check only |
 | `/profile-pipeline compare <dir1> <dir2>` | A/B comparison |
+| `/profile-pipeline find-fps <app_path>` | Find the best sustainable frame rate for the pipeline |
 | `/profile-pipeline learn` | Save recent insights to knowledge base |
 | `/profile-pipeline knowledge` | Show the knowledge base |
 
@@ -153,6 +154,8 @@ If there are matching recipes from past experiments, present those first: "Based
 | Queue always empty while downstream starved | Upstream element is the bottleneck |
 | Element proctime P95 > 2x mean | High jitter — add leaky queue before this element |
 | `hailonet` has highest proctime | Tune `batch-size`, `scheduler-timeout-ms`, check HEF model |
+| `hailonet` downstream of `hailocropper` with high proctime | **Critical**: Set `scheduler-timeout-ms` to `1000/target_fps` (e.g. 33 for 30fps). Crop count per frame is variable; without timeout, `batch-size>1` stalls waiting for crops that may never arrive. Proven: 257ms→93ms e2e latency (-64%) on gesture pipeline. |
+| Queue proctime has low P50 but high P95 (>10x ratio) | Likely blocked by downstream batch stall, not a queue sizing issue. Fix the downstream `hailonet` scheduler-timeout first. |
 | `videoconvert`/`videoscale` in top 3 proctime | Increase `n-threads` (up to 4), try NV12 format |
 | End-to-end latency > 300ms | Increase `pipeline_latency` or add leaky queues |
 | FPS drops between source and sink | Identify the segment where FPS drops |
@@ -168,6 +171,24 @@ For each suggestion, show:
 3. Expected impact
 
 Then ask: **"Want me to apply any of these changes? Or should we run an experiment to measure the impact?"**
+
+## Step 4b: Find Best Frame Rate
+
+When the pipeline can't sustain the requested FPS, use this flow to find the highest sustainable rate.
+
+```bash
+python .claude/skills/profile-pipeline/scripts/find_best_framerate.py <app_path> \
+    --rates 30,25,20,15,10 --duration 10 [-- <extra_args>]
+```
+
+**Real-time criteria** (all must pass):
+- Actual throughput >= 95% of requested FPS
+- E2E latency P95/mean ratio < 3.0 (no latency accumulation)
+- No queue average fill > 15%
+
+The script tests each rate from highest to lowest, profiles for the specified duration, and reports which rates pass. Present results as a table and recommend the best rate.
+
+After finding the best rate, suggest setting `--frame-rate <best>` in the app's default args or adjusting the source pipeline's framerate caps.
 
 ## Step 5: Experiment (if user wants to try a change)
 
@@ -219,6 +240,7 @@ All at `.claude/skills/profile-pipeline/scripts/`:
 | `analyze_trace.py` | Parse traces → metrics | `<trace_dir> --format json\|text` |
 | `compare_traces.py` | A/B comparison | `<baseline> <experiment> --format json\|text` |
 | `knowledge_base.py` | Knowledge persistence | `show`, `add-recipe`, `add-insight`, `query` |
+| `find_best_framerate.py` | Sweep FPS to find max sustainable rate | `<app_path> --rates 30,25,20,15,10 --duration 10 [-- app_args]` |
 | `ctf_parser.py` | Low-level CTF parser | `<trace_dir>` (used by analyze_trace) |
 
 ## Project Context

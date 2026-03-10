@@ -266,6 +266,7 @@ class GStreamerPoseHandApp(GStreamerApp):
             f"hailonet name=hand_landmark_hailonet "
             f"hef-path={self.hand_hef} "
             f"batch-size=2 "
+            f"scheduler-timeout-ms=33 "
             f"vdevice-group-id={SHARED_VDEVICE_GROUP_ID} "
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "
