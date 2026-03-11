@@ -1,107 +1,106 @@
 #!/usr/bin/env python3
+
 import os
 import sys
+import uuid
 import queue
 import threading
-from functools import partial
-from pathlib import Path
 import collections
 
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from functools import partial
+from pathlib import Path
+from collections import defaultdict
 
-# Check OCR dependencies before importing OCR-specific modules
+
+# Ensure repository root is available in sys.path
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
+
+# Dependency validation
 def check_ocr_dependencies():
     """
-    Check if all required OCR dependencies are installed.
-    
-    Exits the program with installation instructions if any dependencies are missing.
+    Validate that all required OCR dependencies are installed.
+
+    If one or more dependencies are missing, print clear installation
+    instructions and terminate the application.
     """
     missing_deps = []
-    # Map package names to their import names
-    ocr_deps = {
-        "paddlepaddle": "paddle",  # pip install paddlepaddle, but import paddle
+
+    # Mapping between pip package names and Python import names
+    ocr_dependencies = {
+        "paddlepaddle": "paddle",
         "shapely": "shapely",
         "pyclipper": "pyclipper",
         "symspellpy": "symspellpy",
     }
-    
-    for package_name, import_name in ocr_deps.items():
+
+    for package_name, import_name in ocr_dependencies.items():
         try:
             __import__(import_name)
         except ImportError:
             missing_deps.append(package_name)
 
     if missing_deps:
-        print("\n" + "="*70)
-        print("❌ MISSING REQUIRED DEPENDENCIES")
-        print("="*70)
-        print("\nThe following dependencies are required but not installed:")
+        print("\n" + "=" * 70)
+        print("ERROR: Missing required OCR dependencies")
+        print("=" * 70)
+        print("\nThe following packages are required but not installed:")
         for dep in missing_deps:
-            print(f"  • {dep}")
-        print("\n" + "-"*70)
-        print("INSTALLATION INSTRUCTIONS:")
-        print("-"*70)
-        print("\nTo install all dependencies (recommended):")
+            print(f"  - {dep}")
+
+        print("\n" + "-" * 70)
+        print("Installation instructions")
+        print("-" * 70)
+        print("\nRecommended installation:")
         print("  1. Navigate to the repository root directory")
-        print("  2. Run: pip install -e \".[ocr]\"")
-        print("\n" + "="*70)
+        print('  2. Run: pip install -e ".[ocr]"')
+        print("\n" + "=" * 70)
+
         sys.exit(1)
 
-# Check dependencies early
-check_ocr_dependencies()
-from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
-import uuid
-from collections import defaultdict
 
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
+# Validate dependencies before importing OCR-specific modules
+check_ocr_dependencies()
+
+
+from paddle_ocr_utils import (
+    det_postprocess,
+    resize_with_padding,
+    inference_result_handler,
+    OcrCorrector,
+    map_bbox_to_original_image,
+)
+
+from hailo_apps.python.core.common.hailo_logger import (
+    get_logger,
+    init_logging,
+    level_from_args,
+)
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
+from hailo_apps.python.core.common.toolbox import (
+    init_input_source,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS,
+)
+from hailo_apps.python.core.common.core import (
+    configure_multi_model_hef_path,
+    handle_and_resolve_args,
+)
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)

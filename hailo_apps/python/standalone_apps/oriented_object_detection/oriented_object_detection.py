@@ -11,71 +11,33 @@ from pathlib import Path
 import cv2
 import collections
 
-def _ensure_repo_root_on_syspath() -> None:
-    """
-    This allows `import hailo_apps...` to work without requiring users to
-    `pip install -e .` or `source setup_env.sh`.
-    """
-
-    this_file = Path(__file__).resolve()
-    for parent in this_file.parents:
-        if (parent / "hailo_apps").is_dir():
-            sys.path.insert(0, str(parent))
-            return
-
-_ensure_repo_root_on_syspath()
-
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.defines import REPO_ROOT
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from oriented_object_detection_post_process import inference_result_handler
-
-except ImportError:
-    # Running as a plain script: add repo root so `import hailo_apps` works.
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.defines import REPO_ROOT
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from oriented_object_detection_post_process import inference_result_handler
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
+from hailo_apps.python.core.common.toolbox import (
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    visualize,
+    FrameRateTracker
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS
+)
+from hailo_apps.python.core.common.defines import REPO_ROOT
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from oriented_object_detection_post_process import inference_result_handler
 
 
 APP_NAME = Path(__file__).stem

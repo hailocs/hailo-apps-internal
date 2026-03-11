@@ -8,61 +8,38 @@ from types import SimpleNamespace
 import numpy as np
 from pathlib import Path
 import collections
-try:
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-except ImportError:
-    # Running as a plain script: add repo root so `import hailo_apps` works.
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
 
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+    
+from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
+from hailo_apps.python.core.common.toolbox import (
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS
+)
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.standalone_apps.object_detection.object_detection_post_process import inference_result_handler
+from hailo_apps.python.core.common.core import handle_and_resolve_args
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
-
 
 def parse_args():
     """

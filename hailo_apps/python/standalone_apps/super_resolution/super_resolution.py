@@ -7,49 +7,32 @@ import queue
 from super_resolution_utils import SrganUtils, Espcnx4Utils, inference_result_handler
 from functools import partial
 
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-    )
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-    )
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
+from hailo_apps.python.core.common.toolbox import (
+    init_input_source,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+)
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
-
 
 def parse_args():
     """
