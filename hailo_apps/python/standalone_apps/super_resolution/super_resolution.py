@@ -19,12 +19,14 @@ from hailo_apps.python.core.common.hailo_inference import HailoInfer
 from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
 from hailo_apps.python.core.common.core import handle_and_resolve_args
 from hailo_apps.python.core.common.parser import get_standalone_parser
-from hailo_apps.python.core.common.camera_utils import select_cap_processing_mode
 from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
     init_input_source,
     preprocess,
     visualize,
     FrameRateTracker,
+    stop_after_timeout
 )
 from hailo_apps.python.core.common.defines import (
     MAX_INPUT_QUEUE_SIZE,
@@ -79,7 +81,7 @@ def inference_callback(
                 }
             output_queue.put((input_batch[i], result))
 
-
+    output_queue.put(None)  # Signal that this batch is done processing
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -130,27 +132,19 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
 
 
 def run_inference_pipeline(
-    net_path: str,
-    input_src: str,
-    batch_size: int,
-    output_dir: str,
-    camera_resolution: str,
-    output_resolution: str,
-    frame_rate: float,
-    save_output: bool,
-    show_fps: bool,
-    no_display: bool
+    net_path,
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    show_fps: bool = False,
+    time_to_run: int | None = None,
 ) -> None:
     """
     Initialize queues, create HailoAsyncInference instance, and run the inference pipeline.
 
     Args:
         net_path (str): Path to the HEF model file.
-        input_src (str): Input source path (image directory, video file, or camera).
-        batch_size (int): Number of frames to process per batch.
-        output_dir (str): Directory path to save output visualizations.
-        camera_resolution (str): Camera input resolution, e.g., 'sd', 'hd', or 'fhd'.
-        output_resolution (str): Output resolution for display/saving.
+        input_context (InputContext): Context containing input source information.
+        visualization_settings (VisualizationSettings): Settings for visualization.
         frame_rate (float): Target frame rate for processing.
         save_output (bool): Whether to save the processed stream to video/images.
         show_fps (bool): Whether to print/log FPS (frames per second) information during execution.
@@ -160,12 +154,6 @@ def run_inference_pipeline(
     """
 
     utils = None
-    # Initialize input source from string: "camera", video file, or image folder
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
-
     stop_event = threading.Event()
 
     input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
@@ -181,11 +169,11 @@ def run_inference_pipeline(
     
     if 'espcn' in net_path:
         utils = Espcnx4Utils()
-        hailo_inference = HailoInfer(net_path, batch_size, input_type="FLOAT32", output_type="FLOAT32")
+        hailo_inference = HailoInfer(net_path, input_context.batch_size, input_type="FLOAT32", output_type="FLOAT32")
     else:
         utils = SrganUtils()
-        hailo_inference = HailoInfer(net_path, batch_size)
-    
+        hailo_inference = HailoInfer(net_path, input_context.batch_size)
+
     height, width, _ = hailo_inference.get_input_shape()
 
     post_process_callback_fn = partial(
@@ -194,65 +182,94 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height,
-               cap_processing_mode, None, stop_event)
+        args=(
+            input_context,
+            input_queue,
+            width,
+            height,
+            None,
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
-    postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(output_queue, cap, save_output, output_dir, post_process_callback_fn,
-               fps_tracker, output_resolution, frame_rate, True, stop_event, no_display)
-    )
+
     infer_thread = threading.Thread(
         target=infer,
-        args=(hailo_inference, input_queue, output_queue, stop_event)
+        args=(hailo_inference, input_queue, output_queue, stop_event),
+        name="infer-thread",
     )
 
     preprocess_thread.start()
-    postprocess_thread.start()
     infer_thread.start()
-
 
     if show_fps:
         fps_tracker.start()
 
+    if time_to_run is not None:
+        timer_thread = threading.Thread(
+            target=stop_after_timeout,
+            args=(stop_event, time_to_run),
+            name="timer-thread",
+            daemon=True,
+        )
+        timer_thread.start()
+
     try:
+        visualize(
+            input_context,
+            visualization_settings,
+            output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
         infer_thread.join()
-        postprocess_thread.join()
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
+    if show_fps:
+        logger.info(fps_tracker.frame_rate_summary())
 
-    finally:
-        if show_fps:
-            logger.info(fps_tracker.frame_rate_summary())
+    logger.success("Processing completed successfully.")
 
-        logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved outputs to '{output_dir}'.")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def main() -> None:
     """
     Main function to run the script.
     """
-    # Parse command line arguments
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
-    # Start the inference
-    run_inference_pipeline(
-        args.hef_path,
-        args.input,
-        args.batch_size,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
-        args.save_output,
-        args.show_fps,
-        args.no_display
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
     )
+
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+    )
+
+    run_inference_pipeline(
+        net_path=args.hef_path,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        show_fps=args.show_fps,
+        time_to_run=args.time_to_run
+    )
+
+
 if __name__ == "__main__":
     main()

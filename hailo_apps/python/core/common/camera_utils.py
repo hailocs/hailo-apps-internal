@@ -6,7 +6,7 @@ import platform
 import cv2
 import sys
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 import subprocess
 from .defines import UDEV_CMD, CAMERA_RESOLUTION_MAP
 from .hailo_logger import get_logger
@@ -16,27 +16,9 @@ hailo_logger = get_logger(__name__)
 # if udevadm is not installed, install it using the following command:
 # sudo apt-get install udev
 
-class CapProcessingMode(str, Enum):
-    """
-    Capture processing modes.
-
-    Defines how frames are read from the source and fed into the pipeline,
-    based on source type and user options (saving output, target FPS, etc.).
-    """
-
-    CAMERA_NORMAL = "camera_normal"
-    CAMERA_FRAME_DROP = "camera_frame_drop"
-    VIDEO_NORMAL = "video_normal"
-    VIDEO_PACE = "video_pace"
-
 class PiCamera2CaptureAdapter:
     """
     Adapter that makes Picamera2 behave like cv2.VideoCapture.
-
-    Goals:
-    - Provide read(), isOpened(), get(), release() APIs compatible with OpenCV code
-    - Avoid deadlocks when release() is called while another thread is reading
-    - Ensure stop()/close() never race with capture_array()
     """
 
     def __init__(self, picam2):
@@ -91,25 +73,69 @@ class PiCamera2CaptureAdapter:
             except Exception:
                 pass
 
-def select_cap_processing_mode(input_type: str,
-                           save_output: bool,
-                           frame_rate: float | None) -> CapProcessingMode:
-    """
-    Decide capture processing behavior.
 
-    Modes:
-        CAMERA_NORMAL       - realtime camera
-        CAMERA_FRAME_DROP   - camera frame dropping to target FPS
-        VIDEO_NORMAL        - fastest video processing
-        VIDEO_PACE          - realtime pacing (used when saving output)
+class CapProcessingMode(str, Enum):
+    """
+    Capture processing modes.
+
+    Defines how frames are read from the source and fed into the pipeline,
+    based on source type and user options (saving output, target FPS, etc.).
     """
 
-    is_camera = input_type in ("usb", "rpi", "stream")
-    is_video  = input_type == "video"
+    # Camera modes
+    CAMERA_NORMAL = "camera_normal"           # Process camera frames as they arrive (real-time)
+    CAMERA_FRAME_DROP = "camera_frame_drop"   # Drop camera frames to match the requested target FPS
 
+    # Video modes
+    VIDEO_PACE = "video_pace"                         # Normal video playback pacing (based on original video FPS)
+    VIDEO_UNPACED = "video_unpaced"                   # Run video as fast as processing allows (no pacing)
+    VIDEO_PACED_AND_FRAME_DROP = "video_paced_and_frame_drop" # Paced playback but skip frames to match a lower requested FPS
+
+
+def select_cap_processing_mode(
+    input_type: str,
+    frame_rate: Optional[float],
+    source_fps: Optional[float],
+    video_unpaced: bool = False,
+) -> Optional[CapProcessingMode]:
+    """
+    Select the capture processing mode based on input type and user settings.
+
+    Camera inputs:
+        - CAMERA_NORMAL
+        - CAMERA_FRAME_DROP
+
+    Video inputs:
+        - VIDEO_PACE
+        - VIDEO_UNPACED
+        - VIDEO_PACED_AND_FRAME_DROP
+    """
+    is_camera = input_type in ("usb_camera", "rpi_camera", "stream")
+    is_video = input_type == "video"
     has_target_fps = frame_rate is not None and frame_rate > 0
+    has_source_fps = source_fps is not None and source_fps > 0
 
-    # CAMERA
+    if not (is_camera or is_video):
+        return None
+
+    if is_video and video_unpaced:
+        if has_target_fps:
+            hailo_logger.warning(
+                "--frame-rate is ignored when --video-unpaced is enabled."
+            )
+        return CapProcessingMode.VIDEO_UNPACED
+
+    if has_target_fps and has_source_fps and frame_rate >= source_fps:
+        hailo_logger.warning(
+            f"Requested frame rate ({frame_rate}) is greater than or equal to "
+            f"the source FPS ({source_fps}); no frame dropping will be applied."
+        )
+        return (
+            CapProcessingMode.CAMERA_NORMAL
+            if is_camera
+            else CapProcessingMode.VIDEO_PACE
+        )
+
     if is_camera:
         return (
             CapProcessingMode.CAMERA_FRAME_DROP
@@ -117,149 +143,180 @@ def select_cap_processing_mode(input_type: str,
             else CapProcessingMode.CAMERA_NORMAL
         )
 
-    # VIDEO
-    if is_video:
-        return (
-            CapProcessingMode.VIDEO_PACE
-            if save_output
-            else CapProcessingMode.VIDEO_NORMAL
-        )
+    return (
+        CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP
+        if has_target_fps
+        else CapProcessingMode.VIDEO_PACE
+    )
 
-    # images / fallback
-    return None
+
+def get_source_fps(cap: Any, source_name: str) -> Optional[float]:
+    """
+    Read FPS from an opened capture source.
+
+    Args:
+        cap: Opened capture object.
+        source_name: Human-readable source name for logging.
+
+    Returns:
+        Optional[float]: Reported FPS, or None if unavailable.
+    """
+    source_fps = cap.get(cv2.CAP_PROP_FPS)
+    if source_fps <= 0:
+        hailo_logger.debug(f"{source_name} FPS not reported by source.")
+        return None
+    return source_fps
+
+
+def open_cv_capture(src: Any, source_type: str) -> Any:
+    """
+    Open an OpenCV-based capture source.
+
+    Args:
+        src: Video file path, stream URL, device path, or camera index.
+        source_type: Human-readable source type for logging.
+
+    Returns:
+        Opened capture object.
+    """
+    if source_type == "video" and not os.path.exists(src):
+        hailo_logger.error(f"File not found: {src}")
+        sys.exit(1)
+
+    cap = cv2.VideoCapture(src)
+    if not cap.isOpened():
+        hailo_logger.error(f"Failed to open {source_type} source: {src}")
+        sys.exit(1)
+
+    hailo_logger.info(f"Using {source_type} input: {src}")
+    return cap
+
+
+def _apply_resolution_and_validate(
+    cap: Any,
+    resolution: Optional[str],
+) -> Any:
+    """
+    Apply requested resolution and validate that the capture source
+    produces frames.
+
+    Args:
+        cap: Opened capture object.
+        resolution: Optional named resolution key.
+
+    Returns:
+        The validated capture object.
+    """
+    if resolution in CAMERA_RESOLUTION_MAP:
+        width, height = CAMERA_RESOLUTION_MAP[resolution]
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        hailo_logger.debug(f"Camera resolution forced to {width}x{height}")
+
+    ok, frame = cap.read()
+    if not ok or frame is None:
+        cap.release()
+        hailo_logger.error("Camera opened but produced no frames.")
+        sys.exit(1)
+
+    return cap
 
 
 def open_usb_camera(input_src: str, resolution: Optional[str]):
     """
     USB camera open .
 
-    Behavior:
-    - "usb":
-        * Linux  -> Detect REAL USB cameras via v4l2-ctl
-        * Windows -> Probe camera indices via OpenCV (DirectShow)
-        * If CAMERA_INDEX env var exists -> use it
-        * Else -> auto-pick FIRST available USB camera
-    - "/dev/videoX":
-        * Linux explicit camera device
-    - "0"/"1"/...:
-        * Windows explicit camera index
-    - Apply resolution if requested
-    - Ensure camera actually streams frames
-    
+    Supported values:
+    - "usb"         : Auto-select the first available USB camera
+    - "/dev/videoX" : Explicit Linux camera device
+    - "0"/"1"/...   : Explicit Windows camera index
+
+    The function:
+    - opens the requested source
+    - applies optional resolution
+    - vali
     """
-    system = platform.system()
-    # -----------------------------
-    # Helper: apply resolution + validate
-    # -----------------------------
-    def _apply_and_validate(cap):
-        if resolution in CAMERA_RESOLUTION_MAP:
-            w, h = CAMERA_RESOLUTION_MAP[resolution]
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-            logger.debug(f"Camera resolution forced to {w}x{h}")
+    system_name = platform.system()
 
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            cap.release()
-            logger.error("Camera opened but produced no frames.")
-            sys.exit(1)
-        return cap
-
-    # =========================================================
+    # ---------------------------------------------------------
     # 1) Explicit Linux device path: /dev/videoX
-    # =========================================================
+    # ---------------------------------------------------------
     if str(input_src).startswith("/dev/video"):
-        if system == "Windows":
-            logger.error("On Windows, '/dev/videoX' is not supported. Use '-i 0' or '-i usb'.")
+        if system_name == "Windows":
+            hailo_logger.error(
+                "On Windows, '/dev/videoX' is not supported. Use '-i 0' or '-i usb'."
+            )
             sys.exit(1)
 
-        cap = cv2.VideoCapture(str(input_src))
-        if not cap.isOpened():
-            logger.error(f"Failed to open Linux camera device: {input_src}")
-
-            # Only check available cameras AFTER failure
+        try:
+            cap = open_cv_capture(str(input_src), "USB camera index")
+        except SystemExit:
             available_cameras = get_usb_video_devices()
             if available_cameras:
-                logger.error(f"Available USB camera indices: {available_cameras}")
+                hailo_logger.error(f"Available camera indices detected: {available_cameras}")
             else:
-                logger.error("No USB cameras detected.")
+                hailo_logger.error("No cameras detected on Linux.")
+            raise
 
-            sys.exit(1)
+        return _apply_resolution_and_validate(cap, resolution)
 
-        logger.info(f"Using USB camera device: {input_src}")
-        return _apply_and_validate(cap)
-
-
-    # =========================================================
+    # ---------------------------------------------------------
     # 2) Explicit Windows numeric index: 0/1/2...
-    # =========================================================
+    # ---------------------------------------------------------
     if str(input_src).isdigit():
-        if system == "Linux":
-            logger.error("On Linux, numeric camera index is not supported. Use '-i /dev/videoX' or '-i usb'.")
+        if system_name == "Linux":
+            hailo_logger.error(
+                "On Linux, numeric camera index is not supported. "
+                "Use '-i /dev/videoX' or '-i usb'."
+            )
             sys.exit(1)
 
-        cam_index = int(str(input_src))
-        cap = cv2.VideoCapture(cam_index)
-
-        if not cap.isOpened():
-            hailo_logger.error(f"Failed to open Windows camera index: {cam_index}")
-
-            # Only scan cameras AFTER failure
+        camera_index = int(str(input_src))
+        try:
+            cap = open_cv_capture(camera_index, "USB camera index")
+        except SystemExit:
             available_cameras = get_usb_video_devices()
             if available_cameras:
                 hailo_logger.error(f"Available camera indices detected: {available_cameras}")
             else:
                 hailo_logger.error("No cameras detected on Windows.")
+            raise
 
-            sys.exit(1)
+        return _apply_resolution_and_validate(cap, resolution)
 
-        hailo_logger.info(f"Using USB camera index: {cam_index}")
-        return _apply_and_validate(cap)
 
-    # =========================================================
+    # ---------------------------------------------------------
     # 3) Auto USB selection: "usb"
-    # =========================================================
+    # ---------------------------------------------------------
     if input_src != "usb":
         hailo_logger.error(f"open_usb_camera received invalid camera input: '{input_src}'")
         sys.exit(1)
 
-    # ---------------------------------------------------------
-    # 3.1 Windows: select first available camera index
-    # ---------------------------------------------------------
-    if system == "Windows":
-        available_cameras = get_usb_video_devices()
-        if available_cameras is None:
-            hailo_logger.error("USB mode requested, but no cameras detected on Windows.")
-            sys.exit(1)
-
-        cam_index = available_cameras[0]
-        cap = cv2.VideoCapture(cam_index)
-        if not cap.isOpened():
-            hailo_logger.error(f"Failed to open USB camera index {cam_index} on Windows.")
-            sys.exit(1)
-
-        hailo_logger.info(f"Using USB camera index: {cam_index}")
-        return _apply_and_validate(cap)
-
-    # ---------------------------------------------------------
-    # 3.2 Linux: select first USB /dev/videoX (v4l2-ctl)
-    # ---------------------------------------------------------
     available_cameras = get_usb_video_devices()
-    if available_cameras is None:
-        hailo_logger.error("USB mode requested, but no USB cameras detected on Linux.")
+    if not available_cameras:
+        hailo_logger.error(f"USB mode requested, but no cameras detected on {system_name}.")
         sys.exit(1)
 
-    cam_index = available_cameras[0]
-    cap = cv2.VideoCapture(cam_index)
-    if not cap.isOpened():
-        hailo_logger.error(f"Failed to open USB camera index {cam_index} on Linux.")
-        sys.exit(1)
+    selected_camera = available_cameras[0]
 
-    hailo_logger.info(f"Using USB camera index: {cam_index}")
-    return _apply_and_validate(cap)
+    try:
+        source_label = "USB camera index" if system_name == "Windows" else "USB camera device"
+        cap = open_cv_capture(selected_camera, source_label)
+    except SystemExit:
+        hailo_logger.error(f"Failed to open auto-selected USB camera: {selected_camera}")
+        raise
+
+    return _apply_resolution_and_validate(cap, resolution)
 
 
-def open_rpi_camera():
+def open_rpi_camera() -> Optional[Any]:
+    """
+    Open Raspberry Pi camera using Picamera2.
+
+    Returns:
+        PiCamera2CaptureAdapter | None:
+            Camera adapter if successful, otherwise None.
+    """
     try:
         from picamera2 import Picamera2
     except Exception as e:
@@ -268,11 +325,16 @@ def open_rpi_camera():
 
     try:
         picam2 = Picamera2()
-        main = {"size": (800, 600), "format": "RGB888"}
-        config = picam2.create_video_configuration(main=main, controls={"FrameRate": 30})
+        width, height = 800, 600
+        fps = 30
+        main = {"size": (width, height), "format": "RGB888"}
+        config = picam2.create_video_configuration(main=main, controls={"FrameRate": fps})
 
         picam2.configure(config)
         picam2.start()
+
+        hailo_logger.debug(f"RPi camera started ({width}x{height}) @ {fps} FPS")
+
         return PiCamera2CaptureAdapter(picam2)
 
     except Exception as e:
@@ -288,8 +350,16 @@ def open_rpi_camera():
         return None
 
 
-def is_stream_url(input_arg: str) -> bool:
-    return input_arg.startswith(("http://", "https://", "rtsp://"))
+def is_stream_url(src: str) -> bool:
+    """
+    Return True if the input looks like a supported network stream URL.
+    """
+    src_lower = src.lower()
+    return (
+        src_lower.startswith("rtsp://")
+        or src_lower.startswith("http://")
+        or src_lower.startswith("https://")
+    )
 
 
 # Checks if a Raspberry Pi camera is connected and responsive.
