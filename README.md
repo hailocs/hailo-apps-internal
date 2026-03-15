@@ -134,6 +134,7 @@ python vlm_chat.py
 | `reid_multisource`  | Multi-source person re-identification              |
 | `paddle_ocr`        | OCR pipeline (PaddleOCR)                           |
 | `clip`              | Zero-shot classification with CLIP                 |
+| `lpr`               | License plate recognition pipeline                 |
 
 </details>
 

@@ -102,6 +102,10 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: lpr_ayalon.mp4
+    source: s3
+    tag:
+      - lpr
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -205,6 +209,10 @@ json:
     source: s3
     tag:
       - clip
+  - name: yolov4_license_plate.json
+    source: s3
+    tag:
+      - lpr
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -483,6 +491,33 @@ face_recognition: &face_recognition_app
         - name: scrfd_10g
           source: mz
         - name: arcface_mobilefacenet
+          source: mz
+
+lpr: &lpr_app
+  models:
+    hailo8:
+      default:
+        - name: yolov5m_vehicles
+          source: mz
+        - name: tiny_yolov4_license_plates
+          source: mz
+        - name: lprnet
+          source: mz
+    hailo8l:
+      default:
+        - name: yolov5m_vehicles
+          source: mz
+        - name: tiny_yolov4_license_plates
+          source: mz
+        - name: lprnet
+          source: mz
+    hailo10h:
+      default:
+        - name: yolov5m_vehicles
+          source: mz
+        - name: tiny_yolov4_license_plates
+          source: mz
+        - name: lprnet
           source: mz
 
 instance_segmentation: &instance_segmentation_app

@@ -267,3 +267,18 @@ shared_library('ocr_postprocess',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
 )
+
+################################################
+# YOLOV4 LP POSTPROCESS SOURCES
+################################################
+
+yolov4_lp_postprocess_sources = [
+    'yolov4_lp_postprocess.cpp'
+]
+shared_library('yolov4_lp_postprocess',
+    yolov4_lp_postprocess_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
