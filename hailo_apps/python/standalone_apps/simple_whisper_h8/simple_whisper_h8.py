@@ -9,14 +9,14 @@ and auto-downloaded on first use via resolve_hef_paths().
 
 Usage:
     # Record from microphone (press Enter to start/stop):
-    python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat_h8.simple_whisper_chat_h8
+    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8
 
     # Transcribe an audio file:
-    python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat_h8.simple_whisper_chat_h8 \
+    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8 \
         --audio recording.wav
 
     # List available models:
-    python -m hailo_apps.python.gen_ai_apps.simple_whisper_chat_h8.simple_whisper_chat_h8 \
+    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8 \
         --list-models
 """
 
@@ -52,10 +52,10 @@ def _setup_imports():
         from hailo_apps.python.core.common.hailo_logger import get_logger
         from hailo_apps.python.core.common.core import resolve_hef_paths
         from hailo_apps.python.core.common.defines import (
-            WHISPER_CHAT_H8_APP, RESOURCES_ROOT_PATH_DEFAULT,
+            WHISPER_H8_APP, RESOURCES_ROOT_PATH_DEFAULT,
             RESOURCES_NPY_DIR_NAME,
         )
-        return resolve_arch, get_logger, resolve_hef_paths, WHISPER_CHAT_H8_APP, \
+        return resolve_arch, get_logger, resolve_hef_paths, WHISPER_H8_APP, \
             RESOURCES_ROOT_PATH_DEFAULT, RESOURCES_NPY_DIR_NAME
     except ImportError:
         repo_root = None
@@ -69,10 +69,10 @@ def _setup_imports():
         from hailo_apps.python.core.common.hailo_logger import get_logger
         from hailo_apps.python.core.common.core import resolve_hef_paths
         from hailo_apps.python.core.common.defines import (
-            WHISPER_CHAT_H8_APP, RESOURCES_ROOT_PATH_DEFAULT,
+            WHISPER_H8_APP, RESOURCES_ROOT_PATH_DEFAULT,
             RESOURCES_NPY_DIR_NAME,
         )
-        return resolve_arch, get_logger, resolve_hef_paths, WHISPER_CHAT_H8_APP, \
+        return resolve_arch, get_logger, resolve_hef_paths, WHISPER_H8_APP, \
             RESOURCES_ROOT_PATH_DEFAULT, RESOURCES_NPY_DIR_NAME
 
 
@@ -225,7 +225,7 @@ def get_args():
 
 
 def main():
-    (resolve_arch, get_logger, resolve_hef_paths, WHISPER_CHAT_H8_APP,
+    (resolve_arch, get_logger, resolve_hef_paths, WHISPER_H8_APP,
      RESOURCES_ROOT, NPY_DIR) = _setup_imports()
     logger = get_logger(__name__)
 
@@ -236,7 +236,7 @@ def main():
     # Handle --list-models
     if args.list_models:
         from hailo_apps.python.core.common.core import handle_list_models_flag
-        handle_list_models_flag(args, WHISPER_CHAT_H8_APP)
+        handle_list_models_flag(args, WHISPER_H8_APP)
         return
 
     # Check dependencies
@@ -256,7 +256,7 @@ def main():
     # Use the central resolve_hef_paths to find/download HEFs
     resolved = resolve_hef_paths(
         hef_paths=[encoder_name, decoder_name],
-        app_name=WHISPER_CHAT_H8_APP,
+        app_name=WHISPER_H8_APP,
         arch=arch,
     )
     encoder_path = str(resolved[0].path)

@@ -309,8 +309,10 @@ GST_VIDEO_SINK = "autovideosink"
 VLM_CHAT_APP = "vlm_chat"
 LLM_CHAT_APP = "llm_chat"
 WHISPER_CHAT_APP = "whisper_chat"
-WHISPER_CHAT_H8_APP = "whisper_chat_h8"
 AGENT_APP = "agent"
+
+# Standalone app defaults
+WHISPER_H8_APP = "whisper_h8"
 
 # Gen AI model defaults
 VLM_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"

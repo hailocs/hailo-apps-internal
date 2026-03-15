@@ -38,7 +38,6 @@ These standalone GenAI applications are located in `hailo_apps/python/gen_ai_app
 | [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)   | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
 | [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)           | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech.                                                                            |
 | [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)                         | Vision-Language Model chat application combining vision and language understanding.                                                                                       |
-| [Whisper Chat H8](../../hailo_apps/python/gen_ai_apps/simple_whisper_chat_h8/README.md)    | Whisper speech-to-text for Hailo-8/8L/10H with live mic recording.                                                                                                        |
 
 **Simple Example Applications:** The `gen_ai_apps/` directory contains additional simple examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for more details.
 
@@ -54,6 +53,7 @@ In addition to the pipeline and GenAI applications above, this repository includ
 | [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md)                        | Standalone text detection and recognition using PaddleOCR models.        |
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
+| [Simple Whisper H8](../../hailo_apps/python/standalone_apps/simple_whisper_h8/README.md)          | Whisper speech-to-text for Hailo-8/8L/10H with live mic recording.      |
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 

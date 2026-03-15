@@ -217,37 +217,37 @@ npy:
     source: s3
     tag:
       - clip
-  # Whisper decoder tokenization assets (whisper_chat_h8)
+  # Whisper decoder tokenization assets (whisper_h8)
   - name: token_embedding_weight_base.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/token_embedding_weight_base.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
   - name: onnx_add_input_base.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/onnx_add_input_base.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
   - name: token_embedding_weight_tiny.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny/decoder_tokenization/token_embedding_weight_tiny.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
   - name: onnx_add_input_tiny.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny/decoder_tokenization/onnx_add_input_tiny.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
   - name: token_embedding_weight_tiny.en.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny.en/decoder_tokenization/token_embedding_weight_tiny.en.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
   - name: onnx_add_input_tiny.en.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/tiny.en/decoder_tokenization/onnx_add_input_tiny.en.npy
     source: s3
     tag:
-      - whisper_chat_h8
+      - whisper_h8
 
 classifier: &classifier_app
   models:
@@ -818,7 +818,7 @@ whisper_chat: &whisper_chat_app
           source: gen-ai-mz
 
 # Whisper on H8/H8L/H10H using separate encoder+decoder HEFs (InferModel API)
-whisper_chat_h8:
+whisper_h8:
   models:
     hailo8:
       default:

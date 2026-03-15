@@ -167,6 +167,7 @@ python vlm_chat.py
 | `lane_detection`           | Lane detection using UFLDv2                                        |
 | `pose_estimation`          | Pose estimation with yolov8                                        |
 | `super_resolution`         | Super-resolution with espcnx4 and SRGAN                            |
+| `simple_whisper_h8`        | Whisper speech-to-text for Hailo-8/8L/10H                          |
 
 </details>
 
@@ -188,7 +189,7 @@ This repository provides three types of applications, each suited for different 
 |----------|----------|----------|
 | **Pipeline Apps** | Production-ready video processing with cameras, RTSP streams, and real-time inference | Object detection, pose estimation, instance segmentation, face recognition |
 | **Standalone Apps** | Learn HailoRT (Python/C++); install only specific apps; images/video/camera | Object Detection, OCR, Stereo Depth Estimation |
-| **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents, Whisper speech recognition |
+| **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents |
 
 ### Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
 Use pipeline apps when you need real-time video processing with:
