@@ -23,6 +23,9 @@ Welcome to the complete documentation for the Hailo Applications repository. Thi
 *   **[Retraining Models](./developer_guide/retraining_example.md)**: A step-by-step tutorial for retraining models.
 *   **[Debugging with GST Shark](./developer_guide/debugging_with_gst_shark.md)**: Debugging tool for GStreamer pipelines.
 
+### [🎨 Community Overlay Element](../hailo_apps/postprocess/cpp/overlay_community/README.md)
+**Custom GStreamer overlay with advanced features.** Drop-in replacement for `hailooverlay` with custom colors, per-class style config, sprite/stamp system, label filtering, stats overlay, and more. Includes Python examples.
+
 ### ✔️ Applications Guide
 **References for applications guides.**
 
