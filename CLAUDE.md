@@ -45,6 +45,14 @@ hailo_apps/
 └── installation/              # Install scripts
 doc/                           # User guide + developer guide
 tests/                         # Pytest suite
+community/
+└── contributions/             # Community-contributed insights (PRs to dev)
+    ├── README.md
+    ├── pipeline-optimization/
+    ├── bottleneck-patterns/
+    ├── model-tuning/
+    ├── hardware-config/
+    └── general/
 ```
 
 ## Three App Types
@@ -136,6 +144,21 @@ GStreamer pipeline performance profiler. Auto-sets up GST-Shark, captures traces
 - `/profile-pipeline learn` — Save findings to knowledge base
 - Scripts: `.claude/skills/profile-pipeline/scripts/`
 - Knowledge base: `.claude/skills/profile-pipeline/knowledge/knowledge_base.yaml`
+
+### Skill: `/contribute-insights`
+Share optimization insights with the Hailo community. Formats findings, sanitizes sensitive data, reviews with the user (mandatory approval), and submits a PR to the dev branch. Contributors are credited by name.
+
+- `/contribute-insights` — Interactive mode, asks what you learned
+- `/contribute-insights '<json>'` — Accepts structured data from other agents
+- Called automatically at end of `/profile-pipeline` sessions
+
+### Cross-Agent Knowledge
+
+#### Community Contributions (for all agents)
+Agents should query `community/contributions/` for relevant prior art before suggesting optimizations:
+- Use `Grep` to search contribution files by tags, app name, or category
+- Reference matching contributions when suggesting optimizations: "A community member found that..."
+- After successful sessions, offer `/contribute-insights` to share findings back
 
 ## Documentation Index
 
