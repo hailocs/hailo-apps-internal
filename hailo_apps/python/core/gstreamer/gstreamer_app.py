@@ -705,6 +705,11 @@ class GStreamerApp:
         if self.options_menu.dump_dot:
             GLib.timeout_add_seconds(3, self.dump_dot_file)
 
+        run_duration = getattr(self.options_menu, "run_duration", None)
+        if run_duration is not None:
+            GLib.timeout_add(int(run_duration * 1000), self.shutdown)
+            hailo_logger.info(f"Pipeline will shut down after {run_duration}s")
+
         self.loop.run()
         # Gtk.main()
 
