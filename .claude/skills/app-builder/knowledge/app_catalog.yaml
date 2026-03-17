@@ -1,0 +1,800 @@
+# ============================================================================
+# APP CATALOG - Structured catalog of all Hailo apps (26 total)
+# ============================================================================
+# Generated from source code analysis of the hailo-apps-infra repository.
+# Each app includes models, pipeline patterns, features, and metadata.
+
+# ============================================================================
+# PIPELINE APPS (11 apps) - Real-time GStreamer video pipelines
+# ============================================================================
+
+detection:
+  category: pipeline
+  display_name: "Object Detection"
+  description: "Real-time object detection with YOLOv8/v5/v6/v7/v9/v10/v11 models. Includes inference wrapper for resolution preservation, tracking, and user callback."
+  complexity: moderate
+  models:
+    - type: detection
+      default_h8: yolov8m
+      default_h8l: yolov8s
+      default_h10h: yolov8m
+      postprocess: libyolo_hailortpp_postprocess.so
+      postprocess_function: filter_letterbox
+  pipeline_pattern: source_infer_wrapper_track_display
+  features: [tracker, inference_wrapper, labels_json, batch_size_2]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "General object detection"
+    - "People counting"
+    - "Security monitoring"
+    - "Traffic analysis"
+    - "Retail analytics"
+  good_starting_point_for:
+    - "Any single-model detection task"
+    - "Adding custom post-processing logic"
+    - "Learning the pipeline app pattern"
+  key_files:
+    - hailo_apps/python/pipeline_apps/detection/detection.py
+    - hailo_apps/python/pipeline_apps/detection/detection_pipeline.py
+  cli_command: "hailo-detect"
+  related_apps: [detection_simple, tiling, multisource]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_UNIQUE_ID]
+
+detection_simple:
+  category: pipeline
+  display_name: "Simple Detection"
+  description: "Minimal detection pipeline without inference wrapper or tracker. Lower resolution (640x640), simplest possible detection example."
+  complexity: simple
+  models:
+    - type: detection
+      default_h8: yolov6n
+      default_h8l: yolov6n
+      default_h10h: yolov6n
+      postprocess: libyolo_hailortpp_postprocess.so
+      postprocess_function: filter
+  pipeline_pattern: source_infer_display
+  features: [labels_json, batch_size_2, no_webcam_compression]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Quick prototyping"
+    - "Learning the framework"
+    - "Minimal detection pipeline"
+  good_starting_point_for:
+    - "First-time users learning the framework"
+    - "Simplest possible detection pipeline"
+    - "Low-latency detection without tracking"
+  key_files:
+    - hailo_apps/python/pipeline_apps/detection_simple/detection_simple.py
+    - hailo_apps/python/pipeline_apps/detection_simple/detection_simple_pipeline.py
+  cli_command: "hailo-detect-simple"
+  related_apps: [detection]
+  callback_receives: [hailo.HAILO_DETECTION]
+
+pose_estimation:
+  category: pipeline
+  display_name: "Pose Estimation"
+  description: "Real-time human pose estimation with YOLOv8 pose models. Detects body keypoints (17 COCO keypoints) with tracking."
+  complexity: moderate
+  models:
+    - type: pose
+      default_h8: yolov8m_pose
+      default_h8l: yolov8s_pose
+      default_h10h: yolov8m_pose
+      postprocess: libyolov8pose_postprocess.so
+      postprocess_function: filter_letterbox
+  pipeline_pattern: source_infer_wrapper_track_display
+  features: [tracker, inference_wrapper, batch_size_2]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Fitness tracking"
+    - "Gesture recognition"
+    - "Activity recognition"
+    - "Sports analytics"
+    - "Fall detection"
+  good_starting_point_for:
+    - "Any pose/keypoint estimation task"
+    - "Building gesture-based interactions"
+  key_files:
+    - hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation.py
+    - hailo_apps/python/pipeline_apps/pose_estimation/pose_estimation_pipeline.py
+  cli_command: "hailo-pose"
+  related_apps: [detection]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_LANDMARKS, hailo.HAILO_UNIQUE_ID]
+
+instance_segmentation:
+  category: pipeline
+  display_name: "Instance Segmentation"
+  description: "Real-time instance segmentation with YOLOv5-seg models. Generates per-object pixel masks with tracking."
+  complexity: moderate
+  models:
+    - type: segmentation
+      default_h8: yolov5m_seg
+      default_h8l: yolov5n_seg
+      default_h10h: yolov5m_seg
+      postprocess: libyolov5seg_postprocess.so
+      postprocess_function: filter_letterbox
+  pipeline_pattern: source_infer_wrapper_track_display
+  features: [tracker, inference_wrapper, config_json, batch_size_2]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Object segmentation"
+    - "Scene understanding"
+    - "Autonomous driving perception"
+    - "Industrial inspection"
+  good_starting_point_for:
+    - "Any pixel-level segmentation task"
+    - "Object masking applications"
+  key_files:
+    - hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation.py
+    - hailo_apps/python/pipeline_apps/instance_segmentation/instance_segmentation_pipeline.py
+  cli_command: "hailo-seg"
+  related_apps: [detection]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_CONF_CLASS_MASK, hailo.HAILO_UNIQUE_ID]
+
+face_recognition:
+  category: pipeline
+  display_name: "Face Recognition"
+  description: "Multi-model cascaded pipeline: SCRFD face detection followed by ArcFace recognition via cropper. Includes vector database (LanceDB) for identity matching, training mode, and telegram notifications."
+  complexity: complex
+  models:
+    - type: face_detection
+      default_h8: scrfd_10g
+      default_h8l: scrfd_2.5g
+      default_h10h: scrfd_10g
+      postprocess: libscrfd.so
+      postprocess_function: "scrfd_10g_letterbox (h8/h10h) or scrfd_2_5g_letterbox (h8l)"
+    - type: face_recognition
+      default_h8: arcface_mobilefacenet
+      default_h8l: arcface_mobilefacenet
+      default_h10h: arcface_mobilefacenet
+      postprocess: libface_recognition_post.so
+      postprocess_function: filter
+  pipeline_pattern: source_infer_wrapper_track_cropper_infer_display
+  features: [tracker, inference_wrapper, cropper, multi_model, vector_db, train_mode, face_align]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Access control"
+    - "Visitor identification"
+    - "Attendance tracking"
+    - "Smart doorbell"
+  good_starting_point_for:
+    - "Face identification systems"
+    - "Cascaded multi-model pipelines with cropper"
+    - "Vector database integration"
+  key_files:
+    - hailo_apps/python/pipeline_apps/face_recognition/face_recognition.py
+    - hailo_apps/python/pipeline_apps/face_recognition/face_recognition_pipeline.py
+    - hailo_apps/python/pipeline_apps/face_recognition/face_recon_algo_params.json
+  cli_command: "hailo-face-recon"
+  related_apps: [reid_multisource]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_UNIQUE_ID, hailo.HAILO_MATRIX, hailo.HAILO_CLASSIFICATION]
+
+depth:
+  category: pipeline
+  display_name: "Depth Estimation"
+  description: "Monocular depth estimation using SCDepthV3. Produces per-pixel depth maps from single camera input."
+  complexity: simple
+  models:
+    - type: depth
+      default_h8: scdepthv3
+      default_h8l: scdepthv3
+      default_h10h: scdepthv3
+      postprocess: libdepth_postprocess.so
+      postprocess_function: filter_scdepth
+  pipeline_pattern: source_infer_wrapper_display
+  features: [inference_wrapper]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Distance estimation"
+    - "3D scene understanding"
+    - "Obstacle avoidance"
+    - "AR/VR applications"
+  good_starting_point_for:
+    - "Depth estimation tasks"
+    - "Simplest inference wrapper pipeline (no tracker)"
+  key_files:
+    - hailo_apps/python/pipeline_apps/depth/depth.py
+    - hailo_apps/python/pipeline_apps/depth/depth_pipeline.py
+  cli_command: "hailo-depth"
+  related_apps: []
+  callback_receives: [hailo.HAILO_DEPTH_MASK]
+
+clip:
+  category: pipeline
+  display_name: "CLIP Zero-Shot Classification"
+  description: "Multi-model CLIP pipeline with optional detection. CLIP image encoder classifies objects using text prompts. Supports detector modes (person, vehicle, face, license-plate, none) and runtime text prompt editing via GUI."
+  complexity: complex
+  models:
+    - type: clip_image_encoder
+      default_h8: clip_vit_b_32_image_encoder
+      default_h8l: clip_vit_b_32_image_encoder
+      default_h10h: clip_vit_b_32_image_encoder
+      postprocess: libclip_postprocess.so
+      postprocess_function: filter
+    - type: detection
+      default_h8: hailo_yolov8n_4_classes_vga
+      default_h8l: hailo_yolov8n_4_classes_vga
+      default_h10h: hailo_yolov8n_4_classes_vga
+      postprocess: libyolo_hailortpp_postprocess.so
+      postprocess_function: filter
+    - type: clip_text_encoder
+      default_h8: clip_vit_b_32_text_encoder
+      default_h8l: clip_vit_b_32_text_encoder
+      default_h10h: clip_vit_b_32_text_encoder
+      postprocess: none
+  pipeline_pattern: source_infer_wrapper_track_cropper_clip_display
+  features: [tracker, inference_wrapper, cropper, multi_model, gui, text_prompts, muxer, multi_process_service]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Zero-shot image classification"
+    - "Object search by text description"
+    - "Content filtering"
+    - "Custom category detection without retraining"
+  good_starting_point_for:
+    - "Text-based object search"
+    - "Zero-shot classification without model retraining"
+  key_files:
+    - hailo_apps/python/pipeline_apps/clip/clip.py
+    - hailo_apps/python/pipeline_apps/clip/clip_pipeline.py
+    - hailo_apps/python/pipeline_apps/clip/text_image_matcher.py
+    - hailo_apps/python/pipeline_apps/clip/gui.py
+  cli_command: "hailo-clip"
+  related_apps: [detection]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_MATRIX, hailo.HAILO_CLASSIFICATION, hailo.HAILO_UNIQUE_ID]
+
+tiling:
+  category: pipeline
+  display_name: "Tiling Detection"
+  description: "High-resolution tiling pipeline for detecting small objects. Splits frames into configurable tile grids, runs detection on each tile, and aggregates results. Supports multi-scale tiling and auto/manual tile configuration."
+  complexity: moderate
+  models:
+    - type: detection
+      default_h8: hailo_yolov8n_4_classes_vga
+      default_h8l: hailo_yolov8n_4_classes_vga
+      default_h10h: hailo_yolov8n_4_classes_vga
+      postprocess: libyolo_hailortpp_postprocess.so
+      postprocess_function: filter
+  pipeline_pattern: source_tilecropper_infer_display
+  features: [tile_cropper, multi_scale, auto_tiling, labels_json]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Small object detection in high-res imagery"
+    - "Drone/aerial surveillance (VisDrone)"
+    - "Parking lot monitoring"
+    - "Wide-area surveillance"
+  good_starting_point_for:
+    - "Detecting small objects in high-resolution input"
+    - "Tiled inference pipelines"
+  key_files:
+    - hailo_apps/python/pipeline_apps/tiling/tiling.py
+    - hailo_apps/python/pipeline_apps/tiling/tiling_pipeline.py
+    - hailo_apps/python/pipeline_apps/tiling/configuration.py
+    - hailo_apps/python/pipeline_apps/tiling/tile_calculator.py
+  cli_command: "hailo-tiling"
+  related_apps: [detection]
+  callback_receives: [hailo.HAILO_DETECTION]
+
+multisource:
+  category: pipeline
+  display_name: "Multi-Source Detection"
+  description: "Multiple camera streams multiplexed through a single detection pipeline using round-robin scheduling and stream routing. Each source gets its own display with callbacks."
+  complexity: complex
+  models:
+    - type: detection
+      default_h8: yolov8m
+      default_h8l: yolov8s
+      default_h10h: yolov8m
+      postprocess: libyolo_hailortpp_postprocess.so
+      postprocess_function: filter_letterbox
+  pipeline_pattern: multi_source_roundrobin_infer_router
+  features: [tracker, multi_source, round_robin, stream_router, stream_id_tool]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Multi-camera surveillance"
+    - "Parking lot monitoring"
+    - "Multi-angle production monitoring"
+  good_starting_point_for:
+    - "Multi-camera detection systems"
+    - "Multiplexing multiple video streams through one accelerator"
+  key_files:
+    - hailo_apps/python/pipeline_apps/multisource/multisource.py
+    - hailo_apps/python/pipeline_apps/multisource/multisource_pipeline.py
+  cli_command: "hailo-multisource"
+  related_apps: [reid_multisource, detection]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_UNIQUE_ID]
+
+reid_multisource:
+  category: pipeline
+  display_name: "Re-ID Multi-Source"
+  description: "Multi-camera face re-identification pipeline. Combines SCRFD face detection with ArcFace embedding extraction across multiple streams, using vector database to track identities across cameras."
+  complexity: complex
+  models:
+    - type: face_detection
+      default_h8: scrfd_10g
+      default_h8l: scrfd_2.5g
+      default_h10h: scrfd_10g
+      postprocess: libscrfd.so
+      postprocess_function: "scrfd_10g_letterbox (h8/h10h) or scrfd_2_5g_letterbox (h8l)"
+    - type: face_recognition
+      default_h8: arcface_mobilefacenet
+      default_h8l: arcface_mobilefacenet
+      default_h10h: arcface_mobilefacenet
+      postprocess: libface_recognition_post.so
+      postprocess_function: filter
+  pipeline_pattern: multi_source_roundrobin_cascaded_infer_router
+  features: [tracker, inference_wrapper, cropper, multi_model, multi_source, round_robin, stream_router, vector_db, face_align, reid]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Cross-camera person tracking"
+    - "Building-wide security"
+    - "Multi-entrance visitor tracking"
+  good_starting_point_for:
+    - "Cross-camera re-identification"
+    - "Most complex pipeline combining multi-source with cascaded models"
+  key_files:
+    - hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource.py
+    - hailo_apps/python/pipeline_apps/reid_multisource/reid_multisource_pipeline.py
+  cli_command: "hailo-reid"
+  related_apps: [face_recognition, multisource]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_UNIQUE_ID, hailo.HAILO_MATRIX, hailo.HAILO_CLASSIFICATION]
+
+paddle_ocr:
+  category: pipeline
+  display_name: "Paddle OCR"
+  description: "Multi-model OCR pipeline: text region detection followed by text recognition via cropper. Detects text bounding boxes then crops and recognizes characters."
+  complexity: complex
+  models:
+    - type: ocr_detection
+      default_h8: ocr_det
+      default_h8l: ocr_det
+      default_h10h: ocr_det
+      postprocess: libocr_postprocess.so
+      postprocess_function: paddleocr_det
+    - type: ocr_recognition
+      default_h8: ocr
+      default_h8l: ocr
+      default_h10h: ocr
+      postprocess: libocr_postprocess.so
+      postprocess_function: paddleocr_recognize
+  pipeline_pattern: source_infer_wrapper_track_cropper_infer_display
+  features: [tracker, inference_wrapper, cropper, multi_model]
+  input_types: [camera, file, rtsp]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Text recognition in video"
+    - "License plate reading"
+    - "Document scanning"
+    - "Sign reading"
+  good_starting_point_for:
+    - "OCR/text recognition in video"
+    - "Cascaded detection + recognition pipelines"
+  key_files:
+    - hailo_apps/python/pipeline_apps/paddle_ocr/paddle_ocr.py
+    - hailo_apps/python/pipeline_apps/paddle_ocr/paddle_ocr_pipeline.py
+  cli_command: "hailo-ocr"
+  related_apps: [face_recognition]
+  callback_receives: [hailo.HAILO_DETECTION, hailo.HAILO_UNIQUE_ID, hailo.HAILO_CLASSIFICATION]
+
+# ============================================================================
+# STANDALONE APPS (7 apps) - Lightweight HailoRT-only apps, no GStreamer
+# ============================================================================
+
+object_detection_standalone:
+  category: standalone
+  display_name: "Object Detection (Standalone)"
+  description: "Standalone object detection using HailoAsyncInference API. CPU-based post-processing, visualization with OpenCV, FPS monitoring. No GStreamer required."
+  complexity: simple
+  models:
+    - type: detection
+      default_h8: yolov8m
+      default_h8l: yolov8s
+      default_h10h: yolov8m
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, opencv_visualization, fps_monitor]
+  input_types: [images, file, camera]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Learning HailoRT API"
+    - "Batch image processing"
+    - "Quick prototyping without GStreamer"
+  good_starting_point_for:
+    - "Understanding HailoRT inference directly"
+    - "Batch processing of images/videos"
+  key_files:
+    - hailo_apps/python/standalone_apps/object_detection/object_detection.py
+    - hailo_apps/python/standalone_apps/object_detection/object_detection_post_process.py
+  cli_command: null
+  related_apps: [detection]
+  callback_receives: null
+
+instance_segmentation_standalone:
+  category: standalone
+  display_name: "Instance Segmentation (Standalone)"
+  description: "Standalone instance segmentation using HailoAsyncInference. CPU-based mask generation and visualization."
+  complexity: simple
+  models:
+    - type: segmentation
+      default_h8: yolov5m_seg
+      default_h8l: yolov5n_seg
+      default_h10h: yolov5m_seg
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, opencv_visualization, fps_monitor]
+  input_types: [images, file, camera]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Batch segmentation"
+    - "Offline mask generation"
+  good_starting_point_for:
+    - "Standalone segmentation without GStreamer"
+  key_files:
+    - hailo_apps/python/standalone_apps/instance_segmentation/instance_segmentation.py
+    - hailo_apps/python/standalone_apps/instance_segmentation/post_process/postprocessing.py
+  cli_command: null
+  related_apps: [instance_segmentation]
+  callback_receives: null
+
+pose_estimation_standalone:
+  category: standalone
+  display_name: "Pose Estimation (Standalone)"
+  description: "Standalone pose estimation using HailoAsyncInference. CPU-based keypoint detection and skeleton visualization."
+  complexity: simple
+  models:
+    - type: pose
+      default_h8: yolov8m_pose
+      default_h8l: yolov8s_pose
+      default_h10h: yolov8m_pose
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, opencv_visualization, fps_monitor]
+  input_types: [images, file, camera]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Batch pose analysis"
+    - "Offline keypoint extraction"
+  good_starting_point_for:
+    - "Standalone pose estimation"
+  key_files:
+    - hailo_apps/python/standalone_apps/pose_estimation/pose_estimation.py
+    - hailo_apps/python/standalone_apps/pose_estimation/pose_estimation_utils.py
+  cli_command: null
+  related_apps: [pose_estimation]
+  callback_receives: null
+
+lane_detection_standalone:
+  category: standalone
+  display_name: "Lane Detection (Standalone)"
+  description: "Standalone lane detection using UFLD v2 model. Detects road lane markings for autonomous driving applications."
+  complexity: simple
+  models:
+    - type: lane_detection
+      default_h8: ufld_v2_tu
+      default_h8l: null
+      default_h10h: ufld_v2_tu
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, opencv_visualization, fps_monitor]
+  input_types: [images, file]
+  hardware: [hailo8, hailo10h]
+  use_cases:
+    - "Lane departure warning"
+    - "Autonomous driving perception"
+    - "Road analysis"
+  good_starting_point_for:
+    - "Lane detection and road marking tasks"
+  key_files:
+    - hailo_apps/python/standalone_apps/lane_detection/lane_detection.py
+    - hailo_apps/python/standalone_apps/lane_detection/lane_detection_utils.py
+  cli_command: null
+  related_apps: []
+  callback_receives: null
+
+super_resolution_standalone:
+  category: standalone
+  display_name: "Super Resolution (Standalone)"
+  description: "Image upscaling using Real-ESRGAN x2 model. Enhances image resolution by 2x."
+  complexity: simple
+  models:
+    - type: super_resolution
+      default_h8: real_esrgan_x2
+      default_h8l: real_esrgan_x2
+      default_h10h: real_esrgan_x2
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess]
+  input_types: [images]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Image enhancement"
+    - "Upscaling low-resolution footage"
+    - "Preprocessing for other models"
+  good_starting_point_for:
+    - "Image enhancement tasks"
+  key_files:
+    - hailo_apps/python/standalone_apps/super_resolution/super_resolution.py
+    - hailo_apps/python/standalone_apps/super_resolution/super_resolution_utils.py
+  cli_command: null
+  related_apps: []
+  callback_receives: null
+
+oriented_object_detection_standalone:
+  category: standalone
+  display_name: "Oriented Object Detection (Standalone)"
+  description: "Detects objects with oriented (rotated) bounding boxes using YOLO11s-OBB model. Useful for aerial/satellite imagery."
+  complexity: simple
+  models:
+    - type: oriented_detection
+      default_h8: yolo11s_obb
+      default_h8l: yolo11s_obb
+      default_h10h: yolo11s_obb
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, opencv_visualization, fps_monitor]
+  input_types: [images]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Aerial/satellite object detection"
+    - "Rotated text detection"
+    - "Ship detection in satellite imagery"
+  good_starting_point_for:
+    - "Oriented bounding box detection"
+  key_files:
+    - hailo_apps/python/standalone_apps/oriented_object_detection/oriented_object_detection.py
+    - hailo_apps/python/standalone_apps/oriented_object_detection/oriented_object_detection_post_process.py
+  cli_command: null
+  related_apps: []
+  callback_receives: null
+
+paddle_ocr_standalone:
+  category: standalone
+  display_name: "Paddle OCR (Standalone)"
+  description: "Standalone OCR using multi-model pipeline: text detection + text recognition. CPU-based postprocessing with PaddleOCR utilities."
+  complexity: moderate
+  models:
+    - type: ocr_detection
+      default_h8: ocr_det
+      default_h8l: ocr_det
+      default_h10h: ocr_det
+      postprocess: none
+    - type: ocr_recognition
+      default_h8: ocr
+      default_h8l: ocr
+      default_h10h: ocr
+      postprocess: none
+  pipeline_pattern: null
+  features: [async_inference, cpu_postprocess, multi_model]
+  input_types: [images]
+  hardware: [hailo8, hailo8l, hailo10h]
+  use_cases:
+    - "Batch text recognition"
+    - "Document processing"
+  good_starting_point_for:
+    - "Standalone OCR without GStreamer"
+  key_files:
+    - hailo_apps/python/standalone_apps/paddle_ocr/paddle_ocr.py
+    - hailo_apps/python/standalone_apps/paddle_ocr/paddle_ocr_utils.py
+    - hailo_apps/python/standalone_apps/paddle_ocr/db_postprocess.py
+  cli_command: null
+  related_apps: [paddle_ocr]
+  callback_receives: null
+
+# ============================================================================
+# GENAI APPS (7 apps) - Hailo-10H only
+# ============================================================================
+
+voice_assistant:
+  category: genai
+  display_name: "Voice Assistant"
+  description: "Full voice assistant combining Whisper speech-to-text, Qwen LLM for responses, and Piper TTS for speech output. Includes VAD (Voice Activity Detection) for hands-free interaction."
+  complexity: complex
+  models:
+    - type: speech_to_text
+      default_h8: null
+      default_h8l: null
+      default_h10h: Whisper-Base
+      postprocess: none
+    - type: llm
+      default_h8: null
+      default_h8l: null
+      default_h10h: Qwen2.5-1.5B-Instruct
+      postprocess: none
+  pipeline_pattern: null
+  features: [speech_to_text, llm, text_to_speech, vad, voice_interaction]
+  input_types: [mic]
+  hardware: [hailo10h]
+  use_cases:
+    - "Voice-controlled AI assistant"
+    - "Hands-free device control"
+    - "Interactive voice applications"
+  good_starting_point_for:
+    - "Building voice AI applications"
+    - "Combining speech and language models"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/voice_assistant/voice_assistant.py
+    - hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/interaction.py
+    - hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/speech_to_text.py
+    - hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/text_to_speech.py
+  cli_command: null
+  related_apps: [simple_whisper_chat, simple_llm_chat, agent_tools_example]
+  callback_receives: null
+
+vlm_chat:
+  category: genai
+  display_name: "VLM Chat"
+  description: "Vision-Language Model chat application with camera capture. Capture images from camera, ask questions about them, and get AI-generated answers using Qwen2-VL-2B model."
+  complexity: moderate
+  models:
+    - type: vlm
+      default_h8: null
+      default_h8l: null
+      default_h10h: Qwen2-VL-2B-Instruct
+      postprocess: none
+  pipeline_pattern: null
+  features: [vlm, camera_capture, interactive_chat, opencv_display]
+  input_types: [camera]
+  hardware: [hailo10h]
+  use_cases:
+    - "Visual question answering"
+    - "Image description"
+    - "Scene understanding with natural language"
+  good_starting_point_for:
+    - "Vision-language applications"
+    - "Image understanding with natural language"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py
+    - hailo_apps/python/gen_ai_apps/vlm_chat/backend.py
+  cli_command: null
+  related_apps: [simple_vlm_chat]
+  callback_receives: null
+
+agent_tools_example:
+  category: genai
+  display_name: "Agent Tools Example"
+  description: "Voice-to-action agent with function calling. Uses Qwen2.5-Coder LLM to interpret voice/text commands and execute tools (elevator, servo, RGB LED, weather, math). YAML-based tool configuration."
+  complexity: complex
+  models:
+    - type: llm
+      default_h8: null
+      default_h8l: null
+      default_h10h: Qwen2.5-Coder-1.5B-Instruct
+      postprocess: none
+  pipeline_pattern: null
+  features: [llm, tool_calling, voice_mode, yaml_config, function_calling, context_management]
+  input_types: [mic]
+  hardware: [hailo10h]
+  use_cases:
+    - "Voice-controlled IoT"
+    - "Smart home automation"
+    - "Tool-calling AI agents"
+    - "Function calling with LLMs"
+  good_starting_point_for:
+    - "Building AI agents with tool calling"
+    - "IoT control via natural language"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/agent_tools_example/agent.py
+    - hailo_apps/python/gen_ai_apps/agent_tools_example/config.py
+    - hailo_apps/python/gen_ai_apps/agent_tools_example/yaml_config.py
+    - hailo_apps/python/gen_ai_apps/agent_tools_example/tools/base.py
+  cli_command: null
+  related_apps: [voice_assistant]
+  callback_receives: null
+
+simple_llm_chat:
+  category: genai
+  display_name: "Simple LLM Chat"
+  description: "Minimal text-based LLM chat example using Qwen2.5-1.5B. Interactive terminal chat with the language model."
+  complexity: simple
+  models:
+    - type: llm
+      default_h8: null
+      default_h8l: null
+      default_h10h: Qwen2.5-1.5B-Instruct
+      postprocess: none
+  pipeline_pattern: null
+  features: [llm, terminal_chat]
+  input_types: []
+  hardware: [hailo10h]
+  use_cases:
+    - "Learning GenAI SDK"
+    - "Text generation"
+    - "Chatbot prototyping"
+  good_starting_point_for:
+    - "First GenAI app on Hailo-10H"
+    - "Understanding the LLM API"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/simple_llm_chat/simple_llm_chat.py
+  cli_command: null
+  related_apps: [voice_assistant, agent_tools_example]
+  callback_receives: null
+
+simple_vlm_chat:
+  category: genai
+  display_name: "Simple VLM Chat"
+  description: "Minimal VLM example: load an image, ask a question, get an answer. Demonstrates the VLM API with Qwen2-VL-2B."
+  complexity: simple
+  models:
+    - type: vlm
+      default_h8: null
+      default_h8l: null
+      default_h10h: Qwen2-VL-2B-Instruct
+      postprocess: none
+  pipeline_pattern: null
+  features: [vlm, image_input]
+  input_types: [images]
+  hardware: [hailo10h]
+  use_cases:
+    - "Learning VLM API"
+    - "Single-image visual QA"
+  good_starting_point_for:
+    - "Understanding the VLM API"
+    - "Image-based question answering"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/simple_vlm_chat/simple_vlm_chat.py
+  cli_command: null
+  related_apps: [vlm_chat]
+  callback_receives: null
+
+simple_whisper_chat:
+  category: genai
+  display_name: "Simple Whisper Chat"
+  description: "Minimal speech-to-text example using Whisper-Base. Transcribes audio files or microphone input."
+  complexity: simple
+  models:
+    - type: speech_to_text
+      default_h8: null
+      default_h8l: null
+      default_h10h: Whisper-Base
+      postprocess: none
+  pipeline_pattern: null
+  features: [speech_to_text]
+  input_types: [mic]
+  hardware: [hailo10h]
+  use_cases:
+    - "Learning speech-to-text API"
+    - "Audio transcription"
+  good_starting_point_for:
+    - "Understanding the Whisper/Speech2Text API"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/simple_whisper_chat/simple_whisper_chat.py
+  cli_command: null
+  related_apps: [voice_assistant]
+  callback_receives: null
+
+hailo_ollama:
+  category: genai
+  display_name: "Hailo Ollama"
+  description: "Integration guide for Hailo-Ollama with Open WebUI. Uses the Ollama-compatible REST API (hailo-ollama) for local LLM inference with a web chat interface. Requires separate hailo-ollama binary installation."
+  complexity: moderate
+  models:
+    - type: llm
+      default_h8: null
+      default_h8l: null
+      default_h10h: "varies (via ollama pull)"
+      postprocess: none
+  pipeline_pattern: null
+  features: [ollama_api, web_ui, rest_api]
+  input_types: []
+  hardware: [hailo10h]
+  use_cases:
+    - "Web-based LLM chat"
+    - "Ollama-compatible API server"
+    - "Integration with third-party tools"
+  good_starting_point_for:
+    - "Using Hailo with Ollama ecosystem"
+    - "Web-based LLM interfaces"
+  key_files:
+    - hailo_apps/python/gen_ai_apps/hailo_ollama/README.md
+  cli_command: null
+  related_apps: [simple_llm_chat]
+  callback_receives: null

@@ -1,0 +1,283 @@
+# ============================================================================
+# DECISION TREE - Guides app selection based on user requirements
+# ============================================================================
+# Two sections: structured decision tree and keyword shortcuts.
+
+decision_tree:
+  question: "Is this a real-time video application?"
+  yes:
+    question: "Do you need multiple cameras?"
+    yes:
+      question: "Do you need to track identities across cameras?"
+      yes:
+        recommend: reid_multisource
+        reason: "Re-ID multi-source pipeline tracks faces across multiple cameras using SCRFD detection + ArcFace embeddings + vector database."
+      no:
+        recommend: multisource
+        reason: "Multi-source pipeline multiplexes multiple camera streams through a single detection pipeline with round-robin scheduling."
+    no:
+      question: "What is the primary task?"
+      detection:
+        question: "Do you need to detect small objects in high-resolution images?"
+        yes:
+          recommend: tiling
+          reason: "Tiling pipeline splits high-res frames into tiles, runs detection on each, and aggregates results. Ideal for small objects in aerial/wide-area views."
+        no:
+          question: "Do you need the simplest possible pipeline?"
+          yes:
+            recommend: detection_simple
+            reason: "Simplest detection pipeline without inference wrapper or tracker. Good for prototyping and learning."
+          no:
+            recommend: detection
+            reason: "Full detection pipeline with inference wrapper for resolution preservation, tracking, and batch processing."
+      pose:
+        recommend: pose_estimation
+        reason: "YOLOv8 pose estimation with 17 COCO keypoints, tracking, and inference wrapper for resolution preservation."
+      segmentation:
+        recommend: instance_segmentation
+        reason: "YOLOv5-seg instance segmentation with per-object pixel masks and tracking."
+      depth:
+        recommend: depth
+        reason: "Monocular depth estimation using SCDepthV3. Produces per-pixel depth maps from single camera."
+      ocr:
+        recommend: paddle_ocr
+        reason: "Multi-model OCR pipeline: text region detection + text recognition via cropper. Handles scene text in video."
+      face:
+        question: "Do you need to identify specific people?"
+        yes:
+          recommend: face_recognition
+          reason: "Cascaded SCRFD face detection + ArcFace recognition with vector database for identity matching and training mode."
+        no:
+          recommend: detection
+          reason: "Use detection pipeline with a face detection model, or CLIP with detector=face for zero-shot face classification."
+      classification:
+        question: "Do you want text-based zero-shot classification?"
+        yes:
+          recommend: clip
+          reason: "CLIP pipeline classifies objects using text prompts with no retraining. Supports detection + CLIP or full-frame CLIP."
+        no:
+          recommend: detection
+          reason: "Use detection pipeline with appropriate classification model."
+      gesture:
+        recommend: pose_estimation
+        reason: "Build on pose estimation pipeline - use hand/body keypoints in callback to classify gestures."
+      text_search:
+        recommend: clip
+        reason: "CLIP enables zero-shot text-based object search. Describe what you want to find in natural language."
+  no:
+    question: "Do you need generative AI (LLM, VLM, speech)?"
+    yes:
+      question: "What type of GenAI application?"
+      voice_assistant:
+        recommend: voice_assistant
+        reason: "Full voice pipeline: Whisper speech-to-text + Qwen LLM + Piper TTS. Hands-free conversational AI."
+      chat_text:
+        recommend: simple_llm_chat
+        reason: "Simplest LLM chat example. Terminal-based text chat with Qwen2.5-1.5B."
+      vision_language:
+        question: "Do you need a full app with camera and interactive UI?"
+        yes:
+          recommend: vlm_chat
+          reason: "Full VLM chat app with camera capture, interactive display, and multi-turn conversation."
+        no:
+          recommend: simple_vlm_chat
+          reason: "Minimal VLM example: load image, ask question, get answer."
+      speech_to_text:
+        recommend: simple_whisper_chat
+        reason: "Minimal Whisper speech-to-text example. Transcribes audio files or mic input."
+      tool_calling:
+        recommend: agent_tools_example
+        reason: "AI agent with function calling via LLM. Voice/text commands control tools (IoT, weather, math)."
+      web_ui:
+        recommend: hailo_ollama
+        reason: "Ollama-compatible API for web-based LLM chat via Open WebUI."
+    no:
+      question: "What type of standalone processing?"
+      detection:
+        recommend: object_detection_standalone
+        reason: "Standalone detection using HailoAsyncInference. No GStreamer needed. Good for batch processing and learning HailoRT."
+      segmentation:
+        recommend: instance_segmentation_standalone
+        reason: "Standalone segmentation with CPU-based mask generation."
+      pose:
+        recommend: pose_estimation_standalone
+        reason: "Standalone pose estimation with keypoint extraction."
+      lane:
+        recommend: lane_detection_standalone
+        reason: "Lane detection using UFLD v2 for autonomous driving perception."
+      super_resolution:
+        recommend: super_resolution_standalone
+        reason: "Image upscaling with Real-ESRGAN x2."
+      oriented_detection:
+        recommend: oriented_object_detection_standalone
+        reason: "Rotated bounding box detection for aerial/satellite imagery."
+      ocr:
+        recommend: paddle_ocr_standalone
+        reason: "Standalone OCR with text detection + recognition. No GStreamer needed."
+      batch_processing:
+        recommend: object_detection_standalone
+        reason: "Standalone apps are best for batch processing images without GStreamer overhead."
+
+# ============================================================================
+# KEYWORD SHORTCUTS - Quick lookup by common use case keywords
+# ============================================================================
+
+shortcuts:
+  # Surveillance and security
+  security:
+    recommend: detection
+    reason: "Object detection pipeline for security camera monitoring with tracking"
+  surveillance:
+    recommend: multisource
+    reason: "Multi-camera surveillance through a single accelerator"
+  parking:
+    recommend: multisource
+    reason: "Multiple camera feeds for parking lot monitoring"
+  access_control:
+    recommend: face_recognition
+    reason: "Face detection + recognition for access control systems"
+  visitor:
+    recommend: face_recognition
+    reason: "Face recognition with training mode for visitor identification"
+  cross_camera:
+    recommend: reid_multisource
+    reason: "Track identities across multiple cameras using face re-identification"
+
+  # People and body
+  face:
+    recommend: face_recognition
+    reason: "Face detection + recognition pipeline with identity database"
+  people_counting:
+    recommend: detection
+    reason: "Detection pipeline with person class tracking for counting"
+  pose:
+    recommend: pose_estimation
+    reason: "YOLOv8 pose estimation with 17 body keypoints"
+  fitness:
+    recommend: pose_estimation
+    reason: "Pose estimation for tracking exercise form and counting reps"
+  fall_detection:
+    recommend: pose_estimation
+    reason: "Use body keypoints from pose estimation to detect falls"
+  gesture:
+    recommend: pose_estimation
+    reason: "Build on pose estimation keypoints to classify hand/body gestures"
+
+  # Vehicles and driving
+  traffic:
+    recommend: detection
+    reason: "Object detection for traffic analysis (vehicles, pedestrians)"
+  lane:
+    recommend: lane_detection_standalone
+    reason: "Lane detection for autonomous driving perception"
+  license_plate:
+    recommend: clip
+    reason: "CLIP with detector=license-plate for plate reading, or paddle_ocr for text recognition"
+
+  # Text and OCR
+  ocr:
+    recommend: paddle_ocr
+    reason: "Multi-model OCR pipeline for real-time text detection and recognition"
+  text:
+    recommend: paddle_ocr
+    reason: "Paddle OCR for text region detection and character recognition"
+  sign:
+    recommend: paddle_ocr
+    reason: "OCR pipeline for reading signs and text in video"
+
+  # Aerial and small objects
+  drone:
+    recommend: tiling
+    reason: "Tiling pipeline for detecting small objects in aerial/drone footage"
+  aerial:
+    recommend: tiling
+    reason: "Tiling pipeline optimized for high-res aerial imagery"
+  satellite:
+    recommend: oriented_object_detection_standalone
+    reason: "Oriented bounding box detection for rotated objects in satellite imagery"
+  small_objects:
+    recommend: tiling
+    reason: "Tiling splits high-res frames into tiles to find small objects"
+
+  # Image processing
+  depth:
+    recommend: depth
+    reason: "Monocular depth estimation from single camera"
+  distance:
+    recommend: depth
+    reason: "Depth estimation for distance measurement"
+  upscale:
+    recommend: super_resolution_standalone
+    reason: "Real-ESRGAN x2 for image upscaling"
+  enhance:
+    recommend: super_resolution_standalone
+    reason: "Super resolution for image quality enhancement"
+  segmentation:
+    recommend: instance_segmentation
+    reason: "Instance segmentation with per-object pixel masks"
+
+  # Classification and search
+  classify:
+    recommend: clip
+    reason: "CLIP for zero-shot classification using text prompts"
+  search:
+    recommend: clip
+    reason: "CLIP for text-based visual search without retraining"
+  zero_shot:
+    recommend: clip
+    reason: "CLIP enables zero-shot classification from text descriptions"
+
+  # GenAI
+  chatbot:
+    recommend: simple_llm_chat
+    reason: "Simple LLM chat for text-based conversation"
+  voice:
+    recommend: voice_assistant
+    reason: "Voice assistant with speech-to-text + LLM + TTS"
+  whisper:
+    recommend: simple_whisper_chat
+    reason: "Whisper-based speech-to-text transcription"
+  transcription:
+    recommend: simple_whisper_chat
+    reason: "Audio transcription using Whisper speech-to-text"
+  vlm:
+    recommend: vlm_chat
+    reason: "Vision-Language Model for image understanding with natural language"
+  image_qa:
+    recommend: vlm_chat
+    reason: "Visual question answering: capture image, ask questions"
+  agent:
+    recommend: agent_tools_example
+    reason: "AI agent with function calling for IoT control and tool execution"
+  iot:
+    recommend: agent_tools_example
+    reason: "Voice/text controlled IoT via AI agent with tool calling"
+  smart_home:
+    recommend: agent_tools_example
+    reason: "Agent with function calling for smart home automation"
+  ollama:
+    recommend: hailo_ollama
+    reason: "Ollama-compatible API with Open WebUI for web-based LLM chat"
+  web_chat:
+    recommend: hailo_ollama
+    reason: "Web-based chat interface via Hailo-Ollama + Open WebUI"
+
+  # Learning and prototyping
+  beginner:
+    recommend: detection_simple
+    reason: "Simplest pipeline app - best for first-time users"
+  learn_hailort:
+    recommend: object_detection_standalone
+    reason: "Standalone app using HailoRT directly without GStreamer"
+  learn_genai:
+    recommend: simple_llm_chat
+    reason: "Simplest GenAI example for learning the Hailo GenAI SDK"
+  prototype:
+    recommend: detection_simple
+    reason: "Simple detection pipeline for quick prototyping"
+  batch:
+    recommend: object_detection_standalone
+    reason: "Standalone apps are best for batch image/video processing"
+  no_gstreamer:
+    recommend: object_detection_standalone
+    reason: "Standalone apps require only HailoRT, no GStreamer"

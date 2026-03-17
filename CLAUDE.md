@@ -152,6 +152,17 @@ Share optimization insights with the Hailo community. Formats findings, sanitize
 - `/contribute-insights '<json>'` — Accepts structured data from other agents
 - Called automatically at end of `/profile-pipeline` sessions
 
+### Skill: `/app-builder`
+Interactive agent that helps create new Hailo AI applications. Discovers requirements, recommends the best starting template from 25+ existing apps, scaffolds the project, guides implementation, and integrates with `/profile-pipeline` and `/contribute-insights`.
+
+- `/app-builder` — Start interactive discovery conversation
+- `/app-builder <description>` — Parse intent, jump to recommendation (e.g., `/app-builder "count people entering a store"`)
+- `/app-builder list` — Show catalog of all apps organized by category
+- `/app-builder from <app-name>` — Start from a specific template app
+- `/app-builder standalone` / `genai` / `pipeline` — Constrain to app type
+- Knowledge base: `.claude/skills/app-builder/knowledge/` (app catalog, decision tree, pipeline patterns, templates)
+- Per-app CLAUDE.md files: Each app directory contains a `CLAUDE.md` with architecture, pipeline structure, and extension guides
+
 ### Cross-Agent Knowledge
 
 #### Community Contributions (for all agents)
