@@ -125,14 +125,14 @@ decision_tree:
 shortcuts:
   # Surveillance and security
   security:
-    recommend: detection
-    reason: "Object detection pipeline for security camera monitoring with tracking"
+    recommend: face_recognition
+    reason: "Face recognition pipeline for security with identity matching and alarm on unknowns. Use detection if you only need motion/object alerts without identity."
   surveillance:
     recommend: multisource
     reason: "Multi-camera surveillance through a single accelerator"
   parking:
-    recommend: multisource
-    reason: "Multiple camera feeds for parking lot monitoring"
+    recommend: detection
+    reason: "Detection pipeline for parking lot monitoring with vehicle tracking. Use multisource if you have multiple cameras."
   access_control:
     recommend: face_recognition
     reason: "Face detection + recognition for access control systems"
@@ -143,7 +143,23 @@ shortcuts:
     recommend: reid_multisource
     reason: "Track identities across multiple cameras using face re-identification"
 
+  access_door:
+    recommend: face_recognition
+    reason: "Face recognition for door access control with identity matching and alarm on unknown faces"
+  alarm:
+    recommend: face_recognition
+    reason: "Face recognition with alarm trigger for unknown/unauthorized faces"
+
   # People and body
+  crowd:
+    recommend: detection
+    reason: "Detection pipeline with person tracking for crowd counting and density analysis"
+  line_crossing:
+    recommend: detection
+    reason: "Detection pipeline with tracker for counting objects crossing a virtual line"
+  counting:
+    recommend: detection
+    reason: "Detection pipeline with tracking for counting objects (people, vehicles, etc.)"
   face:
     recommend: face_recognition
     reason: "Face detection + recognition pipeline with identity database"
@@ -162,6 +178,30 @@ shortcuts:
   gesture:
     recommend: pose_estimation
     reason: "Build on pose estimation keypoints to classify hand/body gestures"
+  workout:
+    recommend: pose_estimation
+    reason: "Pose estimation for tracking exercise form, joint angles, and counting reps"
+  exercise:
+    recommend: pose_estimation
+    reason: "Pose estimation for exercise tracking and repetition counting via joint angles"
+  rep_counter:
+    recommend: pose_estimation
+    reason: "Pose estimation with joint angle tracking to count exercise repetitions"
+  baby:
+    recommend: pose_estimation
+    reason: "Pose estimation for infant monitoring — detect sleeping position, movement patterns"
+  sleep_monitor:
+    recommend: pose_estimation
+    reason: "Pose estimation to monitor sleeping position safety and detect unsafe postures"
+  posture:
+    recommend: pose_estimation
+    reason: "Pose estimation for posture analysis, ergonomics, and position monitoring"
+  animal:
+    recommend: face_recognition
+    reason: "Face recognition pipeline adapted for animal identification. Note: requires animal-specific detection/embedding models for production use."
+  pet:
+    recommend: face_recognition
+    reason: "Face recognition pipeline for pet identification with training mode. Note: SCRFD/ArcFace are human-face models — production use needs animal-specific models."
 
   # Vehicles and driving
   traffic:
@@ -170,9 +210,12 @@ shortcuts:
   lane:
     recommend: lane_detection_standalone
     reason: "Lane detection for autonomous driving perception"
+  dashcam:
+    recommend: object_detection_standalone
+    reason: "Standalone detection for batch dashcam video analysis. Use pipeline detection for real-time dashcam processing."
   license_plate:
-    recommend: clip
-    reason: "CLIP with detector=license-plate for plate reading, or paddle_ocr for text recognition"
+    recommend: paddle_ocr
+    reason: "Cascaded OCR pipeline for license plate text reading: detect plate region + recognize characters. Use CLIP only if classifying plate types, not reading text."
 
   # Text and OCR
   ocr:
@@ -199,6 +242,14 @@ shortcuts:
     recommend: tiling
     reason: "Tiling splits high-res frames into tiles to find small objects"
 
+  # Aerial and oriented detection
+  oriented:
+    recommend: oriented_object_detection_standalone
+    reason: "Rotated bounding box detection for objects at arbitrary angles (aerial, satellite, document)"
+  rotated_bbox:
+    recommend: oriented_object_detection_standalone
+    reason: "Oriented/rotated bounding box detection for non-axis-aligned objects"
+
   # Image processing
   depth:
     recommend: depth
@@ -206,6 +257,12 @@ shortcuts:
   distance:
     recommend: depth
     reason: "Depth estimation for distance measurement"
+  proximity:
+    recommend: depth
+    reason: "Depth estimation for proximity detection and closeness alerts"
+  obstacle:
+    recommend: depth
+    reason: "Depth estimation for obstacle detection and avoidance"
   upscale:
     recommend: super_resolution_standalone
     reason: "Real-ESRGAN x2 for image upscaling"
@@ -215,6 +272,20 @@ shortcuts:
   segmentation:
     recommend: instance_segmentation
     reason: "Instance segmentation with per-object pixel masks"
+
+  # PPE and safety
+  ppe:
+    recommend: clip
+    reason: "CLIP zero-shot classification for PPE compliance (helmet, vest, goggles) without retraining"
+  helmet:
+    recommend: clip
+    reason: "CLIP zero-shot detection of safety helmets and hard hats on workers"
+  safety_equipment:
+    recommend: clip
+    reason: "CLIP for zero-shot safety equipment detection (PPE, helmets, vests, goggles)"
+  construction:
+    recommend: clip
+    reason: "CLIP for construction site safety monitoring — detect PPE compliance with text prompts"
 
   # Classification and search
   classify:
@@ -227,6 +298,20 @@ shortcuts:
     recommend: clip
     reason: "CLIP enables zero-shot classification from text descriptions"
 
+  # Inspection and quality
+  inspection:
+    recommend: vlm_chat
+    reason: "VLM for visual quality inspection — describe defects in natural language from camera images"
+  quality:
+    recommend: vlm_chat
+    reason: "VLM for quality control — capture images and get natural language defect descriptions"
+  defect:
+    recommend: vlm_chat
+    reason: "VLM for defect detection — describe manufacturing defects using vision-language model"
+  manufacturing:
+    recommend: vlm_chat
+    reason: "VLM for manufacturing inspection — visual quality analysis with natural language output"
+
   # GenAI
   chatbot:
     recommend: simple_llm_chat
@@ -234,6 +319,12 @@ shortcuts:
   voice:
     recommend: voice_assistant
     reason: "Voice assistant with speech-to-text + LLM + TTS"
+  voice_camera:
+    recommend: voice_assistant
+    reason: "Voice-controlled camera combining voice_assistant (STT+LLM+TTS) with vlm_chat (camera+VLM). Hybrid app — start from voice_assistant, add VLM backend from vlm_chat."
+  smart_camera:
+    recommend: voice_assistant
+    reason: "Smart camera with voice control. Combines voice_assistant + vlm_chat templates for voice+vision hybrid."
   whisper:
     recommend: simple_whisper_chat
     reason: "Whisper-based speech-to-text transcription"

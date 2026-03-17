@@ -1,0 +1,21 @@
+{
+  "visualization_params": {
+    "score_thres": 0.3,
+    "max_boxes_to_draw": 100,
+    "traffic_light_class_id": 9,
+    "color_map": {
+      "red": [0, 0, 255],
+      "yellow": [0, 255, 255],
+      "green": [0, 255, 0],
+      "unknown": [128, 128, 128]
+    },
+    "tracker": {
+      "track_thresh": 0.3,
+      "track_buffer": 30,
+      "match_thresh": 0.8,
+      "aspect_ratio_thresh": 3.0,
+      "min_box_area": 100,
+      "mot20": false
+    }
+  }
+}

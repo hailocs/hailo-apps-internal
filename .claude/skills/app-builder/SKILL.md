@@ -202,7 +202,9 @@ doc/developer_guide/gstreamer_helper_pipelines.md
 
 ### Step 3: Create the directory structure
 
-**Pipeline apps** — create `hailo_apps/python/pipeline_apps/<new_name>/`:
+**IMPORTANT: New apps go in `community/apps/`, NOT in `hailo_apps/python/`.** The main codebase directories are reserved for official apps. Community and user-built apps live in a separate directory to ease merge and maintenance.
+
+**Pipeline apps** — create `community/apps/pipeline_apps/<new_name>/`:
 ```
 <new_name>/
 ├── __init__.py
@@ -211,14 +213,14 @@ doc/developer_guide/gstreamer_helper_pipelines.md
 └── README.md                 # App documentation
 ```
 
-**Standalone apps** — create `hailo_apps/python/standalone_apps/<new_name>/`:
+**Standalone apps** — create `community/apps/standalone_apps/<new_name>/`:
 ```
 <new_name>/
 ├── <new_name>.py             # Single script with HailoAsyncInference
 └── README.md
 ```
 
-**GenAI apps** — create `hailo_apps/python/gen_ai_apps/<new_name>/`:
+**GenAI apps** — create `community/apps/gen_ai_apps/<new_name>/`:
 ```
 <new_name>/
 ├── <new_name>.py             # Main script using hailo_platform.genai
@@ -242,7 +244,7 @@ Adapt the template source code to the new app's requirements. Key adaptations:
   - Tiling → use `TILE_CROPPER_PIPELINE()`
 - **Callback logic** — adapt to the user's specific processing needs
 - **CLI arguments** — add any app-specific arguments via `argparse`
-- **Imports** — update all import paths to reflect the new app location
+- **Imports** — use `community.apps.<type>_apps.<app_name>` for self-referencing imports (e.g., pipeline importing from its own app). Keep `hailo_apps.python.core.*` imports unchanged — those reference the framework.
 
 ### Step 5: Generate README.md
 
@@ -260,7 +262,7 @@ After scaffolding, summarize:
 > "Created your **vehicle_counter** app:
 >
 > ```
-> hailo_apps/python/pipeline_apps/vehicle_counter/
+> community/apps/pipeline_apps/vehicle_counter/
 > ├── __init__.py
 > ├── vehicle_counter_pipeline.py  — Pipeline definition (YOLOv8 detection + overlay)
 > ├── vehicle_counter.py           — Callback with vehicle counting logic
@@ -296,6 +298,11 @@ When building pipeline strings, always reference the helper functions rather tha
 
 Help write the callback function:
 
+- **Check code snippets first:** Read `.claude/skills/app-builder/knowledge/code_snippets.yaml` for reusable patterns that match the use case:
+  - **Pose apps** → `pose_keypoints`, `joint_angle_calculation`, `arm_angle_and_discretization`
+  - **Counting apps** → `line_crossing`, `zone_polygon`, `detection_filter_and_track`
+  - **Alert apps** → `proximity_alert`, `signal_stabilization`
+  - **All apps** → `per_track_state`, `custom_cli_args`, `frame_overlay_text`
 - Show how to extract detections, classifications, landmarks, masks from the buffer
 - Demonstrate filtering by label or confidence
 - Help implement counting, tracking, or alerting logic
@@ -344,6 +351,77 @@ After implementation, offer to review:
 
 > "Want me to read through the complete pipeline and callback to check for issues? I'll look for common pitfalls like blocking callbacks, missing queue elements, and incorrect format conversions."
 
+## Phase 4.5: Peer Review — Multi-Expert Validation
+
+**Goal:** Catch bugs, quality issues, and UX problems before the user tries to run the app. This phase is **mandatory** — never skip it.
+
+After implementation (Phase 4) is complete, run a peer review using 3 sub-agents in parallel. Each agent reads the app's source files and README, checks for issues from their perspective, and reports findings.
+
+### Launch 3 Reviewer Agents in Parallel
+
+Use the `Agent` tool to launch all 3 simultaneously:
+
+#### Reviewer 1: ML Expert
+Focus: model correctness, inference extraction, label filtering, coordinate handling, tracker usage.
+
+Checklist:
+- Is `hailo.get_roi_from_buffer()` / `get_objects_typed()` correct for the model type?
+- Are COCO labels filtered correctly (e.g., `"person"` for people, vehicle classes for cars)?
+- Are bbox coordinates handled correctly (normalized [0,1] from hailo, pixel conversion when needed)?
+- For pose apps: are keypoint indices correct? Is `(point.x() * bbox.width() + bbox.xmin()) * width` used?
+- Is `HAILO_UNIQUE_ID` extraction correct? Is `track_id == 0` (untracked) handled?
+- Is the callback non-blocking (no file I/O, no network, no heavy computation in the GStreamer thread)?
+- Does the callback signature match the connection method: `(element, buffer, user_data)` for identity handoff?
+
+#### Reviewer 2: Application Engineer
+Focus: runtime correctness, import validity, CLI args, documentation standards.
+
+Checklist:
+- Do all imports resolve? (`python3 -m py_compile` all .py files)
+- Are classes renamed from template (not still using template class names)?
+- Does `get_pipeline_string()` have valid GStreamer syntax?
+- Is `self.options_menu` used (not `self.options`) for accessing parsed args?
+- Are custom CLI args not duplicated between the main file and pipeline file?
+- **README must use relative paths** for run commands (e.g., `python hailo_apps/python/...`)
+- **README must use `--input usb`** for camera examples, never `--input /dev/video0`
+- Does README have: Description, Prerequisites, Usage, Architecture, Customization sections?
+
+#### Reviewer 3: App Designer / UX
+Focus: output quality, CLI design, developer experience, consistency.
+
+Checklist:
+- Does console output use throttling (`frame_count % 30 == 0`)? Never print every frame.
+- Are visual overlays readable with meaningful colors (red=danger, green=safe)?
+- Are CLI args well-named (`--kebab-case`) with help text?
+- Do defaults let the app run meaningfully with zero custom args?
+- Are configuration values exposed as CLI args (not hardcoded constants requiring code edits)?
+- Does the app follow naming conventions: `PascalCaseCallback` classes, `snake_case` functions?
+- Is separation of concerns clean (domain logic in callback, pipeline boilerplate in pipeline file)?
+
+### Process Review Results
+
+After all 3 reviewers report back:
+
+1. **BROKEN issues** (app won't start) → fix immediately before proceeding
+2. **MAJOR issues** (wrong behavior, unusable output) → fix before proceeding
+3. **MINOR issues** (style, non-critical) → fix or note for the user
+4. **PASS** → proceed to Phase 5
+
+Common bugs caught by peer review (from the 20-app test suite):
+- Callback signature mismatch: `(pad, info, user_data)` vs correct `(element, buffer, user_data)`
+- `self.options` instead of `self.options_menu` for parsed args
+- Duplicate argparse arguments in both main file and pipeline file
+- Missing label filtering (counting all detections regardless of class)
+- Console output on every frame (no throttling)
+- `--input /dev/video0` in README instead of `--input usb`
+- Absolute paths in README run commands
+
+> "I've run a peer review with 3 experts (ML, Engineering, UX). Here's what they found:
+>
+> [summary of findings]
+>
+> I've fixed the critical issues. Ready to test?"
+
 ## Phase 5: Testing — Run and Iterate
 
 **Goal:** Help the user run their app and diagnose issues.
@@ -352,17 +430,22 @@ After implementation, offer to review:
 
 ```bash
 # Pipeline app with default video input
-python hailo_apps/python/pipeline_apps/<new_name>/<new_name>.py
+python community/apps/pipeline_apps/<new_name>/<new_name>.py
 
 # With USB camera
-python hailo_apps/python/pipeline_apps/<new_name>/<new_name>.py --input usb
+python community/apps/pipeline_apps/<new_name>/<new_name>.py --input usb
 
 # With specific video file
-python hailo_apps/python/pipeline_apps/<new_name>/<new_name>.py --input path/to/video.mp4
+python community/apps/pipeline_apps/<new_name>/<new_name>.py --input path/to/video.mp4
 
 # Standalone app
-python hailo_apps/python/standalone_apps/<new_name>/<new_name>.py
+python community/apps/standalone_apps/<new_name>/<new_name>.py
 ```
+
+**Documentation standards (mandatory for README.md):**
+- Always use **relative paths** from repo root (e.g., `python community/apps/...`)
+- Use `--input usb` for camera examples — never `--input /dev/video0`
+- For multi-camera apps, use video file examples — not `/dev/videoN` paths
 
 ### Step 2: Diagnose common issues
 
@@ -394,7 +477,7 @@ Once the app is running correctly:
 If the user agrees, suggest running:
 
 ```
-/profile-pipeline hailo_apps/python/pipeline_apps/<new_name>/<new_name>.py
+/profile-pipeline community/apps/pipeline_apps/<new_name>/<new_name>.py
 ```
 
 This hands off to the profile-pipeline skill, which will handle the full profiling workflow.
@@ -415,6 +498,7 @@ During the app-building process, these files are your primary references:
 |------|-----------------|
 | `.claude/skills/app-builder/knowledge/app_catalog.yaml` | Phase 2 — choosing a template |
 | `.claude/skills/app-builder/knowledge/decision_tree.yaml` | Phase 2 — shortcut rules |
+| `.claude/skills/app-builder/knowledge/code_snippets.yaml` | Phase 4 — reusable callback patterns (pose angles, line crossing, zones, alerts, tracking state) |
 | `hailo_apps/config/resources_config.yaml` | Phase 2-4 — available models per arch |
 | `doc/developer_guide/gstreamer_helper_pipelines.md` | Phase 3-4 — pipeline string construction |
 | `doc/developer_guide/app_development.md` | Phase 3-4 — app architecture patterns |
