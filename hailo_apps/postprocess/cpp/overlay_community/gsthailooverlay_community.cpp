@@ -80,6 +80,7 @@ enum
     PROP_SPRITE_CONFIG,
     PROP_STYLE_CONFIG,
     PROP_SPRITE_REPLACE_BBOX,
+    PROP_HUD_OVERLAY,
 };
 
 static void
@@ -179,6 +180,11 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
                                     g_param_spec_boolean("sprite-replace-bbox", "sprite-replace-bbox", "When true, a bbox sprite replaces the bounding box and label text instead of overlaying on top.", false,
                                                          (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
+    /* Phase 4: HUD overlay */
+    g_object_class_install_property(gobject_class, PROP_HUD_OVERLAY,
+                                    g_param_spec_boolean("hud-overlay", "hud-overlay", "Whether to draw HUD elements (arrows, text) from overlay_arrow and overlay_text metadata.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+
     gobject_class->dispose = gst_hailooverlay_community_dispose;
     gobject_class->finalize = gst_hailooverlay_community_finalize;
     base_transform_class->start = GST_DEBUG_FUNCPTR(gst_hailooverlay_community_start);
@@ -214,6 +220,8 @@ gst_hailooverlay_community_init(GstHailoOverlayCommunity *hailooverlay)
     hailooverlay->sprite_config_path = g_strdup("");
     hailooverlay->style_config_path = g_strdup("");
     hailooverlay->sprite_replace_bbox = false;
+    // Phase 4
+    hailooverlay->hud_overlay = false;
     // Internal state
     hailooverlay->show_labels_set = new std::unordered_set<std::string>();
     hailooverlay->hide_labels_set = new std::unordered_set<std::string>();
@@ -322,6 +330,9 @@ void gst_hailooverlay_community_set_property(GObject *object, guint property_id,
     case PROP_SPRITE_REPLACE_BBOX:
         hailooverlay->sprite_replace_bbox = g_value_get_boolean(value);
         break;
+    case PROP_HUD_OVERLAY:
+        hailooverlay->hud_overlay = g_value_get_boolean(value);
+        break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
         break;
@@ -399,6 +410,9 @@ void gst_hailooverlay_community_get_property(GObject *object, guint property_id,
         break;
     case PROP_SPRITE_REPLACE_BBOX:
         g_value_set_boolean(value, hailooverlay->sprite_replace_bbox);
+        break;
+    case PROP_HUD_OVERLAY:
+        g_value_set_boolean(value, hailooverlay->hud_overlay);
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(object, property_id, pspec);
@@ -513,6 +527,11 @@ gst_hailooverlay_community_transform_ip(GstBaseTransform *trans,
                                hailooverlay->stats_timestamps,
                                hailooverlay->stats_index,
                                hailooverlay->stats_count);
+        }
+
+        if (hailooverlay->hud_overlay)
+        {
+            draw_hud_overlay(*hmat.get(), hailo_roi);
         }
     }
     if (ret != OVERLAY_STATUS_OK)
