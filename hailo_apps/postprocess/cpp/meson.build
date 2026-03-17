@@ -297,6 +297,20 @@ shared_library('palm_croppers',
 )
 
 ################################################
+# PERSON PALM CROPPERS (person → square crop for palm detection)
+################################################
+person_palm_croppers_sources = [
+    'person_palm_croppers.cpp',
+]
+shared_library('person_palm_croppers',
+    person_palm_croppers_sources,
+    dependencies : postprocess_dep,
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: '/usr/local/hailo/resources/so',
+)
+
+################################################
 # HAND AFFINE WARP (rotation correction, use-gst-buffer=true)
 ################################################
 hand_affine_warp_sources = [

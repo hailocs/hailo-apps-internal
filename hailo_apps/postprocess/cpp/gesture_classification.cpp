@@ -100,8 +100,9 @@ void gesture_classification_filter(HailoROIPtr roi)
         if (!det)
             continue;
 
-        // Remove palm detections — they served their purpose in the cropper stage
-        if (det->get_label() == "palm")
+        // Remove person_palm_crop detections (synthetic crop regions, not real detections).
+        // Keep palm detections — their landmarks are useful for debugging and visible in overlay.
+        if (det->get_label() == "person_palm_crop")
         {
             to_remove.push_back(obj);
             continue;

@@ -38,16 +38,57 @@ std::vector<HailoROIPtr> palm_to_hand_crop(std::shared_ptr<HailoMat> image, Hail
     float frame_w = (float)image->width();
     float frame_h = (float)image->height();
 
+    // Collect palm detections from two possible locations:
+    // 1. Direct children of ROI (whole-buffer mode)
+    // 2. Nested inside person_palm_crop sub-detections (person-crop mode)
+    //    In case 2, palm coords are parent-bbox-relative and must be promoted
+    //    to frame-absolute so the hand crop geometry works correctly.
+    std::vector<HailoDetectionPtr> palms;
     auto detections = hailo_common::get_hailo_detections(roi);
+
+    for (auto &det : detections)
+    {
+        if (det->get_label() == "palm")
+        {
+            palms.push_back(det);
+        }
+        else if (det->get_label() == "person_palm_crop")
+        {
+            HailoBBox pb = det->get_bbox();
+            for (auto &child_obj : det->get_objects_typed(HAILO_DETECTION))
+            {
+                auto child = std::dynamic_pointer_cast<HailoDetection>(child_obj);
+                if (!child || child->get_label() != "palm")
+                    continue;
+
+                // Convert bbox from parent-relative to frame-absolute
+                HailoBBox cb = child->get_bbox();
+                HailoBBox abs_bbox(
+                    pb.xmin() + cb.xmin() * pb.width(),
+                    pb.ymin() + cb.ymin() * pb.height(),
+                    cb.width() * pb.width(),
+                    cb.height() * pb.height());
+
+                auto promoted = std::make_shared<HailoDetection>(
+                    abs_bbox, "palm", child->get_confidence());
+
+                // Copy landmarks — keypoints are bbox-relative [0,1] so they
+                // stay valid with the new (remapped) parent bbox
+                for (auto &lm_obj : child->get_objects_typed(HAILO_LANDMARKS))
+                    promoted->add_object(lm_obj);
+
+                roi->add_object(promoted);
+                palms.push_back(promoted);
+            }
+        }
+    }
+
     int hand_count = 0;
 
-    for (auto &detection : detections)
+    for (auto &detection : palms)
     {
         if (hand_count >= MAX_HANDS)
             break;
-
-        if (detection->get_label() != "palm")
-            continue;
 
         // Get palm keypoints
         auto landmarks_objs = detection->get_objects_typed(HAILO_LANDMARKS);
