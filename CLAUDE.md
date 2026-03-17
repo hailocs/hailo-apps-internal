@@ -46,13 +46,17 @@ hailo_apps/
 doc/                           # User guide + developer guide
 tests/                         # Pytest suite
 community/
-└── contributions/             # Community-contributed insights (PRs to dev)
-    ├── README.md
-    ├── pipeline-optimization/
-    ├── bottleneck-patterns/
-    ├── model-tuning/
-    ├── hardware-config/
-    └── general/
+├── contributions/             # Community-contributed insights (PRs to dev)
+│   ├── README.md
+│   ├── pipeline-optimization/
+│   ├── bottleneck-patterns/
+│   ├── model-tuning/
+│   ├── hardware-config/
+│   └── general/
+└── apps/                      # Community-built example apps (20 apps)
+    ├── pipeline_apps/         # 13 pipeline apps
+    ├── standalone_apps/       # 5 standalone apps
+    └── gen_ai_apps/           # 2 GenAI apps
 ```
 
 ## Three App Types
