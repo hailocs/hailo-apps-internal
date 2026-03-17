@@ -7,6 +7,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <glib.h>
 #include "overlay.hpp"
@@ -546,7 +547,8 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
             HailoClassificationPtr classification = std::dynamic_pointer_cast<HailoClassification>(obj);
             const std::string &cls_type = classification->get_classification_type();
             // Skip metadata classifications not meant for display
-            if (cls_type == "overlay_color" || cls_type == "overlay_sprite")
+            if (cls_type == "overlay_color" || cls_type == "overlay_sprite" ||
+                cls_type == "overlay_arrow" || cls_type == "overlay_text")
                 break;
 
             number_of_classifications++;
@@ -679,6 +681,99 @@ void face_blur(HailoMat &hmat, HailoROIPtr roi)
         else
         {
             face_blur(hmat, detection);
+        }
+    }
+}
+
+static bool parse_kv_float(const std::string &label, const std::string &key, float &out) {
+    std::string needle = key + ":";
+    auto pos = label.find(needle);
+    if (pos == std::string::npos) return false;
+    try {
+        out = std::stof(label.substr(pos + needle.size()));
+    } catch (...) { return false; }
+    return true;
+}
+
+static bool parse_kv_string(const std::string &label, const std::string &key, std::string &out) {
+    std::string needle = key + ":";
+    auto pos = label.find(needle);
+    if (pos == std::string::npos) return false;
+    size_t start = pos + needle.size();
+    size_t end = label.find(',', start);
+    out = label.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    return true;
+}
+
+void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi)
+{
+    cv::Mat &frame = hmat.get_matrices()[0];
+    int w = frame.cols;
+    int h = frame.rows;
+
+    for (auto &obj : roi->get_objects()) {
+        if (obj->get_type() != HAILO_CLASSIFICATION) continue;
+        auto cls = std::dynamic_pointer_cast<HailoClassification>(obj);
+        if (!cls) continue;
+
+        const std::string &cls_type = cls->get_classification_type();
+        const std::string &label = cls->get_label();
+
+        if (cls_type == "overlay_arrow") {
+            float x = 0.5f, y = 0.5f, angle = 0.0f, len = 0.05f;
+            float r = 0, g = 255, b = 0, t = 2;
+
+            parse_kv_float(label, "x", x);
+            parse_kv_float(label, "y", y);
+            parse_kv_float(label, "angle", angle);
+            parse_kv_float(label, "len", len);
+            parse_kv_float(label, "r", r);
+            parse_kv_float(label, "g", g);
+            parse_kv_float(label, "b", b);
+            parse_kv_float(label, "t", t);
+
+            int px = (int)(x * w);
+            int py = (int)(y * h);
+            float rad = angle * (float)M_PI / 180.0f;
+            int ex = px + (int)(len * h * cosf(rad));
+            int ey = py - (int)(len * h * sinf(rad)); // screen y is inverted
+
+            cv::arrowedLine(frame, cv::Point(px, py), cv::Point(ex, ey),
+                            cv::Scalar((int)r, (int)g, (int)b),
+                            (int)t, cv::LINE_AA, 0, 0.3);
+
+        } else if (cls_type == "overlay_text") {
+            float x = 0.5f, y = 0.5f;
+            float r = 255, g = 255, b = 255, scale = 0.6f, bg = 0;
+            std::string text;
+
+            parse_kv_float(label, "x", x);
+            parse_kv_float(label, "y", y);
+            parse_kv_string(label, "text", text);
+            parse_kv_float(label, "r", r);
+            parse_kv_float(label, "g", g);
+            parse_kv_float(label, "b", b);
+            parse_kv_float(label, "scale", scale);
+            parse_kv_float(label, "bg", bg);
+
+            if (text.empty()) continue;
+
+            cv::Point pos((int)(x * w), (int)(y * h));
+            cv::Scalar color((int)r, (int)g, (int)b);
+
+            if (bg > 0.5f) {
+                int baseline = 0;
+                cv::Size text_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+                    scale, 1, &baseline);
+                cv::Rect bg_rect(pos.x - 2, pos.y - text_size.height - 2,
+                    text_size.width + 4, text_size.height + baseline + 4);
+                // Clip to frame
+                bg_rect &= cv::Rect(0, 0, w, h);
+                cv::rectangle(frame, bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+            }
+
+            cv::putText(frame, text, pos, cv::FONT_HERSHEY_SIMPLEX,
+                        scale, color, 1, cv::LINE_AA);
         }
     }
 }

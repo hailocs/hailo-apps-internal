@@ -50,6 +50,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
 void face_blur(HailoMat &mat, HailoROIPtr roi);
 void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
                         uint64_t *timestamps, int &index, int &count);
+void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi);
 
 cv::Scalar indexToColor(size_t index);
 
