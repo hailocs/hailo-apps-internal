@@ -57,6 +57,8 @@ struct _GstHailoOverlayCommunity
     uint64_t stats_timestamps[30];
     int stats_index;
     int stats_count;
+    // Phase 4: HUD overlay
+    gboolean hud_overlay;
 };
 
 struct _GstHailoOverlayCommunityClass
