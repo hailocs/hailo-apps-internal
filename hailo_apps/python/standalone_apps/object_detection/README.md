@@ -143,6 +143,8 @@ Arguments
 - `--track`: [optional] Enable object tracking across frames using BYTETracker.
 - `--show-fps`: [optional] Display FPS performance metrics for video/camera input.
 - `--no-display`: [optional] Run without opening a display window. Useful for headless or performance testing.
+- `--video-unpaced`: [optional] Process video input as fast as possible without respecting the original video FPS (no pacing).
+- `-t`, `--time-to-run`: [optional] Maximum runtime in seconds. Stops the application after the specified duration.
 - `-f, --frame-rate`: [optional][Camera only] Override the camera input framerate.
 - `--list-models`: [optional] Print all supported models for this application (from `resources_config.yaml`) and exit.
 - `--list-inputs`: [optional] Print the available predefined input resources (images/videos) defined in `resources_config.yaml` for this application, then exit.
