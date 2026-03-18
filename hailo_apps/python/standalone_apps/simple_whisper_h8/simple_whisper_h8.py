@@ -271,11 +271,18 @@ def main():
     npy_dir = Path(RESOURCES_ROOT) / NPY_DIR
 
     # Initialize pipeline
-    from .whisper_pipeline import WhisperPipeline
-    from .audio_utils import (
-        load_audio, preprocess_audio, improve_audio, SAMPLE_RATE as SR,
-    )
-    from .postprocessing import clean_transcription
+    try:
+        from .whisper_pipeline import WhisperPipeline
+        from .audio_utils import (
+            load_audio, preprocess_audio, improve_audio, SAMPLE_RATE as SR,
+        )
+        from .postprocessing import clean_transcription
+    except ImportError:
+        from whisper_pipeline import WhisperPipeline
+        from audio_utils import (
+            load_audio, preprocess_audio, improve_audio, SAMPLE_RATE as SR,
+        )
+        from postprocessing import clean_transcription
 
     print("\nInitializing Whisper pipeline...")
     pipeline = WhisperPipeline(
@@ -319,8 +326,12 @@ def main():
 
 def _transcribe_file(audio_path: str, pipeline, chunk_length: int):
     """Load file, preprocess, and transcribe."""
-    from .audio_utils import load_audio, preprocess_audio, improve_audio
-    from .postprocessing import clean_transcription
+    try:
+        from .audio_utils import load_audio, preprocess_audio, improve_audio
+        from .postprocessing import clean_transcription
+    except ImportError:
+        from audio_utils import load_audio, preprocess_audio, improve_audio
+        from postprocessing import clean_transcription
 
     if not os.path.exists(audio_path):
         print(f"File not found: {audio_path}")
@@ -336,8 +347,12 @@ def _transcribe_file(audio_path: str, pipeline, chunk_length: int):
 
 def _transcribe_audio(audio: np.ndarray, pipeline, chunk_length: int):
     """Preprocess and transcribe raw audio array."""
-    from .audio_utils import preprocess_audio, improve_audio
-    from .postprocessing import clean_transcription
+    try:
+        from .audio_utils import preprocess_audio, improve_audio
+        from .postprocessing import clean_transcription
+    except ImportError:
+        from audio_utils import preprocess_audio, improve_audio
+        from postprocessing import clean_transcription
 
     peak_before = np.max(np.abs(audio))
     audio, start_time = improve_audio(audio)

@@ -1068,7 +1068,7 @@ class FrameRateTracker:
 ####################################################################
 # Resource Resolution Functions (for HACE compatibility)
 ####################################################################
-def resolve_arch(arch: str | None) -> str:
+def resolve_arch(arch: Optional[str]) -> str:
     """
     Resolve the target Hailo architecture using CLI, environment, or auto-detection.
 

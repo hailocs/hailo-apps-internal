@@ -15,7 +15,10 @@ from threading import Thread
 from hailo_platform import HEF, VDevice, HailoSchedulingAlgorithm, FormatType
 from transformers import AutoTokenizer
 
-from .postprocessing import apply_repetition_penalty
+try:
+    from .postprocessing import apply_repetition_penalty
+except ImportError:
+    from postprocessing import apply_repetition_penalty
 
 logger = logging.getLogger(__name__)
 
