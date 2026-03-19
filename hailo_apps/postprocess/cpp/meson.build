@@ -267,3 +267,26 @@ shared_library('ocr_postprocess',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
 )
+
+################################################
+# HAILOOVERLAY_COMMUNITY (custom overlay GStreamer element)
+################################################
+overlay_community_inc = include_directories('overlay_community')
+
+yaml_cpp_dep = dependency('yaml-cpp', required : true)
+
+overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
+if opencv_dep.found()
+    overlay_community_deps += opencv_dep
+endif
+
+shared_library('gsthailooverlay_community',
+    ['overlay_community/gsthailooverlay_community.cpp',
+     'overlay_community/overlay.cpp'],
+    include_directories : [rapidjson_inc, overlay_community_inc],
+    dependencies : overlay_community_deps,
+    cpp_args : ['-DPACKAGE="hailooverlay_community"'],
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: gst_plugins_dir,
+)
