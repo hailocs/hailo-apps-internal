@@ -106,6 +106,7 @@ class app_callback_class:
     Attributes:
         frame_count (int): Current frame number (auto-incremented by framework)
         use_frame (bool): Whether to extract frame data in callback
+        window_title (str): Title for the OpenCV display window (default: "User Frame")
         frame_queue (Queue): Queue for passing frames to display thread
         running (bool): Flag to control thread lifecycle
         callback_times (list): Debug mode - stores callback execution times
@@ -115,6 +116,7 @@ class app_callback_class:
         hailo_logger.debug("Initializing app_callback_class")
         self.frame_count = 0
         self.use_frame = False
+        self.window_title = "User Frame"
         self.frame_queue = multiprocessing.Queue(maxsize=3)
         self.running = True
         # Debug mode timing statistics
@@ -620,13 +622,23 @@ class GStreamerApp:
 
         print("Shutting down... Hit Ctrl-C again to force quit.")
         signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+        # Remove bus signal watch before state transitions to prevent
+        # callbacks firing during teardown
+        bus = self.pipeline.get_bus()
+        bus.remove_signal_watch()
+
         self.pipeline.set_state(Gst.State.PAUSED)
-        GLib.usleep(100000)
+        self.pipeline.get_state(2 * Gst.SECOND)
 
         self.pipeline.set_state(Gst.State.READY)
-        GLib.usleep(100000)
+        self.pipeline.get_state(2 * Gst.SECOND)
 
         self.pipeline.set_state(Gst.State.NULL)
+        # Wait for NULL to complete so HailoRT device is fully released
+        # before the process exits — prevents the std::system_error race
+        self.pipeline.get_state(5 * Gst.SECOND)
+
         GLib.idle_add(self.loop.quit)
 
     def update_fps_caps(self, new_fps=30, source_name="source"):
@@ -705,13 +717,21 @@ class GStreamerApp:
         if self.options_menu.dump_dot:
             GLib.timeout_add_seconds(3, self.dump_dot_file)
 
+        run_duration = getattr(self.options_menu, "run_duration", None)
+        if run_duration is not None:
+            GLib.timeout_add(int(run_duration * 1000), self.shutdown)
+            hailo_logger.info(f"Pipeline will shut down after {run_duration}s")
+
         self.loop.run()
         # Gtk.main()
 
         try:
             hailo_logger.debug("Cleaning up after loop exit")
             self.user_data.running = False
-            self.pipeline.set_state(Gst.State.NULL)
+            # Pipeline is already NULL from shutdown() — only set if still active
+            if self.pipeline.get_state(0).state != Gst.State.NULL:
+                self.pipeline.set_state(Gst.State.NULL)
+                self.pipeline.get_state(5 * Gst.SECOND)
             if self.options_menu.use_frame:
                 display_process.terminate()
                 display_process.join()
