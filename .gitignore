@@ -14,6 +14,9 @@ local_resources/piper_models/*.onnx
 local_resources/piper_models/*.onnx.json
 !local_resources/piper_models/.gitkeep
 
+# GST-Shark profiler traces
+**/gst_profiler_traces/
+
 # Logs and temp files
 *.log
 *.tmp
