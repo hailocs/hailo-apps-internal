@@ -104,6 +104,8 @@ system_packages:
   - "portaudio19-dev"
   - "python3-gi"
   - "python3-gi-cairo"
+  # C++ postprocess build dependencies
+  - "libyaml-cpp-dev"       # Required by hailooverlay_community GStreamer plugin
   # Static linking dependencies for TAPPAS >= 5.2.0
   - "libbz2-dev"
   - "liblzma-dev"
