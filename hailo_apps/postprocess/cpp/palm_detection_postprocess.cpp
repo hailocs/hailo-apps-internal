@@ -22,8 +22,9 @@
 #define NUM_COORDS 18       // 4 box coords + 7 keypoints * 2
 #define NUM_KEYPOINTS 7
 #define SCORE_CLIPPING_THRESH 100.0f
-#define MIN_SCORE_THRESH 0.5f
+#define MIN_SCORE_THRESH 0.7f
 #define MIN_SUPPRESSION_THRESHOLD 0.3f
+#define PALM_CLASS_ID 100             // Unique class ID so hailotracker can filter palms only
 
 // Anchor generation parameters
 static const int STRIDES[] = {8, 16, 16, 16};
@@ -296,7 +297,7 @@ void palm_detection_postprocess(HailoROIPtr roi)
             continue;
 
         HailoBBox bbox(xmin, ymin, w, h);
-        auto detection = std::make_shared<HailoDetection>(bbox, "palm", det.score);
+        auto detection = std::make_shared<HailoDetection>(bbox, PALM_CLASS_ID, "palm", det.score);
 
         // Add 7 keypoints as landmarks (bbox-relative [0,1])
         // HailoLandmarks convention: points are relative to parent detection bbox.

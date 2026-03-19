@@ -24,6 +24,7 @@
 #define DY (-0.5f)
 
 #define MAX_HANDS 4
+#define PALM_CLASS_ID 100  // Must match palm_detection_postprocess.cpp
 
 static inline float clamp01(float v)
 {
@@ -70,7 +71,7 @@ std::vector<HailoROIPtr> palm_to_hand_crop(std::shared_ptr<HailoMat> image, Hail
                     cb.height() * pb.height());
 
                 auto promoted = std::make_shared<HailoDetection>(
-                    abs_bbox, "palm", child->get_confidence());
+                    abs_bbox, PALM_CLASS_ID, "palm", child->get_confidence());
 
                 // Copy landmarks — keypoints are bbox-relative [0,1] so they
                 // stay valid with the new (remapped) parent bbox

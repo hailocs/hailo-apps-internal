@@ -319,6 +319,9 @@ def generate_all(trace_dir, output_dir=None, open_files=False):
         print(f"  ✓ {paths[-1].name}")
 
     print(f"\nAll graphs saved to: {output_dir}")
+    print(f"\nView charts:")
+    for p in paths:
+        print(f"  file://{p.resolve()}")
 
     if open_files:
         for p in paths:
