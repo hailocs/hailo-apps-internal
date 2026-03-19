@@ -229,13 +229,18 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event),        
-        kwargs={'preprocess_fn': normalized_preprocess if use_full_onnx else None}
+        target=preprocess,
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode),
+        kwargs={
+            'preprocess_fn': normalized_preprocess if use_full_onnx else None,
+            'stop_event': stop_event,
+        }
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
         args=(output_queue, cap, save_output, output_dir,
-               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display)
+               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event),
+        kwargs={"no_display": no_display}
     )
     
     if use_full_onnx:
@@ -361,20 +366,25 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
+
+    # --no-display implies --save-output
+    no_display = getattr(args, "no_display", False)
+    save_output = args.save_output or no_display
+
     run_inference_pipeline(
         args.hef_path,
         args.input,
         args.batch_size,
         args.labels,
         args.output_dir,
-        args.save_output,
+        save_output,
         args.camera_resolution,
         args.output_resolution,
         args.track,
         args.show_fps,
         args.frame_rate,
         args.draw_trail,
-        args.no_display,
+        no_display,
         args.onnxconfig,
         args  # Pass full args for --full-onnx flag
     )

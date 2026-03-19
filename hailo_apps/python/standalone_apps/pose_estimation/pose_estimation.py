@@ -365,14 +365,17 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event),
-        kwargs={"preprocess_fn": normalized_preprocess if use_full_onnx else None},
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode),
+        kwargs={
+            "preprocess_fn": normalized_preprocess if use_full_onnx else None,
+            "stop_event": stop_event,
+        },
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display),
+              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event),
         kwargs={"no_display": no_display},
     )
 
