@@ -265,6 +265,17 @@ def get_standalone_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--no-display",
+        action="store_true",
+        default=False,
+        help=(
+            "Disable frame display. "
+            "When enabled, the application runs without opening a visualization window. "
+            "Useful for performance testing or headless execution."
+        ),
+    )
+
+    parser.add_argument(
         "-or",
         "--output-resolution",
         nargs="+",

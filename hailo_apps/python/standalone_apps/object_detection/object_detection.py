@@ -7,7 +7,7 @@ from functools import partial
 from types import SimpleNamespace
 import numpy as np
 from pathlib import Path
-
+import collections
 try:
     from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
@@ -17,7 +17,13 @@ try:
         load_json_file,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
+    )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
@@ -48,7 +54,13 @@ except ImportError:
         load_json_file,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
+    )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
@@ -97,7 +109,6 @@ def parse_args():
         ),
     )
 
-
     parser.add_argument(
         "--draw-trail",
         action="store_true",
@@ -136,7 +147,8 @@ def parse_args():
 
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
-          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False, onnxconfig=None, onnxconfig_args=None) -> None:
+          enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False,
+          no_display=False, onnxconfig=None, onnxconfig_args=None) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
@@ -160,7 +172,12 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input_src, batch_size, camera_resolution)
+    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
+    cap_processing_mode = None
+    if cap is not None:
+        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
+
+    stop_event = threading.Event()
     tracker = None
     fps_tracker = None
     if show_fps:
@@ -171,8 +188,8 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         tracker_config = config_data.get("visualization_params", {}).get("tracker", {})
         tracker = BYTETracker(SimpleNamespace(**tracker_config))
 
-    input_queue = queue.Queue()
-    output_queue = queue.Queue()
+    input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
+    output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
 
     post_process_callback_fn = partial(
         inference_result_handler, labels=labels,
@@ -212,14 +229,13 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height),
-        # kwargs={'preprocess_fn': normalized_preprocess if (onnx_session is not None or use_full_onnx) else None}
+        target=preprocess, args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event),        
         kwargs={'preprocess_fn': normalized_preprocess if use_full_onnx else None}
     )
     postprocess_thread = threading.Thread(
         target=visualize, 
         args=(output_queue, cap, save_output, output_dir,
-               post_process_callback_fn, fps_tracker, output_resolution, frame_rate)
+               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display)
     )
     
     if use_full_onnx:
@@ -229,7 +245,7 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
         )
     else:
         infer_thread = threading.Thread(
-            target=infer, args=(hailo_inference, input_queue, output_queue)
+            target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
         )
 
     preprocess_thread.start()
@@ -239,21 +255,25 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     if show_fps:
         fps_tracker.start()
 
-    preprocess_thread.join()
-    infer_thread.join()
-    output_queue.put(None)  # Signal process thread to exit
-    postprocess_thread.join()
+    try:
+        preprocess_thread.join()
+        infer_thread.join()
+        postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
+
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
 
 
-
-def infer(hailo_inference, input_queue, output_queue):
+def infer(hailo_inference, input_queue, output_queue, stop_event):
     """
     Main inference loop that pulls data from the input queue, runs asynchronous
     inference, and pushes results to the output queue.
@@ -271,10 +291,16 @@ def infer(hailo_inference, input_queue, output_queue):
     Returns:
         None
     """
+    # Limit number of concurrent async inferences
+    pending_jobs = collections.deque()
+
     while True:
         next_batch = input_queue.get()
         if not next_batch:
             break  # Stop signal received
+
+        if stop_event.is_set():
+            continue  # Skip processing if stop signal is set
 
         input_batch, preprocessed_batch = next_batch
 
@@ -285,11 +311,17 @@ def infer(hailo_inference, input_queue, output_queue):
             output_queue=output_queue
         )
 
+
+        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
+            pending_jobs.popleft().wait(10000)
+
         # Run async inference
-        hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        job = hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        pending_jobs.append(job)
 
     # Release resources and context
     hailo_inference.close()
+    output_queue.put(None)
 
 
 def inference_callback(
@@ -322,7 +354,6 @@ def inference_callback(
                 }
             output_queue.put((input_batch[i], result))
 
-
 def main() -> None:
     """
     Main function to run the script.
@@ -343,6 +374,7 @@ def main() -> None:
         args.show_fps,
         args.frame_rate,
         args.draw_trail,
+        args.no_display,
         args.onnxconfig,
         args  # Pass full args for --full-onnx flag
     )

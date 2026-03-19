@@ -67,6 +67,8 @@ class VoiceAssistantApp:
 
         self.interaction = None
 
+        self.interaction = None
+
         print("✅ AI components ready!")
 
     def on_processing_start(self):
@@ -172,6 +174,9 @@ def main():
     add_logging_cli_args(parser)
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
+
+    # Add VAD arguments
+    add_vad_args(parser)
 
     # Add VAD arguments
     add_vad_args(parser)

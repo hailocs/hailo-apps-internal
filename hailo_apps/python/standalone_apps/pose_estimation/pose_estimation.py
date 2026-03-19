@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from pose_estimation_utils import PoseEstPostProcessing
 from aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
-
+import collections
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
     from hailo_apps.python.core.common.hailo_inference import HailoInfer
@@ -19,6 +19,7 @@ try:
         init_input_source,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
     )
     from hailo_apps.python.core.common.onnx_utils import (
@@ -27,7 +28,11 @@ try:
         normalized_preprocess,
         infer_full_onnx,
     )
-
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )
 except ImportError:
     repo_root = None
     for p in Path(__file__).resolve().parents:
@@ -45,8 +50,14 @@ except ImportError:
         init_input_source,
         preprocess,
         visualize,
+        select_cap_processing_mode,
         FrameRateTracker,
     )
+    from hailo_apps.python.core.common.defines import (
+        MAX_INPUT_QUEUE_SIZE,
+        MAX_OUTPUT_QUEUE_SIZE,
+        MAX_ASYNC_INFER_JOBS
+    )    
     from hailo_apps.python.core.common.onnx_utils import (
         load_onnx_config,
         init_onnx_sessions,
@@ -174,7 +185,7 @@ def inference_callback(
 
 
 
-def infer(hailo_inference, input_queue, output_queue):
+def infer(hailo_inference, input_queue, output_queue, stop_event):
     """
     Main inference loop that pulls data from the input queue, runs asynchronous
     inference, and pushes results to the output queue.
@@ -192,10 +203,16 @@ def infer(hailo_inference, input_queue, output_queue):
     Returns:
         None
     """
+    # Limit number of concurrent async inferences
+    pending_jobs = collections.deque()
+
     while True:
         next_batch = input_queue.get()
         if not next_batch:
             break  # Stop signal received
+
+        if stop_event.is_set():
+            continue  # Skip processing if stop signal is set
 
         input_batch, preprocessed_batch = next_batch
 
@@ -206,12 +223,17 @@ def infer(hailo_inference, input_queue, output_queue):
             output_queue=output_queue
         )
 
+
+        while len(pending_jobs) >= MAX_ASYNC_INFER_JOBS:
+            pending_jobs.popleft().wait(10000)
+
         # Run async inference
-        hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        job = hailo_inference.run(preprocessed_batch, inference_callback_fn)
+        pending_jobs.append(job)
 
     # Release resources and context
     hailo_inference.close()
-
+    output_queue.put(None)
 
 
 def run_inference_pipeline(
@@ -252,8 +274,8 @@ def run_inference_pipeline(
     Returns:
         None
     """
-    input_queue = Queue()
-    output_queue = Queue()
+    input_queue = Queue(MAX_INPUT_QUEUE_SIZE)
+    output_queue = Queue(MAX_OUTPUT_QUEUE_SIZE)
 
     # --- ONNX setup ---
     onnx_config = None
@@ -283,8 +305,12 @@ def run_inference_pipeline(
     )
 
     # Initialize input source from string: "camera", video file, or image folder.
-    cap, images = init_input_source(input_src, batch_size, camera_resolution)
+    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
+    cap_processing_mode = None
+    if cap is not None:
+        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
 
+    stop_event = threading.Event()
     fps_tracker = None
     if show_fps:
         fps_tracker = FrameRateTracker()
@@ -339,14 +365,14 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height),
+        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event),
         kwargs={"preprocess_fn": normalized_preprocess if use_full_onnx else None},
     )
 
     postprocess_thread = threading.Thread(
         target=visualize,
         args=(output_queue, cap, save_output,
-              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate),
+              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display),
         kwargs={"no_display": no_display},
     )
 
@@ -355,11 +381,11 @@ def run_inference_pipeline(
             target=infer_full_onnx,
             args=(full_onnx_intermediate_session, onnx_session,
                   onnx_config, input_queue, output_queue),
-        )
+    )
     else:
         infer_thread = threading.Thread(
             target=infer,
-            args=(hailo_inference, input_queue, output_queue),
+            args=(hailo_inference, input_queue, output_queue, stop_event),
         )
 
     infer_thread.start()
@@ -368,17 +394,24 @@ def run_inference_pipeline(
 
     if show_fps:
         fps_tracker.start()
-    infer_thread.join()
-    preprocess_thread.join()
-    output_queue.put(None)     # To signal processing process to exit
-    postprocess_thread.join()
 
-    if show_fps:
-        logger.info(fps_tracker.frame_rate_summary())
+    try:
+        preprocess_thread.join()
+        infer_thread.join()
+        postprocess_thread.join()
 
-    logger.success("Inference was successful!")
-    if save_output or input_src.lower() not in ("usb", "rpi"):
-        logger.info(f"Results have been saved in {output_dir}")
+    except KeyboardInterrupt:
+        logger.info("Interrupted (Ctrl+C). Shutting down...")
+        stop_event.set()
+
+    finally:
+        if show_fps:
+            logger.info(fps_tracker.frame_rate_summary())
+
+        logger.success("Processing completed successfully.")
+        if save_output or input_type == "images":
+            logger.info(f"Saved outputs to '{output_dir}'.")
+
 
 
 def main() -> None:
@@ -406,7 +439,7 @@ def main() -> None:
         mute_background=args.mute_background,
         onnxconfig=args.onnxconfig,
         aigym=args.aigym,
-        args=args,
+        args=args        
     )
 
 

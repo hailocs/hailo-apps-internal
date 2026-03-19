@@ -717,6 +717,44 @@ class ResourceDownloader:
             name=npy_name
         )
         self._tasks.add(task)
+    
+    def _add_npy_task(self, npy_entry):
+        """Add a NPY download task from a NPY entry."""
+        if is_none_value(npy_entry):
+            return
+
+        if isinstance(npy_entry, dict):
+            npy_name = npy_entry.get("name")
+            source = npy_entry.get("source")
+            npy_url = npy_entry.get("url")
+
+            if not npy_name:
+                hailo_logger.warning(f"NPY entry missing name: {npy_entry}")
+                return
+
+            dest = self.resource_root / RESOURCES_NPY_DIR_NAME / npy_name
+
+            if source == "s3":
+                url = npy_url or f"{S3_RESOURCES_BASE_URL}/npy/{npy_name}"
+            elif npy_url:
+                url = npy_url
+            else:
+                hailo_logger.warning(f"NPY '{npy_name}' missing URL and source is not 's3'")
+                return
+        elif isinstance(npy_entry, str) and npy_entry.startswith(("http://", "https://")):
+            url = npy_entry
+            npy_name = Path(npy_entry).name
+            dest = self.resource_root / RESOURCES_NPY_DIR_NAME / npy_name
+        else:
+            return
+
+        task = DownloadTask(
+            url=url,
+            dest_path=dest,
+            resource_type="npy",
+            name=npy_name
+        )
+        self._tasks.add(task)
     # -------------------------------------------------------------------------
     # High-Level Collection Methods
     # -------------------------------------------------------------------------
@@ -781,6 +819,12 @@ class ResourceDownloader:
         if "json" in self.config:
             for json_entry in self.config["json"]:
                 self._add_json_task(json_entry)
+    def collect_all_npy_files(self):
+        """Collect all NPY download tasks from top-level npy section."""
+        if "npy" in self.config:
+            for npy_entry in self.config["npy"]:
+                self._add_npy_task(npy_entry)
+    
     def collect_all_npy_files(self):
         """Collect all NPY download tasks from top-level npy section."""
         if "npy" in self.config:

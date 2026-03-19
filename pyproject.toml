@@ -58,14 +58,6 @@ ocr = [
     "symspellpy",
 ]
 
-# Speech recognition (Whisper) dependencies - install with: pip install -e ".[speech-rec]"
-speech-rec = [
-    "transformers==4.50.1",
-    "sounddevice==0.5.1",
-    "torch==2.6.0",
-    "torchvision==0.21.0",
-    "streamlit",
-]
 
 [project.scripts]
 get-usb-camera =            "hailo_apps.python.core.common.camera_utils:main"
