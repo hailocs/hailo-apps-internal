@@ -3,6 +3,7 @@
 import os
 import queue
 import sys
+import inspect
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -57,13 +58,13 @@ from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
 
 try:
-    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app
+    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_model_info
 except ImportError:
     import sys
     from pathlib import Path
     config_dir = Path(__file__).resolve().parents[3] / "config"
     sys.path.insert(0, str(config_dir))
-    from config_manager import get_default_models
+    from config_manager import get_default_models, get_inputs_for_app, get_model_info
 hailo_logger = get_logger(__name__)
 
 
@@ -765,11 +766,128 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     sys.exit(1)
 
 
+def _map_app_to_resource_group(app_name: str) -> str:
+    app_mapping = {
+        "object_detection": "detection",
+        "simple_detection": "simple_detection",
+        "instance_segmentation": "instance_segmentation",
+        "super_resolution": "super_resolution",
+    }
+    return app_mapping.get(app_name, app_name)
+
+
+def _extract_model_name_from_hef_path(hef_path: str | Path) -> str:
+    candidate_name = Path(hef_path).name
+    if candidate_name.endswith(HAILO_FILE_EXTENSION):
+        return candidate_name[: -len(HAILO_FILE_EXTENSION)]
+    return candidate_name
+
+
+def _detect_standalone_app_dir() -> Path | None:
+    for frame_info in inspect.stack():
+        frame_path = Path(frame_info.filename).resolve()
+        parts = frame_path.parts
+        if "standalone_apps" in parts:
+            return frame_path.parent
+    return None
+
+
+def _download_artifact_if_needed(url: str, destination: Path) -> bool:
+    try:
+        from hailo_apps.installation.download_resources import download_file
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        download_file(url=url, dest_path=destination, show_progress=True)
+        return destination.exists()
+    except Exception as exc:
+        hailo_logger.error("Failed to download ONNX artifact from %s: %s", url, exc)
+        return False
+
+
+def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: str) -> None:
+    if not hasattr(args, "onnxconfig"):
+        return
+
+    if getattr(args, "onnxconfig", None):
+        return
+
+    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+    if not arch:
+        return
+
+    model_name = _extract_model_name_from_hef_path(args.hef_path)
+    resource_group = _map_app_to_resource_group(app_name)
+    model_info = get_model_info(resource_group, arch, model_name, app_type="standalone")
+    onnx_meta = model_info.onnx_postproc if model_info is not None else None
+    if not onnx_meta or not onnx_meta.get("enabled", False):
+        return
+
+    app_dir = _detect_standalone_app_dir()
+    if app_dir is None:
+        hailo_logger.error(
+            "Failed to resolve app directory for ONNX config auto-resolution in standalone mode."
+        )
+        sys.exit(1)
+
+    config_name = onnx_meta.get("config_name") or f"config_onnx_{model_name}.json"
+    config_path = app_dir / "onnx" / config_name
+
+    if not config_path.exists():
+        hailo_logger.error(
+            "ONNX postprocessing is enabled for model '%s', but config file was not found at: %s\n"
+            "Make it available by one of these methods:\n"
+            "  1) Place the config file at the expected path above\n"
+            "  2) Provide an explicit override with --onnxconfig <path>",
+            model_name,
+            config_path,
+        )
+        sys.exit(1)
+
+    args.onnxconfig = str(config_path)
+
+    artifacts = onnx_meta.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        return
+
+    postprocessing = artifacts.get("postprocessing", {})
+    if isinstance(postprocessing, dict):
+        postprocessing_file = postprocessing.get("file") or f"{model_name}_postprocessing.onnx"
+        postprocessing_path = app_dir / "onnx" / postprocessing_file
+        if not postprocessing_path.exists():
+            post_url = postprocessing.get("url")
+            if post_url and _download_artifact_if_needed(post_url, postprocessing_path):
+                hailo_logger.info("Downloaded missing ONNX postprocessing artifact: %s", postprocessing_path)
+            else:
+                hailo_logger.error(
+                    "Missing ONNX postprocessing artifact: %s\n"
+                    "Either place the file at this path or set a downloadable URL in resources_config.yaml under onnx_postproc.artifacts.postprocessing.url",
+                    postprocessing_path,
+                )
+                sys.exit(1)
+
+    if getattr(args, "full_onnx", False):
+        neural_processing = artifacts.get("neural_processing", {})
+        if isinstance(neural_processing, dict):
+            neural_file = neural_processing.get("file") or f"{model_name}_neural_processing.onnx"
+            neural_path = app_dir / "onnx" / neural_file
+            if not neural_path.exists():
+                neural_url = neural_processing.get("url")
+                if neural_url and _download_artifact_if_needed(neural_url, neural_path):
+                    hailo_logger.info("Downloaded missing ONNX neural-processing artifact: %s", neural_path)
+                else:
+                    hailo_logger.error(
+                        "--full-onnx requires ONNX neural-processing artifact, but it is missing: %s\n"
+                        "Either place the file at this path or set a downloadable URL in resources_config.yaml under onnx_postproc.artifacts.neural_processing.url",
+                        neural_path,
+                    )
+                    sys.exit(1)
+
+
 
 # =============================================================================
 # Handle and Resolve Common Args
 # =============================================================================
-def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_hef: bool = False) -> None:
+def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: bool = False) -> None:
     """
     Handle common CLI argument logic for Hailo applications.
 
@@ -818,6 +936,9 @@ def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_
         if args.hef_path is None:
             hailo_logger.error("Failed to resolve HEF path for %s", APP_NAME)
             sys.exit(1)
+
+    if app_type == APP_TYPE_STANDALONE:
+        _resolve_onnx_postproc_for_standalone(args, APP_NAME)
 
     #resolve input source
     args.input = resolve_input_arg(APP_NAME, args.input)

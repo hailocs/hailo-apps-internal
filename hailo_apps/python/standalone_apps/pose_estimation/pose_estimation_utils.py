@@ -1,5 +1,4 @@
 import sys
-from collections import deque
 from pathlib import Path
 from multiprocessing import Process
 import numpy as np
@@ -10,17 +9,12 @@ from typing import List, Dict, Tuple
 
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger
-    from hailo_apps.python.core.common.onnx_utils import map_hef_outputs_to_onnx_inputs
 except ImportError:
     core_dir = Path(__file__).resolve().parents[2] / "core"
     sys.path.insert(0, str(core_dir))
     from common.hailo_logger import get_logger
-    from common.onnx_utils import map_hef_outputs_to_onnx_inputs
 
 logger = get_logger(__name__)
-
-# Supported ONNX output format parsers for pose estimation
-SUPPORTED_POSE_OUTPUT_FORMATS = ["yolo26_pose"]
 
 # Joint pairs used for drawing pose estimations
 JOINT_PAIRS = [
@@ -33,8 +27,7 @@ JOINT_PAIRS = [
 
 class PoseEstPostProcessing:
     def __init__(self, max_detections: int, score_threshold: float, nms_iou_thresh: float,
-                 regression_length: int, strides: List[int], trail_length: int = 0,
-                 bg_alpha: float | None = None):
+                 regression_length: int, strides: List[int]):
         """
         Initialize the post-processing configuration.
 
@@ -44,29 +37,18 @@ class PoseEstPostProcessing:
             nms_iou_thresh (float): IoU threshold for NMS.
             regression_length (int): Maximum regression value for bounding boxes.
             strides (list[int]): Stride values for each prediction scale.
-            trail_length (int): Number of previous frames to keep for pose trail
-                visualization. 0 disables trail (default).
-            bg_alpha (float | None): Background dimming factor. When set, the
-                original frame is blended toward black before drawing skeletons.
-                0.0 = fully black, 1.0 = unchanged. None disables dimming.
         """
         self.max_detections = max_detections
         self.score_threshold = score_threshold
         self.nms_iou_thresh = nms_iou_thresh
         self.regression_length = regression_length
         self.strides = strides
-        self.pose_history = deque(maxlen=trail_length) if trail_length > 0 else None
-        self.bg_alpha = bg_alpha
 
     def inference_result_handler(
-            self, image, raw_detections: dict, model_height: int, model_width: int,
-            class_num: int = 1, onnx_config=None, onnx_session=None,
+            self, image, raw_detections: dict, model_height: int, model_width: int, class_num: int = 1
     ) -> None:
         """
         Post-process the inference results and return the output image with visualizations.
-
-        When onnx_session is provided, routes through ONNX postprocessing.
-        Otherwise falls back to the legacy HEF-based post-processing.
 
         Args:
             image (np.ndarray): The input image frame.
@@ -74,62 +56,17 @@ class PoseEstPostProcessing:
             model_height (int): The height of the model input.
             model_width (int): The width of the model input.
             class_num (int, optional): Number of output classes. Defaults to 1.
-            onnx_config (dict, optional): ONNX config with tensor mapping and format.
-            onnx_session: ONNX Runtime session for postprocessing (or None).
 
         Returns:
             np.ndarray: The image with visualized inference results.
         """
-        if onnx_session is not None:
-            results = self.extract_pose_onnx(raw_detections, onnx_config, onnx_session,
-                                            model_height, model_width)
-        else:
-            results = self.post_process(raw_detections, model_height, model_width, class_num)
+        # Post-process results
+        results = self.post_process(raw_detections, model_height, model_width, class_num)
 
+        # Visualize and save results
         output_image = self.visualize_pose_estimation_result(results, image, model_height, model_width)
-        return output_image
 
-    def extract_pose_onnx(
-            self, hailo_outputs: dict, onnx_config: dict, onnx_session,
-            model_height: int, model_width: int,
-    ) -> dict:
-        """
-        Run ONNX postprocessing on HEF (or intermediate-ONNX) outputs and parse
-        the result into the standard pose-estimation dict.
-
-        Args:
-            hailo_outputs: Dict of tensors ``{hef_name: ndarray}``.
-            onnx_config: ONNX config dict with ``output_tensor_mapping`` and ``output_format``.
-            onnx_session: ONNX Runtime inference session for the postprocessing model.
-            model_height: Model input height (for coordinate scaling).
-            model_width: Model input width (for coordinate scaling).
-
-        Returns:
-            dict with keys ``bboxes``, ``keypoints``, ``joint_scores``, ``scores``.
-        """
-        tensor_mapping = onnx_config["output_tensor_mapping"]
-        output_format = onnx_config["output_format"]
-
-        if output_format not in SUPPORTED_POSE_OUTPUT_FORMATS:
-            raise ValueError(
-                f"Unsupported pose output_format '{output_format}'. "
-                f"Supported: {SUPPORTED_POSE_OUTPUT_FORMATS}"
-            )
-
-        # Map HEF tensors -> ONNX inputs (handles NHWC->NCHW)
-        onnx_inputs = map_hef_outputs_to_onnx_inputs(hailo_outputs, tensor_mapping)
-
-        # Run ONNX postprocessing
-        onnx_output_names = [o.name for o in onnx_session.get_outputs()]
-        onnx_results = onnx_session.run(onnx_output_names, onnx_inputs)
-
-        # Dispatch to format-specific parser
-        if output_format == "yolo26_pose":
-            return parse_yolo26_pose_output(onnx_results, onnx_config,
-                                           model_height, model_width,
-                                           self.max_detections)
-
-        raise NotImplementedError(f"Parser for pose format '{output_format}' not implemented")
+        return  output_image
 
     def post_process(self, raw_detections: dict, height: int, width: int, class_num: int) -> dict:
         """
@@ -303,46 +240,6 @@ class PoseEstPostProcessing:
 
         return keypoints
 
-    # ----- Trail / history drawing helpers -----
-
-    KEYPOINTS_COLOR = (0, 200, 200)    # cyan – keypoint dots
-    SKELETON_COLOR = (255, 0, 255)     # magenta – current-frame skeleton lines
-    TRAIL_COLOR_START = (0, 200, 0)    # green  – oldest trail frame
-    TRAIL_COLOR_END   = (255, 0, 255)  # magenta – newest trail frame (matches current)
-
-    @staticmethod
-    def _lerp_color(c0: tuple, c1: tuple, t: float) -> tuple:
-        """Linearly interpolate between two RGB colors. t=0 -> c0, t=1 -> c1."""
-        return tuple(int(a + (b - a) * t) for a, b in zip(c0, c1))
-
-    def _draw_skeleton(self, image: np.ndarray, keypoints: np.ndarray,
-                       joint_visible: np.ndarray, color: tuple,
-                       line_thickness: int = 3, dot_radius: int = 7,
-                       dot_color: tuple | None = None) -> None:
-        """
-        Draw keypoint dots and skeleton lines for a single detection onto *image*.
-
-        Args:
-            image: Canvas to draw on (modified in-place).
-            keypoints: (17, 2) array of (x, y) in original-image coords.
-            joint_visible: (17,) bool mask – True when joint confidence is above threshold.
-            color: BGR color for skeleton lines.
-            line_thickness: Thickness of skeleton lines.
-            dot_radius: Radius of keypoint circles.
-            dot_color: Color for keypoint dots (defaults to *color* if None).
-        """
-        dot_color = dot_color or color
-        for idx in range(keypoints.shape[0]):
-            if joint_visible[idx]:
-                pt = (int(keypoints[idx, 0]), int(keypoints[idx, 1]))
-                cv2.circle(image, pt, dot_radius, dot_color, -1)
-
-        for j0, j1 in JOINT_PAIRS:
-            if joint_visible[j0] and joint_visible[j1]:
-                pt1 = (int(keypoints[j0, 0]), int(keypoints[j0, 1]))
-                pt2 = (int(keypoints[j1, 0]), int(keypoints[j1, 1]))
-                cv2.line(image, pt1, pt2, color, line_thickness)
-
     def visualize_pose_estimation_result(
             self,
             results: dict,
@@ -354,8 +251,7 @@ class PoseEstPostProcessing:
     ) -> np.ndarray:
         """
         Visualize pose estimation results by drawing bounding boxes, keypoints, and joint connections
-        on the original input image.  When a pose trail buffer is active (trail_length > 0),
-        previous frames' skeletons are drawn with increasing transparency before the current frame.
+        on the original input image.
 
         Args:
             results (dict): Dictionary containing processed pose estimation results, including
@@ -383,72 +279,32 @@ class PoseEstPostProcessing:
 
         box, score, keypoint, keypoint_score = bboxes[0], scores[0], keypoints[0], joint_scores[0]
 
-        # --- Mute / dim background if requested ---
-        if self.bg_alpha is not None:
-            image[:] = cv2.addWeighted(
-                image, self.bg_alpha,
-                np.zeros_like(image), 1.0 - self.bg_alpha, 0,
-            )
-
-        # --- Collect current-frame poses (mapped to original coords) ---
-        current_poses = []   # list of (mapped_keypoints, joint_visible_mask)
-        current_boxes = []   # list of (xmin, ymin, xmax, ymax, score)
-
         for (detection_box, detection_score, detection_keypoints,
              detection_keypoints_score) in zip(box, score, keypoint, keypoint_score):
             if detection_score < detection_threshold:
                 continue
-            detection_box = self.map_box_to_original_coords(
-                detection_box, orig_w, orig_h, model_width, model_height
-            )
+            detection_box = self.map_box_to_original_coords(detection_box, orig_w, orig_h, model_width, model_height)
             xmin, ymin, xmax, ymax = [int(x) for x in detection_box]
-            current_boxes.append((xmin, ymin, xmax, ymax, detection_score))
 
-            joint_visible = (detection_keypoints_score > joint_threshold).flatten()
+            cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 1)
+            cv2.putText(image, str(detection_score), (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 1)
+
+            joint_visible = detection_keypoints_score > joint_threshold
             detection_keypoints = detection_keypoints.reshape(17, 2)
             detection_keypoints = self.map_keypoints_to_original_coords(
                 detection_keypoints, orig_w, orig_h, model_width, model_height
             )
-            current_poses.append((detection_keypoints.copy(), joint_visible.copy()))
 
-        # --- Draw trail from history buffer (oldest -> newest, increasing opacity) ---
-        if self.pose_history is not None and len(self.pose_history) > 0:
-            n_hist = len(self.pose_history)
-            for age_idx, past_poses in enumerate(self.pose_history):
-                # t goes from 0 (oldest) to ~1 (newest trail frame)
-                t = age_idx / max(n_hist, 1)
-                trail_color = self._lerp_color(self.TRAIL_COLOR_START, self.TRAIL_COLOR_END, t)
-                alpha = 0.6 - 0.4 * (age_idx + 1) / (n_hist + 1)
-                overlay = image.copy()
-                for kps, vis in past_poses:
-                    self._draw_skeleton(
-                        overlay, kps, vis,
-                        color=trail_color,
-                        line_thickness=2,
-                        dot_radius=4,
-                        dot_color=trail_color,
-                    )
-                cv2.addWeighted(overlay, alpha, image, 1.0 - alpha, 0, image)
+            for joint, joint_score in zip(detection_keypoints, detection_keypoints_score):
+                if joint_score < joint_threshold:
+                    continue
+                cv2.circle(image, (int(joint[0]), int(joint[1])), 1, (255, 0, 255), -1)
 
-        # Store current frame's poses in history
-        if self.pose_history is not None:
-            self.pose_history.append(current_poses)
-
-        # --- Draw current-frame bounding boxes ---
-        for (xmin, ymin, xmax, ymax, det_score) in current_boxes:
-            cv2.rectangle(image, (xmin, ymin), (xmax, ymax), (255, 0, 0), 1)
-            cv2.putText(image, str(det_score), (xmin, ymin),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (36, 255, 12), 1)
-
-        # --- Draw current-frame skeletons (full strength) ---
-        for kps, vis in current_poses:
-            self._draw_skeleton(
-                image, kps, vis,
-                color=self.SKELETON_COLOR,
-                line_thickness=3,
-                dot_radius=7,
-                dot_color=self.KEYPOINTS_COLOR,   # cyan dots for consistency
-            )
+            for joint0, joint1 in JOINT_PAIRS:
+                if joint_visible[joint0] and joint_visible[joint1]:
+                    pt1 = (int(detection_keypoints[joint0][0]), int(detection_keypoints[joint0][1]))
+                    pt2 = (int(detection_keypoints[joint1][0]), int(detection_keypoints[joint1][1]))
+                    cv2.line(image, pt1, pt2, (255, 0, 255), 3)
 
         return image
 
@@ -684,91 +540,3 @@ class PoseEstPostProcessing:
             })
 
         return output
-
-
-def parse_yolo26_pose_output(
-    onnx_results: list,
-    onnx_config: dict,
-    model_height: int,
-    model_width: int,
-    max_detections: int = 300,
-    score_threshold: float = 0.3,
-) -> dict:
-    """
-    Parse YOLOv26-pose ONNX postprocessing output (300x57) into the standard
-    pose-estimation result dict consumed by ``visualize_pose_estimation_result``.
-
-    The ONNX postprocessor outputs a tensor of shape ``(300, 57)`` where each
-    row is::
-
-        [x1, y1, x2, y2, score, class_id, kp0_x, kp0_y, kp0_conf, ..., kp16_x, kp16_y, kp16_conf]
-
-    Coordinates are in pixel space relative to ``input_size`` (from config).
-
-    Args:
-        onnx_results: List of ONNX output arrays; first element is ``(300, 57)`` or ``(1, 300, 57)``.
-        onnx_config: Config dict (must contain ``postprocess_params.input_size``).
-        model_height: Model input height (used for coordinate scaling).
-        model_width: Model input width (used for coordinate scaling).
-        max_detections: Max detections to keep in the output arrays.
-        score_threshold: Minimum confidence to keep a detection.
-
-    Returns:
-        dict with keys:
-            ``bboxes``  – shape ``(1, max_detections, 4)``
-            ``keypoints``  – shape ``(1, max_detections, 17, 2)``
-            ``joint_scores``  – shape ``(1, max_detections, 17, 1)``
-            ``scores``  – shape ``(1, max_detections, 1)``
-    """
-    detections = onnx_results[0]
-    if detections.ndim == 3:
-        detections = detections[0]  # remove batch dim
-
-    params = onnx_config.get("postprocess_params", {})
-    input_size = params.get("input_size", 640)
-
-    # Filter by score
-    scores = detections[:, 4]
-    valid = scores >= score_threshold
-    detections = detections[valid]
-
-    # Sort descending by score and cap at max_detections
-    order = np.argsort(-detections[:, 4])[:max_detections]
-    detections = detections[order]
-
-    num_det = detections.shape[0]
-
-    # Pre-allocate output arrays (batch=1)
-    output = {
-        "bboxes": np.zeros((1, max_detections, 4), dtype=np.float32),
-        "keypoints": np.zeros((1, max_detections, 17, 2), dtype=np.float32),
-        "joint_scores": np.zeros((1, max_detections, 17, 1), dtype=np.float32),
-        "scores": np.zeros((1, max_detections, 1), dtype=np.float32),
-    }
-
-    if num_det == 0:
-        return output
-
-    # Bboxes: [x1, y1, x2, y2] in pixel coords -> scale from input_size to model dims
-    scale_x = model_width / input_size
-    scale_y = model_height / input_size
-    bboxes = detections[:, :4].copy()
-    bboxes[:, 0] *= scale_x
-    bboxes[:, 2] *= scale_x
-    bboxes[:, 1] *= scale_y
-    bboxes[:, 3] *= scale_y
-
-    output["bboxes"][0, :num_det] = bboxes
-    output["scores"][0, :num_det, 0] = detections[:, 4]
-
-    # Keypoints: 17 x (x, y, conf) starting at column 6
-    kpt_raw = detections[:, 6:].reshape(num_det, 17, 3)
-    kpt_xy = kpt_raw[:, :, :2].copy()
-    kpt_xy[:, :, 0] *= scale_x
-    kpt_xy[:, :, 1] *= scale_y
-    kpt_conf = kpt_raw[:, :, 2:3]  # keep (17,1) shape
-
-    output["keypoints"][0, :num_det] = kpt_xy
-    output["joint_scores"][0, :num_det] = kpt_conf
-
-    return output

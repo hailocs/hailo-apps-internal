@@ -8,63 +8,35 @@ import numpy as np
 import threading
 from pathlib import Path
 from pose_estimation_utils import PoseEstPostProcessing
-from aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
 import collections
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.onnx_utils import (
-        load_onnx_config,
-        init_onnx_sessions,
-        normalized_preprocess,
-        infer_full_onnx,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
 
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )    
-    from hailo_apps.python.core.common.onnx_utils import (
-        load_onnx_config,
-        init_onnx_sessions,
-        normalized_preprocess,
-        infer_full_onnx,
-    )
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
 
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+    stop_after_timeout
+
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS
+)
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -87,66 +59,6 @@ def parse_args():
         type=int,
         default=1,
         help="The number of classes the model is trained on. Defaults to 1.",
-    )
-
-    parser.add_argument(
-        "--pose-trail",
-        type=int,
-        default=0,
-        metavar="N",
-        help=(
-            "Number of previous frames whose pose skeletons are kept and drawn "
-            "as a fading trail behind the current detection. "
-            "0 (default) disables the trail. Typical value: 10."
-        ),
-    )
-
-    parser.add_argument(
-        "--mute-background",
-        type=float,
-        default=None,
-        metavar="ALPHA",
-        help=(
-            "Dim the background image to emphasize pose skeletons. "
-            "ALPHA is the blending factor for the original frame (0.0 = black, 1.0 = unchanged). "
-            "Typical value: 0.3. Omit to keep the background at full brightness."
-        ),
-    )
-
-    parser.add_argument(
-        "--onnxconfig",
-        type=str,
-        default=None,
-        help=(
-            "Path to ONNX postprocessing configuration file (JSON). "
-            "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
-            "The config must include: postproc_onnx_path, output_tensor_mapping, output_format, "
-            "and postprocess_params."
-        ),
-    )
-
-    parser.add_argument(
-        "--full-onnx",
-        action="store_true",
-        help=(
-            "Use full ONNX mode (bypass HEF, run entire model in ONNX). "
-            "Overrides use_full_onnx_mode setting in config. "
-            "Requires hef_like_proc_onnx_path in ONNX config."
-        ),
-    )
-
-    parser.add_argument(
-        "--aigym",
-        type=str,
-        default=None,
-        choices=list(EXERCISE_PRESETS.keys()),
-        metavar="EXERCISE",
-        help=(
-            "Enable exercise rep-counting mode.  "
-            "Adds ByteTrack multi-person tracking and angle-based "
-            "hysteresis counting.  "
-            f"Choices: {', '.join(EXERCISE_PRESETS.keys())}."
-        ),
     )
 
     args = parser.parse_args()
@@ -237,183 +149,111 @@ def infer(hailo_inference, input_queue, output_queue, stop_event):
 
 
 def run_inference_pipeline(
-    net_path: str,
-    input_src: str,
-    batch_size: int,
-    class_num: int,
-    output_dir: str,
-    camera_resolution: str,
-    output_resolution: str,
-    frame_rate: float,
-    save_output: bool,
-    show_fps: bool,
-    no_display: bool = False,
-    pose_trail: int = 0,
-    mute_background: float | None = None,
-    onnxconfig=None,
-    aigym: str | None = None,
-    args=None,
+    net,
+    class_num,
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    show_fps: bool = False,
+    time_to_run: int | None = None,
 ) -> None:
     """
-    Run the inference pipeline using HailoInfer, with optional ONNX postprocessing.
+    Initialize queues, inference instance, and run the pipeline.
 
     Args:
-        net_path (str): Path to the HEF model file.
-        input_src (str): Path to the input source (image, video, folder, or camera).
-        batch_size (int): Number of frames to process per batch.
+        net (str): Path to the HEF model file.
         class_num (int): Number of output classes expected by the model.
-        output_dir (str): Directory where processed output will be saved.
-        camera_resolution (str): Camera only, input resolution (e.g., 'sd', 'hd', 'fhd').
-        output_resolution (str): Output resolution for display/saving.
-        frame_rate (float): Target frame rate for processing.
-        save_output (bool): If True, saves the output stream as a video file.
+        input_context (InputContext): Context containing input source details.
+        visualization_settings (VisualizationSettings): Settings for visualization.
         show_fps (bool): If True, display real-time FPS on the output.
-        onnxconfig (str): Path to ONNX postprocessing config JSON (or None).
-        args: Full parsed CLI args (for --full-onnx flag).
+        time_to_run (int | None): Optional duration to run the pipeline.
 
     Returns:
         None
     """
+
     input_queue = Queue(MAX_INPUT_QUEUE_SIZE)
     output_queue = Queue(MAX_OUTPUT_QUEUE_SIZE)
 
-    # --- ONNX setup ---
-    onnx_config = None
-    onnx_session = None
-    full_onnx_intermediate_session = None
-    use_full_onnx = False
 
-    if onnxconfig:
-        onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
-        use_full_onnx = (
-            getattr(args, "full_onnx", False)
-            or onnx_config.get("use_full_onnx_mode", False)
-        )
-        sessions = init_onnx_sessions(onnx_config, config_path, use_full_onnx)
-        onnx_session = sessions["onnx_session"]
-        full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
-
-    # --- Post-processing ---
     pose_post_processing = PoseEstPostProcessing(
         max_detections=300,
         score_threshold=0.001,
         nms_iou_thresh=0.7,
         regression_length=15,
-        strides=[8, 16, 32],
-        trail_length=pose_trail,
-        bg_alpha=mute_background,
+        strides=[8, 16, 32]
     )
-
-    # Initialize input source from string: "camera", video file, or image folder.
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
 
     stop_event = threading.Event()
     fps_tracker = None
     if show_fps:
         fps_tracker = FrameRateTracker()
 
-    # --- Model / shape setup ---
-    hailo_inference = None
-    if use_full_onnx:
-        # Derive input shape from the intermediate ONNX model
-        input_info = full_onnx_intermediate_session.get_inputs()[0]
-        input_shape = input_info.shape
-        if len(input_shape) == 4:
-            if input_shape[1] in [1, 3]:  # NCHW
-                height, width = input_shape[2], input_shape[3]
-            else:  # NHWC
-                height, width = input_shape[1], input_shape[2]
-        else:
-            raise ValueError(f"Unexpected full ONNX input shape: {input_shape}")
-        logger.info(
-            f"Full ONNX mode enabled – intermediate + ONNX postproc (input {height}x{width})"
-        )
-    else:
-        output_type = "FLOAT32" if onnx_session is not None else "FLOAT32"
-        hailo_inference = HailoInfer(net_path, batch_size, output_type=output_type)
-        height, width, _ = hailo_inference.get_input_shape()
+    hailo_inference = HailoInfer(net, input_context.batch_size, output_type="FLOAT32")
+    height, width, _ = hailo_inference.get_input_shape()
 
-    # --- Choose callback: AIGym mode vs. regular pose visualization ---
-    if aigym is not None:
-        from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-
-        tracker = BYTETracker(make_tracker_args(), frame_rate=int(frame_rate or 30))
-        aigym_cb = AIGymCallback(
-            pose_processor=pose_post_processing,
-            tracker=tracker,
-            exercise=aigym,
-            model_height=height,
-            model_width=width,
-            class_num=class_num,
-            onnx_config=onnx_config,
-            onnx_session=onnx_session,
-        )
-        post_process_callback_fn = aigym_cb
-        logger.info(f"AIGym mode enabled – exercise: {aigym}")
-    else:
-        post_process_callback_fn = partial(
-            pose_post_processing.inference_result_handler,
-            model_height=height,
-            model_width=width,
-            class_num=class_num,
-            onnx_config=onnx_config,
-            onnx_session=onnx_session,
-        )
+    post_process_callback_fn = partial(
+        pose_post_processing.inference_result_handler,
+        model_height=height,
+        model_width=width,
+        class_num = class_num
+    )
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode),
-        kwargs={
-            "preprocess_fn": normalized_preprocess if use_full_onnx else None,
-            "stop_event": stop_event,
-        },
+        args=(
+            input_context,
+            input_queue,
+            width,
+            height,
+            None,
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
 
-    postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(output_queue, cap, save_output,
-              output_dir, post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event),
-        kwargs={"no_display": no_display},
+    infer_thread = threading.Thread(
+        target=infer,
+        args=(hailo_inference, input_queue, output_queue, stop_event),
+        name="infer-thread",
     )
 
-    if use_full_onnx:
-        infer_thread = threading.Thread(
-            target=infer_full_onnx,
-            args=(full_onnx_intermediate_session, onnx_session,
-                  onnx_config, input_queue, output_queue),
-    )
-    else:
-        infer_thread = threading.Thread(
-            target=infer,
-            args=(hailo_inference, input_queue, output_queue, stop_event),
-        )
-
-    infer_thread.start()
     preprocess_thread.start()
-    postprocess_thread.start()
+    infer_thread.start()
 
     if show_fps:
         fps_tracker.start()
 
+    if time_to_run is not None:
+        timer_thread = threading.Thread(
+            target=stop_after_timeout,
+            args=(stop_event, time_to_run),
+            name="timer-thread",
+            daemon=True,
+        )
+        timer_thread.start()
+
     try:
+        visualize(
+            input_context,
+            visualization_settings,
+            output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
         infer_thread.join()
-        postprocess_thread.join()
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
+    if show_fps:
+        logger.info(fps_tracker.frame_rate_summary())
 
-    finally:
-        if show_fps:
-            logger.info(fps_tracker.frame_rate_summary())
+    logger.success("Processing completed successfully.")
 
-        logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved outputs to '{output_dir}'.")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
+
 
 
 
@@ -422,28 +262,32 @@ def main() -> None:
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
 
-    # --no-display implies --save-output
-    no_display = getattr(args, "no_display", False)
-    save_output = args.save_output or no_display
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
+    )
+
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+    )
 
     run_inference_pipeline(
-        args.hef_path,
-        args.input,
-        args.batch_size,
-        args.class_num,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
-        save_output,
-        args.show_fps,
-        no_display=no_display,
-        pose_trail=args.pose_trail,
-        mute_background=args.mute_background,
-        onnxconfig=args.onnxconfig,
-        aigym=args.aigym,
-        args=args        
+        net=args.hef_path,
+        class_num=args.class_num,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        show_fps=args.show_fps,
+        time_to_run=args.time_to_run
     )
+
 
 
 if __name__ == "__main__":
