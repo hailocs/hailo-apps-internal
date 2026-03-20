@@ -75,6 +75,7 @@ class ModelEntry:
     source: str  # "mz" | "s3" | "gen-ai-mz"
     url: Optional[str] = None
     app_type: tuple[str, ...] = ("pipeline", "standalone")  # Default: supports both
+    onnx_postproc: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -422,6 +423,7 @@ def _extract_model_entries(entries: Any, app_type_filter: Optional[str] = None) 
                     source=entry.get("source", "mz"),
                     url=entry.get("url"),
                     app_type=app_type,
+                    onnx_postproc=entry.get("onnx_postproc"),
                 )
                 
                 # Filter by app_type if requested
@@ -521,7 +523,12 @@ def get_default_model_name(app_name: str, arch: str, app_type: Optional[str] = N
     return models[0].name if models else None
 
 
-def get_model_info(app_name: str, arch: str, model_name: str) -> Optional[ModelEntry]:
+def get_model_info(
+    app_name: str,
+    arch: str,
+    model_name: str,
+    app_type: Optional[str] = None,
+) -> Optional[ModelEntry]:
     """Get full model info for a specific model.
     
     Args:
@@ -532,7 +539,7 @@ def get_model_info(app_name: str, arch: str, model_name: str) -> Optional[ModelE
     Returns:
         ModelEntry if found, None otherwise
     """
-    for model in get_all_models(app_name, arch):
+    for model in get_all_models(app_name, arch, app_type=app_type):
         if model.name == model_name:
             return model
     return None

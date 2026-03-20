@@ -14,6 +14,7 @@
 #         - {name: "model_name", source: "s3"}  # S3 model (URL built dynamically)
 #         - {name: "model_name", url: "https://...", source: "s3"}  # S3 model with explicit URL (backward compatibility)
 #         - {name: "model_name", source: "gen-ai-mz"}  # Gen-AI model from server (URL built from metadata)
+#         - {name: "model_name", onnx_postproc: {...}}  # Optional ONNX postprocessing metadata for standalone apps
 #
 #   json: [list of JSON config file entries - shared across all apps]
 #   npy: [list of npy file entries - shared across all apps]
@@ -397,6 +398,19 @@ detection: &detection_app
           source: mz
         - name: yolov11x
           source: mz
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_postprocessing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_neural_processing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_neural_processing.onnx
         - name: yolov8s-hailo8l-barcode
           url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
           source: s3
@@ -575,6 +589,17 @@ pose_estimation: &pose_estimation_app
       extra:
         - name: yolov8s_pose
           source: mz
+        - name: yolo26n_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n_pose.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_pose_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_pose_neural_processing.onnx
     hailo8l:
       default:
         - name: yolov8s_pose
@@ -586,6 +611,19 @@ pose_estimation: &pose_estimation_app
       extra:
         - name: yolov8s_pose
           source: mz
+        - name: yolo26m_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26m_pose.json
+            artifacts:
+              postprocessing:
+                file: yolo26m_pose_postprocessing.onnx
+                url: https://<onnx-artifacts-base-url>/pose_estimation/onnx/yolo26m_pose_postprocessing.onnx
+              neural_processing:
+                file: yolo26m_pose_neural_processing.onnx
+                url: https://<onnx-artifacts-base-url>/pose_estimation/onnx/yolo26m_pose_neural_processing.onnx
 
 depth: &depth_app
   models:
