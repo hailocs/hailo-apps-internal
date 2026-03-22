@@ -93,7 +93,6 @@ def record_audio(duration: int = 10) -> np.ndarray:
         Audio waveform as float32 numpy array.
     """
     import sounddevice as sd
-    import select
 
     audio_q = queue.Queue()
 
@@ -113,17 +112,29 @@ def record_audio(duration: int = 10) -> np.ndarray:
     # Monitor for Enter key or timeout
     start = time.time()
     try:
-        while time.time() - start < duration:
-            remaining = int(duration - (time.time() - start))
-            # Check for Enter key press (non-blocking)
-            try:
-                if select.select([sys.stdin], [], [], 0.5)[0]:
-                    sys.stdin.readline()
-                    print("  Stopped early.")
-                    break
-            except (OSError, ValueError):
-                # select doesn't work on all platforms; fall back to sleep
-                time.sleep(0.5)
+        # Check for Enter key press (non-blocking)
+        if os.name == "nt":
+            import msvcrt
+
+            while time.time() - start < duration:
+                if msvcrt.kbhit():
+                    ch = msvcrt.getwch()
+                    if ch in ("\r", "\n"):
+                        print("  Stopped early.")
+                        break
+                time.sleep(0.1)
+        else:
+            import select
+
+            while time.time() - start < duration:
+                try:
+                    if select.select([sys.stdin], [], [], 0.5)[0]:
+                        sys.stdin.readline()
+                        print("  Stopped early.")
+                        break
+                except (OSError, ValueError):
+                    # Skip input detection and continue timing loop
+                    time.sleep(0.5)
     finally:
         stream.stop()
         stream.close()
