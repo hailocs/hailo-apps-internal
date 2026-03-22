@@ -36,10 +36,12 @@ class WhisperPipeline:
     """Encoder–decoder Whisper pipeline running on any Hailo accelerator."""
 
     def __init__(self, encoder_path: str, decoder_path: str,
-                 variant: str = "base", npy_dir: str = None):
+                 variant: str = "base", npy_dir: str = None,
+                 add_embed: bool = False):
         self.encoder_path = encoder_path
         self.decoder_path = decoder_path
         self.variant = variant
+        self.add_embed = add_embed
         self.timeout_ms = 100_000_000
 
         # Load decoder tokenization assets from central resources/npy/ directory
@@ -72,8 +74,19 @@ class WhisperPipeline:
         self._thread.start()
 
     def _tokenization(self, decoder_input_ids):
-        """Manual token embedding lookup (replaces embedding layer on host)."""
+        """Manual token embedding lookup (replaces embedding layer on host).
+
+        Hailo-8/8L decoders were compiled without the Add/Gather tokenization
+        operators, so Add + Unsqueeze + Transpose must run on host.
+        Hailo-10H decoders include the Add in the HEF.
+        """
         gather = self.token_embedding_weight[decoder_input_ids]
+        if self.add_embed:
+            # H8/H8L: Add + Unsqueeze + Transpose on host
+            add_output = gather + self.onnx_add_input
+            unsqueeze_output = np.expand_dims(add_output, axis=0)
+            return np.transpose(unsqueeze_output, (0, 2, 1, 3))
+        # H10H: only Gather + expand
         return np.expand_dims(gather, axis=0)
 
     def _inference_loop(self):

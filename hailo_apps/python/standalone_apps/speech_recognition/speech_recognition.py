@@ -334,8 +334,12 @@ def main():
         from postprocessing import clean_transcription
 
     print("\nInitializing Whisper pipeline...")
+    # H8/H8L decoders need Add+Unsqueeze+Transpose on host;
+    # H10H decoders include the Add in the HEF.
+    add_embed = arch in ("hailo8", "hailo8l")
     pipeline = WhisperPipeline(
         encoder_path, decoder_path, variant=variant, npy_dir=str(npy_dir),
+        add_embed=add_embed,
     )
     chunk_length = pipeline.get_chunk_length()
     print(f"✓ Ready (chunk length: {chunk_length}s)\n")

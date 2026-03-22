@@ -111,7 +111,7 @@ def preprocess_audio(audio: np.ndarray, chunk_length: int = 10,
 
 
 def detect_speech_start(audio: np.ndarray, threshold: float = 0.2,
-                        frame_duration: float = 0.02) -> Optional[float]:
+                        frame_duration: float = 0.2) -> Optional[float]:
     """Simple energy-based VAD — returns time (seconds) of first speech, or None."""
     if len(audio.shape) == 2:
         audio = np.mean(audio, axis=1)
