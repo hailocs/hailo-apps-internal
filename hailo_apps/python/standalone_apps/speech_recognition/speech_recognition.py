@@ -25,7 +25,6 @@ import os
 import sys
 import time
 import queue
-import threading
 from pathlib import Path
 
 import numpy as np
@@ -97,8 +96,6 @@ def record_audio(duration: int = 10) -> np.ndarray:
     import select
 
     audio_q = queue.Queue()
-    recording = True
-    stop_event = threading.Event()
 
     def callback(indata, frames, time_info, status):
         if status:
