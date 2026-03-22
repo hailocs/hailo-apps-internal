@@ -435,6 +435,7 @@ def TRACKER_PIPELINE(
     keep_lost_frames=2,
     keep_past_metadata=False,
     qos=False,
+    debug=False,
     name="hailo_tracker",
 ):
     """Creates a GStreamer pipeline string for the HailoTracker element.
@@ -449,6 +450,7 @@ def TRACKER_PIPELINE(
         keep_lost_frames (int, optional): Number of frames to keep without a successful match before a 'lost' instance is removed from the tracking record. Defaults to 2.
         keep_past_metadata (bool, optional): Whether to keep past metadata on tracked objects. Defaults to False.
         qos (bool, optional): Whether to enable QoS. Defaults to False.
+        debug (bool, optional): Whether to enable debug output of new and lost tracked objects. Useful for tuning tracker parameters. Defaults to False.
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'hailo_tracker'.
 
     Note:
@@ -460,7 +462,7 @@ def TRACKER_PIPELINE(
     # Construct the tracker pipeline string
     tracker_pipeline = (
         f"hailotracker name={name} class-id={class_id} kalman-dist-thr={kalman_dist_thr} iou-thr={iou_thr} init-iou-thr={init_iou_thr} "
-        f"keep-new-frames={keep_new_frames} keep-tracked-frames={keep_tracked_frames} keep-lost-frames={keep_lost_frames} keep-past-metadata={keep_past_metadata} qos={qos} ! "
+        f"keep-new-frames={keep_new_frames} keep-tracked-frames={keep_tracked_frames} keep-lost-frames={keep_lost_frames} keep-past-metadata={keep_past_metadata} qos={qos} debug={debug} ! "
         f"{QUEUE(name=f'{name}_q')} "
     )
     return tracker_pipeline

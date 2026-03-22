@@ -22,8 +22,9 @@
 #define NUM_COORDS 18       // 4 box coords + 7 keypoints * 2
 #define NUM_KEYPOINTS 7
 #define SCORE_CLIPPING_THRESH 100.0f
-#define MIN_SCORE_THRESH 0.7f
+#define MIN_SCORE_THRESH 0.65f
 #define MIN_SUPPRESSION_THRESHOLD 0.3f
+#define MAX_PALM_DETECTIONS 2  // Max 2 palms per person crop
 #define PALM_CLASS_ID 100             // Unique class ID so hailotracker can filter palms only
 
 // Anchor generation parameters
@@ -281,7 +282,10 @@ void palm_detection_postprocess(HailoROIPtr roi)
     // Weighted NMS
     auto nms_dets = weighted_nms(detections, MIN_SUPPRESSION_THRESHOLD);
 
-    // Create HailoDetection objects
+    // Create HailoDetection objects (keep top-N by score after NMS)
+    if (nms_dets.size() > MAX_PALM_DETECTIONS)
+        nms_dets.resize(MAX_PALM_DETECTIONS);  // already sorted by score desc from weighted_nms
+
     auto clamp01 = [](float v) { return std::max(0.0f, std::min(1.0f, v)); };
 
     for (auto &det : nms_dets)
