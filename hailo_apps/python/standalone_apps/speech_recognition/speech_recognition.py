@@ -194,6 +194,43 @@ VARIANT_MODELS = {
 }
 
 
+def _ensure_npy_assets(variant, npy_dir, app_name, arch, resources_root):
+    """Check that decoder npy assets exist; auto-download if missing."""
+    needed = [
+        f"token_embedding_weight_{variant}.npy",
+        f"onnx_add_input_{variant}.npy",
+    ]
+    missing = [f for f in needed if not (Path(npy_dir) / f).exists()]
+    if not missing:
+        return
+
+    print(f"\n⚠️  Decoder tokenization assets not found for variant '{variant}'.")
+    print("   Downloading automatically...\n")
+
+    try:
+        from hailo_apps.installation.download_resources import (
+            ResourceDownloader, load_config, DEFAULT_RESOURCES_CONFIG_PATH,
+        )
+        config = load_config(Path(DEFAULT_RESOURCES_CONFIG_PATH))
+        downloader = ResourceDownloader(
+            config=config,
+            hailo_arch=arch,
+            resource_root=Path(resources_root),
+        )
+        downloader.collect_npy_by_tag(app_name)
+        downloader.execute(parallel=False)
+    except Exception as e:
+        print(f"   Download failed: {e}")
+
+    still_missing = [f for f in needed if not (Path(npy_dir) / f).exists()]
+    if still_missing:
+        print(f"\n❌ Decoder assets still missing: {still_missing}")
+        print(f"   Expected in: {npy_dir}")
+        print("   Try running the full resource download:")
+        print(f"   python -m hailo_apps.installation.download_resources --group {app_name}\n")
+        sys.exit(1)
+
+
 # --- Main ---
 
 def get_args():
@@ -270,6 +307,9 @@ def main():
 
     # Resolve decoder npy assets from central resources/npy/ directory
     npy_dir = Path(RESOURCES_ROOT) / NPY_DIR
+
+    # Auto-download npy assets if missing
+    _ensure_npy_assets(variant, npy_dir, WHISPER_H8_APP, arch, RESOURCES_ROOT)
 
     # Initialize pipeline
     try:
