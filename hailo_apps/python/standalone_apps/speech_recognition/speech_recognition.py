@@ -41,7 +41,8 @@ def check_dependencies():
             missing.append(dep)
     if missing:
         print(f"\nMissing dependencies: {', '.join(missing)}")
-        print('Install with:  pip install -e ".[speech-rec]"')
+        print("\nRun the following command from the 'hailo-apps' repository root directory (where pyproject.toml is located):")
+        print('  pip install -e ".[speech-rec]"')
         sys.exit(1)
 
 
