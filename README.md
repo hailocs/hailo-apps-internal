@@ -167,7 +167,7 @@ python vlm_chat.py
 | `lane_detection`           | Lane detection using UFLDv2                                        |
 | `pose_estimation`          | Pose estimation with yolov8                                        |
 | `super_resolution`         | Super-resolution with espcnx4 and SRGAN                            |
-| `simple_whisper_h8`        | Whisper speech-to-text for Hailo-8/8L/10H                          |
+| `speech_recognition`       | Speech recognition for Hailo-8/8L/10H                              |
 
 </details>
 

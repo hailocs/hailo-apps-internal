@@ -1,4 +1,4 @@
-# Simple Whisper — Hailo-8/8L/10H
+# Speech Recognition — Hailo-8/8L/10H
 
 Whisper speech-to-text that runs on **all Hailo accelerators** (Hailo-8, Hailo-8L, Hailo-10H).
 
@@ -26,13 +26,13 @@ No manual download step is needed.
 
 **Live microphone recording (interactive loop):**
 ```bash
-python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8
+python -m hailo_apps.python.standalone_apps.speech_recognition.speech_recognition
 ```
 Press Enter to start recording, Enter again to stop. Press 'q' to quit.
 
 **Transcribe an audio file:**
 ```bash
-python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8 \
+python -m hailo_apps.python.standalone_apps.speech_recognition.speech_recognition \
     --audio /path/to/audio.wav
 ```
 

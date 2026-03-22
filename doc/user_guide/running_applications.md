@@ -53,7 +53,7 @@ In addition to the pipeline and GenAI applications above, this repository includ
 | [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md)                        | Standalone text detection and recognition using PaddleOCR models.        |
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
-| [Simple Whisper H8](../../hailo_apps/python/standalone_apps/simple_whisper_h8/README.md)          | Whisper speech-to-text for Hailo-8/8L/10H with live mic recording.      |
+| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md)        | Speech recognition for Hailo-8/8L/10H with live mic recording.          |
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 

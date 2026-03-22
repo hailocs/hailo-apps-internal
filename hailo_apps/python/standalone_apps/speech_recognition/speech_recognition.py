@@ -1,5 +1,5 @@
 """
-Whisper Speech-to-Text for Hailo-8/8L/10H.
+Speech Recognition for Hailo-8/8L/10H.
 
 Simple CLI app: record from microphone or load an audio file, transcribe with Whisper
 running on any Hailo accelerator via the low-level InferModel API.
@@ -9,14 +9,14 @@ and auto-downloaded on first use via resolve_hef_paths().
 
 Usage:
     # Record from microphone (press Enter to start/stop):
-    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8
+    python -m hailo_apps.python.standalone_apps.speech_recognition.speech_recognition
 
     # Transcribe an audio file:
-    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8 \
+    python -m hailo_apps.python.standalone_apps.speech_recognition.speech_recognition \
         --audio recording.wav
 
     # List available models:
-    python -m hailo_apps.python.standalone_apps.simple_whisper_h8.simple_whisper_h8 \
+    python -m hailo_apps.python.standalone_apps.speech_recognition.speech_recognition \
         --list-models
 """
 
@@ -197,7 +197,7 @@ VARIANT_MODELS = {
 
 def get_args():
     parser = argparse.ArgumentParser(
-        description="Whisper Speech-to-Text (Hailo-8/8L/10H)",
+        description="Speech Recognition (Hailo-8/8L/10H)",
     )
     parser.add_argument(
         "--audio", type=str, default=None,
