@@ -310,6 +310,7 @@ VLM_CHAT_APP = "vlm_chat"
 LLM_CHAT_APP = "llm_chat"
 WHISPER_CHAT_APP = "whisper_chat"
 AGENT_APP = "agent"
+DOG_MONITOR_FLAT_APP = "dog_monitor_flat"
 
 # Gen AI model defaults
 VLM_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
