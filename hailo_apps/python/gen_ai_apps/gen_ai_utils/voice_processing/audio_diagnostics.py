@@ -1,5 +1,5 @@
 import getpass
-import grp
+import platform
 import json
 import logging
 import os
@@ -11,7 +11,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-
+if platform.system() != "Windows":
+    import grp
+else:
+    grp = None
 
 # Default required dependencies for voice processing modules
 _VOICE_DEPENDENCIES = ['sounddevice', 'numpy']
@@ -813,12 +816,22 @@ ctl.!default {{
     @staticmethod
     def check_audio_permissions() -> Tuple[bool, List[str]]:
         """
-        Check if user has proper audio permissions.
+        Check whether the current user has the required audio permissions.
+
+        On Linux, this verifies that the user belongs to the ``audio`` group.
+        On Windows, this check is not applicable and is treated as passed.
 
         Returns:
-            Tuple[bool, List[str]]: (Has permissions, List of issues)
+            Tuple[bool, List[str]]: A tuple containing:
+                - bool: True if permissions are valid or not applicable.
+                - List[str]: A list of detected permission issues.
         """
         issues = []
+
+        if platform.system() == "Windows":
+            logger.debug("Audio group permission check is not applicable on Windows")
+            return True, issues
+
         try:
             user = getpass.getuser()
             user_groups = [g.gr_name for g in grp.getgrall() if user in g.gr_mem]

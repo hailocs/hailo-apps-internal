@@ -5,3 +5,4 @@ pyclipper
 symspellpy
 python-dotenv
 PyYAML
+paddlepaddle

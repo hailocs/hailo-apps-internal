@@ -1,107 +1,108 @@
 #!/usr/bin/env python3
+
 import os
 import sys
+import uuid
 import queue
 import threading
-from functools import partial
-from pathlib import Path
 import collections
 
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from functools import partial
+from pathlib import Path
+from collections import defaultdict
 
-# Check OCR dependencies before importing OCR-specific modules
+
+# Ensure repository root is available in sys.path
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
+
+# Dependency validation
 def check_ocr_dependencies():
     """
-    Check if all required OCR dependencies are installed.
-    
-    Exits the program with installation instructions if any dependencies are missing.
+    Validate that all required OCR dependencies are installed.
+
+    If one or more dependencies are missing, print clear installation
+    instructions and terminate the application.
     """
     missing_deps = []
-    # Map package names to their import names
-    ocr_deps = {
-        "paddlepaddle": "paddle",  # pip install paddlepaddle, but import paddle
+
+    # Mapping between pip package names and Python import names
+    ocr_dependencies = {
+        "paddlepaddle": "paddle",
         "shapely": "shapely",
         "pyclipper": "pyclipper",
         "symspellpy": "symspellpy",
     }
-    
-    for package_name, import_name in ocr_deps.items():
+
+    for package_name, import_name in ocr_dependencies.items():
         try:
             __import__(import_name)
         except ImportError:
             missing_deps.append(package_name)
 
     if missing_deps:
-        print("\n" + "="*70)
-        print("❌ MISSING REQUIRED DEPENDENCIES")
-        print("="*70)
-        print("\nThe following dependencies are required but not installed:")
+        print("\n" + "=" * 70)
+        print("ERROR: Missing required OCR dependencies")
+        print("=" * 70)
+        print("\nThe following packages are required but not installed:")
         for dep in missing_deps:
-            print(f"  • {dep}")
-        print("\n" + "-"*70)
-        print("INSTALLATION INSTRUCTIONS:")
-        print("-"*70)
-        print("\nTo install all dependencies (recommended):")
+            print(f"  - {dep}")
+
+        print("\n" + "-" * 70)
+        print("Installation instructions")
+        print("-" * 70)
+        print("\nRecommended installation:")
         print("  1. Navigate to the repository root directory")
-        print("  2. Run: pip install -e \".[ocr]\"")
-        print("\n" + "="*70)
+        print('  2. Run: pip install -e ".[ocr]"')
+        print("\n" + "=" * 70)
+
         sys.exit(1)
 
-# Check dependencies early
-check_ocr_dependencies()
-from paddle_ocr_utils import det_postprocess, resize_with_padding, inference_result_handler, OcrCorrector, map_bbox_to_original_image
-import uuid
-from collections import defaultdict
 
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
+# Validate dependencies before importing OCR-specific modules
+check_ocr_dependencies()
+
+
+from paddle_ocr_utils import (
+    det_postprocess,
+    resize_with_padding,
+    inference_result_handler,
+    OcrCorrector,
+    map_bbox_to_original_image,
+)
+
+from hailo_apps.python.core.common.hailo_logger import (
+    get_logger,
+    init_logging,
+    level_from_args,
+)
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+    stop_after_timeout
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS,
+)
+from hailo_apps.python.core.common.core import (
+    configure_multi_model_hef_path,
+    handle_and_resolve_args,
+)
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -232,45 +233,34 @@ def ocr_hailo_infer(hailo_inference, input_queue, output_queue, stop_event):
     output_queue.put(None)
 
 
-
 def run_inference_pipeline(
     det_net,
     ocr_net,
-    input_src,
-    batch_size,
-    output_dir,
-    camera_resolution,
-    output_resolution,
-    frame_rate,
-    save_output=False,
-    show_fps=False,
-    use_corrector=False,
-    no_display=False
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    show_fps: bool = False,
+    time_to_run: int | None = None,
+    use_corrector=False
 ) -> None:
     """
     Run full detector + OCR inference pipeline with multi-threading and streaming.
 
     Args:
-        det_net: model path for the detection network.
-        ocr_net: model path for the OCR network.
-        input_src (str): Input source — 'camera', image directory, or video file path.
-        batch_size (int): Number of frames to process in each batch.
-        output_dir (str): Directory where output images or videos will be saved.
-        camera_resolution (str): Camera input resolution (e.g., 'sd', 'hd', 'fhd').
-        output_resolution (str): Output resolution for display/saving.
-        frame_rate (float): Target frame rate for processing.
-        save_output (bool): Whether to save the output stream. Defaults to False.
-        show_fps (bool): Whether to display frames-per-second performance. Defaults to False.
-        use_corrector (bool): Whether to enable text spell correction. Defaults to False.
+        det_net: Path to the detection model (HEF).
+        ocr_net: Path to the OCR model (HEF).
+        input_context (InputContext): Configured input source and runtime metadata
+            (camera, video, or images).
+        visualization_settings (VisualizationSettings): Visualization and output
+            configuration (display, saving, output directory, etc.).
+        show_fps (bool, optional): Enable FPS tracking and reporting. Defaults to False.
+        time_to_run (int | None, optional): Optional timeout in seconds. If set,
+            the pipeline stops automatically after the given duration.
+        use_corrector (bool, optional): Enable OCR text correction post-processing.
+            Defaults to False.
 
     Returns:
         None
     """
-    # Initialize input source from string: "camera", video file, or image folder.
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
 
     stop_event = threading.Event()
 
@@ -300,110 +290,119 @@ def run_inference_pipeline(
         ocr_corrector=ocr_corrector
     )
 
-
-    # Detector inference callbacks
-    detector_inference_callback_fn = partial(
-        detector_inference_callback,
-        det_postprocess_queue=det_postprocess_queue,
-    )
-
-    # ocr inference callbacks
-    ocr_inference_callback_fn = partial(
-        ocr_inference_callback,
-        ocr_postprocess_queue=ocr_postprocess_queue
-    )
-
-
     ###### THREADS ########
 
     # Start detector with async Hailo inference
-    detector_hailo_inference = HailoInfer(det_net, batch_size)
+    detector_hailo_inference = HailoInfer(det_net, input_context.batch_size)
 
     # Start ocr with async Hailo inference
-    ocr_hailo_inference = HailoInfer(ocr_net, batch_size, priority=1)
+    ocr_hailo_inference = HailoInfer(ocr_net, input_context.batch_size, priority=1)
 
     height, width, _ = detector_hailo_inference.get_input_shape()
 
-    # input postprocess
+    # Input preprocessing
     preprocess_thread = threading.Thread(
-        target=preprocess, args=(images, cap, frame_rate, batch_size, det_input_queue, width, height, cap_processing_mode, None, stop_event)
+        target=preprocess,
+        args=(
+            input_context,
+            det_input_queue,
+            width,
+            height,
+            None,
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
 
-    # detector output postprocess
+    # Detection postprocess
     detection_postprocess_thread = threading.Thread(
         target=detection_postprocess,
-        args=(det_postprocess_queue, ocr_input_queue, vis_output_queue, height, width, stop_event),
+        args=(
+            det_postprocess_queue,
+            ocr_input_queue,
+            vis_output_queue,
+            height,
+            width,
+            stop_event,
+        ),
+        name="detection-postprocess-thread",
     )
 
-    # ocr output postprocess
+    # OCR postprocess
     ocr_postprocess_thread = threading.Thread(
         target=ocr_postprocess,
         args=(ocr_postprocess_queue, vis_output_queue, stop_event),
+        name="ocr-postprocess-thread",
     )
 
-    # visualisation postprocess
-    vis_postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(vis_output_queue, cap, save_output, output_dir,
-              post_process_callback_fn, fps_tracker, output_resolution, frame_rate, True, stop_event, no_display)
-    )
-
+    # Detection inference
     det_thread = threading.Thread(
-        target=detector_hailo_infer, args=(detector_hailo_inference, det_input_queue, det_postprocess_queue, stop_event)
+        target=detector_hailo_infer,
+        args=(
+            detector_hailo_inference,
+            det_input_queue,
+            det_postprocess_queue,
+            stop_event,
+        ),
+        name="detector-infer-thread",
     )
 
+    # OCR inference
     ocr_thread = threading.Thread(
-        target=ocr_hailo_infer, args=(ocr_hailo_inference, ocr_input_queue, ocr_postprocess_queue, stop_event)
+        target=ocr_hailo_infer,
+        args=(
+            ocr_hailo_inference,
+            ocr_input_queue,
+            ocr_postprocess_queue,
+            stop_event,
+        ),
+        name="ocr-infer-thread",
     )
 
     if show_fps:
         fps_tracker.start()
 
-    ##### Start threads ######
+    if time_to_run is not None:
+        timer_thread = threading.Thread(
+            target=stop_after_timeout,
+            args=(stop_event, time_to_run),
+            name="timer-thread",
+            daemon=True,
+        )
+        timer_thread.start()
+
+    # Start worker threads
     preprocess_thread.start()
     det_thread.start()
     detection_postprocess_thread.start()
     ocr_thread.start()
     ocr_postprocess_thread.start()
-    vis_postprocess_thread.start()
-
 
     try:
-
-        ##### Join Threads and Shutdown Queues ######
-        # Wait for input preprocessing to finish
+        # Visualization runs in the main thread
+        visualize(
+            input_context,
+            visualization_settings,
+            vis_output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
-
-        # Wait for detector inference to finish
         det_thread.join()
-
-        # Tell detection postprocess thread to exit
-        det_postprocess_queue.put(None)
         detection_postprocess_thread.join()
-
-        # Signal OCR inference thread to stop (no more crops coming)
-        ocr_input_queue.put(None)
         ocr_thread.join()
-
-        # Signal OCR postprocess thread to stop
-        ocr_postprocess_queue.put(None)
         ocr_postprocess_thread.join()
 
-        # Signal visualization thread that everything is done
-        vis_output_queue.put(None)
-        vis_postprocess_thread.join()
+    if show_fps:
+        logger.info(fps_tracker.frame_rate_summary())
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
+    logger.success("Processing completed successfully.")
 
-    finally:
-        if show_fps:
-            logger.info(fps_tracker.frame_rate_summary())
-
-        logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved outputs to '{output_dir}'.")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def detector_inference_callback(
@@ -480,6 +479,8 @@ def detection_postprocess(
             resized = resize_with_padding(cropped)
             # Push one OCR task to the OCR input queue
             ocr_input_queue.put((input_frame, [resized], (frame_id, boxes[idx])))
+
+    ocr_input_queue.put(None)
 
 
 
@@ -563,6 +564,8 @@ def ocr_postprocess(
             del ocr_results_dict[frame_id]
             del ocr_expected_counts[frame_id]
 
+    vis_output_queue.put(None)
+
 
 def main() -> None:
     """
@@ -572,19 +575,33 @@ def main() -> None:
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME, multi_hef=True)
     args.det_net, args.ocr_net = [model for model in args.hef_path]
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
+    )
+
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+        side_by_side=True,  # Enable side-by-side visualization for OCR results
+    )
+
     run_inference_pipeline(
         args.det_net,
         args.ocr_net,
-        args.input,
-        args.batch_size,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
-        args.save_output,
-        args.show_fps,
-        args.use_corrector,
-        args.no_display
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        show_fps=args.show_fps,
+        time_to_run=args.time_to_run,
+        use_corrector=args.use_corrector
     )
 
 

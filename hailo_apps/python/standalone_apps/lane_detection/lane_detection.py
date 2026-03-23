@@ -11,31 +11,21 @@ import argparse
 import collections
 from lane_detection_utils import (UFLDProcessing, check_process_errors, compute_scaled_radius)
 
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS
+)
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
