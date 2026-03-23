@@ -37,6 +37,13 @@ my_vlm_app: *vlm_chat_app
 ```
 Place this in the `# Gen AI models` section of `resources_config.yaml`.
 
+**YAML GOTCHA**: Insert the alias line **after** the complete block of the preceding
+key. Never insert between a key (e.g. `agent: &agent_app`) and its `models:` mapping —
+this breaks YAML parsing. Always validate after editing:
+```bash
+python3 -c "import yaml; yaml.safe_load(open('hailo_apps/config/resources_config.yaml')); print('OK')"
+```
+
 ### Step 2: Create Directory
 
 ```
@@ -98,8 +105,10 @@ class MyVLMApp:
 
 def main():
     parser = get_standalone_parser()
+    # IMPORTANT: Add ALL custom args BEFORE handle_list_models_flag
+    # so they appear in --help output
+    parser.add_argument("--interval", type=int, default=15, help="Seconds between analyses")
     handle_list_models_flag(parser, MY_VLM_APP)
-    # Add custom CLI args here
     args = parser.parse_args()
     hef_path = resolve_hef_path(args.hef_path, app_name=MY_VLM_APP, arch=HAILO10H_ARCH)
     # Camera setup, app.run()
@@ -265,6 +274,65 @@ Before running a new VLM app, verify **both** registrations exist:
 2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
 
 Missing #2 causes `KeyError: '<app_name>'` in `resolve_hef_path()` at runtime.
+
+## Lessons Learned (from real builds)
+
+### 1. YAML Alias Placement Breaks Config
+When adding `new_app: *vlm_chat_app` to `resources_config.yaml`, inserting it between
+an existing key and its `models:` block breaks YAML parsing with a confusing error
+referencing a distant line. **Always insert after the full preceding block** and
+validate with `yaml.safe_load()`.
+
+### 2. Custom CLI Args Must Come Before handle_list_models_flag()
+If you add `parser.add_argument("--interval", ...)` after `handle_list_models_flag()`,
+the argument won't appear in `--help` output. The flag handler does `parse_known_args()`
+which triggers argparse's help rendering before your arg is registered. Solution:
+add all custom arguments **before** calling `handle_list_models_flag()`.
+
+### 3. MAX_TOKENS Too High → Repetitive VLM Output
+Qwen2-VL with `MAX_TOKENS=300` on short prompts produces verbose, looping text
+(the same sentences repeated). For monitoring apps, use `MAX_TOKENS=100`–`150` and
+reinforce brevity in the prompt: `"Be concise — one or two sentences maximum."`
+
+### 4. Event Keyword Classification — First Match Wins
+The keyword classifier matches the first `EventType` whose keywords appear in the
+response. Generic words ("food", "floor") can trigger the wrong category. Fix by:
+- Ordering categories from most-specific to least-specific
+- Using specific action verbs ("sniffing", "chewing") instead of nouns
+- Or: instruct the VLM to output a single label from a fixed list
+
+### 5. Check Video Duration Before Launch
+A 60s video at `--interval 15` with 5-45s inference time yields only 1-2 observations.
+Always check the video duration first and set interval accordingly:
+```bash
+ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1 video.mp4
+```
+
+### 6. python3 Not python — Ubuntu Has No `python` Binary
+On Ubuntu/Debian, `python` doesn't exist by default. Always use `python3` in
+terminal commands and documentation. The `setup_env.sh` activates the venv but
+does NOT create a `python` → `python3` alias.
+
+### 7. YAML Edits Fail on Whitespace Mismatches
+When editing `resources_config.yaml` with `replace_string_in_file`, the match
+must be byte-exact including trailing spaces. If the first attempt fails, re-read
+the target lines with `read_file` and copy the exact whitespace. Include 3-5
+context lines from the actual file output, not from memory.
+
+### 8. Validation Script Is the Single Gate Check
+The `validate_app.py` script runs 20 checks (file existence, syntax, imports,
+conventions, README quality). If it passes 20/20, the app is convention-compliant.
+Run it once at the end instead of manual grep checks — it catches everything.
+
+### 9. Local Docs Are Sufficient — Kapa MCP Is for Edge Cases
+The `.github/` documentation (this SKILL.md, memory files, toolset refs, and the
+vlm_chat reference implementation) provides 100% of the context needed for standard
+VLM app builds. Kapa MCP is only needed for undocumented SDK parameters, HEF
+compatibility across versions, or HailoRT driver troubleshooting.
+
+### 10. Auto-Approve Eliminates 46+ Clicks Per Build
+Add `"chat.tools.autoApprove": true` to `.vscode/settings.json` for fully
+autonomous agentic workflows. Without it, every tool call requires manual approval.
 
 ## Common VLM Prompts
 

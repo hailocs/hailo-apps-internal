@@ -20,8 +20,20 @@
 - `hailocropper` sends **parent detection** as ROI to inner pipeline, not the crop sub-detection
 - `INFERENCE_PIPELINE_WRAPPER` sets a non-identity `scaling_bbox` on the ROI (letterbox transform)
 - **New VLM apps need TWO registrations**: `defines.py` AND `resources_config.yaml`
+- **YAML alias entries**: Insert AFTER the complete preceding block — never between a key and its `models:` mapping
+- **CLI custom args**: Add ALL `parser.add_argument()` calls BEFORE `handle_list_models_flag()`
+- **MAX_TOKENS for monitoring**: Use 100–150 (not 300) to avoid repetitive VLM output
+- **Event keyword order**: Specific actions first, generic states last — first match wins
+- **Video duration check**: For file inputs, verify duration > interval before launch
 - **Display**: Always resize VLM frames to 640×640+, wrap overlay text, print events to terminal
 - **Driver check**: Use `hailortcli fw-control identify`, NOT `lsmod | grep hailo_pci`
+- **python3 not python**: Ubuntu has no `python` binary; always use `python3` in commands
+- **YAML edits**: Whitespace-exact matching required; re-read target lines if first edit fails
+- **Validation script**: `validate_app.py` runs 20 checks — single gate replaces manual greps
+- **Local docs vs Kapa**: `.github/` docs suffice for standard VLM builds; Kapa for edge cases only
+- **Auto-approve**: Add `"chat.tools.autoApprove": true` to `.vscode/settings.json` for agentic builds
+- **VLM inference timing**: ~4.7s avg on Hailo-10H with Qwen2-VL-2B at MAX_TOKENS=300
+- **Short videos**: Use `--interval 5` for clips under 120s to get meaningful observation count
 
 ## Build Commands
 

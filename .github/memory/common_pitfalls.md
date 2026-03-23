@@ -155,6 +155,88 @@ app appear broken and drops most of the video content.
 video continues. Freezing is ONLY for interactive capture-and-ask apps (like `vlm_chat`)
 where the user explicitly captures a frame.
 
+## YAML Config Registration — Anchor Alias Placement
+
+### Wrong: Insert alias between a key and its value block
+When adding `dog_monitor: *vlm_chat_app` to `resources_config.yaml`, inserting it
+**between** an existing key (e.g. `agent: &agent_app`) and its `models:` block
+breaks YAML parsing — the parser sees `models:` as belonging to the new key.
+```yaml
+# ❌ WRONG — splits `agent` from its `models:` block
+agent: &agent_app
+
+dog_monitor: *vlm_chat_app
+
+  models:          # ← parser thinks this belongs to dog_monitor, not agent
+    hailo10h: ...
+```
+
+### Right: Insert alias AFTER the full block
+```yaml
+# ✅ CORRECT — agent block is complete, then alias follows
+agent: &agent_app
+  models:
+    hailo8:
+      default: None
+    hailo10h:
+      default:
+        - name: Qwen2.5-Coder-1.5B-Instruct
+          source: gen-ai-mz
+
+dog_monitor: *vlm_chat_app      # ← safe: goes after the full agent block
+```
+**Rule**: When inserting a YAML alias entry, always place it **after** the complete
+block of the preceding key, not between the key and its child mapping.
+Always run `python3 -c "import yaml; yaml.safe_load(open('path'))"` after editing YAML.
+
+## CLI Argument Ordering with handle_list_models_flag
+
+### Wrong: Add custom args AFTER handle_list_models_flag
+`handle_list_models_flag()` uses `parse_known_args()` internally, which doesn't
+fail — but if `--help` is invoked at that point, argparse only knows the base args.
+Custom args added later never appear in `--help` output:
+```python
+# ❌ --interval won't appear in --help
+parser = get_standalone_parser()
+handle_list_models_flag(parser, MY_APP)
+parser.add_argument("--interval", ...)  # Too late for --help
+args = parser.parse_args()
+```
+
+### Right: Add ALL custom args BEFORE handle_list_models_flag
+```python
+# ✅ --interval appears in --help
+parser = get_standalone_parser()
+parser.add_argument("--interval", type=int, default=15, help="Seconds between analyses")
+handle_list_models_flag(parser, MY_APP)  # Now --help shows everything
+args = parser.parse_args()
+```
+**Rule**: All `parser.add_argument()` calls must come **before** `handle_list_models_flag()`.
+
+## VLM MAX_TOKENS Tuning for Monitoring Apps
+
+Qwen2-VL with `MAX_TOKENS=300` produces verbose, **repetitive** output (the model
+loops the same sentences). For continuous monitoring apps that need concise answers:
+- Use `MAX_TOKENS=100` to `150` — enough for 1-2 sentences
+- Reinforce brevity in both the system prompt and user prompt:
+  `"Be concise — one or two sentences maximum."`
+- `MAX_TOKENS=200+` is only appropriate for interactive Q&A or detailed descriptions
+
+## Event Classification — Keyword Ordering Matters
+
+Keyword-based classification matches the **first** EventType whose keywords appear
+in the response. Generic words like "food" or "floor" can match the wrong category
+if checked before more specific ones.
+```python
+# ❌ "sniffing a bowl on the floor" matches SLEEPING because "lying" check comes first
+# ❌ "sitting on the floor" matches EATING because "food" appears in context
+```
+**Fix**: Order keyword categories from most-specific to least-specific. Put
+physical-action keywords (sniffing, running, chewing) before state/posture keywords
+(sitting, lying). Also add the activity you care about to the VLM prompt itself:
+`"Classify the dog's activity as one of: sleeping, eating, drinking, playing, ..."` —
+this constrains the VLM output and makes keyword matching more reliable.
+
 ## GStreamer Pipeline
 
 ### Missing Queue Between Elements
@@ -196,3 +278,39 @@ logger.info("Starting inference...")
 - Real-time streamed VLM output (user-facing)
 - Interactive prompts ("Press Enter to continue")
 - Summary reports at end of session
+
+## Agent / Tooling Pitfalls
+
+### python vs python3 on Ubuntu/Debian
+On Ubuntu, `python` is NOT installed by default — only `python3` exists.
+Always use `python3` in terminal commands, or first verify with `which python`.
+The `setup_env.sh` script activates the venv but does NOT alias `python` → `python3`.
+```bash
+# ❌ Fails on fresh Ubuntu
+python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+
+# ✅ Always works
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+```
+
+### YAML File Edits — Whitespace Sensitivity
+When using `replace_string_in_file` on YAML files (e.g., `resources_config.yaml`),
+the match MUST be exact including invisible trailing spaces and indentation.
+YAML files often have inconsistent spacing between blocks. If the first edit
+attempt fails, read the exact lines around the insertion point and retry with
+the precise whitespace.
+**Tip**: Include 3-5 context lines from the actual `read_file` output, not
+from memory or documentation.
+
+### VS Code Auto-Approve for Agentic Workflows
+By default, VS Code Copilot agent mode requires clicking "Allow" for every
+tool call (file write, terminal command, etc.). A 46-tool-call build means
+~46 clicks. To eliminate this:
+```json
+// .vscode/settings.json
+{
+    "chat.tools.autoApprove": true
+}
+```
+This makes the agent fully autonomous. Add to `.vscode/settings.json` at the
+workspace level (not user level) so it only applies to this repo.

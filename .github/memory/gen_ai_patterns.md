@@ -102,6 +102,47 @@ If the main process exits without sending the `None` sentinel to the worker, the
 If `cv2.VideoCapture.release()` is called from a different thread than `read()`, OpenCV can crash.
 **Fix**: Camera init and release must happen in the same thread (the video thread).
 
+### YAML Config — Safe Alias Insertion Point
+When adding `new_app: *vlm_chat_app` to `resources_config.yaml`, place it **after**
+the complete block of the preceding key — never between a key and its value mapping.
+Breaking the YAML structure causes `Invalid YAML` errors at runtime that reference
+a line far from the actual insertion point, making debugging confusing.
+**Always validate** after editing: `python3 -c "import yaml; yaml.safe_load(open('...'))"`
+
+### CLI Custom Args Must Precede handle_list_models_flag()
+In `main()`, add all `parser.add_argument("--interval", ...)` calls **before**
+`handle_list_models_flag(parser, APP)`. Otherwise `--help` won't show them because
+argparse renders help from whatever args are registered when `--help` is parsed.
+
+### MAX_TOKENS for Monitoring vs Interactive Apps
+| Use Case | MAX_TOKENS | Why |
+|---|---|---|
+| Monitoring (continuous) | 100–150 | Concise; avoids repetitive loops |
+| Interactive Q&A | 200–300 | Detailed answers expected |
+| JSON output | 150–200 | Structured but bounded |
+
+Qwen2-VL tends to produce repetitive text when `max_generated_tokens` is high and
+the answer is short. Always pair a low `MAX_TOKENS` with a prompt that says
+"Be concise — one or two sentences."
+
+### Event Keyword Classification — Priority Order
+Put specific-action keywords (sniffing, chewing, running) before generic-state
+keywords (sitting, idle). The classifier matches the first hit in iteration order.
+Alternatively, instruct the VLM to output a structured label:
+`"Respond with exactly one word from: sleeping, eating, drinking, playing, ..."`
+and parse the first word — this eliminates keyword ambiguity entirely.
+
+### Video Duration Check Before Launch
+For file inputs, always check video duration and ensure `--interval` is well below
+the total length. A 60s video with `--interval 15` (default) only gets ~2 analyses
+because inference takes 5-45s each. Use `--interval 5` for short clips.
+```python
+import cv2
+cap = cv2.VideoCapture(path)
+duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
+cap.release()
+```
+
 ### QT_QPA_PLATFORM Must Be Set Early
 ```python
 import os
@@ -109,3 +150,49 @@ os.environ["QT_QPA_PLATFORM"] = 'xcb'  # BEFORE any cv2 or Qt import
 import cv2  # OK now
 ```
 If set after import, OpenCV GUI functions may crash on headless Linux.
+
+## Build Session Benchmarks (Hailo-10H, Qwen2-VL-2B)
+
+### VLM Inference Timing
+Measured on Hailo-10H with Qwen2-VL-2B-Instruct, `MAX_TOKENS=300`, `temperature=0.1`:
+| Metric | Value |
+|---|---|
+| Average inference time | 4.7s per frame |
+| Range | 3.2s – 5.4s |
+| Throughput at `--interval 5` | ~8 analyses per 51s video |
+
+These timings include token generation overhead. Shorter `MAX_TOKENS` (100–150)
+can reduce inference time by ~30% since less tokens need to be generated.
+
+### Build Efficiency Metrics (Dog Monitor App Reference)
+Full app build (3 files, 475 LOC, validated, tested, launched):
+| Metric | Value |
+|---|---|
+| Wall-clock time | ~8 minutes |
+| Tool calls | 46 |
+| Files read | 14 |
+| Validation pass | 20/20 first try |
+| VLM events detected | 8 in 51s test run |
+
+### Context Efficiency — Local Docs vs External (Kapa MCP)
+The local `.github/` documentation (SKILL.md, memory files, toolset references,
+reference implementations) provided **100% of the context** needed to build a
+complete VLM app. Kapa MCP was not invoked.
+
+**When Kapa IS needed** (for future reference):
+- Undocumented `hailo_platform.genai` API parameters
+- HEF compatibility questions across SDK versions
+- HailoRT driver troubleshooting for non-standard setups
+- Model Zoo version-specific download URLs or naming changes
+
+**When local docs are sufficient** (Kapa NOT needed):
+- Building VLM apps following the existing pattern
+- Event tracking, display overlay, camera integration
+- CLI argument parsing, HEF resolution, signal handling
+- Any task where SKILL.md + memory files + reference implementation cover the pattern
+
+### Short Video Strategy
+For video files under 120s, inference throughput matters. Each VLM call takes ~5s.
+- `--interval 15` (default) on a 60s video = only ~2 analyses
+- `--interval 5` on a 60s video = ~8 analyses (almost every 5s boundary triggers)
+- Always set `--interval` lower than `video_duration / 3` for meaningful monitoring
