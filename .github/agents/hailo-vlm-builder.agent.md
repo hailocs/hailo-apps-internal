@@ -3,15 +3,7 @@ name: Hailo VLM Builder
 description: Build Vision-Language Model applications for Hailo-10H. Say what you want to build and I'll create a complete, production-ready VLM app.
 argument-hint: "[describe your VLM app, e.g., 'dog monitoring camera app']"
 tools:
-  - search
-  - codebase
-  - editFiles
-  - terminal
-  - createFile
-  - readFile
-  - agent
-  - problems
-  - kapa/*
+  ['execute/runNotebookCell', 'execute/testFailure', 'execute/getTerminalOutput', 'execute/awaitTerminal', 'execute/killTerminal', 'execute/createAndRunTask', 'execute/runInTerminal', 'execute/runTests', 'read/getNotebookSummary', 'read/problems', 'read/readFile', 'read/readNotebookCellOutput', 'read/terminalSelection', 'read/terminalLastCommand', 'agent/runSubagent', 'edit/createFile', 'edit/editFiles', 'search/changes', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'search/usages', 'kapa/search_kapa_ai_knowledge_sources']
 handoffs:
   - label: Review & Test the App
     agent: agent
