@@ -19,6 +19,7 @@
 #include <opencv2/highgui.hpp>
 #include "imagenet_labels.hpp"
 using namespace hailo_utils;
+using Clock = std::chrono::steady_clock;
 
 
 /////////// Constants ///////////
@@ -33,12 +34,12 @@ std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue =
 static bool APPLY_SOFTMAX = false;
 
 /**
- * @brief Find the index of the maximum element in a vector.
- *
- * @tparam T Value type of the vector.
- * @param v Input vector.
- * @return Index of the maximum element.
- */
+* @brief Find the index of the maximum element in a vector.
+*
+* @tparam T Value type of the vector.
+* @param v Input vector.
+* @return Index of the maximum element.
+*/
 template <typename T>
 static int argmax_vec(const std::vector<T> &v)
 {
@@ -46,12 +47,12 @@ static int argmax_vec(const std::vector<T> &v)
 }
 
 /**
- * @brief Compute softmax probabilities from a vector of logits.
- *
- * @tparam T Value type of the vector.
- * @param v Input vector (raw scores or logits).
- * @return Vector of normalized probabilities summing to 1.0.
- */
+* @brief Compute softmax probabilities from a vector of logits.
+*
+* @tparam T Value type of the vector.
+* @param v Input vector (raw scores or logits).
+* @return Vector of normalized probabilities summing to 1.0.
+*/
 template <typename T>
 static std::vector<float> softmax_vec(const std::vector<T> &v)
 {
@@ -66,14 +67,14 @@ static std::vector<float> softmax_vec(const std::vector<T> &v)
 }
 
 /**
- * @brief Classify logits or probabilities and format result string.
- *
- * @param logits Vector of raw logits or probabilities.
- * @param threshold Minimum confidence to accept; otherwise returns "N\A".
- * @return Formatted string: "<label> (<confidence>%)".
- */
+* @brief Classify logits or probabilities and format result string.
+*
+* @param logits Vector of raw logits or probabilities.
+* @param threshold Minimum confidence to accept; otherwise returns "N\A".
+* @return Formatted string: "<label> (<confidence>%)".
+*/
 static std::string classify_and_format(const std::vector<float> &logits,
-                                       float threshold = 0.20f)
+                                    float threshold = 0.20f)
 {
     static ImageNetLabels labels;
     std::vector<float> probs = APPLY_SOFTMAX
@@ -91,15 +92,15 @@ static std::string classify_and_format(const std::vector<float> &logits,
 }
 
 /**
- * @brief Post-process a classifier output and overlay the top-1 result.
- *
- * Expects a single classifier tensor (probabilities already in float32).
- * Picks the output with the largest feature count if multiple exist,
- * finds argmax, applies a confidence threshold, prints, and overlays text.
- *
- * @param frame_to_draw Image to annotate in-place.
- * @param output_data_and_infos Vector of pairs {data_ptr, vstream_info}.
- */
+* @brief Post-process a classifier output and overlay the top-1 result.
+*
+* Expects a single classifier tensor (probabilities already in float32).
+* Picks the output with the largest feature count if multiple exist,
+* finds argmax, applies a confidence threshold, prints, and overlays text.
+*
+* @param frame_to_draw Image to annotate in-place.
+* @param output_data_and_infos Vector of pairs {data_ptr, vstream_info}.
+*/
 void postprocess_callback(
     cv::Mat &frame_to_draw,
     const std::vector<std::pair<uint8_t*, hailo_vstream_info_t>> &output_data_and_infos)
@@ -125,7 +126,7 @@ void postprocess_callback(
     if (!frame_to_draw.empty()) {
         const int font = cv::FONT_HERSHEY_SIMPLEX;
         const double scale = 0.5;
-        const int thickness = 1.3;
+        const int thickness = 1.0;
         int baseline = 0;
         (void)baseline;
         cv::Size textSize = cv::getTextSize(result, font, scale, thickness, &baseline);
@@ -140,77 +141,84 @@ void postprocess_callback(
 
 int main(int argc, char** argv)
 {
-    const std::string APP_NAME = "classifier";
-    std::chrono::duration<double> inference_time;
-    std::chrono::time_point<std::chrono::system_clock> t_start = std::chrono::high_resolution_clock::now();
-    double org_height, org_width;
-    cv::VideoCapture capture;
-    size_t frame_count;
-    InputType input_type;
+    try{
+        const std::string APP_NAME = "classifier";
+        std::chrono::duration<double> inference_time;
 
-    CommandLineArgs args = parse_command_line_arguments(argc, argv);
+        auto t_start = Clock::now();
+        double org_height, org_width;
+        cv::VideoCapture capture;
+        size_t frame_count;
+        InputType input_type;
 
-    post_parse_args(APP_NAME, args, argc, argv);
-    HailoInfer model(args.net, args.batch_size, HAILO_FORMAT_TYPE_UINT8, HAILO_FORMAT_TYPE_FLOAT32);
-    input_type = determine_input_type(args.input,
-                                    std::ref(capture),
+        CommandLineArgs args = parse_command_line_arguments(argc, argv);
+        post_parse_args(APP_NAME, args, argc, argv);
+        HailoInfer model(args.net, args.batch_size, HAILO_FORMAT_TYPE_UINT8, HAILO_FORMAT_TYPE_FLOAT32);
+        input_type = determine_input_type(args.input,
+                                        std::ref(capture),
+                                        std::ref(org_height),
+                                        std::ref(org_width),
+                                        std::ref(frame_count),
+                                        std::ref(args.batch_size),
+                                        std::ref(args.camera_resolution));
+
+        // Determine model name from HEF path or plain name
+        const std::string model_name = fs::path(args.net).stem().string();
+        // Query JSON metadata to see if softmax should be applied
+        APPLY_SOFTMAX = (get_model_meta_value("classifier", model_name, "apply_softmax") == "true");
+        auto preprocess_thread = std::async(run_preprocess,
+                                                std::ref(args.input),
+                                                std::ref(args.net),
+                                                std::ref(model),
+                                                std::ref(input_type),
+                                                std::ref(capture),
+                                                std::ref(args.batch_size),
+                                                std::ref(args.framerate),
+                                                preprocessed_batch_queue,
+                                                preprocess_frames);
+
+        ModelInputQueuesMap input_queues = {
+            { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue }
+        };
+
+        auto inference_thread = std::async(run_inference_async,
+                                        std::ref(model),
+                                        std::ref(inference_time),
+                                        std::ref(input_queues),
+                                        results_queue);
+
+        auto output_parser_thread = std::async(run_post_process,
+                                    std::ref(input_type),
                                     std::ref(org_height),
                                     std::ref(org_width),
                                     std::ref(frame_count),
+                                    std::ref(capture),
+                                    std::ref(args.framerate),
                                     std::ref(args.batch_size),
-                                    std::ref(args.camera_resolution));
+                                    std::ref(args.save_stream_output),
+                                    std::ref(args.no_display),
+                                    std::ref(args.output_dir),
+                                    std::ref(args.output_resolution),
+                                    results_queue,
+                                    postprocess_callback);
 
-    // Determine model name from HEF path or plain name
-    const std::string model_name = fs::path(args.net).stem().string();
-    // Query JSON metadata to see if softmax should be applied
-    APPLY_SOFTMAX = (hailo_utils::get_network_meta_value("classifier", model_name, "apply_softmax") == "true");
+        hailo_status status = wait_and_check_threads(
+            preprocess_thread,    "Preprocess",
+            inference_thread,     "Inference",
+            output_parser_thread, "Postprocess "
+        );
+        if (HAILO_SUCCESS != status) {
+            return status;
+        }
+        
+        auto t_end = Clock::now();
+        print_inference_statistics(inference_time, args.net, static_cast<double>(frame_count), t_end - t_start);
 
-    auto preprocess_thread = std::async(run_preprocess,
-                                        std::ref(args.input),
-                                        std::ref(args.net),
-                                        std::ref(model),
-                                        std::ref(input_type),
-                                        std::ref(capture),
-                                        std::ref(args.batch_size),
-                                        std::ref(args.framerate),
-                                        preprocessed_batch_queue,
-                                        preprocess_frames);
-
-    ModelInputQueuesMap input_queues = {
-        { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue }
-    };
-
-    auto inference_thread = std::async(run_inference_async,
-                                    std::ref(model),
-                                    std::ref(inference_time),
-                                    std::ref(input_queues),
-                                    results_queue);
-
-    auto output_parser_thread = std::async(run_post_process,
-                                std::ref(input_type),
-                                std::ref(org_height),
-                                std::ref(org_width),
-                                std::ref(frame_count),
-                                std::ref(capture),
-                                std::ref(args.framerate),
-                                std::ref(args.batch_size),
-                                std::ref(args.save_stream_output),
-                                std::ref(args.output_dir),
-                                std::ref(args.output_resolution),
-                                results_queue,
-                                postprocess_callback);
-
-    hailo_status status = wait_and_check_threads(
-        preprocess_thread,    "Preprocess",
-        inference_thread,     "Inference",
-        output_parser_thread, "Postprocess "
-    );
-    if (HAILO_SUCCESS != status) {
-        return status;
+        return HAILO_SUCCESS;
     }
-
-    std::chrono::time_point<std::chrono::system_clock> t_end = std::chrono::high_resolution_clock::now();
-    print_inference_statistics(inference_time, args.net, frame_count, t_end - t_start);
-
-    return HAILO_SUCCESS;
+    catch (const std::exception &e) {
+        std::cerr << "ERROR: " << e.what() << "\n";
+        return HAILO_INTERNAL_FAILURE;
+    }
 }
+ 
