@@ -11,6 +11,7 @@ tools:
   - readFile
   - agent
   - problems
+  - kapa/*
 handoffs:
   - label: Review & Test the App
     agent: agent
@@ -46,6 +47,12 @@ Read these files to understand the framework:
 - `hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py` — Reference implementation (FULL source)
 - `hailo_apps/python/gen_ai_apps/vlm_chat/backend.py` — Backend to reuse (FULL source)
 - `hailo_apps/python/core/common/defines.py` — Existing constants
+
+**Also use the Kapa MCP tool** (`kapa/*`) to search Hailo documentation when you need:
+- API details not covered in the local files (HailoRT, hailo_platform.genai, VLM API)
+- Hardware-specific setup steps or troubleshooting
+- Model availability, HEF compatibility, or SDK version requirements
+Call `#tool:kapa/search_kapa_ai_knowledge_sources` with a natural language query when local context is insufficient.
 
 ### Phase 3: Build
 1. **Register** — Add app constant to `defines.py`
