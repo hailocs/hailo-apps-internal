@@ -15,9 +15,30 @@ This repository is designed for **agentic-first development**. AI coding agents 
 | **Claude Code** | `CLAUDE.md` (this file) | Auto-loaded by Claude Code as project conventions |
 | **Any agent** | `.github/instructions/` | Skills, toolsets, and prompts readable by any agent |
 
+### Dynamic Context Loading
+
+> **Do NOT read all 44 files.** Use the routing table below to load **only** the files relevant to the current task.
+
+#### Context Routing Table
+
+| If the task mentions... | Read these files (relative to `.github/`) |
+|---|---|
+| **VLM, vision, image understanding** | `instructions/skills/create-vlm-app.md`, `toolsets/vlm-backend-api.md`, `memory/gen_ai_patterns.md` |
+| **LLM, chat, text generation** | `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Agent, tools, function calling** | `instructions/skills/create-agent-app.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Voice, STT, TTS, Whisper, speech** | `instructions/skills/add-voice-mode.md`, `toolsets/gen-ai-utilities.md` |
+| **Pipeline, GStreamer, video, stream** | `instructions/skills/create-pipeline-app.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` |
+| **Standalone, OpenCV, HailoInfer** | `instructions/skills/create-standalone-app.md`, `toolsets/core-framework-api.md` |
+| **Camera, USB, RPi, capture** | `instructions/skills/camera-integration.md`, `memory/camera_and_display.md` |
+| **HEF, model, download, config** | `instructions/skills/model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
+| **Monitoring, events, alerts** | `instructions/skills/continuous-monitoring.md`, `instructions/skills/event-detection.md` |
+| **Testing, validation, pytest** | `instructions/skills/validate-and-test.md`, `instructions/testing-patterns.md` |
+| **Complex multi-file app** | `instructions/orchestration.md`, `instructions/skills/plan-and-execute.md`, `instructions/agent-protocols.md` |
+| **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
+
 ### Memory (persistent knowledge base)
 
-Knowledge base lives in `.github/memory/` (checked into the repo). Always consult and update these files:
+Knowledge base lives in `.github/memory/` (checked into the repo). Read only the memory files matched by the routing table above:
 
 - `.github/memory/MEMORY.md` — Top-level index, key patterns, quick reference
 - `.github/memory/gen_ai_patterns.md` — Gen AI app architecture, VLM/LLM patterns, gotchas

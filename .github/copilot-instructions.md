@@ -29,9 +29,32 @@
 6. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag; never assume hardware
 7. **Entry points**: App must have a `main()` or `if __name__ == "__main__"` block
 
-## Persistent Memory (READ FIRST)
+## Dynamic Context Loading
 
-Before starting any task, check the memory files for relevant context:
+> **Do NOT read all 44 files.** Use the routing table below to load **only** the files relevant to the current task. This saves tokens and keeps context focused.
+
+### Context Routing Table
+
+Based on what the task involves, read **only** the matching rows:
+
+| If the task mentions... | Read these files |
+|---|---|
+| **VLM, vision, image understanding** | `instructions/skills/create-vlm-app.md`, `toolsets/vlm-backend-api.md`, `memory/gen_ai_patterns.md` |
+| **LLM, chat, text generation** | `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Agent, tools, function calling** | `instructions/skills/create-agent-app.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Voice, STT, TTS, Whisper, speech** | `instructions/skills/add-voice-mode.md`, `toolsets/gen-ai-utilities.md` |
+| **Pipeline, GStreamer, video, stream** | `instructions/skills/create-pipeline-app.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` |
+| **Standalone, OpenCV, HailoInfer** | `instructions/skills/create-standalone-app.md`, `toolsets/core-framework-api.md` |
+| **Camera, USB, RPi, capture** | `instructions/skills/camera-integration.md`, `memory/camera_and_display.md` |
+| **HEF, model, download, config** | `instructions/skills/model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
+| **Monitoring, events, alerts** | `instructions/skills/continuous-monitoring.md`, `instructions/skills/event-detection.md` |
+| **Testing, validation, pytest** | `instructions/skills/validate-and-test.md`, `instructions/testing-patterns.md` |
+| **Complex multi-file app** | `instructions/orchestration.md`, `instructions/skills/plan-and-execute.md`, `instructions/agent-protocols.md` |
+| **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
+
+All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` and community contributions at `community/contributions/` can be checked when you need recipes or patterns.
+
+### Persistent Memory
 
 ```
 .github/memory/
@@ -43,19 +66,17 @@ Before starting any task, check the memory files for relevant context:
 └── common_pitfalls.md         ← Bugs found, anti-patterns to avoid
 ```
 
-**Rules**: Read relevant memory files at task start. Update them when discovering new patterns.
-
-A machine-readable knowledge base is also at `.github/knowledge/knowledge_base.yaml` with recipes, bottleneck patterns, and insights.
+**Rules**: Read relevant memory files at task start (use routing table above). Update them when discovering new patterns.
 
 ## Orchestrated Agent Workflow
 
-This repo uses a **plan-and-execute loop** with **sub-agent delegation** and **phase gates**.
+For complex multi-file apps, use the **plan-and-execute loop** with **sub-agent delegation** and **phase gates**.
 Full details: `.github/instructions/orchestration.md` and `.github/instructions/agent-protocols.md`
 
 ### Quick Reference: The Loop
 
 ```
-PHASE 0: CONTEXT   → Sub-agent reads memory + skills + reference code
+PHASE 0: CONTEXT   → Use routing table above to load relevant files only
 PHASE 1: PLAN      → Register app, create directory, define interfaces
          GATE      → Verify directory exists, constant registered
 PHASE 2: BUILD     → Sub-agents for independent modules, main agent for dependent ones
@@ -68,26 +89,24 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 
 ### Key Protocols
 
-1. **Context first** — NEVER write code before reading memory + skill files
-2. **Phase gates** — NEVER advance to next phase until current gate passes
-3. **Sub-agents** — Delegate independent reads and module builds; keep sequential edits in main agent
-4. **Todo tracking** — Use `manage_todo_list` with explicit GATE items
-5. **Memory loop** — Update `.github/memory/` when new patterns or pitfalls are discovered
-6. **Recovery** — On gate failure: read error → check memory → fix → re-run gate
+1. **Route context** — Use the routing table to load only relevant files, not all 44
+2. **Context first** — NEVER write code before reading routed context files
+3. **Phase gates** — NEVER advance to next phase until current gate passes
+4. **Sub-agents** — Delegate independent reads and module builds; keep sequential edits in main agent
+5. **Todo tracking** — Use `manage_todo_list` with explicit GATE items
+6. **Memory loop** — Update `.github/memory/` when new patterns or pitfalls are discovered
+7. **Recovery** — On gate failure: read error → check memory → fix → re-run gate
 
 ### Agent Workflow Steps
 
-1. **Read memory files** from `.github/memory/` (via sub-agent for speed)
-2. **Read the orchestration guide** from `.github/instructions/orchestration.md`
-3. **Read the relevant skill file** from `.github/instructions/skills/`
-4. **Check knowledge base** at `.github/knowledge/knowledge_base.yaml`
-5. **Check community contributions** at `community/contributions/`
-6. **Create todo list** with phases and explicit GATE items
-7. **Execute phase-by-phase** using sub-agents where appropriate
-8. **Validate at every gate** — never skip
-9. **Follow conventions** exactly (see Critical Conventions above)
-10. **Register the app** in defines.py
-11. **Document** with README.md and update memory
+1. **Match task to routing table** — identify which files to load
+2. **Read only routed files** from `.github/` (via sub-agent for speed)
+3. **Create todo list** with phases and explicit GATE items
+4. **Execute phase-by-phase** using sub-agents where appropriate
+5. **Validate at every gate** — never skip
+6. **Follow conventions** exactly (see Critical Conventions above)
+7. **Register the app** in defines.py
+8. **Document** with README.md and update memory
 
 ## File Reference Map
 
