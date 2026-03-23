@@ -67,6 +67,7 @@ Audio In → VAD → Whisper (STT) → LLM/VLM → Piper (TTS) → Audio Out
 
 ### Continuous Monitoring Pattern (Dog Monitor Variant)
 When building continuous monitoring apps that reuse the VLM Chat Backend:
+- **NEVER freeze video**: Keep playing live video at all times. VLM inference takes 10-30s; freezing makes the app feel broken and wastes video. Inference runs in a background thread.
 - **Timer-based capture**: Use `time.time()` delta check in the display loop, NOT `time.sleep(interval)` — sleep blocks the display.
 - **Non-blocking inference**: Submit via `ThreadPoolExecutor.submit()` and track with a `_inference_pending` flag to avoid queue overflow.
 - **Event classification**: Keyword matching on VLM response is sufficient — no need for a second LLM call.
@@ -76,6 +77,7 @@ When building continuous monitoring apps that reuse the VLM Chat Backend:
 - **Text wrapping**: VLM responses are long. Wrap text into lines of ~70 chars max and use a dynamic banner height.
 - **Print to terminal**: Always `print()` the classified activity and description to the terminal on each event — `logger.info()` is not visible at default log level.
 - **End-of-video**: When `get_frame()` returns `None`, wait for any pending `vlm_future` to finish, then redraw overlay with the result and hold 5 seconds before exiting.
+- **Freeze pattern is ONLY for interactive apps**: `vlm_chat` freezes because the user explicitly captures a frame and types a question. Continuous monitoring apps must never freeze.
 
 ### App Registration (CRITICAL — Two Places)
 New VLM apps must be registered in **two** files or `resolve_hef_path()` will fail:

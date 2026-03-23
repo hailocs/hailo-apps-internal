@@ -172,6 +172,51 @@ print(f"\n[{event.time_str}] Activity: {event.event_type.value}")
 print(f"  {answer}")
 ```
 
+## Video Playback During Inference (CRITICAL)
+
+**NEVER freeze video playback during VLM inference.** VLM inference takes 10-30 seconds.
+Freezing the display makes the app feel broken and wastes most of the video.
+
+The correct pattern for continuous monitoring apps:
+- Video keeps playing normally at all times
+- Inference runs in a background thread via `ThreadPoolExecutor`
+- Track `_inference_pending` flag to avoid submitting overlapping requests
+- When inference completes, update the overlay with the result
+- The overlay shows the *latest* result while live video continues
+
+Freezing is ONLY appropriate for interactive capture-and-ask apps (like `vlm_chat`)
+where the user explicitly presses a key to capture a frame and ask a question.
+
+```python
+# ── Main loop: NEVER freeze ───────────────────────────────────
+ while self.running:
+    raw_frame = get_frame()
+    if raw_frame is None:
+        # End of video — wait for pending inference, show result 5s
+        if vlm_future and not vlm_future.done():
+            vlm_future.result(timeout=INFERENCE_TIMEOUT)
+        # hold last overlay 5 seconds
+        ...
+        break
+
+    frame = preprocess(raw_frame)
+
+    # Submit inference on timer (non-blocking)
+    if not self._inference_pending and time_elapsed >= self.interval:
+        self._inference_pending = True
+        vlm_future = self.executor.submit(self._analyze_frame, frame.copy())
+
+    # Check completion (non-blocking)
+    if vlm_future and vlm_future.done():
+        vlm_future.result()
+        vlm_future = None
+
+    # ALWAYS display live frame + overlay
+    display = self._draw_overlay(frame)
+    cv2.imshow(WINDOW_NAME, display)
+    cv2.waitKey(25)
+```
+
 ## End-of-Video Handling
 
 Short videos (or any file input) will end before inference completes.

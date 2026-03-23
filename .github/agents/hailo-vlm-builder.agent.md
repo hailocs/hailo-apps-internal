@@ -3,7 +3,7 @@ name: Hailo VLM Builder
 description: Build Vision-Language Model applications for Hailo-10H. Say what you want to build and I'll create a complete, production-ready VLM app.
 argument-hint: "[describe your VLM app, e.g., 'dog monitoring camera app']"
 tools:
-  ['execute/runNotebookCell', 'execute/testFailure', 'execute/getTerminalOutput', 'execute/awaitTerminal', 'execute/killTerminal', 'execute/createAndRunTask', 'execute/runInTerminal', 'execute/runTests', 'read/getNotebookSummary', 'read/problems', 'read/readFile', 'read/readNotebookCellOutput', 'read/terminalSelection', 'read/terminalLastCommand', 'agent/runSubagent', 'edit/createFile', 'edit/editFiles', 'search/changes', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'search/usages', 'kapa/search_kapa_ai_knowledge_sources']
+  ['execute/runNotebookCell', 'execute/testFailure', 'execute/getTerminalOutput', 'execute/awaitTerminal', 'execute/killTerminal', 'execute/createAndRunTask', 'execute/runInTerminal', 'execute/runTests', 'read/getNotebookSummary', 'read/problems', 'read/readFile', 'read/readNotebookCellOutput', 'read/terminalSelection', 'read/terminalLastCommand', 'agent/runSubagent', 'edit/createFile', 'edit/editFiles', 'search/changes', 'search/codebase', 'search/fileSearch', 'search/listDirectory', 'search/searchResults', 'search/textSearch', 'search/usages', 'kapa/search_hailo_knowledge_sources']
 handoffs:
   - label: Review & Test the App
     agent: agent
@@ -149,6 +149,20 @@ run()    → Main loop: capture frame → display → every N seconds call analy
 analyze() → Convert frame → Backend.vlm_inference() → process response → update state
 cleanup() → Release camera, close Backend, close windows
 ```
+
+### Video Playback Rule (CRITICAL)
+**NEVER freeze video playback during VLM inference in monitoring/continuous apps.**
+VLM inference takes 10-30 seconds. Freezing the display makes the app feel broken.
+
+The correct pattern:
+- Video keeps playing at all times
+- Inference runs in background thread via `ThreadPoolExecutor.submit()`
+- Track `_inference_pending` flag to avoid overlapping requests
+- When inference completes, update the overlay with the result
+- The overlay shows the *latest* result while live video continues
+
+Freezing is ONLY for interactive capture-and-ask apps (like `vlm_chat`) where the
+user explicitly presses a key to capture a frame and type a question.
 
 ## Common VLM Variants
 

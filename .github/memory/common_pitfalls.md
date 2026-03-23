@@ -147,6 +147,14 @@ lost. The user never sees the result.
 **Fix**: Wait for `vlm_future.result()` before breaking, then redraw the overlay
 and hold the frame on screen for ~5 seconds.
 
+### NEVER freeze video during inference in monitoring apps
+VLM inference takes 10-30 seconds. Freezing the display during analysis makes the
+app appear broken and drops most of the video content.
+**Fix**: Always keep video playing. Run inference in a background thread via
+`ThreadPoolExecutor.submit()`. Show the latest result in the overlay while live
+video continues. Freezing is ONLY for interactive capture-and-ask apps (like `vlm_chat`)
+where the user explicitly captures a frame.
+
 ## GStreamer Pipeline
 
 ### Missing Queue Between Elements
