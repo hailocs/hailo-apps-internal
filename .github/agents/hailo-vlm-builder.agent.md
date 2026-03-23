@@ -44,7 +44,7 @@ Read these files to understand the framework:
 - API details not covered in the local files (HailoRT, hailo_platform.genai, VLM API)
 - Hardware-specific setup steps or troubleshooting
 - Model availability, HEF compatibility, or SDK version requirements
-Call `#tool:kapa/search_kapa_ai_knowledge_sources` with a natural language query when local context is insufficient.
+Call `#tool:kapa/search_hailo_knowledge_sources` with a natural language query when local context is insufficient.
 
 ### Phase 3: Build
 1. **Register** — Add app constant to `defines.py`
