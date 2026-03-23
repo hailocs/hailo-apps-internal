@@ -76,9 +76,22 @@ Fix any failures and re-run until all pass.
 
 ### Phase 5: Report
 Present the completed app with:
-- List of files created
-- How to run it
-- What it does
+
+**Files Created** — list every file with line count and one-line description.
+
+**How to Run** — show the ACTUAL shell commands to run the app, not just file edits. Always include:
+```bash
+# Basic usage
+python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input usb
+
+# With custom interval
+python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input usb --interval 15
+
+# List available models
+python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --list-models
+```
+
+**What It Does** — bullet list of the app's behavior.
 
 ## Critical Conventions (MUST FOLLOW)
 
