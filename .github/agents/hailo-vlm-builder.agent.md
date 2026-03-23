@@ -93,6 +93,41 @@ python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --list-models
 
 **What It Does** — bullet list of the app's behavior.
 
+### Phase 6: Launch (if user provides a video file or says "launch"/"run")
+
+If the user provides a sample video file or asks to launch the app, run it automatically after building.
+
+**Step 1: Verify environment**
+Run these checks in sequence. If any fail, report the issue and suggest the fix.
+
+```bash
+# 1. Check HailoRT PCIe driver is loaded
+lsmod | grep hailo_pci
+# If empty → "HailoRT PCIe driver not loaded. Run: sudo modprobe hailo_pci"
+
+# 2. Check hailortcli is available (proves the wheel/runtime is installed)
+which hailortcli && hailortcli fw-control --identify
+# If fails → "HailoRT not installed. See installation guide."
+
+# 3. Check we're in the right venv
+python -c "import hailo_platform; print('hailo_platform OK')"
+# If fails → "hailo_platform not found. Run: source setup_env.sh"
+
+# 4. Check hailo_apps is importable
+python -c "from hailo_apps.python.core.common.defines import *; print('hailo_apps OK')"
+# If fails → "hailo_apps not importable. Run: source setup_env.sh && pip install -e ."
+```
+
+**Step 2: Launch the app**
+```bash
+cd <repo_root>
+python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input <video_file_path>
+```
+
+Run this in a background terminal so the user can see the video output. The app will display the camera feed with overlay. If the user provided `--interval`, pass it through.
+
+**IMPORTANT**: If any environment check fails, do NOT launch. Report the failure clearly and stop.
+
 ## Critical Conventions (MUST FOLLOW)
 
 1. **Imports are always absolute**: `from hailo_apps.python.core.common.xyz import ...`
