@@ -3,460 +3,222 @@ import os
 import sys
 import time
 import queue
+import threading
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Generator, List, Optional, Tuple, Callable, Any, Union
-import subprocess
+from typing import Dict, Generator, List, Optional, Tuple, Callable, Any
+
 import cv2
 import numpy as np
-import re
-import threading
-from enum import Enum
-import platform
 
 try:
     from hailo_apps.python.core.common.defines import (
-        HAILO_ARCH_KEY,
         DEFAULT_COCO_LABELS_PATH,
         IMAGE_EXTENSIONS,
-        CAMERA_RESOLUTION_MAP,
-        VIDEO_SUFFIXES
+        VIDEO_SUFFIXES,
     )
     from hailo_apps.python.core.common.hailo_logger import get_logger
+    from hailo_apps.python.core.common.camera_utils import (
+        CapProcessingMode,
+        is_stream_url,
+        open_cv_capture,
+        open_rpi_camera,
+        open_usb_camera,
+        get_source_fps,
+        select_cap_processing_mode,
+    )
     from hailo_apps.python.core.common.installation_utils import is_raspberry_pi
 except ImportError:
     from .defines import (
-        HAILO_ARCH_KEY,
         DEFAULT_COCO_LABELS_PATH,
         IMAGE_EXTENSIONS,
-        CAMERA_RESOLUTION_MAP,
-        VIDEO_SUFFIXES
+        VIDEO_SUFFIXES,
     )
     from .hailo_logger import get_logger
-    from .camera_utils import is_rpi_camera_available
+    from .camera_utils import (
+        CapProcessingMode,
+        is_stream_url,
+        open_cv_capture,
+        open_rpi_camera,
+        open_usb_camera,
+        get_source_fps,
+        select_cap_processing_mode,
+    )
     from .installation_utils import is_raspberry_pi
 
-logger = get_logger(__name__)
+hailo_logger = get_logger(__name__)
+
+
+class InputType(Enum):
+    USB_CAMERA = "usb_camera"
+    RPI_CAMERA = "rpi_camera"
+    STREAM = "stream"
+    VIDEO = "video"
+    IMAGES = "images"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class InputContext:
+    # User configuration
+    input_src: str
+    batch_size: int
+    resolution: Optional[str] = None
+    frame_rate: Optional[float] = None
+    video_unpaced: bool = False
+
+    # Detected input type
+    input_type: InputType = InputType.UNKNOWN
+
+    # Runtime capture objects
+    cap: Optional[Any] = None
+    images: Optional[List[np.ndarray]] = None
+
+    # Runtime metadata
+    source_fps: Optional[float] = None
+    cap_processing_mode: Optional[CapProcessingMode] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+    @property
+    def has_capture(self) -> bool:
+        return self.cap is not None
+
+    @property
+    def has_images(self) -> bool:
+        return self.images is not None and len(self.images) > 0
+
+    @property
+    def is_camera(self) -> bool:
+        return self.input_type in {InputType.USB_CAMERA, InputType.RPI_CAMERA}
+
+    @property
+    def is_video(self) -> bool:
+        return self.input_type == InputType.VIDEO
+
+    @property
+    def is_stream(self) -> bool:
+        return self.input_type == InputType.STREAM
+
+@dataclass
+class VisualizationSettings:
+    output_dir: str
+    save_stream_output: bool = False
+    output_resolution: Optional[Tuple[int, int]] = None
+    side_by_side: bool = False
+    no_display: bool = False
 
-
-
-class PiCamera2CaptureAdapter:
-    """
-    Adapter that makes Picamera2 behave like cv2.VideoCapture.
-
-    Goals:
-    - Provide read(), isOpened(), get(), release() APIs compatible with OpenCV code
-    - Avoid deadlocks when release() is called while another thread is reading
-    - Ensure stop()/close() never race with capture_array()
-    """
-
-    def __init__(self, picam2):
-        self.picam2 = picam2
-        self._opened = True
-        self._io_lock = threading.Lock()
-
-    def isOpened(self):
-        return self._opened
-
-    def read(self):
-        if not self._opened:
-            return False, None
-
-        # prevent stop/close while capturing
-        with self._io_lock:
-            if not self._opened: # re-check after taking lock
-                return False, None
-            frame = self.picam2.capture_array()
-
-        if frame is None:
-            return False, None
-        return True, frame
-
-    def get(self, prop_id: int) -> float:
-        if prop_id in (cv2.CAP_PROP_FRAME_WIDTH, cv2.CAP_PROP_FRAME_HEIGHT):
-            try:
-                cfg = self.picam2.camera_configuration()
-                size = cfg.get("main", {}).get("size", None)
-                if size and len(size) == 2:
-                    w, h = int(size[0]), int(size[1])
-                    return float(w if prop_id == cv2.CAP_PROP_FRAME_WIDTH else h)
-            except Exception:
-                pass
-            return 0.0
-        if prop_id == cv2.CAP_PROP_FPS:
-            return 30.0
-        return None
-
-    def release(self):
-        # stop new reads ASAP
-        self._opened = False
-
-        # wait if a read() is currently inside capture_array()
-        with self._io_lock:
-            try:
-                self.picam2.stop()
-            except Exception:
-                pass
-            try:
-                self.picam2.close()
-            except Exception:
-                pass
-
-
-class CapProcessingMode(str, Enum):
-    """
-    Capture processing modes.
-
-    Defines how frames are read from the source and fed into the pipeline,
-    based on source type and user options (saving output, target FPS, etc.).
-    """
-
-    CAMERA_NORMAL = "camera_normal"
-    CAMERA_FRAME_DROP = "camera_frame_drop"
-    VIDEO_NORMAL = "video_normal"
-    VIDEO_PACE = "video_pace"
-
-
-def get_windows_usb_video_devices(first_only: bool = True, max_indices: int = 10) -> Union[Optional[int], List[int]]:
-    """
-    Detect available usb cameras indices on Windows.
-
-    Args:
-        first_only (bool):
-            - True  → return the first available index (int or None)
-            - False → return list of all available indices (List[int])
-        max_indices (int): Number of indices to probe.
-
-    Returns:
-        int | List[int] | None
-    """
-    import cv2
-
-    available = []
-
-    for i in range(max_indices):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            cap.release()
-
-            if first_only:
-                return i
-            available.append(i)
-        else:
-            cap.release()
-
-    return None if first_only else available
-
-
-def get_linux_usb_video_devices(first_only: bool = False) -> Union[Optional[int], List[int]]:
-    """
-    Detect USB-backed V4L2 camera indices on Linux.
-
-    Args:
-        first_only (bool):
-            True  -> return the first detected USB camera index (int) or None.
-            False -> return a list of all detected USB camera indices.
-
-    Returns:
-        int | List[int] | None
-            - First camera index when `first_only=True`
-            - List of indices when `first_only=False`
-            - None if no device is found and `first_only=True`
-    """
-    try:
-        output = subprocess.check_output(
-            ["v4l2-ctl", "--list-devices"],
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-    except Exception as exc:
-        logger.error(f"Failed to execute 'v4l2-ctl --list-devices': {exc}")
-        return None if first_only else []
-
-    usb_indices: List[int] = []
-    is_usb_section = False
-
-    for line in output.splitlines():
-        if not line.strip():
-            continue
-
-        # Header lines (not tab-indented)
-        if not line.startswith("\t"):
-            lower = line.lower()
-            has_vid_pid = bool(re.search(r"\([0-9a-f]{4}:[0-9a-f]{4}\)", line, re.I))
-            has_usb_bus = "(usb-" in lower or " usb-" in lower or "(usb:" in lower
-            is_usb_section = has_vid_pid or has_usb_bus
-            continue
-
-        # Device node lines
-        if is_usb_section:
-            match = re.search(r"/dev/video(\d+)", line)
-            if match:
-                idx = int(match.group(1))
-                if first_only:
-                    return idx
-                
-                usb_indices.append(idx)
-
-    return None if first_only else usb_indices
-
-
-def open_usb_camera(input_src: str, resolution: Optional[str]):
-    """
-    USB camera open .
-
-    Behavior:
-    - "usb":
-        * Linux  -> Detect REAL USB cameras via v4l2-ctl
-        * Windows -> Probe camera indices via OpenCV (DirectShow)
-        * If CAMERA_INDEX env var exists -> use it
-        * Else -> auto-pick FIRST available USB camera
-    - "/dev/videoX":
-        * Linux explicit camera device
-    - "0"/"1"/...:
-        * Windows explicit camera index
-    - Apply resolution if requested
-    - Ensure camera actually streams frames
-    
-    """
-    system = platform.system()
-    # -----------------------------
-    # Helper: apply resolution + validate
-    # -----------------------------
-    def _apply_and_validate(cap):
-        if resolution in CAMERA_RESOLUTION_MAP:
-            w, h = CAMERA_RESOLUTION_MAP[resolution]
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-            logger.debug(f"Camera resolution forced to {w}x{h}")
-
-        ok, frame = cap.read()
-        if not ok or frame is None:
-            cap.release()
-            logger.error("Camera opened but produced no frames.")
-            sys.exit(1)
-        return cap
-
-    # =========================================================
-    # 1) Explicit Linux device path: /dev/videoX
-    # =========================================================
-    if str(input_src).startswith("/dev/video"):
-        if system == "Windows":
-            logger.error("On Windows, '/dev/videoX' is not supported. Use '-i 0' or '-i usb'.")
-            sys.exit(1)
-
-        cap = cv2.VideoCapture(str(input_src))
-        if not cap.isOpened():
-            logger.error(f"Failed to open Linux camera device: {input_src}")
-
-            # Only check available cameras AFTER failure
-            available = get_linux_usb_video_devices(first_only=False)
-            if available:
-                logger.error(f"Available USB camera indices: {available}")
-            else:
-                logger.error("No USB cameras detected.")
-
-            sys.exit(1)
-
-        logger.info(f"Using USB camera device: {input_src}")
-        return _apply_and_validate(cap)
-
-
-    # =========================================================
-    # 2) Explicit Windows numeric index: 0/1/2...
-    # =========================================================
-    if str(input_src).isdigit():
-        if system == "Linux":
-            logger.error("On Linux, numeric camera index is not supported. Use '-i /dev/videoX' or '-i usb'.")
-            sys.exit(1)
-
-        cam_index = int(str(input_src))
-        cap = cv2.VideoCapture(cam_index)
-
-        if not cap.isOpened():
-            logger.error(f"Failed to open Windows camera index: {cam_index}")
-
-            # Only scan cameras AFTER failure
-            available = get_windows_usb_video_devices(first_only=False, max_indices=20)
-            if available:
-                logger.error(f"Available camera indices detected: {available}")
-            else:
-                logger.error("No cameras detected on Windows.")
-
-            sys.exit(1)
-
-        logger.info(f"Using USB camera index: {cam_index}")
-        return _apply_and_validate(cap)
-
-    # =========================================================
-    # 3) Auto USB selection: "usb"
-    # =========================================================
-    if input_src != "usb":
-        logger.error(f"open_usb_camera received invalid camera input: '{input_src}'")
-        sys.exit(1)
-
-    # ---------------------------------------------------------
-    # 3.1 Windows: select first available camera index
-    # ---------------------------------------------------------
-    if system == "Windows":
-        cam_index = get_windows_usb_video_devices(first_only=True)
-        if cam_index is None:
-            logger.error("USB mode requested, but no cameras detected on Windows.")
-            sys.exit(1)
-
-        cap = cv2.VideoCapture(cam_index)
-        if not cap.isOpened():
-            logger.error(f"Failed to open USB camera index {cam_index} on Windows.")
-            sys.exit(1)
-
-        logger.info(f"Using USB camera index: {cam_index}")
-        return _apply_and_validate(cap)
-
-    # ---------------------------------------------------------
-    # 3.2 Linux: select first USB /dev/videoX (v4l2-ctl)
-    # ---------------------------------------------------------
-    cam_index = get_linux_usb_video_devices(first_only=True)
-    if cam_index is None:
-        logger.error("USB mode requested, but no USB cameras detected on Linux.")
-        logger.error("Tip: run `v4l2-ctl --list-devices` to see available cameras.")
-        sys.exit(1)
-
-    cap = cv2.VideoCapture(cam_index)
-    if not cap.isOpened():
-        logger.error(f"Failed to open USB camera index {cam_index} on Linux.")
-        sys.exit(1)
-
-    logger.info(f"Using USB camera index: {cam_index}")
-    return _apply_and_validate(cap)
-
-
-
-def open_rpi_camera():
-    try:
-        from picamera2 import Picamera2
-    except Exception as e:
-        logger.error(f"Picamera2 not available: {e}")
-        return None
-
-    try:
-        picam2 = Picamera2()
-        main = {"size": (800, 600), "format": "RGB888"}
-        config = picam2.create_video_configuration(main=main, controls={"FrameRate": 30})
-
-        picam2.configure(config)
-        picam2.start()
-        return PiCamera2CaptureAdapter(picam2)
-
-    except Exception as e:
-        logger.error(f"Failed to open RPi camera: {e}")
-        try:
-            picam2.stop()
-        except Exception:
-            pass
-        try:
-            picam2.close()
-        except Exception:
-            pass
-        return None
-
-
-def is_stream_url(input_arg: str) -> bool:
-    return input_arg.startswith(("http://", "https://", "rtsp://"))
 
 
 # -------------------------------------------------------------------
 # Main entry: init_input_source
 # -------------------------------------------------------------------
-def init_input_source(input_src: str, batch_size: int, resolution: Optional[str]):
+def init_input_source(input_context: InputContext) -> InputContext:
     """
-    Initialize input source based on user-provided `input`.
+    Initialize the input source according to the user-provided input.
 
-    Supported values:
-        - "usb" : Open a USB/UVC camera using OpenCV (cv2.VideoCapture).
-        - "rpi" : Open Raspberry Pi camera using Picamera2 (fixed 1280x720).
-        - "0", "1", ... : (Windows only) Open camera by device index using OpenCV.
-        - "/dev/videoX" : (Linux only) Open a specific V4L2 camera device.
-        - http(s):// or rtsp://: Open a network video stream.
-        - Video file path (.mp4/.avi/.mov/.mkv) : Open a video file via OpenCV.
-        - Directory path : Load images from the specified directory.
+    Supported input values:
+        - "usb"                : Open a USB/UVC camera using OpenCV
+        - "rpi"                : Open Raspberry Pi camera using Picamera2
+        - "0", "1", ...        : Open camera by index (Windows)
+        - "/dev/videoX"        : Open a specific V4L2 device (Linux)
+        - http(s):// or rtsp://: Open a network stream
+        - video file path      : Open a video file
+        - image file / folder  : Load images from disk
 
     Returns:
-        (cap, images)
-          cap: cv2.VideoCapture OR PiCamera2CaptureAdapter OR None
-          images: List[np.ndarray] for image-dir mode, else None
+        InputContext: Updated input context with initialized runtime fields.
     """
-    src = input_src.strip()
+    src = input_context.input_src.strip()
 
     # ------------------------------------------------
     # 1) USB camera
     # ------------------------------------------------
     if src == "usb" or src.startswith("/dev/video") or src.isdigit():
-        cap = open_usb_camera(src, resolution)
-        return cap, None, "usb"
-
+        input_context.input_type = InputType.USB_CAMERA
+        input_context.cap = open_usb_camera(src, input_context.resolution)
+        input_context.source_fps = get_source_fps(input_context.cap, "USB camera")
     # ------------------------------------------------
     # 2) Raspberry Pi camera
     # ------------------------------------------------
-    if src == "rpi":
+    elif src == "rpi":
         if not is_raspberry_pi():
-            logger.error("RPi camera requested, but this is not a Raspberry Pi system.")
-            sys.exit(1)
-        cap = open_rpi_camera()
-        if cap is None:
+            hailo_logger.error("RPi camera requested, but this is not a Raspberry Pi system.")
             sys.exit(1)
 
-        logger.info("Using Raspberry Pi camera at 800x600")
-        return cap, None, "rpi"
+        input_context.input_type = InputType.RPI_CAMERA
+        input_context.cap = open_rpi_camera()
+        input_context.source_fps = 30
+
+        if input_context.cap is None:
+            sys.exit(1)
+
+        hailo_logger.info("Using Raspberry Pi camera at 800x600, 30 FPS")
 
     # ------------------------------------------------
-    # 3) Network stream (RTSP / HTTP / HTTPS)
+    # 3) Network stream
     # ------------------------------------------------
-    if is_stream_url(src):
-        cap = cv2.VideoCapture(src)
-        if not cap.isOpened():
-            logger.error(f"Failed to open stream URL: {src}")
-            sys.exit(1)
-
-        logger.info(f"Using stream input: {src}")
-        return cap, None, "stream"
+    elif is_stream_url(src):
+        input_context.input_type = InputType.STREAM
+        input_context.cap = open_cv_capture(src, "stream")
+        input_context.source_fps = get_source_fps(input_context.cap, "stream camera")
 
     # ------------------------------------------------
     # 4) Video file
     # ------------------------------------------------
-    if any(src.endswith(suffix) for suffix in VIDEO_SUFFIXES):
-        if not os.path.exists(input_src):
-            logger.error(f"File not found: {input_src}")
-            sys.exit(1)
+    elif any(src.lower().endswith(suffix) for suffix in VIDEO_SUFFIXES):
 
-        cap = cv2.VideoCapture(src)
-        if not cap.isOpened():
-            logger.error(f"Failed to open video file: {src}")
+        if not os.path.exists(src):
+            hailo_logger.error(f"File not found: {src}")
             sys.exit(1)
-
-        logger.info(f"Using video file input: {src}")
-        return cap, None, "video"
+        input_context.input_type = InputType.VIDEO
+        input_context.cap = open_cv_capture(src, "video")
+        input_context.source_fps = get_source_fps(input_context.cap, "video file")
 
     # ------------------------------------------------
-    # 5) Image directory / Image file
+    # 5) Image directory / image file
     # ------------------------------------------------
-    if not os.path.exists(src):
-        logger.error(
+    elif not os.path.exists(src):
+        hailo_logger.error(
             f"Invalid input '{src}'. Expected one of:\n"
             "  - 'usb'\n"
             "  - 'rpi'\n"
+            "  - Linux camera device (e.g., /dev/video0)\n"
+            "  - Windows camera index (e.g., 0, 1)\n"
             "  - http(s):// or rtsp:// stream\n"
             "  - video file path\n"
             "  - image directory / image file"
         )
         sys.exit(1)
 
-    images = load_images_opencv(src)
-    try:
-        validate_images(images, batch_size)
-    except ValueError as e:
-        logger.error(e)
-        sys.exit(1)
+    else:
+        input_context.input_type = InputType.IMAGES
+        input_context.images = load_images_opencv(src)
 
-    return None, images, "images"
+        try:
+            validate_images(input_context.images, input_context.batch_size)
+        except ValueError as error:
+            hailo_logger.error(error)
+            sys.exit(1)
+
+        hailo_logger.info(f"Using image input: {src}")
+
+    # Runtime metadata for capture-based inputs
+    if input_context.cap is not None:
+        input_context.width = int(input_context.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        input_context.height = int(input_context.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+        input_context.cap_processing_mode = select_cap_processing_mode(
+            input_type=input_context.input_type.value,
+            frame_rate=input_context.frame_rate,
+            source_fps=input_context.source_fps,
+            video_unpaced=input_context.video_unpaced,
+        )
+        hailo_logger.info(f"Capture processing mode: {input_context.cap_processing_mode.value}")
+
+
+    return input_context
 
 
 def load_json_file(path: str) -> Dict[str, Any]:
@@ -562,24 +324,6 @@ def validate_images(images: List[np.ndarray], batch_size: int) -> None:
         )
 
 
-def divide_list_to_batches(
-        images_list: List[np.ndarray], batch_size: int
-) -> Generator[List[np.ndarray], None, None]:
-    """
-    Divide the list of images into batches.
-
-    Args:
-        images_list (List[np.ndarray]): List of images.
-        batch_size (int): Number of images in each batch.
-
-    Returns:
-        Generator[List[np.ndarray], None, None]: Generator yielding batches
-                                                  of images.
-    """
-    for i in range(0, len(images_list), batch_size):
-        yield images_list[i: i + batch_size]
-
-
 def generate_color(class_id: int) -> tuple:
     """
     Generate a unique color for a given class ID.
@@ -615,191 +359,254 @@ def id_to_color(idx):
     return np.random.randint(0, 255, size=3, dtype=np.uint8)
 
 
+def stop_after_timeout(stop_event: threading.Event, timeout_seconds: int) -> None:
+    """
+    Stop the pipeline after the requested timeout.
+
+    Args:
+        stop_event (threading.Event): Global stop signal for the pipeline.
+        timeout_seconds (int): Number of seconds to wait before stopping.
+    """
+    time.sleep(timeout_seconds)
+    if not stop_event.is_set():
+        hailo_logger.info(f"Reached time limit ({timeout_seconds}s). Stopping application.")
+        stop_event.set()
 
 ####################################################################
 # PreProcess of Network Input
 ####################################################################
-
-def preprocess(images: List[np.ndarray], cap: cv2.VideoCapture, framerate: float, batch_size: int,
-               input_queue: queue.Queue, width: int, height: int, cap_processing_mode: Optional[CapProcessingMode],
-               preprocess_fn: Optional[Callable[[np.ndarray, int, int], np.ndarray]] = None,
-               stop_event: Optional[threading.Event] = None) -> None:
-
+def preprocess(
+    input_context: InputContext,
+    input_queue: queue.Queue,
+    model_input_width: int,
+    model_input_height: int,
+    preprocess_fn: Optional[Callable[[np.ndarray, int, int], np.ndarray]] = None,
+    stop_event: Optional[threading.Event] = None,
+) -> None:
     """
-    Preprocess and enqueue images or camera frames into the input queue as they are ready.
-    Args:
-        images (List[np.ndarray], optional): List of images as NumPy arrays.
-        cap (cv2.VideoCapture, optional): VideoCapture object for camera/video stream.
-        framerate (float, optional): Target framerate for frame skipping. If provided, frames
-                                     will be skipped to achieve approximately this FPS.
-        batch_size (int): Number of images per batch.
-        input_queue (queue.Queue): Queue for input images.
-        width (int): Model input width.
-        height (int): Model input height.
-        preprocess_fn (Callable, optional): Custom preprocessing function that takes an image, width, and height,
-                                            and returns the preprocessed image. If not provided, a default padding-based
-                                            preprocessing function will be used.
+    Preprocess and enqueue images or captured frames into the input queue.
     """
     preprocess_fn = preprocess_fn or default_preprocess
 
-    if cap is None:
-        preprocess_images(images, batch_size, input_queue, width, height, preprocess_fn)
+    if input_context.has_images:
+        preprocess_images(
+            images=input_context.images,
+            batch_size=input_context.batch_size,
+            input_queue=input_queue,
+            model_input_width=model_input_width,
+            model_input_height=model_input_height,
+            preprocess_fn=preprocess_fn,
+        )
     else:
-        preprocess_from_cap(cap, batch_size, input_queue, width, height, cap_processing_mode, preprocess_fn, framerate, stop_event)
-
-    input_queue.put(None)  #Add sentinel value to signal end of input
-
-
-def select_cap_processing_mode(input_type: str,
-                           save_output: bool,
-                           frame_rate: float | None) -> CapProcessingMode:
-    """
-    Decide capture processing behavior.
-
-    Modes:
-        CAMERA_NORMAL       - realtime camera
-        CAMERA_FRAME_DROP   - camera frame dropping to target FPS
-        VIDEO_NORMAL        - fastest video processing
-        VIDEO_PACE          - realtime pacing (used when saving output)
-    """
-
-    is_camera = input_type in ("usb", "rpi", "stream")
-    is_video  = input_type == "video"
-
-    has_target_fps = frame_rate is not None and frame_rate > 0
-
-    # CAMERA
-    if is_camera:
-        return (
-            CapProcessingMode.CAMERA_FRAME_DROP
-            if has_target_fps
-            else CapProcessingMode.CAMERA_NORMAL
+        preprocess_from_capture(
+            cap=input_context.cap,
+            batch_size=input_context.batch_size,
+            input_queue=input_queue,
+            model_input_width=model_input_width,
+            model_input_height=model_input_height,
+            processing_mode=input_context.cap_processing_mode,
+            preprocess_fn=preprocess_fn,
+            target_fps=input_context.frame_rate,
+            stop_event=stop_event,
         )
-
-    # VIDEO
-    if is_video:
-        return (
-            CapProcessingMode.VIDEO_PACE
-            if save_output
-            else CapProcessingMode.VIDEO_NORMAL
-        )
-
-    # images / fallback
-    return None
-
-
-def preprocess_from_cap(
-    cap: Any,
-    batch_size: int,
-    input_queue: queue.Queue,
-    width: int,
-    height: int,
-    mode: CapProcessingMode,
-    preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
-    target_fps: Optional[float] = None,
-    stop_event: Optional[threading.Event] = None,
-) -> None:
-
-    def should_stop() -> bool:
-        return stop_event is not None and stop_event.is_set()
-
-    # Validate
-    if mode == CapProcessingMode.CAMERA_FRAME_DROP:
-        if not target_fps or target_fps <= 0:
-            raise ValueError("CAMERA_FRAME_DROP requires a positive target_fps")
-
-    # Timing state
-    next_keep_ts = time.monotonic()
-    keep_period = (1.0 / float(target_fps)) if mode == CapProcessingMode.CAMERA_FRAME_DROP else None
-
-    video_t0_ms: Optional[float] = None
-    wall_t0: Optional[float] = None
-
-    frames: list[np.ndarray] = []
-    processed: list[np.ndarray] = []
-
-    frame_idx = 0  # DEBUG INDEX
-
-    while not should_stop():
-        ret, frame_bgr = cap.read()
-        if not ret:
-            logger.debug("[READ] End of stream")
-            break
-
-        frame_idx += 1
-        logger.debug(f"[READ] frame={frame_idx}")
-
-        # VIDEO_PACE
-        if mode == CapProcessingMode.VIDEO_PACE:
-            # Current frame timestamp in milliseconds
-            pos_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
-
-            # Initialize reference mapping: video time → wall-clock time
-            if video_t0_ms is None:
-                video_t0_ms = pos_ms
-                wall_t0 = time.monotonic()
-
-            # desired wall time = wall_t0 + (pos_ms - video_t0_ms)
-            desired = wall_t0 + (pos_ms - video_t0_ms) / 1000.0
-            now = time.monotonic()
-
-            # Sleep only if ahead of schedule
-            if now < desired:
-                sleep_s = desired - now
-                logger.debug(
-                    f"[PACE] frame={frame_idx} sleep={sleep_s:.4f}s pos_ms={pos_ms:.1f}"
-                )
-                time.sleep(sleep_s)
-
-        # CAMERA_FRAME_DROP
-        if mode == CapProcessingMode.CAMERA_FRAME_DROP:
-            now = time.monotonic()
-
-            if now < next_keep_ts:
-                logger.debug(f"[DROP] frame={frame_idx}")
-                continue
-
-            logger.debug(f"[KEEP] frame={frame_idx}")
-            next_keep_ts += keep_period
-
-        # KEEP FRAME
-        if mode != CapProcessingMode.CAMERA_FRAME_DROP:
-            logger.debug(f"[KEEP] frame={frame_idx}")
-
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        frames.append(frame_rgb)
-        processed.append(preprocess_fn(frame_rgb, width, height))
-
-        if len(frames) >= batch_size:
-            logger.debug(f"[QUEUE] push batch size={len(frames)}")
-            input_queue.put((frames, processed))
-            frames, processed = [], []
-
-    # Flush last partial batch
-    if frames and not should_stop():
-        input_queue.put((frames, processed))
 
     input_queue.put(None)
 
 
-def preprocess_images(images: List[np.ndarray], batch_size: int, input_queue: queue.Queue, width: int, height: int,
-                      preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray]) -> None:
+def preprocess_from_capture(
+    cap: Any,
+    batch_size: int,
+    input_queue: queue.Queue,
+    model_input_width: int,
+    model_input_height: int,
+    processing_mode: Optional[CapProcessingMode],
+    preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
+    target_fps: Optional[float] = None,
+    stop_event: Optional[threading.Event] = None,
+) -> None:
     """
-    Process a list of images and enqueue them.
-    Args:
-        images (List[np.ndarray]): List of images as NumPy arrays.
-        batch_size (int): Number of images per batch.
-        input_queue (queue.Queue): Queue for input images.
-        width (int): Model input width.
-        height (int): Model input height.
-        preprocess_fn (Callable): Function to preprocess a single image (image, width, height) -> image.
+    Read frames from capture, preprocess them, and push batches to the queue.
+
+    Supported modes:
+    - CAMERA_NORMAL:
+        Process camera frames as they arrive.
+    - CAMERA_FRAME_DROP:
+        Drop camera frames to match the requested target FPS.
+    - VIDEO_PACE:
+        Process video with normal playback pacing based on source timestamps.
+    - VIDEO_UNPACED:
+        Process video as fast as possible.
+    - VIDEO_PACED_AND_FRAME_DROP:
+        Pace video playback normally, but only keep frames that match the
+        requested target FPS.
+    """
+
+    def should_stop() -> bool:
+        return stop_event is not None and stop_event.is_set()
+
+    if processing_mode in (
+        CapProcessingMode.CAMERA_FRAME_DROP,
+        CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP,
+    ):
+        if not target_fps or target_fps <= 0:
+            raise ValueError(
+                f"{processing_mode.value} requires a positive target_fps"
+            )
+
+    # Camera frame-drop timing
+    next_keep_timestamp = time.monotonic()
+    keep_period = (
+        1.0 / float(target_fps)
+        if processing_mode == CapProcessingMode.CAMERA_FRAME_DROP
+        else None
+    )
+
+    # Video pacing state
+    video_start_ms: Optional[float] = None
+    wall_start_time: Optional[float] = None
+
+    # Video frame-drop timing (based on source video timestamps)
+    next_keep_video_ms: Optional[float] = None
+    video_keep_period_ms = (
+        1000.0 / float(target_fps)
+        if processing_mode == CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP
+        else None
+    )
+
+    raw_frames: List[np.ndarray] = []
+    processed_frames: List[np.ndarray] = []
+
+    frame_index = 0
+
+    while not should_stop():
+        ret, frame_bgr = cap.read()
+        if not ret:
+            hailo_logger.debug("[READ] End of stream")
+            break
+
+        frame_index += 1
+        hailo_logger.debug(f"[READ] frame={frame_index}")
+
+        current_pos_ms = float(cap.get(cv2.CAP_PROP_POS_MSEC) or 0.0)
+
+        # Initialize video timing state on first frame for paced modes
+        if processing_mode in (
+            CapProcessingMode.VIDEO_PACE,
+            CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP,
+        ):
+            if video_start_ms is None:
+                video_start_ms = current_pos_ms
+                wall_start_time = time.monotonic()
+
+        # Video paced + frame drop:
+        # keep only frames that match the requested target FPS based on video timestamps
+        if processing_mode == CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP:
+            if next_keep_video_ms is None:
+                next_keep_video_ms = current_pos_ms
+
+            if current_pos_ms + 1e-3 < next_keep_video_ms:
+                hailo_logger.debug(
+                    f"[DROP] frame={frame_index} "
+                    f"mode={processing_mode.value} "
+                    f"pos_ms={current_pos_ms:.1f} "
+                    f"next_keep_ms={next_keep_video_ms:.1f}"
+                )
+                continue
+
+            hailo_logger.debug(
+                f"[KEEP] frame={frame_index} "
+                f"mode={processing_mode.value} "
+                f"pos_ms={current_pos_ms:.1f}"
+            )
+
+            while current_pos_ms + 1e-3 >= next_keep_video_ms:
+                next_keep_video_ms += video_keep_period_ms
+
+        # Paced video playback
+        if processing_mode in (
+            CapProcessingMode.VIDEO_PACE,
+            CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP,
+        ):
+            desired_wall_time = wall_start_time + (current_pos_ms - video_start_ms) / 1000.0
+            current_wall_time = time.monotonic()
+
+            if current_wall_time < desired_wall_time:
+                sleep_seconds = desired_wall_time - current_wall_time
+                hailo_logger.debug(
+                    f"[PACE] frame={frame_index} "
+                    f"sleep={sleep_seconds:.4f}s "
+                    f"pos_ms={current_pos_ms:.1f}"
+                )
+                time.sleep(sleep_seconds)
+
+        # Camera frame drop mode
+        if processing_mode == CapProcessingMode.CAMERA_FRAME_DROP:
+            current_time = time.monotonic()
+
+            if current_time < next_keep_timestamp:
+                hailo_logger.debug(f"[DROP] frame={frame_index} mode={processing_mode.value}")
+                continue
+
+            hailo_logger.debug(f"[KEEP] frame={frame_index} mode={processing_mode.value}")
+            next_keep_timestamp += keep_period
+
+        # Keep log for all other modes
+        if processing_mode not in (
+            CapProcessingMode.CAMERA_FRAME_DROP,
+            CapProcessingMode.VIDEO_PACED_AND_FRAME_DROP,
+        ):
+            hailo_logger.debug(f"[KEEP] frame={frame_index} mode={processing_mode.value}")
+
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        raw_frames.append(frame_rgb)
+        processed_frames.append(
+            preprocess_fn(frame_rgb, model_input_width, model_input_height)
+        )
+
+        if len(raw_frames) >= batch_size:
+            hailo_logger.debug(f"[QUEUE] push batch size={len(raw_frames)}")
+            input_queue.put((raw_frames, processed_frames))
+            raw_frames, processed_frames = [], []
+
+    if raw_frames and not should_stop():
+        input_queue.put((raw_frames, processed_frames))
+
+
+def preprocess_images(
+    images: List[np.ndarray],
+    batch_size: int,
+    input_queue: queue.Queue,
+    model_input_width: int,
+    model_input_height: int,
+    preprocess_fn: Callable[[np.ndarray, int, int], np.ndarray],
+) -> None:
+    """
+    Process a list of images and enqueue them in batches.
     """
     for batch in divide_list_to_batches(images, batch_size):
-        input_tuple = ([image for image in batch], [preprocess_fn(image, width, height) for image in batch])
+        batch_tuple = (
+            [image for image in batch],
+            [preprocess_fn(image, model_input_width, model_input_height) for image in batch],
+        )
+        input_queue.put(batch_tuple)
 
-        input_queue.put(input_tuple)
 
+def divide_list_to_batches(
+        images_list: List[np.ndarray], batch_size: int
+) -> Generator[List[np.ndarray], None, None]:
+    """
+    Divide the list of images into batches.
 
+    Args:
+        images_list (List[np.ndarray]): List of images.
+        batch_size (int): Number of images in each batch.
+
+    Returns:
+        Generator[List[np.ndarray], None, None]: Generator yielding batches
+                                                  of images.
+    """
+    for i in range(0, len(images_list), batch_size):
+        yield images_list[i: i + batch_size]
 
 
 def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
@@ -830,6 +637,182 @@ def default_preprocess(image: np.ndarray, model_w: int, model_h: int) -> np.ndar
 ####################################################################
 # Visualization
 ####################################################################
+def visualize(
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    output_queue: queue.Queue,
+    callback: Callable[[Any, Any], None],
+    fps_tracker: Optional["FrameRateTracker"] = None,
+    stop_event: Optional[threading.Event] = None,
+) -> None:
+    """
+    Visualize inference results.
+
+    Responsibilities:
+        • Receive frames and inference outputs from the output_queue
+        • Apply the visualization callback
+        • Display frames in an OpenCV window (unless --no-display)
+        • Optionally save output video
+        • Support both capture-based pipelines and image-based pipelines
+    """
+
+    image_index = 0
+    video_writer = None
+    writer_frame_width = None
+    writer_frame_height = None
+
+    cap = input_context.cap
+
+    # ------------------------------------------------------------
+    # Initialize display window and video writer (if needed)
+    # ------------------------------------------------------------
+    if cap is not None:
+
+        # Create display window only when display is enabled
+        if not visualization_settings.no_display:
+            cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
+
+        # Determine output resolution
+        if visualization_settings.output_resolution is not None:
+            target_width, target_height = visualization_settings.output_resolution
+        else:
+            target_width, target_height = input_context.width, input_context.height
+
+        # Side-by-side comparison doubles the width
+        writer_frame_width = target_width * (2 if visualization_settings.side_by_side else 1)
+        writer_frame_height = target_height
+
+        # Initialize VideoWriter if saving output is enabled
+        if visualization_settings.save_stream_output:
+
+            camera_fps = input_context.source_fps
+
+            # Choose output FPS
+            output_fps = input_context.frame_rate or (
+                camera_fps if camera_fps and camera_fps > 1 else 30.0
+            )
+
+            os.makedirs(visualization_settings.output_dir, exist_ok=True)
+
+            output_video_path = os.path.join(
+                visualization_settings.output_dir,
+                "output.avi",
+            )
+
+            video_writer = cv2.VideoWriter(
+                output_video_path,
+                cv2.VideoWriter_fourcc(*"XVID"),
+                output_fps,
+                (writer_frame_width, writer_frame_height),
+            )
+
+    # ------------------------------------------------------------
+    # Main visualization loop
+    # ------------------------------------------------------------
+    while True:
+
+        result = output_queue.get()
+
+        try:
+            # Sentinel value indicates pipeline termination
+            if result is None:
+                break
+
+            # Result format:
+            #   (frame, inference_result)
+            #   (frame, inference_result, metadata)
+            original_frame, inference_result, *metadata = result
+
+            # If a stop event was triggered, keep draining queue
+            if stop_event is not None and stop_event.is_set():
+                continue
+
+            # Normalize inference output
+            if isinstance(inference_result, list) and len(inference_result) == 1:
+                inference_result = inference_result[0]
+
+            # Run visualization callback
+            if metadata:
+                frame_with_detections = callback(
+                    original_frame,
+                    inference_result,
+                    metadata[0],
+                )
+            else:
+                frame_with_detections = callback(original_frame, inference_result)
+
+            # Update FPS tracker
+            if fps_tracker is not None:
+                fps_tracker.increment()
+
+            # Convert RGB → BGR for OpenCV display
+            output_bgr_frame = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
+
+            frame_to_show = resize_frame_for_output(
+                output_bgr_frame,
+                visualization_settings.output_resolution,
+            )
+
+            # ----------------------------------------------------
+            # Capture-based pipelines (camera / video / stream)
+            # ----------------------------------------------------
+            if cap is not None:
+
+                # Display output window
+                if not visualization_settings.no_display:
+
+                    cv2.imshow("Output", frame_to_show)
+
+                    # Allow quitting with 'q'
+                    if (cv2.waitKey(1) & 0xFF) == ord("q"):
+                        if stop_event is not None:
+                            stop_event.set()
+                        continue
+
+                # Save video output if enabled
+                if (
+                    visualization_settings.save_stream_output
+                    and video_writer is not None
+                    and writer_frame_width
+                    and writer_frame_height
+                ):
+                    frame_to_write = cv2.resize(
+                        frame_to_show,
+                        (writer_frame_width, writer_frame_height),
+                    )
+
+                    video_writer.write(frame_to_write)
+
+            # ----------------------------------------------------
+            # Image pipelines
+            # ----------------------------------------------------
+            else:
+
+                os.makedirs(visualization_settings.output_dir, exist_ok=True)
+
+                output_image_path = os.path.join(
+                    visualization_settings.output_dir,
+                    f"output_{image_index}.png",
+                )
+
+                cv2.imwrite(output_image_path, frame_to_show)
+
+            image_index += 1
+
+        finally:
+            output_queue.task_done()
+
+    # ------------------------------------------------------------
+    # Cleanup resources
+    # ------------------------------------------------------------
+    if video_writer is not None:
+        video_writer.release()
+
+    if cap is not None:
+        cap.release()
+
+    if not visualization_settings.no_display:
+        cv2.destroyAllWindows()
 
 def resize_frame_for_output(frame: np.ndarray,
                             resolution: Optional[Tuple[int, int]]) -> np.ndarray:
@@ -861,152 +844,9 @@ def resize_frame_for_output(frame: np.ndarray,
     return resized
 
 
-def visualize(
-    output_queue: queue.Queue,
-    cap: Optional[Any],
-    save_stream_output: bool,
-    output_dir: str,
-    callback: Callable[[Any, Any], None],
-    fps_tracker: Optional["FrameRateTracker"] = None,
-    output_resolution: Optional[Tuple[int, int]] = None,
-    framerate: Optional[float] = None,
-    side_by_side: bool = False,
-    stop_event: Optional[threading.Event] = None,
-    no_display: bool = False
-) -> None:
-    """
-    Visualize inference results: draw detections, show them on screen,
-    and optionally save the output video.
-
-    Args:
-        output_queue: Queue with (frame, inference_result[, extra]).
-        cap: VideoCapture for camera/video input, or None for image mode.
-        save_stream_output: If True, write the visualization to a video file.
-        output_dir: Directory to save output frames or videos.
-        callback: Function that draws detections on the frame.
-        fps_tracker: Tracks real-time FPS (optional).
-        output_resolution: One of ['sd','hd','fhd'] or a custom resolution for final display/save size.
-        framerate: Override output video FPS (optional).
-        side_by_side: If True, the callback returns a wide comparison frame.
-    """
-    image_id = 0
-    out = None
-    frame_width = None
-    frame_height = None
-
-    # Window + writer init (only for camera/video, not images)
-    if cap is not None:
-        # Create a window only if display is enabled
-        if not no_display:
-            cv2.namedWindow("Output", cv2.WINDOW_AUTOSIZE)
-
-        base_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 640)
-        base_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 480)
-
-        if output_resolution is not None:
-            target_w, target_h = output_resolution
-        else:
-            target_w, target_h = base_width, base_height
-
-        frame_width  = target_w * (2 if side_by_side else 1)
-        frame_height = target_h
-
-        # VideoWriter depends ONLY on save_stream_output (works even with --no-display)
-        if save_stream_output:
-            cam_fps   = cap.get(cv2.CAP_PROP_FPS)
-            final_fps = framerate or (cam_fps if cam_fps and cam_fps > 1 else 30.0)
-
-            os.makedirs(output_dir, exist_ok=True)
-            out_path = os.path.join(output_dir, "output.avi")
-            out = cv2.VideoWriter(
-                out_path,
-                cv2.VideoWriter_fourcc(*"XVID"),
-                final_fps,
-                (frame_width, frame_height),
-            )
-
-    # Main loop
-    while True:
-        result = output_queue.get()
-
-        try:
-            if result is None:
-                break
-
-            # result format:
-            # (frame, inference_result)                     → standard pipelines
-            # (frame, inference_result, extra_metadata...)  → pipelines that attach additional context
-            original_frame, inference_result, *metadata = result
-
-            # Quit mode:
-            # Frames may still arrive from other threads.
-            # We skip processing but keep draining the queue to prevent blocking.
-            if stop_event is not None and stop_event.is_set():
-                continue
-
-            # Some pipelines return [tensor] instead of tensor → normalize format
-            if isinstance(inference_result, list) and len(inference_result) == 1:
-                inference_result = inference_result[0]
-
-            # Run visualization callback
-            # If extra metadata exists, pass it to the callback.
-            if metadata:
-                frame_with_detections = callback(original_frame, inference_result, metadata[0])
-            else:
-                frame_with_detections = callback(original_frame, inference_result)
-
-            if fps_tracker is not None:
-                fps_tracker.increment()
-
-            # Convert RGB to BGR for OpenCV display/save
-            bgr_frame = cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)
-            frame_to_show = resize_frame_for_output(bgr_frame, output_resolution)
-
-            # -----------------
-            # Display / Save
-            # -----------------
-            if cap is not None:
-                # 1) Optional display
-                if not no_display:
-                    cv2.imshow("Output", frame_to_show)
-
-                    # Allow user to quit only when a window exists
-                    if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                        if stop_event is not None:
-                            stop_event.set()
-                        continue
-
-                # 2) Optional video writing (independent of display)
-                if save_stream_output and out is not None and frame_width and frame_height:
-                    # Ensure the written frame matches the VideoWriter size
-                    frame_to_write = cv2.resize(frame_to_show, (frame_width, frame_height))
-                    out.write(frame_to_write)
-
-            else:
-                # Image mode: write individual output frames
-                out_path = os.path.join(output_dir, f"output_{image_id}.png")
-                cv2.imwrite(out_path, frame_to_show)
-
-            image_id += 1
-
-        finally:
-            output_queue.task_done()
-
-    # cleanup
-    if out is not None:
-        out.release()
-
-    if cap is not None:
-        cap.release()
-
-    if not no_display:
-        cv2.destroyAllWindows()
-
-
 ####################################################################
 # Frame Rate Tracker
 ####################################################################
-
 class FrameRateTracker:
     """
     Tracks frame count and elapsed time to compute real-time FPS (frames per second).
@@ -1062,43 +902,3 @@ class FrameRateTracker:
         """
         return f"Processed {self.count} frames at {self.fps:.2f} FPS, Total time: {self.elapsed:.2f} seconds"
     
-
-
-
-####################################################################
-# Resource Resolution Functions (for HACE compatibility)
-####################################################################
-def resolve_arch(arch: str | None) -> str:
-    """
-    Resolve the target Hailo architecture using CLI, environment, or auto-detection.
-
-    Order:
-      1. Explicit --arch value
-      2. Environment variable HAILO_ARCH_KEY (used by pipelines)
-      3. Automatic detection via detect_hailo_arch()
-
-    Exits with an error message if none of the above succeed.
-    """
-    if arch:
-        return arch
-
-    env_arch = os.getenv(HAILO_ARCH_KEY)
-    if env_arch:
-        return env_arch
-
-    try:
-        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
-
-        detected_arch = detect_hailo_arch()
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.debug(f"Failed to auto-detect Hailo architecture: {exc}")
-        detected_arch = None
-
-    if detected_arch:
-        return detected_arch
-
-    logger.error(
-        "Could not determine Hailo architecture. "
-        "Please specify --arch or set the environment variable 'hailo_arch'."
-    )
-    sys.exit(1)

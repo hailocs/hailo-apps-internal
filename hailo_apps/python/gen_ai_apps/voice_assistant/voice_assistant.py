@@ -5,7 +5,6 @@ from contextlib import redirect_stderr
 
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
-
 from hailo_apps.python.core.common.defines import LLM_PROMPT_PREFIX, SHARED_VDEVICE_GROUP_ID, HAILO10H_ARCH, VOICE_ASSISTANT_APP, VOICE_ASSISTANT_MODEL_NAME
 from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.hailo_logger import add_logging_cli_args, init_logging, level_from_args
@@ -174,9 +173,6 @@ def main():
     add_logging_cli_args(parser)
     parser.add_argument('--no-tts', action='store_true',
                         help='Disable text-to-speech output for lower resource usage.')
-
-    # Add VAD arguments
-    add_vad_args(parser)
 
     # Add VAD arguments
     add_vad_args(parser)
