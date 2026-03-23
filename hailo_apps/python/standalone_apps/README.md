@@ -8,3 +8,4 @@
 | `pose_estimation`             | Pose estimation with yolov8                                        |
 | `super_resolution`            | Super-resolution with espcnx4 and SRGAN                            |
 | `oriented_object_detection`   | Oriented object detection using YOLO11 OBB                         |
+| `speech_recognition`          | Speech recognition for Hailo-8/8L/10H                              |

@@ -22,7 +22,7 @@ Build and deploy high-performance AI applications on edge devices with Hailo har
 ✨ **20+ Ready-to-Run Applications**
 - **🎯 GenAI - Voice to Action (Featured):** AI agents that convert natural language into hardware control - talk to your devices and make things happen
 - **Computer Vision:** Object detection, pose estimation, instance segmentation, face recognition, depth estimation, OCR
-- **More GenAI:** Voice assistants, VLM chat, Whisper speech recognition
+- **More GenAI:** Voice assistants, VLM chat, speech recognition (Whisper)
 - **Advanced:** Multi-camera tracking, zero-shot classification (CLIP), tiling for high-res processing
 
 🚀 **Production-Ready Infrastructure**
@@ -167,6 +167,7 @@ python vlm_chat.py
 | `lane_detection`           | Lane detection using UFLDv2                                        |
 | `pose_estimation`          | Pose estimation with yolov8                                        |
 | `super_resolution`         | Super-resolution with espcnx4 and SRGAN                            |
+| `speech_recognition`       | Speech recognition for Hailo-8/8L/10H                              |
 
 </details>
 
@@ -188,7 +189,7 @@ This repository provides three types of applications, each suited for different 
 |----------|----------|----------|
 | **Pipeline Apps** | Production-ready video processing with cameras, RTSP streams, and real-time inference | Object detection, pose estimation, instance segmentation, face recognition |
 | **Standalone Apps** | Learn HailoRT (Python/C++); install only specific apps; images/video/camera | Object Detection, OCR, Stereo Depth Estimation |
-| **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents, Whisper speech recognition |
+| **GenAI Apps** | Hailo-10H generative AI applications | Voice assistants, VLM chat, voice-to-action agents |
 
 ### Pipeline Apps (`hailo_apps/python/pipeline_apps/`)
 Use pipeline apps when you need real-time video processing with:
@@ -210,6 +211,7 @@ Use GenAI apps for **Hailo-10H** generative AI features:
 - Voice assistants with speech recognition
 - Vision-Language Models (VLM) chat
 - Voice-to-action AI agents
+- Whisper-based speech recognition
 
 **📚 See all applications:** [Running Applications Guide](./doc/user_guide/running_applications.md)
 

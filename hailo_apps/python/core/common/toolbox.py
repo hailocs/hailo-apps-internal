@@ -901,4 +901,44 @@ class FrameRateTracker:
             str: e.g. "Processed 200 frames at 29.81 FPS"
         """
         return f"Processed {self.count} frames at {self.fps:.2f} FPS, Total time: {self.elapsed:.2f} seconds"
+
     
+
+
+####################################################################
+# Resource Resolution Functions (for HACE compatibility)
+####################################################################
+def resolve_arch(arch: Optional[str]) -> str:
+    """
+    Resolve the target Hailo architecture using CLI, environment, or auto-detection.
+
+    Order:
+      1. Explicit --arch value
+      2. Environment variable HAILO_ARCH_KEY (used by pipelines)
+      3. Automatic detection via detect_hailo_arch()
+
+    Exits with an error message if none of the above succeed.
+    """
+    if arch:
+        return arch
+
+    env_arch = os.getenv(HAILO_ARCH_KEY)
+    if env_arch:
+        return env_arch
+
+    try:
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+
+        detected_arch = detect_hailo_arch()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(f"Failed to auto-detect Hailo architecture: {exc}")
+        detected_arch = None
+
+    if detected_arch:
+        return detected_arch
+
+    logger.error(
+        "Could not determine Hailo architecture. "
+        "Please specify --arch or set the environment variable 'hailo_arch'."
+    )
+    sys.exit(1)

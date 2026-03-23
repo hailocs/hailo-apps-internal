@@ -824,13 +824,15 @@ class ResourceDownloader:
         if "npy" in self.config:
             for npy_entry in self.config["npy"]:
                 self._add_npy_task(npy_entry)
-    
-    def collect_all_npy_files(self):
-        """Collect all NPY download tasks from top-level npy section."""
-        if "npy" in self.config:
-            for npy_entry in self.config["npy"]:
+
+    def collect_npy_by_tag(self, tag: str):
+        """Collect NPY download tasks filtered by tag."""
+        if "npy" not in self.config:
+            return
+        for npy_entry in self.config["npy"]:
+            if isinstance(npy_entry, dict) and tag in npy_entry.get("tag", []):
                 self._add_npy_task(npy_entry)
-    
+
     def collect_models_for_app(
         self,
         app_name: str,
