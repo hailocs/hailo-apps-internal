@@ -19,6 +19,9 @@
 - **All apps**: Signal handling (SIGINT), graceful shutdown, resource cleanup
 - `hailocropper` sends **parent detection** as ROI to inner pipeline, not the crop sub-detection
 - `INFERENCE_PIPELINE_WRAPPER` sets a non-identity `scaling_bbox` on the ROI (letterbox transform)
+- **New VLM apps need TWO registrations**: `defines.py` AND `resources_config.yaml`
+- **Display**: Always resize VLM frames to 640×640+, wrap overlay text, print events to terminal
+- **Driver check**: Use `hailortcli fw-control identify`, NOT `lsmod | grep hailo_pci`
 
 ## Build Commands
 

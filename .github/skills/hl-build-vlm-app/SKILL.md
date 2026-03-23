@@ -29,6 +29,14 @@ Add to `hailo_apps/python/core/common/defines.py`:
 MY_VLM_APP = "my_vlm_app"
 ```
 
+**CRITICAL**: Also register the app in `hailo_apps/config/resources_config.yaml`.
+Without this, `resolve_hef_path()` fails with `KeyError` at runtime.
+For VLM apps that reuse the same model as `vlm_chat`, use the YAML anchor:
+```yaml
+my_vlm_app: *vlm_chat_app
+```
+Place this in the `# Gen AI models` section of `resources_config.yaml`.
+
 ### Step 2: Create Directory
 
 ```
@@ -127,6 +135,67 @@ Include: description, requirements, usage CLI, architecture, customization notes
 | Event classification | `EventTracker.classify_response()` |
 | Display overlay | OpenCV `cv2.putText()` in main loop |
 
+## Display & Output Best Practices
+
+### Window Size
+The VLM crops images to 336×336 but this is too small for a display window.
+Always resize to at least 640×640 for readability:
+```python
+DISPLAY_SIZE = (640, 640)
+display = cv2.resize(frame, DISPLAY_SIZE, interpolation=cv2.INTER_LINEAR)
+```
+
+### Text Wrapping
+VLM responses can be long (100+ chars). Always wrap overlay text to fit the window:
+```python
+@staticmethod
+def _wrap_text(text: str, max_chars: int = 70) -> list[str]:
+    words = text.split()
+    lines, current = [], ""
+    for word in words:
+        if current and len(current) + 1 + len(word) > max_chars:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip() if current else word
+    if current:
+        lines.append(current)
+    return lines or [""]
+```
+Make the banner height dynamic: `banner_h = 35 + 22 * len(desc_lines)`.
+
+### Print Activity to Terminal
+`logger.info()` may not be visible at default log level. Always `print()` event
+classifications so the user sees them:
+```python
+print(f"\n[{event.time_str}] Activity: {event.event_type.value}")
+print(f"  {answer}")
+```
+
+## End-of-Video Handling
+
+Short videos (or any file input) will end before inference completes.
+The app MUST:
+1. Wait for any pending `vlm_future` to finish when `get_frame()` returns `None`
+2. Redraw the overlay with the final result AFTER inference completes
+3. Hold the final frame on screen for a few seconds so the user can read it
+
+```python
+if raw_frame is None:
+    if vlm_future and not vlm_future.done():
+        logger.info("Video ended. Waiting for pending inference...")
+        vlm_future.result(timeout=INFERENCE_TIMEOUT)
+    # Show final result for 5 seconds
+    if last_good_frame is not None:
+        end_time = time.time() + 5
+        while time.time() < end_time:
+            display = self._draw_overlay(last_good_frame)
+            cv2.imshow(WINDOW_NAME, display)
+            if cv2.waitKey(100) & 0xFF == ord("q"):
+                break
+    break
+```
+
 ## Event Tracker Pattern (for monitoring apps)
 
 When building a monitoring-style app, create an `event_tracker.py` with:
@@ -143,6 +212,14 @@ def classify_response(self, vlm_response: str) -> EventType:
             return event_type
     return EventType.IDLE
 ```
+
+## Registration Checklist
+
+Before running a new VLM app, verify **both** registrations exist:
+1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `DOG_MONITOR_APP = "dog_monitor"`)
+2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
+
+Missing #2 causes `KeyError: '<app_name>'` in `resolve_hef_path()` at runtime.
 
 ## Common VLM Prompts
 

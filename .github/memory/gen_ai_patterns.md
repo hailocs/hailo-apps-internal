@@ -72,6 +72,25 @@ When building continuous monitoring apps that reuse the VLM Chat Backend:
 - **Event classification**: Keyword matching on VLM response is sufficient — no need for a second LLM call.
 - **Signal handler pitfall**: Only set `self.running = False` in the handler. Do cleanup in the main loop's `finally` block to avoid deadlocks.
 - **Display overlay**: Use `cv2.addWeighted()` for semi-transparent overlays on the camera feed.
+- **Display size**: Resize frames to 640×640 before display — the raw 336×336 VLM crop is too small to read.
+- **Text wrapping**: VLM responses are long. Wrap text into lines of ~70 chars max and use a dynamic banner height.
+- **Print to terminal**: Always `print()` the classified activity and description to the terminal on each event — `logger.info()` is not visible at default log level.
+- **End-of-video**: When `get_frame()` returns `None`, wait for any pending `vlm_future` to finish, then redraw overlay with the result and hold 5 seconds before exiting.
+
+### App Registration (CRITICAL — Two Places)
+New VLM apps must be registered in **two** files or `resolve_hef_path()` will fail:
+1. `hailo_apps/python/core/common/defines.py` — add `MY_APP = "my_app"` constant
+2. `hailo_apps/config/resources_config.yaml` — add `my_app: *vlm_chat_app` (or custom model entry)
+Forgetting #2 causes `KeyError: 'my_app'` at runtime.
+
+### Pre-Launch Environment Checks
+Before launching a VLM app, verify in this order:
+1. `hailortcli fw-control identify` — confirms device is accessible, shows architecture
+2. `python3 -c "import hailo_platform"` — SDK installed
+3. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
+4. Input file exists (for file sources): `ls -la /path/to/video`
+5. For short videos: check duration and set `--interval` lower than video length
+Note: `lsmod | grep hailo_pci` is NOT reliable — some setups have built-in drivers.
 
 ### Queue Deadlock on Shutdown
 If the main process exits without sending the `None` sentinel to the worker, the worker blocks on `request_queue.get()` forever → orphaned process.

@@ -86,6 +86,67 @@ If `app_name` isn't registered in `resources_config.yaml`, resolution silently f
 
 **Fix**: Always register new apps in `resources_config.yaml` before using `resolve_hef_path`.
 
+### Wrong: Register in defines.py but forget resources_config.yaml
+Adding a constant to `defines.py` alone is NOT enough. `resolve_hef_path()` looks up the
+app name in the config manager, which reads `resources_config.yaml`.
+```
+KeyError: 'my_new_app'  ← This means resources_config.yaml is missing the entry
+```
+**Fix**: For VLM apps that reuse the same model, add a YAML anchor alias:
+```yaml
+my_new_app: *vlm_chat_app
+```
+
+## Environment / Driver Checks (Pre-Launch)
+
+### PCIe driver check is unreliable
+`lsmod | grep hailo_pci` may return empty even when the device is functional
+(e.g., built-in driver, different module name).
+
+**Reliable check**: Use `hailortcli fw-control identify` instead — it directly
+queries the device firmware and confirms the architecture:
+```bash
+hailortcli fw-control identify
+# Expected: "Device Architecture: HAILO10H" + firmware version
+```
+
+### Full pre-launch verification sequence
+```bash
+# 1. Device accessible (reliable)
+which hailortcli && hailortcli fw-control identify
+
+# 2. Python SDK importable
+python3 -c "import hailo_platform; print('hailo_platform OK')"
+
+# 3. App framework importable
+python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_apps OK')"
+
+# 4. Input file exists (if file input)
+ls -la /path/to/video.mp4
+```
+
+## OpenCV Display
+
+### Window too small with VLM crop
+`Backend.convert_resize_image()` returns 336×336 — too small for a display window.
+Always resize to at least 640×640 before `cv2.imshow()`:
+```python
+display = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+```
+
+### Overlay text overflows window
+VLM responses can be 100+ characters. Never truncate to a fixed width — instead
+wrap text into multiple lines and make the overlay banner height dynamic:
+```python
+banner_h = 35 + 22 * len(wrapped_lines)
+```
+
+### End-of-video drops pending inference
+If you `break` when `get_frame()` returns `None`, any pending async inference is
+lost. The user never sees the result.
+**Fix**: Wait for `vlm_future.result()` before breaking, then redraw the overlay
+and hold the frame on screen for ~5 seconds.
+
 ## GStreamer Pipeline
 
 ### Missing Queue Between Elements
