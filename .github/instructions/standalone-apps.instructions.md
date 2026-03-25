@@ -8,7 +8,7 @@ You are working on a **standalone inference application** (HailoInfer + OpenCV, 
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.github/`):
+Read these files before making changes (paths relative to `.hailo/`):
 
 - `instructions/skills/create-standalone-app.md` — Standalone app patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution

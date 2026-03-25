@@ -217,4 +217,3 @@ Build a "<APP_DISPLAY_NAME>" application that <description>.
 - [ ] Uses resolve_hef_path() for models
 - [ ] README.md with usage examples
 - [ ] All phase gates pass
-```

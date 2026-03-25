@@ -8,7 +8,7 @@ You are working on a **Gen AI application** (VLM, LLM, Whisper, Voice, or Agent)
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.github/`):
+Read these files before making changes (paths relative to `.hailo/`):
 
 - `instructions/gen-ai-development.md` — VLM/LLM/Whisper development patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution

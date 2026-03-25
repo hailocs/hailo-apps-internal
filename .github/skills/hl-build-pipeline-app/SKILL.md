@@ -1,6 +1,6 @@
 ---
 name: hl-build-pipeline-app
-description: Build a GStreamer pipeline application for real-time video processing on Hailo accelerators. Detection, pose estimation, segmentation, tracking, and more. Use when building any real-time video streaming app.
+description: Build a complete GStreamer pipeline app for real-time video processing on Hailo-8/8L/10H.
 ---
 
 # Skill: Build GStreamer Pipeline Application

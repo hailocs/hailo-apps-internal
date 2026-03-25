@@ -61,4 +61,3 @@ description = MyTool().description
 schema = MyTool().schema
 TOOLS_SCHEMA = [{"type": "function", "function": {"name": name, "description": description, "parameters": schema}}]
 run = MyTool().run
-```

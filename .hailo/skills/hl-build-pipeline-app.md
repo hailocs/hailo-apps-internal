@@ -1,0 +1,138 @@
+# Skill: Build GStreamer Pipeline Application
+
+Build a complete GStreamer pipeline app for real-time video processing on Hailo-8/8L/10H.
+
+## When This Skill Is Loaded
+
+- User wants **real-time video processing** (detection, pose, segmentation)
+- User mentions: GStreamer, pipeline, stream, FPS, real-time video, tracking
+- User needs a video app with **high throughput** rather than AI understanding
+
+## Reference Implementations
+
+Study `hailo_apps/python/pipeline_apps/detection/` — the canonical pipeline app:
+- `detection.py` — Subclasses `GStreamerApp`, per-frame callback, pipeline composition
+- Also see: `pose_estimation/`, `instance_segmentation/`, `face_recognition/`
+
+## Build Process
+
+### Step 1: Register App Constants
+
+Add to `hailo_apps/python/core/common/defines.py`:
+```python
+MY_PIPELINE_APP = "my_pipeline_app"
+```
+
+### Step 2: Create Directory Structure
+
+```
+hailo_apps/python/pipeline_apps/my_pipeline_app/
+├── __init__.py
+├── my_pipeline_app.py    ← Main app
+└── README.md
+```
+
+### Step 3: Build Main App
+
+```python
+import gi
+gi.require_version('Gst', '1.0')
+from gi.repository import Gst
+
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.core import resolve_hef_path, handle_list_models_flag
+from hailo_apps.python.core.common.parser import get_pipeline_parser
+from hailo_apps.python.core.common.defines import MY_PIPELINE_APP
+from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
+    SOURCE_PIPELINE,
+    INFERENCE_PIPELINE,
+    DISPLAY_PIPELINE,
+    TRACKER_PIPELINE,
+    QUEUE,
+)
+
+logger = get_logger(__name__)
+
+APP_NAME = MY_PIPELINE_APP
+
+
+class UserAppCallback(app_callback_class):
+    """Custom callback class for per-frame state."""
+    def __init__(self):
+        super().__init__()
+        self.detection_count = 0
+
+
+def app_callback(element, buffer, user_data):
+    """Per-frame callback — runs on every GStreamer buffer."""
+    # Access detections from buffer
+    # user_data.detection_count += len(detections)
+    return Gst.FlowReturn.OK
+
+
+class MyPipelineApp(GStreamerApp):
+    def __init__(self, app_callback, user_data, parser=None):
+        parser = parser or get_pipeline_parser()
+        handle_list_models_flag(parser, APP_NAME)
+        args = parser.parse_args()
+        super().__init__(args, user_data)
+
+        self.hef_path = resolve_hef_path(args.hef_path, APP_NAME, self.arch)
+        logger.info("HEF: %s", self.hef_path)
+
+    def get_pipeline_string(self):
+        return (
+            SOURCE_PIPELINE(self.video_source, self.arch)
+            + " ! "
+            + INFERENCE_PIPELINE(
+                hef_path=self.hef_path,
+                batch_size=self.batch_size,
+            )
+            + " ! "
+            + DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync)
+        )
+
+
+def main():
+    user_data = UserAppCallback()
+    app = MyPipelineApp(app_callback, user_data)
+    app.run()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Step 4: Validate
+
+```bash
+# No relative imports
+grep -rn "^from \.\|^import \." hailo_apps/python/pipeline_apps/my_pipeline_app/*.py
+
+# Logger used
+grep -rn "get_logger" hailo_apps/python/pipeline_apps/my_pipeline_app/*.py
+
+# CLI works
+python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
+```
+
+## Critical Conventions
+
+1. **CLI parser**: `get_pipeline_parser()` (NOT `get_standalone_parser()`)
+2. **Pipeline composition**: Use helper functions — `SOURCE_PIPELINE`, `INFERENCE_PIPELINE`, `DISPLAY_PIPELINE`
+3. **Callback**: `app_callback(element, buffer, user_data)` — never call `user_data.increment()`
+4. **Resolution preservation**: Use `INFERENCE_PIPELINE_WRAPPER` for full-res display
+5. **Tracking**: `TRACKER_PIPELINE()` for ByteTrack
+6. **Cascaded inference**: `CROPPER_PIPELINE()` for crop → second model
+7. **VAAPI**: Add `QUEUE("vaapi_queue") + vaapi_convert_pipeline` for HW decode
+
+## Common Patterns
+
+| Pattern | Helper | Use Case |
+|---|---|---|
+| Basic inference | `INFERENCE_PIPELINE(hef_path=...)` | Single model |
+| With tracking | `+ TRACKER_PIPELINE()` | Object tracking |
+| Cascaded | `CROPPER_PIPELINE(...)` | Face detection → recognition |
+| Multi-source | Multiple `SOURCE_PIPELINE` + compositor | Dashboard view |
+| Tiling | Custom tiling pipeline | Small object detection |

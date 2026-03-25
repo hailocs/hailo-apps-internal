@@ -1,6 +1,6 @@
 ---
 name: hl-build-vlm-app
-description: Build a Vision-Language Model application for Hailo-10H. Creates complete VLM apps with camera loop, inference, event tracking, and validation. Use when building any app that looks at camera images and uses VLM for understanding.
+description: Build a complete Vision-Language Model application that uses the Hailo-10H VLM for image understanding.
 ---
 
 # Skill: Build VLM Application
@@ -325,7 +325,7 @@ conventions, README quality). If it passes 20/20, the app is convention-complian
 Run it once at the end instead of manual grep checks — it catches everything.
 
 ### 9. Local Docs Are Sufficient — Kapa MCP Is for Edge Cases
-The `.github/` documentation (this SKILL.md, memory files, toolset refs, and the
+The `.hailo/` documentation (this SKILL.md, memory files, toolset refs, and the
 vlm_chat reference implementation) provides 100% of the context needed for standard
 VLM app builds. Kapa MCP is only needed for undocumented SDK parameters, HEF
 compatibility across versions, or HailoRT driver troubleshooting.

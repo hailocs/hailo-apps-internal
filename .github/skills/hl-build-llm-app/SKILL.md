@@ -1,6 +1,6 @@
 ---
 name: hl-build-llm-app
-description: Build an LLM chat or text generation application for Hailo-10H. Chatbots, Q&A systems, text processors — all running on-device with the Hailo LLM API.
+description: Build a complete LLM text generation app running on Hailo-10H.
 ---
 
 # Skill: Build LLM Chat Application

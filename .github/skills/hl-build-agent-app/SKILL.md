@@ -1,6 +1,6 @@
 ---
 name: hl-build-agent-app
-description: Build an LLM agent application with tool calling for Hailo-10H. Create AI agents that reason, select tools, execute them, and return results — all on-device.
+description: Build a complete agent app with LLM reasoning + tool execution on Hailo-10H.
 ---
 
 # Skill: Build Agent Application with Tool Calling

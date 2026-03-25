@@ -1,6 +1,6 @@
 ---
 name: hl-build-standalone-app
-description: Build a standalone inference application using HailoInfer + OpenCV. Direct model inference without GStreamer — best for custom processing, batch jobs, and full control over the inference pipeline.
+description: Build a complete standalone app using HailoInfer + OpenCV on Hailo-8/8L/10H.
 ---
 
 # Skill: Build Standalone Inference Application

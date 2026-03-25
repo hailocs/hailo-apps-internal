@@ -1,0 +1,316 @@
+# Common Pitfalls — Memory
+
+> Bugs found, anti-patterns encountered, and lessons learned. Check before writing new code.
+
+## Import Errors
+
+### Wrong: Relative imports in app code
+```python
+# ❌ This breaks when running with python -m
+from .backend import Backend
+from ..core.common.core import resolve_hef_path
+```
+
+### Right: Always absolute
+```python
+# ✅ Works everywhere
+from hailo_apps.python.gen_ai_apps.vlm_chat.backend import Backend
+from hailo_apps.python.core.common.core import resolve_hef_path
+```
+
+**Exception**: `try/except ImportError` with fallback to relative is acceptable for dual-mode modules (see agent.py pattern).
+
+## Signal Handling
+
+### Wrong: Cleanup in signal handler directly
+```python
+def signal_handler(sig, frame):
+    self.backend.close()  # May deadlock if caught during queue operation
+    sys.exit(0)
+```
+
+### Right: Set flag, clean up in main loop
+```python
+def signal_handler(self, sig, frame):
+    self.running = False  # Flag only
+
+def run(self):
+    try:
+        while self.running:
+            # ... main loop
+    finally:
+        self.backend.close()  # Clean up here
+```
+
+## Multiprocessing Queue Gotchas
+
+### Deadlock on Full Queue
+If `maxsize` is reached and you `put()` without timeout, the process blocks forever.
+```python
+# ❌ Can deadlock
+self._request_queue.put(data)
+
+# ✅ Always use timeout on both put and get
+self._request_queue.put(data, timeout=5)
+response = self._response_queue.get(timeout=timeout)
+```
+
+### Orphaned Worker Processes
+If main process crashes without sending sentinel, worker blocks forever.
+**Fix**: Always use `try/finally` in main process:
+```python
+try:
+    app.run()
+finally:
+    app.stop()  # Sends None sentinel to worker
+```
+
+## OpenCV
+
+### imshow Before waitKey
+`cv2.imshow()` won't actually display until `cv2.waitKey()` is called. Both are needed.
+
+### BGR vs RGB Confusion
+- OpenCV reads as **BGR**
+- VLM expects **RGB**  
+- OpenCV displays **BGR**
+- `cv2.imwrite()` expects **BGR**
+- PIL/Pillow reads as **RGB**
+
+**Rule**: Convert to RGB only when sending to VLM. Keep BGR for everything else.
+
+## HEF Path Resolution
+
+### Wrong: resolve_hef_path with wrong app_name
+If `app_name` isn't registered in `resources_config.yaml`, resolution silently falls back to searching the filesystem — which may find the wrong model or fail.
+
+**Fix**: Always register new apps in `resources_config.yaml` before using `resolve_hef_path`.
+
+### Wrong: Register in defines.py but forget resources_config.yaml
+Adding a constant to `defines.py` alone is NOT enough. `resolve_hef_path()` looks up the
+app name in the config manager, which reads `resources_config.yaml`.
+```
+KeyError: 'my_new_app'  ← This means resources_config.yaml is missing the entry
+```
+**Fix**: For VLM apps that reuse the same model, add a YAML anchor alias:
+```yaml
+my_new_app: *vlm_chat_app
+```
+
+## Environment / Driver Checks (Pre-Launch)
+
+### PCIe driver check is unreliable
+`lsmod | grep hailo_pci` may return empty even when the device is functional
+(e.g., built-in driver, different module name).
+
+**Reliable check**: Use `hailortcli fw-control identify` instead — it directly
+queries the device firmware and confirms the architecture:
+```bash
+hailortcli fw-control identify
+# Expected: "Device Architecture: HAILO10H" + firmware version
+```
+
+### Full pre-launch verification sequence
+```bash
+# 1. Device accessible (reliable)
+which hailortcli && hailortcli fw-control identify
+
+# 2. Python SDK importable
+python3 -c "import hailo_platform; print('hailo_platform OK')"
+
+# 3. App framework importable
+python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_apps OK')"
+
+# 4. Input file exists (if file input)
+ls -la /path/to/video.mp4
+```
+
+## OpenCV Display
+
+### Window too small with VLM crop
+`Backend.convert_resize_image()` returns 336×336 — too small for a display window.
+Always resize to at least 640×640 before `cv2.imshow()`:
+```python
+display = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+```
+
+### Overlay text overflows window
+VLM responses can be 100+ characters. Never truncate to a fixed width — instead
+wrap text into multiple lines and make the overlay banner height dynamic:
+```python
+banner_h = 35 + 22 * len(wrapped_lines)
+```
+
+### End-of-video drops pending inference
+If you `break` when `get_frame()` returns `None`, any pending async inference is
+lost. The user never sees the result.
+**Fix**: Wait for `vlm_future.result()` before breaking, then redraw the overlay
+and hold the frame on screen for ~5 seconds.
+
+### NEVER freeze video during inference in monitoring apps
+VLM inference takes 10-30 seconds. Freezing the display during analysis makes the
+app appear broken and drops most of the video content.
+**Fix**: Always keep video playing. Run inference in a background thread via
+`ThreadPoolExecutor.submit()`. Show the latest result in the overlay while live
+video continues. Freezing is ONLY for interactive capture-and-ask apps (like `vlm_chat`)
+where the user explicitly captures a frame.
+
+## YAML Config Registration — Anchor Alias Placement
+
+### Wrong: Insert alias between a key and its value block
+When adding `dog_monitor: *vlm_chat_app` to `resources_config.yaml`, inserting it
+**between** an existing key (e.g. `agent: &agent_app`) and its `models:` block
+breaks YAML parsing — the parser sees `models:` as belonging to the new key.
+```yaml
+# ❌ WRONG — splits `agent` from its `models:` block
+agent: &agent_app
+
+dog_monitor: *vlm_chat_app
+
+  models:          # ← parser thinks this belongs to dog_monitor, not agent
+    hailo10h: ...
+```
+
+### Right: Insert alias AFTER the full block
+```yaml
+# ✅ CORRECT — agent block is complete, then alias follows
+agent: &agent_app
+  models:
+    hailo8:
+      default: None
+    hailo10h:
+      default:
+        - name: Qwen2.5-Coder-1.5B-Instruct
+          source: gen-ai-mz
+
+dog_monitor: *vlm_chat_app      # ← safe: goes after the full agent block
+```
+**Rule**: When inserting a YAML alias entry, always place it **after** the complete
+block of the preceding key, not between the key and its child mapping.
+Always run `python3 -c "import yaml; yaml.safe_load(open('path'))"` after editing YAML.
+
+## CLI Argument Ordering with handle_list_models_flag
+
+### Wrong: Add custom args AFTER handle_list_models_flag
+`handle_list_models_flag()` uses `parse_known_args()` internally, which doesn't
+fail — but if `--help` is invoked at that point, argparse only knows the base args.
+Custom args added later never appear in `--help` output:
+```python
+# ❌ --interval won't appear in --help
+parser = get_standalone_parser()
+handle_list_models_flag(parser, MY_APP)
+parser.add_argument("--interval", ...)  # Too late for --help
+args = parser.parse_args()
+```
+
+### Right: Add ALL custom args BEFORE handle_list_models_flag
+```python
+# ✅ --interval appears in --help
+parser = get_standalone_parser()
+parser.add_argument("--interval", type=int, default=15, help="Seconds between analyses")
+handle_list_models_flag(parser, MY_APP)  # Now --help shows everything
+args = parser.parse_args()
+```
+**Rule**: All `parser.add_argument()` calls must come **before** `handle_list_models_flag()`.
+
+## VLM MAX_TOKENS Tuning for Monitoring Apps
+
+Qwen2-VL with `MAX_TOKENS=300` produces verbose, **repetitive** output (the model
+loops the same sentences). For continuous monitoring apps that need concise answers:
+- Use `MAX_TOKENS=100` to `150` — enough for 1-2 sentences
+- Reinforce brevity in both the system prompt and user prompt:
+  `"Be concise — one or two sentences maximum."`
+- `MAX_TOKENS=200+` is only appropriate for interactive Q&A or detailed descriptions
+
+## Event Classification — Keyword Ordering Matters
+
+Keyword-based classification matches the **first** EventType whose keywords appear
+in the response. Generic words like "food" or "floor" can match the wrong category
+if checked before more specific ones.
+```python
+# ❌ "sniffing a bowl on the floor" matches SLEEPING because "lying" check comes first
+# ❌ "sitting on the floor" matches EATING because "food" appears in context
+```
+**Fix**: Order keyword categories from most-specific to least-specific. Put
+physical-action keywords (sniffing, running, chewing) before state/posture keywords
+(sitting, lying). Also add the activity you care about to the VLM prompt itself:
+`"Classify the dog's activity as one of: sleeping, eating, drinking, playing, ..."` —
+this constrains the VLM output and makes keyword matching more reliable.
+
+## GStreamer Pipeline
+
+### Missing Queue Between Elements
+GStreamer needs explicit `queue` elements to create thread boundaries. Without them, everything runs in one thread and performance suffers.
+
+### Wrong Pipeline String Concatenation
+```python
+# ❌ Missing ! separator or double !!
+pipeline = f"{source}{inference}{display}"
+pipeline = f"{source} !! {inference}"
+
+# ✅ Single ! with spaces
+pipeline = f"{source} ! {inference} ! {display}"
+```
+
+## Resource Cleanup Checklist
+
+When building an app, ensure ALL of these are handled:
+- [ ] `cv2.VideoCapture.release()` / `picam2.stop()`
+- [ ] `cv2.destroyAllWindows()`
+- [ ] `backend.close()` (sends sentinel to worker)
+- [ ] `vlm.release()` / `llm.release()` (in worker process)
+- [ ] `vdevice.release()` (in worker process, after model release)
+- [ ] `ThreadPoolExecutor.shutdown(wait=True)` (if used)
+
+## Logging Anti-Patterns
+
+### Wrong: print() for operational messages
+```python
+print("Starting inference...")  # Lost in output, no timestamp, no level
+```
+
+### Right: Logger
+```python
+logger.info("Starting inference...")
+```
+
+### Exception: print() IS correct for:
+- Real-time streamed VLM output (user-facing)
+- Interactive prompts ("Press Enter to continue")
+- Summary reports at end of session
+
+## Agent / Tooling Pitfalls
+
+### python vs python3 on Ubuntu/Debian
+On Ubuntu, `python` is NOT installed by default — only `python3` exists.
+Always use `python3` in terminal commands, or first verify with `which python`.
+The `setup_env.sh` script activates the venv but does NOT alias `python` → `python3`.
+```bash
+# ❌ Fails on fresh Ubuntu
+python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+
+# ✅ Always works
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+```
+
+### YAML File Edits — Whitespace Sensitivity
+When using `replace_string_in_file` on YAML files (e.g., `resources_config.yaml`),
+the match MUST be exact including invisible trailing spaces and indentation.
+YAML files often have inconsistent spacing between blocks. If the first edit
+attempt fails, read the exact lines around the insertion point and retry with
+the precise whitespace.
+**Tip**: Include 3-5 context lines from the actual `read_file` output, not
+from memory or documentation.
+
+### VS Code Auto-Approve for Agentic Workflows
+By default, VS Code Copilot agent mode requires clicking "Allow" for every
+tool call (file write, terminal command, etc.). A 46-tool-call build means
+~46 clicks. To eliminate this:
+```json
+// .vscode/settings.json
+{
+    "chat.tools.autoApprove": true
+}
+```
+This makes the agent fully autonomous. Add to `.vscode/settings.json` at the
+workspace level (not user level) so it only applies to this repo.

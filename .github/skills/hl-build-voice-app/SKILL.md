@@ -1,6 +1,6 @@
 ---
 name: hl-build-voice-app
-description: Build a voice assistant application for Hailo-10H with Whisper (STT on Hailo) and Piper (TTS on CPU). Add voice input/output to any Hailo app.
+description: Build a complete voice-enabled app with Whisper STT on Hailo + Piper TTS on CPU.
 ---
 
 # Skill: Build Voice Assistant Application
