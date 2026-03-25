@@ -244,12 +244,30 @@ Different platforms inject project context at different privilege levels. Unders
 
 ### VS Code Copilot
 
-| Level | File | Injection | Compliance |
-|---|---|---|---|
-| **System prompt** (privileged) | `copilot-instructions.md` | Auto-injected every turn | ~99% |
-| **System prompt** (privileged) | Agent/mode `.md` (e.g., `hailo-vlm-builder.agent.md`) | Auto-injected when mode is active | ~99% |
-| **System prompt** (privileged) | Instruction files (`instructions/*.md` with `applyTo` globs) | Auto-injected when matching files are in context | ~99% |
-| **Tool results** (user-level) | Skills, memory, toolsets (`*.md`) | Agent reads via `read_file` tool | ~95% |
+| # | Level | Mechanism | File Pattern | How Triggered | Compliance | In This Repo |
+|---|---|---|---|---|---|---|
+| | **SYSTEM PROMPT (privileged — injected before user message)** | | | | | |
+| 1 | System | **Global instructions** | `.github/copilot-instructions.md` | **Auto** — every turn, every chat | ~99% | 1 file |
+| 2 | System | **Agent/Mode definition** | `.github/agents/*.agent.md` | **Auto** — when user switches to that agent mode | ~99% | 1 file (`hailo-vlm-builder`) |
+| 3 | System | **Contextual instructions** (`applyTo` globs) | `.github/instructions/*.instructions.md` | **Auto** — when files matching the glob are in editor context | ~99% | 5 files (core, gen-ai, pipeline, standalone, tests) |
+| | **USER-LEVEL (user explicitly triggers — guaranteed in context)** | | | | | |
+| 4 | User | **Custom Skills** (`#` invocation) | `.github/skills/*/SKILL.md` | User types `#skill-name` in chat — full content injected | ~100% | 1 skill (`#hl-build-vlm-app`) |
+| 5 | User | **Prompt files** (copy-paste or `/` command) | `.github/prompts/*.prompt.md` | User pastes prompt content into chat — it IS the user message | ~100% | 6 files |
+| 6 | User | **File attachment** (drag or 📎) | Any file | User explicitly attaches file to chat message | ~100% | — |
+| 7 | User | **Editor context** (active file + selection) | Whatever is open | **Auto** — open file & selection sent with each message | ~95% | — |
+| | **AGENT-LEVEL (agent decides during execution — probabilistic)** | | | | | |
+| 8 | Agent | **`read_file` tool** | Any file in workspace | Agent decides based on instructions or its own judgment | 70–95%* | 28+ `.md` files (skills, memory, toolsets) |
+| 9 | Agent | **Workspace search** (`semantic_search`, `grep_search`) | Any file in workspace | Agent decides to search when it needs information | 70–90%* | — |
+| 10 | Agent | **Sub-agent delegation** (`runSubagent`) | Files read by sub-agent | Agent (or orchestrated prompt) delegates a research task | 85–95%* | — |
+| 11 | Agent | **MCP tool calls** | External server | Agent decides to query based on tool description match | 80–90%* | 1 server (Kapa) |
+
+\* Compliance for agent-level mechanisms depends on the prompt approach:
+
+| Mechanism | Flat Prompt | Orchestrated Prompt |
+|---|---|---|
+| `read_file` (level 8) | ~70% — agent may skip memory/skills | ~95% — prompt lists exact files to read |
+| Sub-agents (level 10) | ~50% — agent may not use sub-agents at all | ~95% — prompt prescribes sub-agent tasks |
+| MCP calls (level 11) | ~30% — agent rarely calls MCP unprompted | ~90% — prompt can require MCP lookup |
 
 ### Claude Code (CLI & VS Code extension)
 

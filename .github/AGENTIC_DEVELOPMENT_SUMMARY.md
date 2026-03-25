@@ -17,20 +17,23 @@ The prompt templates (stored in `.github/prompts/`) contain the full application
 | **Flat (Simple)** | Small-to-medium apps, well-scoped tasks | Agent uses auto-loaded conventions + own judgment |
 | **Orchestrated (Multi-Phase)** | Complex multi-file apps, reproducibility, auditability | Agent follows prescribed 4-phase workflow with gates, sub-agents, memory updates |
 
-**Key metrics** (matching the 9 categories in the [File Inventory](#file-inventory-by-category) below):
+**Key metrics** (matching the 12 categories in the [File Inventory](#file-inventory-by-category) below):
 
 | # | Category | Files | Lines | Highlights |
 |---|---|---|---|---|
-| 1 | Agent entry points | 2 | 310 | Auto-loaded by Copilot + Claude Code |
-| 2 | Architecture & standards | 5 | 794 | Coding conventions, system design |
-| 3 | Orchestration framework | 2 | 674 | Phase gates, sub-agent delegation, 9 agent protocols |
-| 4 | Skills | 11 | 1,678 | Step-by-step guides per app archetype |
-| 5 | API toolset references | 5 | 816 | Function-level SDK documentation |
-| 6 | Prompt templates | 6 | 790 | Ready-to-paste prompts (flat + orchestrated) |
-| 7 | Persistent memory | 6 | 524 | Cross-session knowledge retention |
-| 8 | Knowledge base | 1 | 103 | Machine-readable YAML recipes & patterns |
-| 9 | Community contributions | 6 | 63 | Contribution structure (5 category dirs + README) |
-| | **Total** | **44** | **~5,752** | |
+| 1 | Agent entry points | 2 | 350 | Auto-loaded by Copilot + Claude Code |
+| 2 | Custom agents (modes) | 7 | 1,294 | Interactive workflow builders — master router + 6 specialized |
+| 3 | Contextual instructions | 5 | 199 | `applyTo` glob-triggered — auto-injected when editing matching files |
+| 4 | Custom skills (`#`-invocable) | 6 | 1,147 | 100% compliance — user types `#skill-name`, full content injected |
+| 5 | Instruction skills (reference) | 12 | 1,818 | Step-by-step guides per app archetype |
+| 6 | Architecture & standards | 5 | 794 | Coding conventions, system design |
+| 7 | Orchestration framework | 2 | 674 | Phase gates, sub-agent delegation, 9 agent protocols |
+| 8 | API toolset references | 5 | 816 | Function-level SDK documentation |
+| 9 | Prompt templates | 9 | 1,107 | Ready-to-paste prompts (flat + orchestrated) |
+| 10 | Persistent memory | 6 | 842 | Cross-session knowledge retention |
+| 11 | Knowledge base | 1 | 103 | Machine-readable YAML recipes & patterns |
+| 12 | Community contributions | 7 | ~70 | Contribution structure (5 category dirs + README) |
+| | **Total** | **67** | **~9,214** | |
 
 ---
 
@@ -40,31 +43,38 @@ The prompt templates (stored in `.github/prompts/`) contain the full application
 
 The file categories below are not arbitrary — they follow established patterns from the agentic development community (used in projects like Claude Code's `CLAUDE.md`, Cursor Rules, Windsurf, and GitHub Copilot's `.github/copilot-instructions.md`). Each category serves a specific role in how AI agents reason and execute:
 
-| Category | Role in Agentic Workflow | Analogy |
-|---|---|---|
-| **Entry points** | First thing the agent reads — orients it to the project | The "front door" |
-| **Instructions** | Deep reference material the agent consults as needed | The "textbook" |
-| **Skills** | Step-by-step recipes for specific tasks | The "cookbook" |
-| **Toolsets** | API documentation so the agent uses APIs correctly | The "API reference manual" |
-| **Prompts** | Pre-written task specifications ready to execute | The "work orders" |
-| **Memory** | Persistent lessons learned from previous sessions | The "institutional knowledge" |
-| **Knowledge base** | Machine-readable patterns for automated lookup | The "indexed database" |
-| **Community** | Crowdsourced insights that feed back into the system | The "field notes" |
+| Category | Role in Agentic Workflow | Analogy | Injection |
+|---|---|---|---|
+| **Entry points** | First thing the agent reads — orients it to the project | The "front door" | Auto (system prompt) |
+| **Custom agents** | Interactive workflow builders with plan→confirm→build loops | The "project manager" | Auto when mode active (system prompt) |
+| **Contextual instructions** | Rules triggered by file globs — auto-injected when editing matching code | The "guardrails" | Auto when file matches (system prompt) |
+| **Custom skills** | Guaranteed-injection recipes invoked with `#skill-name` | The "master recipe card" | User triggers with `#` (100% compliance) |
+| **Instruction skills** | Deep reference recipes the agent consults as needed | The "cookbook" | Agent reads via tool (~80-95%) |
+| **Instructions** | Deep reference material the agent consults as needed | The "textbook" | Agent reads via tool (~80-95%) |
+| **Toolsets** | API documentation so the agent uses APIs correctly | The "API reference manual" | Agent reads via tool (~80-95%) |
+| **Prompts** | Pre-written task specifications ready to execute | The "work orders" | User pastes (100% compliance) |
+| **Memory** | Persistent lessons learned from previous sessions | The "institutional knowledge" | Agent reads via tool (~80-95%) |
+| **Knowledge base** | Machine-readable patterns for automated lookup | The "indexed database" | Agent reads via tool (~80-95%) |
+| **Community** | Crowdsourced insights that feed back into the system | The "field notes" | Agent reads via tool (~80-95%) |
 
 The key insight: **without these structured files, an AI agent would need to explore the entire codebase to understand conventions, discover APIs, and learn from past mistakes — burning tokens and time**. By pre-organizing knowledge into these categories, we give the agent focused, relevant context that dramatically reduces cost and improves output quality.
 
+> **Coverage matrix**: Every app archetype (VLM, Pipeline, Standalone, LLM, Agent, Voice) now has a dedicated custom agent, custom skill, instruction skill, and prompt template — ensuring comprehensive support regardless of what the developer wants to build.
+
 ### File Inventory by Category
 
-#### 1. Agent Entry Points (2 files)
+#### 1. Agent Entry Points (2 files — 350 lines)
 
 These are auto-loaded by the respective AI agents and serve as the "table of contents" for all other files.
 
 | File | Lines | Purpose |
 |---|---|---|
-| `.github/copilot-instructions.md` | 162 | **GitHub Copilot entry point** — auto-loaded when Copilot Chat opens. Contains repo identity, critical conventions, orchestration overview, file reference map, and directory index. |
-| `CLAUDE.md` | 148 | **Claude Code entry point** — auto-loaded by Claude Code. Mirrors copilot-instructions.md with Claude-specific formatting. Also serves any agent that reads root-level markdown. |
+| `.github/copilot-instructions.md` | 181 | **GitHub Copilot entry point** — auto-loaded when Copilot Chat opens. Contains repo identity, critical conventions, orchestration overview, file reference map, and directory index. |
+| `CLAUDE.md` | 169 | **Claude Code entry point** — auto-loaded by Claude Code. Mirrors copilot-instructions.md with Claude-specific formatting. Also serves any agent that reads root-level markdown. |
 
 #### 2. Architecture & Standards (5 files — 794 lines)
+
+> _Note: Numbering below does not match the key metrics table above — the detailed inventory groups Architecture (2), Orchestration (3) together as "deep reference" since they existed before the agent/skill expansion._
 
 Deep-dive reference documents for code conventions and system architecture.
 
@@ -85,9 +95,48 @@ The multi-agent orchestration system — phase gates, sub-agent delegation, and 
 | `.github/instructions/orchestration.md` | 401 | **Master orchestration guide**: Phase 0-4 definitions with gate checklists, sub-agent delegation patterns (context loader, module builder, validator), plan-and-execute protocol, concurrency model diagram, anti-patterns table |
 | `.github/instructions/agent-protocols.md` | 273 | **9 behavioral contracts**: context-first execution, explicit phase gates, todo management, sub-agent delegation matrix, convention verification scripts, memory feedback loop, graceful recovery ladder, Copilot Coding Agent (Issues) workflow, multi-file atomic changes |
 
-#### 4. Skills (11 files — 1,678 lines)
+#### 4. Custom Agents — Interactive Modes (7 files — 1,294 lines)
 
-Step-by-step guides for specific development tasks. Each skill contains patterns, code templates, and validation commands.
+Full interactive workflow builders. Each agent presents a plan, asks questions via `askQuestions`, gets user confirmation, then builds. The master agent routes to specialized agents via `handoffs`.
+
+| File | Lines | Agent |
+|---|---|---|
+| `.github/agents/hailo-app-builder.agent.md` | 162 | **Master router** — asks what type of app, then hands off to the specialized agent |
+| `.github/agents/hailo-vlm-builder.agent.md` | 232 | **VLM apps** — camera + VLM understanding (monitoring, scene analysis, counting) |
+| `.github/agents/hailo-pipeline-builder.agent.md` | 172 | **Pipeline apps** — GStreamer video pipelines (detection, pose, segmentation) |
+| `.github/agents/hailo-standalone-builder.agent.md` | 171 | **Standalone apps** — HailoInfer + OpenCV (batch inference, custom processing) |
+| `.github/agents/hailo-llm-builder.agent.md` | 184 | **LLM apps** — chatbots, Q&A, text generation on Hailo-10H |
+| `.github/agents/hailo-agent-builder.agent.md` | 181 | **Agent apps** — LLM with tool calling, function execution, reasoning |
+| `.github/agents/hailo-voice-builder.agent.md` | 192 | **Voice apps** — Whisper STT + Piper TTS, voice assistants |
+
+#### 5. Contextual Instructions — `applyTo` Globs (5 files — 199 lines)
+
+Auto-injected into the system prompt when files matching the glob pattern are in editor context. Zero-effort compliance.
+
+| File | Lines | Glob | Triggers When |
+|---|---|---|---|
+| `.github/instructions/core-framework.instructions.md` | 40 | `**/core/**` | Editing core framework files |
+| `.github/instructions/gen-ai-apps.instructions.md` | 40 | `**/gen_ai_apps/**` | Editing gen AI app files |
+| `.github/instructions/pipeline-apps.instructions.md` | 39 | `**/pipeline_apps/**` | Editing pipeline app files |
+| `.github/instructions/standalone-apps.instructions.md` | 38 | `**/standalone_apps/**` | Editing standalone app files |
+| `.github/instructions/tests.instructions.md` | 42 | `tests/**` | Editing test files |
+
+#### 6. Custom Skills — `#`-Invocable (6 files — 1,147 lines)
+
+Guaranteed 100% compliance. When a user types `#hl-build-vlm-app` in Copilot Chat, the entire SKILL.md content is injected into context. No tool call needed.
+
+| File | Lines | Invocation | Archetype |
+|---|---|---|---|
+| `.github/skills/hl-build-vlm-app/SKILL.md` | 345 | `#hl-build-vlm-app` | VLM / vision-language apps |
+| `.github/skills/hl-build-pipeline-app/SKILL.md` | 143 | `#hl-build-pipeline-app` | GStreamer pipeline apps |
+| `.github/skills/hl-build-standalone-app/SKILL.md` | 154 | `#hl-build-standalone-app` | Standalone HailoInfer + OpenCV apps |
+| `.github/skills/hl-build-llm-app/SKILL.md` | 155 | `#hl-build-llm-app` | LLM chat / text generation apps |
+| `.github/skills/hl-build-agent-app/SKILL.md` | 173 | `#hl-build-agent-app` | Agent apps with tool calling |
+| `.github/skills/hl-build-voice-app/SKILL.md` | 177 | `#hl-build-voice-app` | Voice assistant apps (STT + TTS) |
+
+#### 7. Instruction Skills — Reference Guides (12 files — 1,818 lines)
+
+Step-by-step guides for specific development tasks. Agents read these via `read_file` tool. Each skill contains patterns, code templates, and validation commands.
 
 | File | Lines | Skill |
 |---|---|---|
@@ -95,6 +144,7 @@ Step-by-step guides for specific development tasks. Each skill contains patterns
 | `.github/instructions/skills/create-pipeline-app.md` | 115 | Build GStreamer pipeline apps with composition patterns |
 | `.github/instructions/skills/create-standalone-app.md` | 108 | Build standalone HailoInfer + OpenCV apps |
 | `.github/instructions/skills/create-agent-app.md` | 111 | Build LLM agents with tool calling |
+| `.github/instructions/skills/create-llm-app.md` | 140 | Build LLM chat/text generation apps for Hailo-10H |
 | `.github/instructions/skills/add-voice-mode.md` | 97 | Add STT/TTS voice input/output to any app |
 | `.github/instructions/skills/continuous-monitoring.md` | 166 | Timer-based capture loops, event logging, session summaries |
 | `.github/instructions/skills/event-detection.md` | 163 | EventType enums, keyword parsing, alert management |
@@ -103,7 +153,7 @@ Step-by-step guides for specific development tasks. Each skill contains patterns
 | `.github/instructions/skills/plan-and-execute.md` | 255 | **Orchestration skill**: The plan→delegate→execute→gate loop |
 | `.github/instructions/skills/validate-and-test.md` | 285 | **Validation skill**: 5 validation levels, convention checklist, test templates |
 
-#### 5. API Toolset References (5 files — 816 lines)
+#### 8. API Toolset References (5 files — 816 lines)
 
 Function-level API documentation for the frameworks used in Hailo apps.
 
@@ -115,33 +165,36 @@ Function-level API documentation for the frameworks used in Hailo apps.
 | `.github/toolsets/core-framework-api.md` | 198 | resolve_hef_path, parsers, HailoInfer, camera_utils, GStreamerApp, buffer_utils |
 | `.github/toolsets/gen-ai-utilities.md` | 192 | LLM streaming/tools, voice processing (STT/TTS/VAD), agent tools framework |
 
-#### 6. Prompt Templates (6 files — 790 lines)
+#### 9. Prompt Templates (9 files — 1,107 lines)
 
 Ready-to-use prompts that agents can execute directly.
 
 | File | Lines | Purpose |
 |---|---|---|
-| `.github/prompts/dog-monitor-app.prompt.md` | 324 | **Demo prompt (Orchestrated)** — full Phase 0-4 orchestrated workflow with sub-agent delegation and phase gates |
-| `.github/prompts/dog-monitor-flat.prompt.md` | 94 | **Demo prompt (Flat)** — simple single-shot prompt, same app specification |
+| `.github/prompts/dog-monitor-app.prompt.md` | 439 | **Demo prompt (Orchestrated)** — full Phase 0-4 orchestrated workflow with sub-agent delegation and phase gates |
+| `.github/prompts/dog-monitor-flat.prompt.md` | 159 | **Demo prompt (Flat)** — simple single-shot prompt, same app specification |
 | `.github/prompts/orchestrated-build.prompt.md` | 220 | **Meta-template** — universal orchestrated prompt with placeholders for any app type |
 | `.github/prompts/new-vlm-variant.prompt.md` | 42 | Template for creating VLM app variants |
 | `.github/prompts/new-pipeline-app.prompt.md` | 46 | Template for creating GStreamer pipeline apps |
+| `.github/prompts/new-standalone-app.prompt.md` | 44 | Template for creating standalone HailoInfer + OpenCV apps |
+| `.github/prompts/new-llm-app.prompt.md` | 44 | Template for creating LLM chat/text generation apps |
+| `.github/prompts/new-voice-app.prompt.md` | 49 | Template for creating voice assistant apps |
 | `.github/prompts/new-agent-tool.prompt.md` | 64 | Template for creating new agent tools |
 
-#### 7. Persistent Memory (6 files — 524 lines)
+#### 10. Persistent Memory (6 files — 842 lines)
 
 Cross-session knowledge base. Agents read these at task start and update them when discovering new patterns.
 
 | File | Lines | Domain |
 |---|---|---|
-| `.github/memory/MEMORY.md` | 37 | Index of all memory files, key project patterns, update rules |
-| `.github/memory/gen_ai_patterns.md` | 82 | VLM/LLM architecture, multiprocessing backend, token streaming, known issues |
+| `.github/memory/MEMORY.md` | 52 | Index of all memory files, key project patterns, update rules |
+| `.github/memory/gen_ai_patterns.md` | 198 | VLM/LLM architecture, multiprocessing backend, token streaming, known issues |
 | `.github/memory/pipeline_optimization.md` | 64 | GStreamer bottleneck patterns, scheduler-timeout fix, queue tuning |
 | `.github/memory/camera_and_display.md` | 98 | Camera types, color spaces, USB discovery, OpenCV display patterns |
 | `.github/memory/hailo_platform_api.md` | 114 | VDevice creation, HEF resolution chain, model classes, architecture detection |
-| `.github/memory/common_pitfalls.md` | 129 | Import errors, signal handling, multiprocessing gotchas, resource cleanup |
+| `.github/memory/common_pitfalls.md` | 316 | Import errors, signal handling, multiprocessing gotchas, resource cleanup |
 
-#### 8. Knowledge Base (1 file — 103 lines)
+#### 11. Knowledge Base (1 file — 103 lines)
 
 Machine-readable YAML with recipes, bottleneck patterns, and indexed insights.
 
@@ -149,7 +202,7 @@ Machine-readable YAML with recipes, bottleneck patterns, and indexed insights.
 |---|---|---|
 | `.github/knowledge/knowledge_base.yaml` | 103 | 3 gen-AI recipes, 1 pipeline recipe, 5 bottleneck patterns, 8 tagged insights |
 
-#### 9. Community Contributions (6 files)
+#### 12. Community Contributions (7 files)
 
 Structure for community-contributed patterns and insights.
 
@@ -395,16 +448,19 @@ This mode is fully autonomous — no human in the loop during execution.
 
 | Category | Files | Lines |
 |---|---|---|
-| Agent entry points | 2 | 310 |
+| Agent entry points | 2 | 350 |
+| Custom agents (interactive modes) | 7 | 1,294 |
+| Contextual instructions (`applyTo` globs) | 5 | 199 |
+| Custom skills (`#`-invocable) | 6 | 1,147 |
+| Instruction skills (reference) | 12 | 1,818 |
 | Architecture & standards | 5 | 794 |
 | Orchestration framework | 2 | 674 |
-| Skills | 11 | 1,678 |
 | API toolset references | 5 | 816 |
-| Prompt templates | 6 | 790 |
-| Persistent memory | 6 | 524 |
+| Prompt templates | 9 | 1,107 |
+| Persistent memory | 6 | 842 |
 | Knowledge base | 1 | 103 |
-| Community contributions | 6 | 63 |
-| **Total** | **44** | **~5,752** |
+| Community contributions | 7 | ~70 |
+| **Total** | **67** | **~9,214** |
 
 ---
 
