@@ -124,5 +124,5 @@ Include: description, requirements, usage CLI, expected output.
 | Scene describer | "Describe what you see concisely." | "Describe the image" |
 | Object counter | "Count objects precisely. Reply JSON." | "Count all {objects} in the image" |
 | Safety monitor | "You are a safety inspector." | "List any safety hazards visible" |
-| Pet monitor | "Monitor pets. Report activities." | "What is the dog/cat doing?" |
+| Pet monitor | "Monitor pets. Report activities: DRINKING, EATING, SLEEPING, PLAYING, BARKING, DESTROYING_SOMETHING, PET_ON_SOFA." | "What is the dog/cat doing?" |
 | Traffic analyzer | "Analyze traffic patterns." | "Describe traffic and vehicles" |

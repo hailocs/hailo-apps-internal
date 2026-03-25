@@ -192,3 +192,26 @@ python .hailo/scripts/generate_platforms.py --check
 git add .hailo/ .github/ .claude/ .cursor/ CLAUDE.md
 git commit -m "Update VLM skill"
 ```
+
+### Community Curation Workflow
+
+The self-learning pipeline: agents build apps and create recipes → curation
+incorporates valuable findings into `.hailo/` → originals are deleted → release
+with an improved knowledge base.
+
+```bash
+# Scan all contributions and community apps
+python .hailo/scripts/curate_contributions.py --scan
+
+# Interactive curation (review each, accept/reject/skip)
+python .hailo/scripts/curate_contributions.py --curate
+
+# Auto-accept valid contributions
+python .hailo/scripts/curate_contributions.py --curate --auto
+
+# Promote a community app to official hailo_apps/
+python .hailo/scripts/curate_contributions.py --promote <app_name>
+```
+
+**Contribution flow**: `community/contributions/` → `.hailo/memory/` or `.hailo/knowledge/`
+**App promotion flow**: `community/apps/<name>/` → `hailo_apps/python/<category>/<name>/`

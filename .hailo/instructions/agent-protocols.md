@@ -171,6 +171,30 @@ grep -n "def main\|__name__" <file> # Should find entry point
 | New recipe/workflow | `.hailo/knowledge/knowledge_base.yaml` |
 | Community insight | `community/contributions/<category>/` |
 
+### Contribution Recipe Format
+
+After building any app, create a contribution recipe in `community/contributions/<category>/`:
+
+**File naming**: `YYYY-MM-DD_<app>_<slug>.md`
+
+**Required YAML frontmatter**:
+```yaml
+---
+title: "Short descriptive title"
+contributor: "Your Name or AI Agent (auto-generated)"
+date: "YYYY-MM-DD"
+category: gen-ai-recipes    # or pipeline-optimization, bottleneck-patterns, etc.
+hailo_arch: hailo10h
+app: <app_name>
+tags: [relevant, tags, here]
+reproducibility: verified
+---
+```
+
+**Required sections**: Summary, Context, Finding, Solution, Results, Applicability.
+
+These recipes are later curated into `.hailo/` via `python .hailo/scripts/curate_contributions.py --curate`.
+
 ### Memory Update Format
 
 ```markdown
@@ -252,6 +276,63 @@ Within a phase, create ALL files first, THEN validate the phase as a whole.
 
 ---
 
+## Protocol 10: Community App Lifecycle
+
+**All agent-built apps go to `community/apps/`, not `hailo_apps/`.**
+
+### Why
+
+The `hailo_apps/` package is the official, reviewed codebase. Agent-built apps need
+review before promotion. The `community/apps/` staging area isolates experimental
+code while still allowing it to import and reuse core utilities.
+
+### App Creation Flow
+
+```
+Agent builds app →
+  1. Create community/apps/<app_name>/ with app.yaml, run.sh, code, README
+  2. Create community/contributions/<category>/<date>_<app_name>_recipe.md
+  3. Do NOT modify defines.py or resources_config.yaml
+  4. Run via: ./community/apps/<app_name>/run.sh --input <source>
+```
+
+### Required app.yaml Fields
+
+```yaml
+name: <app_name>          # Snake case
+title: <Title>            # Human readable
+description: <one-liner>
+author: <name or "AI Agent (auto-generated)">
+date: "YYYY-MM-DD"
+type: gen_ai              # gen_ai | pipeline | standalone
+hailo_arch: hailo10h      # hailo8 | hailo8l | hailo10h
+model: <model-name>
+tags: [tag1, tag2]
+status: draft             # draft | reviewed | promoted
+```
+
+### Promotion (human-triggered)
+
+```bash
+python .hailo/scripts/curate_contributions.py --promote <app_name>
+```
+
+This moves the app to `hailo_apps/python/<category>/<app_name>/`, registers it in
+`defines.py` and `resources_config.yaml`, and deletes the community copy.
+
+### Curation (knowledge artifacts)
+
+```bash
+python .hailo/scripts/curate_contributions.py --curate       # Interactive
+python .hailo/scripts/curate_contributions.py --curate --auto # Auto-accept valid
+```
+
+This processes `community/contributions/` → `.hailo/memory/` and `.hailo/knowledge/`,
+then deletes the curated originals. The knowledge is now part of the official `.hailo/`
+knowledge base and will inform future agent sessions.
+
+---
+
 ## Protocol Summary Card
 
 ```
@@ -267,6 +348,9 @@ Within a phase, create ALL files first, THEN validate the phase as a whole.
 │ 7. RECOVERY     — never silently fail       │
 │ 8. ISSUE AGENT  — label-triggered workflow  │
 │ 9. ATOMIC FILES — create all, then validate │
+│10. COMMUNITY    — apps → community/apps/    │
+│                   recipes → contributions/  │
+│                   curate → .hailo/          │
 └─────────────────────────────────────────────┘
 ```
 

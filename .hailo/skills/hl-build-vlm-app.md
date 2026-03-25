@@ -17,37 +17,58 @@ Study `hailo_apps/python/gen_ai_apps/vlm_chat/` — the canonical VLM app:
 
 ## Build Process
 
-### Step 1: Register App Constants
+### Step 1: Create App Directory
 
-Add to `hailo_apps/python/core/common/defines.py`:
-```python
-MY_VLM_APP = "my_vlm_app"
-```
-
-**CRITICAL**: Also register the app in `hailo_apps/config/resources_config.yaml`.
-Without this, `resolve_hef_path()` fails with `KeyError` at runtime.
-For VLM apps that reuse the same model as `vlm_chat`, use the YAML anchor:
-```yaml
-my_vlm_app: *vlm_chat_app
-```
-Place this in the `# Gen AI models` section of `resources_config.yaml`.
-
-**YAML GOTCHA**: Insert the alias line **after** the complete block of the preceding
-key. Never insert between a key (e.g. `agent: &agent_app`) and its `models:` mapping —
-this breaks YAML parsing. Always validate after editing:
-```bash
-python3 -c "import yaml; yaml.safe_load(open('hailo_apps/config/resources_config.yaml')); print('OK')"
-```
-
-### Step 2: Create Directory
+Create the app under `community/apps/` (staging area for agent-built apps):
 
 ```
-hailo_apps/python/gen_ai_apps/<app_name>/
+community/apps/<app_name>/
+├── app.yaml              # App manifest (required)
+├── run.sh                # Launch wrapper (sets PYTHONPATH)
 ├── __init__.py           # Empty
 ├── <app_name>.py         # Main app class + entry point
 ├── event_tracker.py      # Optional: event classification (for monitoring apps)
 └── README.md             # Usage documentation
 ```
+
+**app.yaml** — required manifest:
+```yaml
+name: <app_name>
+title: My VLM App
+description: One-line description
+author: AI Agent (auto-generated)
+date: "YYYY-MM-DD"
+type: gen_ai
+hailo_arch: hailo10h
+model: Qwen2-VL-2B-Instruct
+tags: [vlm, monitoring]
+status: draft
+```
+
+**run.sh** — launch wrapper:
+```bash
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/<app_name>.py" "$@"
+```
+
+**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`.
+Community apps are run via `run.sh`. Registration happens during promotion
+(`python .hailo/scripts/curate_contributions.py --promote <app_name>`).
+
+### Step 2: Create Contribution Recipe
+
+After building the app, create a contribution recipe documenting lessons learned:
+
+```
+community/contributions/gen-ai-recipes/YYYY-MM-DD_<app_name>_recipe.md
+```
+
+With YAML frontmatter: `title`, `contributor`, `date`, `category: gen-ai-recipes`,
+`hailo_arch`, `app`, `tags`, `reproducibility: verified`.
+
+Required sections: Summary, Context, Finding, Solution, Results, Applicability.
 
 ### Step 3: Build the App
 
@@ -264,11 +285,11 @@ def classify_response(self, vlm_response: str) -> EventType:
 
 ## Registration Checklist
 
-Before running a new VLM app, verify **both** registrations exist:
+Community apps do NOT need registration. These steps are only needed after promotion:
 1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `DOG_MONITOR_APP = "dog_monitor"`)
 2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
 
-Missing #2 causes `KeyError: '<app_name>'` in `resolve_hef_path()` at runtime.
+Use `python .hailo/scripts/curate_contributions.py --promote <app_name>` to automate this.
 
 ## Lessons Learned (from real builds)
 

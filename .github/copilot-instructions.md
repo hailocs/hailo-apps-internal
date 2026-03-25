@@ -16,6 +16,8 @@
 | **Pipeline Apps** (`hailo_apps/python/pipeline_apps/`) | GStreamer-based video pipelines (detection, pose, segmentation, etc.) |
 | **Standalone Apps** (`hailo_apps/python/standalone_apps/`) | Direct inference apps using HailoInfer + OpenCV (no GStreamer) |
 | **Gen AI Apps** (`hailo_apps/python/gen_ai_apps/`) | Hailo-10H generative AI: VLM, LLM, Whisper, Voice Assistant, Agent |
+| **Community Apps** (`community/apps/`) | Agent-built apps staged for review before promotion to official |
+| **Community Contributions** (`community/contributions/`) | Lessons learned, recipes, optimization patterns from real builds |
 | **Postprocess** (`hailo_apps/postprocess/`) | C++ shared libraries for model-specific postprocessing |
 | **Config** (`hailo_apps/config/`) | YAML-driven model registry, resource paths, test definitions |
 
@@ -53,6 +55,17 @@ Based on what the task involves, read **only** the matching rows:
 | **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
 
 All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` and community contributions at `community/contributions/` can be checked when you need recipes or patterns.
+
+### Community App Workflow
+
+When building new apps, agents MUST:
+1. Place app code in `community/apps/<app_name>/` with `app.yaml` manifest and `run.sh` wrapper
+2. Create a contribution recipe in `community/contributions/<category>/` documenting lessons learned
+3. Do NOT register in `defines.py` or `resources_config.yaml` — that happens during promotion
+4. Run via `./community/apps/<app_name>/run.sh --input <source>`
+
+Promotion to official: `python .hailo/scripts/curate_contributions.py --promote <app_name>`
+Curation of knowledge: `python .hailo/scripts/curate_contributions.py --curate`
 
 ### Persistent Memory
 

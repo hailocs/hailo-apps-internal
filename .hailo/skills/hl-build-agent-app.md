@@ -22,26 +22,30 @@ Also study the agent utilities:
 
 ## Build Process
 
-### Step 1: Register App Constants
+### Step 1: Create App Directory
 
-Add to `hailo_apps/python/core/common/defines.py`:
-```python
-MY_AGENT_APP = "my_agent_app"
+Create the app under `community/apps/` (staging area for agent-built apps):
+
 ```
+community/apps/<app_name>/
+├── app.yaml              # App manifest (type: gen_ai)
+├── run.sh                # Launch wrapper
+├── __init__.py
+├── <app_name>.py         # Main agent loop
+├── tools/
+│   ├── __init__.py
+│   ├── config.yaml          # Tool metadata
+│   ├── my_tool_1.py         # Implements BaseTool
+│   └── my_tool_2.py         # Implements BaseTool
+└── README.md
+```
+
+Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.
+Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-```
-hailo_apps/python/gen_ai_apps/my_agent_app/
-├── __init__.py
-├── my_agent_app.py          ← Main agent loop
-├── tools/
-│   ├── __init__.py
-│   ├── config.yaml          ← Tool metadata, persona, few-shot examples
-│   ├── my_tool_1.py         ← Implements BaseTool
-│   └── my_tool_2.py         ← Implements BaseTool
-└── README.md
-```
+Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build a Tool
 
