@@ -7,7 +7,7 @@ from typing import Optional, Any
 # Local application-specific imports
 from hailo_apps.python.core.common.core import get_pipeline_parser, handle_list_models_flag
 from hailo_apps.python.core.common.defines import TILING_APP_TITLE, TILING_PIPELINE
-from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import SOURCE_PIPELINE, INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, TILE_CROPPER_PIPELINE
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, TILE_CROPPER_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.pipeline_apps.tiling.configuration import TilingConfiguration
@@ -88,12 +88,6 @@ class GStreamerTilingApp(GStreamerApp):
                           help="Enable multi-scale tiling with predefined grids")
         parser.add_argument("--scale-levels", type=int, default=1, choices=[1, 2, 3],
                           help="Scale levels for multi-scale mode: 1={1x1}, 2={1x1+2x2}, 3={1x1+2x2+3x3}. Default: 1")
-
-        # Mirror options
-        parser.add_argument("--horizontal-mirror", action="store_true", default=False,
-                          help="Enable horizontal mirror (flip) of the video source")
-        parser.add_argument("--vertical-mirror", action="store_true", default=False,
-                          help="Enable vertical mirror (flip) of the video source")
 
         # Detection options
         parser.add_argument("--iou-threshold", type=float, default=0.3,
@@ -211,15 +205,7 @@ class GStreamerTilingApp(GStreamerApp):
         Returns:
             str: Complete GStreamer pipeline string
         """
-        source_pipeline = SOURCE_PIPELINE(
-            video_source=self.video_source,
-            video_width=self.video_width,
-            video_height=self.video_height,
-            frame_rate=self.frame_rate,
-            sync=self.sync,
-            mirror_image=self.options_menu.horizontal_mirror,
-            vertical_mirror=self.options_menu.vertical_mirror,
-        )
+        source_pipeline = self.get_source_pipeline()
 
         detection_pipeline = INFERENCE_PIPELINE(
             hef_path=self.hef_path,

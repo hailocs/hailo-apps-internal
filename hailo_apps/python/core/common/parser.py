@@ -163,6 +163,12 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--print-pipeline",
+        action="store_true",
+        help="Print the GStreamer pipeline string to stdout before launching.",
+    )
+
+    parser.add_argument(
         "--enable-watchdog",
         action="store_true",
         help=(
@@ -221,6 +227,21 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
             "'hailo10h' (Hailo-10H processor). "
             "If not specified, the architecture will be auto-detected from the connected device."
         ),
+    )
+
+    # Mirror / flip options
+    parser.add_argument(
+        "--horizontal-mirror",
+        action="store_true",
+        default=False,
+        help="Enable horizontal mirror (flip) of the video source.",
+    )
+
+    parser.add_argument(
+        "--vertical-mirror",
+        action="store_true",
+        default=False,
+        help="Enable vertical mirror (flip) of the video source. Useful when camera is mounted upside down.",
     )
 
     return parser

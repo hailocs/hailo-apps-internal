@@ -96,7 +96,7 @@ Creates a GStreamer pipeline string for the video source with frame rate control
 - `frame_rate` (int, optional): Target frame rate. Defaults to 30.
 - `sync` (bool, optional): Whether to synchronize frame rate. Defaults to True.
 - `video_format` (str, optional): The video format (e.g., 'RGB'). Defaults to 'RGB'.
-- `mirror_image` (bool, optional): Whether to horizontally mirror the image. Applies to all source types. Defaults to True. Set to False to disable mirroring.
+- `horizontal_mirror` (bool, optional): Whether to horizontally mirror the image. Applies to all source types. Defaults to True. Set to False to disable mirroring.
 - `vertical_mirror` (bool, optional): Whether to vertically mirror (flip) the image. Applies to all source types. Defaults to False.
 
 **Returns:**
@@ -117,7 +117,7 @@ source = SOURCE_PIPELINE(
     video_source="/dev/video0",
     video_width=1280,
     video_height=720,
-    mirror_image=False
+    horizontal_mirror=False
 )
 
 # RTSP stream
@@ -602,7 +602,7 @@ pipeline_string = (
 
 3. **Queue Sizing**: Adjust queue sizes (`max_size_buffers`) based on your use case. Larger queues can help with buffering but consume more memory.
 
-4. **Camera Mirroring**: For camera sources, consider whether mirroring is appropriate for your use case. Use `mirror_image=False` when you need the actual camera orientation.
+4. **Camera Mirroring**: For camera sources, consider whether mirroring is appropriate for your use case. Use `horizontal_mirror=False` when you need the actual camera orientation.
 
 5. **Performance Tuning**: For embedded systems, consider using hardware encoders (e.g., `omxh264enc` for Raspberry Pi) instead of software encoders.
 

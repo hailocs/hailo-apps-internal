@@ -62,7 +62,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
     QUEUE,
-    SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
     get_source_type
@@ -173,9 +172,9 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
         tappas_post_process_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, '')
         set_stream_id_so = os.path.join(tappas_post_process_dir, TAPPAS_STREAM_ID_TOOL_SO_FILENAME)
         for id in range(self.num_sources):
-            sources_string += SOURCE_PIPELINE(video_source=self.video_sources_types[id][0],
-                                              video_width=self.video_width, video_height=self.video_height,
-                                              frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=True)
+            sources_string += self.get_source_pipeline(
+                                              video_source=self.video_sources_types[id][0],
+                                              name=f"source_{id}", no_webcam_compression=True)
             sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path='src_{id}' "
             sources_string += f"! robin.sink_{id} "
             router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}')} ! {DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps, name=f'hailo_display_{id}')} "
