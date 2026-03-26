@@ -1,5 +1,17 @@
+import sys
+from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
+
+# Mock hardware-specific modules before importing anything that depends on them
+for mod_name in ["hailo", "gi", "gi.repository", "gi.repository.Gst"]:
+    if mod_name not in sys.modules:
+        sys.modules[mod_name] = MagicMock()
+
+# gi.require_version must be a callable that does nothing
+sys.modules["gi"].require_version = lambda *a, **kw: None
+
 from community.apps.pipeline_apps.depth_anything.metric_depth import MetricDepthConverter
 
 
@@ -55,3 +67,89 @@ class TestMetricDepthConverter:
     def test_invalid_scene_type_raises(self):
         with pytest.raises(ValueError):
             MetricDepthConverter(scene_type="underwater")
+
+
+class TestCalibration:
+    """Tests for reference-point calibration."""
+
+    def test_calibrate_single_point_sets_scale(self):
+        converter = MetricDepthConverter(scene_type="indoor")
+        # Simulate: at some pixel, relative depth = 10.0, known real depth = 3.0m
+        converter.calibrate_from_reference(
+            relative_values=np.array([10.0]),
+            metric_values=np.array([3.0]),
+        )
+        assert converter.is_calibrated
+
+    def test_calibrate_two_points_affine(self):
+        converter = MetricDepthConverter(scene_type="indoor")
+        # Two reference points define an affine mapping
+        converter.calibrate_from_reference(
+            relative_values=np.array([5.0, 20.0]),
+            metric_values=np.array([1.0, 4.0]),
+        )
+        # Now convert: relative=5 should give ~1m, relative=20 should give ~4m
+        result = converter.convert(np.array([[5.0, 20.0]]))
+        assert pytest.approx(result[0, 0], abs=0.01) == 1.0
+        assert pytest.approx(result[0, 1], abs=0.01) == 4.0
+
+    def test_calibrate_single_point_uses_proportional_scale(self):
+        converter = MetricDepthConverter(scene_type="indoor")
+        converter.calibrate_from_reference(
+            relative_values=np.array([10.0]),
+            metric_values=np.array([2.0]),
+        )
+        # scale = 2.0 / 10.0 = 0.2, shift = 0
+        result = converter.convert(np.array([[10.0, 20.0]]))
+        assert pytest.approx(result[0, 0], abs=0.01) == 2.0
+        assert pytest.approx(result[0, 1], abs=0.01) == 4.0
+
+    def test_reset_calibration(self):
+        converter = MetricDepthConverter(scene_type="indoor")
+        converter.calibrate_from_reference(
+            relative_values=np.array([10.0]),
+            metric_values=np.array([2.0]),
+        )
+        assert converter.is_calibrated
+        converter.reset_calibration()
+        assert not converter.is_calibrated
+
+
+class TestCallbackWiring:
+    """Tests for DepthAnythingCallback metric initialization."""
+
+    def test_callback_creates_converter_in_metric_mode(self):
+        from community.apps.pipeline_apps.depth_anything.depth_anything import DepthAnythingCallback
+        cb = DepthAnythingCallback(depth_mode="metric", scene_type="indoor")
+        assert cb.metric_converter is not None
+        assert cb.metric_converter.max_depth == 20.0
+
+    def test_callback_no_converter_in_relative_mode(self):
+        from community.apps.pipeline_apps.depth_anything.depth_anything import DepthAnythingCallback
+        cb = DepthAnythingCallback(depth_mode="relative")
+        assert cb.metric_converter is None
+
+    def test_callback_passes_custom_max_depth(self):
+        from community.apps.pipeline_apps.depth_anything.depth_anything import DepthAnythingCallback
+        cb = DepthAnythingCallback(depth_mode="metric", scene_type="outdoor", max_depth=50.0)
+        assert cb.metric_converter.max_depth == 50.0
+
+
+class TestCLICalibration:
+    """Tests for CLI-based calibration via --calibrate-ref."""
+
+    def test_calibrate_ref_parsing(self):
+        from community.apps.pipeline_apps.depth_anything.depth_anything import DepthAnythingCallback
+        cb = DepthAnythingCallback(
+            depth_mode="metric", scene_type="indoor",
+            calibrate_ref="15.3:2.5"
+        )
+        assert cb.metric_converter.is_calibrated
+        # relative=15.3 should map to 2.5m
+        result = cb.metric_converter.convert(np.array([[15.3]]))
+        assert pytest.approx(result[0, 0], abs=0.01) == 2.5
+
+    def test_calibrate_ref_none_means_uncalibrated(self):
+        from community.apps.pipeline_apps.depth_anything.depth_anything import DepthAnythingCallback
+        cb = DepthAnythingCallback(depth_mode="metric", scene_type="indoor")
+        assert not cb.metric_converter.is_calibrated
