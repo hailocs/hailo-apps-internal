@@ -1,0 +1,32 @@
+---
+alwaysApply: true
+---
+
+# Hailo Apps — Global Rules
+
+All skills, instructions, toolsets, knowledge bases, and memory live in `.hailo/`.
+Read `.hailo/README.md` for the complete master index.
+
+## Critical Conventions
+
+1. **Imports are always absolute**: `from hailo_apps.python.core.common.xyz import ...`
+2. **HEF resolution**: Always use `resolve_hef_path(path, app_name, arch)`
+3. **Device sharing**: Always use `SHARED_VDEVICE_GROUP_ID` when creating VDevice
+4. **Logging**: Use `get_logger(__name__)`
+5. **CLI parsers**: Use `get_pipeline_parser()` or `get_standalone_parser()`
+6. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag
+
+## Available Skills
+
+| Skill | Doc |
+|-------|-----|
+| Build VLM App | `.hailo/skills/hl-build-vlm-app.md` |
+| Build Pipeline App | `.hailo/skills/hl-build-pipeline-app.md` |
+| Build Standalone App | `.hailo/skills/hl-build-standalone-app.md` |
+| Build Agent App | `.hailo/skills/hl-build-agent-app.md` |
+| Build LLM App | `.hailo/skills/hl-build-llm-app.md` |
+| Build Voice App | `.hailo/skills/hl-build-voice-app.md` |
+
+## Memory
+
+Persistent knowledge in `.hailo/memory/`. Read at task start, update when learning.
