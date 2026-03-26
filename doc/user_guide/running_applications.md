@@ -38,8 +38,12 @@ These standalone GenAI applications are located in `hailo_apps/python/gen_ai_app
 | [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)   | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
 | [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)           | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech.                                                                            |
 | [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)                         | Vision-Language Model chat application combining vision and language understanding.                                                                                       |
+| [Hailo Ollama](../../hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)                 | Ollama integration utilities for running local LLM workflows with Hailo.                                                                                                 |
+| [Simple LLM Chat](../../hailo_apps/python/gen_ai_apps/simple_llm_chat/README.md)           | Minimal text-only LLM chat example.                                                                                                                                        |
+| [Simple VLM Chat](../../hailo_apps/python/gen_ai_apps/simple_vlm_chat/README.md)           | Minimal Vision-Language chat example (image + text).                                                                                                                      |
+| [Simple Whisper Chat](../../hailo_apps/python/gen_ai_apps/simple_whisper_chat/README.md)   | Minimal Whisper-based speech recognition chat example.                                                                                                                     |
 
-**Simple Example Applications:** The `gen_ai_apps/` directory contains additional simple examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for more details.
+See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for additional details and usage notes.
 
 ### Other Standalone Applications
 
@@ -50,6 +54,7 @@ In addition to the pipeline and GenAI applications above, this repository includ
 | [Instance Segmentation](../../hailo_apps/python/standalone_apps/instance_segmentation/README.md) | Standalone example of instance segmentation with custom post-processing. |
 | [Lane Detection](../../hailo_apps/python/standalone_apps/lane_detection/README.md)               | Lane detection application for automotive use cases.                     |
 | [Object Detection](../../hailo_apps/python/standalone_apps/object_detection/README.md)           | Standalone object detection example with custom post-processing.         |
+| [Oriented Object Detection](../../hailo_apps/python/standalone_apps/oriented_object_detection/README.md) | Standalone oriented object detection (rotated bounding boxes).           |
 | [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md)                        | Standalone text detection and recognition using PaddleOCR models.        |
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
