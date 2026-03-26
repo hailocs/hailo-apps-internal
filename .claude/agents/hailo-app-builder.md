@@ -76,11 +76,16 @@ Present a clear plan:
 **App name:** `<snake_case_name>`
 **Type:** <Pipeline / VLM / LLM / Agent / Voice / Standalone>
 **Hardware:** <Hailo-8/8L (pipeline/standalone) or Hailo-10H (gen-ai)>
+**Output:** `community/apps/<app_name>/` (staged for review, then promotable)
 
 **Files to create:**
-1. `hailo_apps/python/<category>/<app_name>/__init__.py`
-2. `hailo_apps/python/<category>/<app_name>/<app_name>.py` — Main app
-3. ... (list all files)
+1. `community/apps/<app_name>/app.yaml` — App manifest
+2. `community/apps/<app_name>/run.sh` — Launch wrapper
+3. `community/apps/<app_name>/<app_name>.py` — Main app
+4. ... (list all files)
+
+**Contribution recipe:**
+- `community/contributions/<category>/<date>_<app_name>_recipe.md`
 
 **Key decisions:**
 - Model: <model name / HEF>

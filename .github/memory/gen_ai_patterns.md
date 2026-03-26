@@ -196,3 +196,34 @@ For video files under 120s, inference throughput matters. Each VLM call takes ~5
 - `--interval 15` (default) on a 60s video = only ~2 analyses
 - `--interval 5` on a 60s video = ~8 analyses (almost every 5s boundary triggers)
 - Always set `--interval` lower than `video_duration / 3` for meaningful monitoring
+
+
+### Dog Monitor — Continuous VLM Monitoring App
+*Contributed by AI Agent (auto-generated) on 2026-03-19. Tags: vlm, monitoring, camera, event-tracking, continuous.*
+
+**Summary**: Continuous camera monitoring with VLM-based dog activity classification on Hailo-10H.
+Watches a home camera, analyzes frames at configurable intervals, classifies responses
+into 8 activity categories, and maintains a running session summary with event counts.
+
+**Finding**: Key patterns that emerged during the build:
+
+- **Backend reuse** from `vlm_chat` — no code duplication, import `Backend` directly
+- **EventTracker** with keyword-based VLM response classification (8 categories)
+- **Timer-based capture loop** with configurable interval (default 10s)
+- **Non-blocking inference** via `ThreadPoolExecutor.submit()` with pending flag
+- **SIGINT handler** that sets running flag only — cleanup in `finally` block
+- **Display overlay** with semi-transparent bar showing last event and activity counts
+
+**Solution**: Four files: `dog_monitor.py` (~240 lines, main camera+VLM loop), `event_tracker.py`
+(~120 lines, classification+stats), `README.md` (~100 lines), `__init__.py`.
+
+To adapt for a different monitoring use case, change 3 things:
+1. **SYSTEM_PROMPT** — describe what the VLM should focus on
+2. **MONITORING_PROMPT** — the per-frame question
+3. **EventType enum + keyword map** — activity categories and detection keywords
+
+**Results**:
+Tested with 84-second dog video: 7 events detected (6 BARKING, 1 PLAYING). VLM responses
+classified accurately via keyword matching. Non-blocking inference kept display at ~25fps
+with no dropped frames during analysis.
+

@@ -85,28 +85,32 @@ Read these files to understand the framework:
 Call `Hailo documentation search` with a natural language query when local context is insufficient.
 
 ### Phase 3: Build
-1. **Register** — Add app constant to `defines.py`
-2. **Create directory** — `hailo_apps/python/gen_ai_apps/<app_name>/`
-3. **Build support modules** — Event tracker, custom logic, etc.
-4. **Build main app** — Following VLM Chat pattern: Backend reuse, camera loop, signal handling
-5. **Write README** — Usage, requirements, architecture
+1. **Create directory** — `community/apps/<app_name>/`
+2. **Create `app.yaml`** — App manifest with name, title, type, hailo_arch, model, tags, status: draft
+3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
+4. **Build support modules** — Event tracker, custom logic, etc.
+5. **Build main app** — Following VLM Chat pattern: Backend reuse, camera loop, signal handling
+6. **Write README** — Usage, requirements, architecture
+7. **Create contribution recipe** — `community/contributions/gen-ai-recipes/<date>_<app_name>_recipe.md` with proper YAML frontmatter (title, contributor, date, category, hailo_arch, app, tags, reproducibility) and required sections (Summary, Context, Finding, Solution, Results, Applicability)
+
+**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`. Registration happens later during promotion.
 
 ### Phase 4: Validate
 Run the validation script to catch common mistakes:
 ```bash
-python .hailo/scripts/validate_app.py hailo_apps/python/gen_ai_apps/<app_name>
+python .hailo/scripts/validate_app.py community/apps/<app_name>
 ```
 
 Also validate:
 ```bash
 # Convention compliance - no relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/<app_name>/*.py
+grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
 
 # Logger used
-grep -rn "get_logger" hailo_apps/python/gen_ai_apps/<app_name>/*.py
+grep -rn "get_logger" community/apps/<app_name>/*.py
 
-# CLI works
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --help
+# CLI works (via run.sh)
+./community/apps/<app_name>/run.sh --help
 ```
 
 Fix any failures and re-run until all pass.
@@ -118,14 +122,14 @@ Present the completed app with:
 
 **How to Run** — show the ACTUAL shell commands to run the app, not just file edits. Always include:
 ```bash
-# Basic usage
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input usb
+# Basic usage (via run.sh)
+./community/apps/<app_name>/run.sh --input usb
 
 # With custom interval
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input usb --interval 15
+./community/apps/<app_name>/run.sh --input usb --interval 15
 
-# List available models
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --list-models
+# Or directly with PYTHONPATH
+PYTHONPATH=. python3 community/apps/<app_name>/<app_name>.py --input usb
 ```
 
 **What It Does** — bullet list of the app's behavior.
@@ -158,7 +162,7 @@ python -c "from hailo_apps.python.core.common.defines import *; print('hailo_app
 **Step 2: Launch the app**
 ```bash
 cd <repo_root>
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --input <video_file_path>
+./community/apps/<app_name>/run.sh --input <video_file_path>
 ```
 
 Run this in a background terminal so the user can see the video output. The app will display the camera feed with overlay. If the user provided `--interval`, pass it through.

@@ -79,31 +79,35 @@ Study the reference implementation:
 
 ### Phase 3: Build
 
-1. **Register** — Add app constant to `defines.py`
-2. **Create directory** — `hailo_apps/python/gen_ai_apps/<app_name>/`
-3. **Create `__init__.py`**
-4. **Create tool files** — For each tool:
+1. **Create directory** — `community/apps/<app_name>/`
+2. **Create `app.yaml`** — App manifest with name, title, type: gen_ai, hailo_arch: hailo10h, model, tags, status: draft
+3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
+4. **Create `__init__.py`**
+5. **Create tool files** — For each tool:
    - `tools/<tool_name>.py` — Implements `BaseTool`
    - Properties: `name`, `description`, `schema` (JSON Schema)
    - Method: `run(**kwargs) → ToolResult`
-5. **Create tool config** — `tools/config.yaml`:
+6. **Create tool config** — `tools/config.yaml`:
    - `version`, `tool_name`, `persona`, `capabilities`, `few_shot_examples`
-6. **Create `<app_name>.py`** — Main app:
+7. **Create `<app_name>.py`** — Main app:
    - Uses `AgentApp` or custom agent loop
    - Tool discovery from `tools/` directory
    - LLM reasoning → tool parsing → execution → response
    - Multi-turn context management
    - Signal handling
-7. **Write `README.md`**
+8. **Write `README.md`**
+9. **Create contribution recipe** — `community/contributions/gen-ai-recipes/<date>_<app_name>_recipe.md` with proper YAML frontmatter and required sections
+
+**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`.
 
 ### Phase 4: Validate
 
 ```bash
 # Convention compliance
-grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/<app_name>/*.py
+grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
 
 # CLI works
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --help
+./community/apps/<app_name>/run.sh --help
 ```
 
 ### Phase 5: Report

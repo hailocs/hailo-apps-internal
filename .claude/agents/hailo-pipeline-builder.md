@@ -86,28 +86,32 @@ Study the closest reference implementation:
 
 ### Phase 3: Build
 
-1. **Register** — Add app constant to `hailo_apps/python/core/common/defines.py`
-2. **Create directory** — `hailo_apps/python/pipeline_apps/<app_name>/`
-3. **Create `__init__.py`**
-4. **Create `<app_name>.py`** — Main app:
+1. **Create directory** — `community/apps/<app_name>/`
+2. **Create `app.yaml`** — App manifest with name, title, type: pipeline, hailo_arch, model, tags, status: draft
+3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
+4. **Create `__init__.py`**
+5. **Create `<app_name>.py`** — Main app:
    - Subclass `app_callback_class` for user state
    - Write `app_callback(element, buffer, user_data)` for per-frame processing
    - Subclass `GStreamerApp`, override `get_pipeline_string()` using helper fragments
    - `main()` function wiring it all together
-5. **Create postprocess** if needed (custom overlay, counting, etc.)
-6. **Write `README.md`**
+6. **Create postprocess** if needed (custom overlay, counting, etc.)
+7. **Write `README.md`**
+8. **Create contribution recipe** — `community/contributions/pipeline-optimization/<date>_<app_name>_recipe.md` with proper YAML frontmatter and required sections
+
+**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`.
 
 ### Phase 4: Validate
 
 ```bash
 # Convention compliance
-grep -rn "^from \.\|^import \." hailo_apps/python/pipeline_apps/<app_name>/*.py
+grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
 
 # Logger used
-grep -rn "get_logger" hailo_apps/python/pipeline_apps/<app_name>/*.py
+grep -rn "get_logger" community/apps/<app_name>/*.py
 
 # CLI works
-python -m hailo_apps.python.pipeline_apps.<app_name>.<app_name> --help
+./community/apps/<app_name>/run.sh --help
 ```
 
 ### Phase 5: Report

@@ -21,23 +21,27 @@ Study `hailo_apps/python/standalone_apps/object_detection/` — the canonical st
 
 ## Build Process
 
-### Step 1: Register App Constants
+### Step 1: Create App Directory
 
-Add to `hailo_apps/python/core/common/defines.py`:
-```python
-MY_STANDALONE_APP = "my_standalone_app"
+Create the app under `community/apps/` (staging area for agent-built apps):
+
 ```
+community/apps/<app_name>/
+├── app.yaml              # App manifest (type: standalone)
+├── run.sh                # Launch wrapper
+├── __init__.py
+├── <app_name>.py         # Main app (3-thread architecture)
+├── <app_name>_post_process.py  # Custom postprocessing
+├── config.json           # Labels, thresholds (optional)
+└── README.md
+```
+
+Create `app.yaml` with `type: standalone` and `run.sh` wrapper.
+Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-```
-hailo_apps/python/standalone_apps/my_standalone_app/
-├── __init__.py
-├── my_standalone_app.py         ← Main app (3-thread architecture)
-├── my_standalone_post_process.py ← Custom postprocessing
-├── config.json                   ← Labels, thresholds (optional)
-└── README.md
-```
+Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build Main App (3-Thread Architecture)
 
