@@ -75,7 +75,7 @@ class ModelEntry:
     source: str  # "mz" | "s3" | "gen-ai-mz"
     url: Optional[str] = None
     app_type: tuple[str, ...] = ("pipeline", "standalone")  # Default: supports both
-    onnx_postproc: Optional[dict[str, Any]] = None
+    onnx_postproc_name: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -423,7 +423,7 @@ def _extract_model_entries(entries: Any, app_type_filter: Optional[str] = None) 
                     source=entry.get("source", "mz"),
                     url=entry.get("url"),
                     app_type=app_type,
-                    onnx_postproc=entry.get("onnx_postproc"),
+                    onnx_postproc_name=entry.get("onnx_postproc_name"),
                 )
                 
                 # Filter by app_type if requested

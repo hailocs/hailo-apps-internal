@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+
+import sys
+
+if __name__ == "__main__":
+    print(
+        "This module is a post-processing helper and is not executable by itself.\n"
+        "Run the app entrypoint instead:\n"
+        "  python object_detection_onnx_postproc.py -n yolo26n -i bus.jpg"
+    )
+    sys.exit(1)
+
 import cv2
 import numpy as np
 try:
@@ -169,7 +181,7 @@ def extract_detections(image: np.ndarray, detections: list, config_data) -> dict
             f"Expected HailoRT-NMS format (list of per-class detections), "
             f"but got dict with keys: {list(detections.keys())}. "
             f"This model may not have on-device NMS enabled. "
-            f"Try using --onnxconfig for ONNX-based postprocessing."
+            f"Use the ONNX-postprocessing standalone app variant for this model."
         )
     
     for class_id, detection in enumerate(detections):

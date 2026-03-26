@@ -27,8 +27,8 @@ try:
         normalized_preprocess,
         infer_full_onnx,
     )
-    from hailo_apps.python.standalone_apps.yolo26_pose_estimation.yolo26_pose_estimation_utils import PoseEstPostProcessing
-    from hailo_apps.python.standalone_apps.yolo26_pose_estimation.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
+    from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.pose_estimation_utils import PoseEstPostProcessing
+    from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,
         MAX_OUTPUT_QUEUE_SIZE,
@@ -66,8 +66,8 @@ except ImportError:
         normalized_preprocess,
         infer_full_onnx,
     )
-    from hailo_apps.python.standalone_apps.yolo26_pose_estimation.yolo26_pose_estimation_utils import PoseEstPostProcessing
-    from hailo_apps.python.standalone_apps.yolo26_pose_estimation.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
+    from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.pose_estimation_utils import PoseEstPostProcessing
+    from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
 
 
 APP_NAME = Path(__file__).stem
@@ -118,14 +118,12 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--onnxconfig",
+        "--onnx",
         type=str,
         default=None,
         help=(
-            "Path to ONNX postprocessing configuration file (JSON). "
-            "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
-            "The config must include: postproc_onnx_path, output_tensor_mapping, output_format, "
-            "and postprocess_params."
+            "Optional override path to ONNX postprocessing model file. "
+            "If omitted, standalone resolver uses model-sidecar placement near the HEF path."
         ),
     )
 
@@ -290,14 +288,21 @@ def run_inference_pipeline(
     if not onnxconfig:
         raise ValueError(
             "This app runs ONNX-postprocessing only. "
-            "Provide --onnxconfig, or place the convention file and rely on auto-resolution."
+            "Required ONNX config file was not resolved. "
+            "Expected naming convention: config_onnx_<model_name>.json under app onnx/."
         )
     onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
     use_full_onnx = (
         getattr(args, "full_onnx", False)
         or onnx_config.get("use_full_onnx_mode", False)
     )
-    sessions = init_onnx_sessions(onnx_config, config_path, use_full_onnx)
+    sessions = init_onnx_sessions(
+        onnx_config,
+        config_path,
+        use_full_onnx,
+        postproc_onnx_path=getattr(args, "onnx", None),
+        hef_like_proc_onnx_path=getattr(args, "onnx_neural", None),
+    )
     onnx_session = sessions["onnx_session"]
     full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
 
@@ -465,7 +470,7 @@ def main() -> None:
         no_display=no_display,
         pose_trail=args.pose_trail,
         mute_background=args.mute_background,
-        onnxconfig=args.onnxconfig,
+        onnxconfig=getattr(args, "onnxconfig", None),
         aigym=args.aigym,
         args=args        
     )

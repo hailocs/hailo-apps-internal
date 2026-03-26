@@ -28,7 +28,7 @@ try:
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.yolo26_object_detection.yolo26_object_detection_post_process import inference_result_handler
+    from hailo_apps.python.standalone_apps.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
     from hailo_apps.python.core.common.core import handle_and_resolve_args
     from hailo_apps.python.core.common.onnx_utils import (
         load_onnx_config,
@@ -66,7 +66,7 @@ except ImportError:
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.yolo26_object_detection.yolo26_object_detection_post_process import inference_result_handler
+    from hailo_apps.python.standalone_apps.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
     from hailo_apps.python.core.common.onnx_utils import (
         load_onnx_config,
         init_onnx_sessions,
@@ -121,15 +121,12 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--onnxconfig",
+        "--onnx",
         type=str,
         default=None,
         help=(
-            "Path to ONNX postprocessing configuration file (JSON). "
-            "When specified, enables ONNX-based postprocessing instead of HailoRT NMS. "
-            "The config must include: postproc_onnx_path, output_tensor_mapping, output_format, "
-            "and postprocess_params. Optionally supports full_onnx_path and use_full_onnx_mode "
-            "for debug mode (bypasses HEF inference entirely)."
+            "Optional override path to ONNX postprocessing model file. "
+            "If omitted, standalone resolver uses model-sidecar placement near the HEF path."
         ),
     )
 
@@ -166,14 +163,21 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     if not onnxconfig:
         raise ValueError(
             "This app runs ONNX-postprocessing only. "
-            "Provide --onnxconfig, or place the convention file and rely on auto-resolution."
+            "Required ONNX config file was not resolved. "
+            "Expected naming convention: config_onnx_<model_name>.json under app onnx/."
         )
     onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
     use_full_onnx = (
         getattr(onnxconfig_args, "full_onnx", False)
         or onnx_config.get("use_full_onnx_mode", False)
     )
-    sessions = init_onnx_sessions(onnx_config, config_path, use_full_onnx)
+    sessions = init_onnx_sessions(
+        onnx_config,
+        config_path,
+        use_full_onnx,
+        postproc_onnx_path=getattr(onnxconfig_args, "onnx", None),
+        hef_like_proc_onnx_path=getattr(onnxconfig_args, "onnx_neural", None),
+    )
     onnx_session = sessions["onnx_session"]
     full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
 
@@ -398,7 +402,7 @@ def main() -> None:
         args.frame_rate,
         args.draw_trail,
         no_display,
-        args.onnxconfig,
+        getattr(args, "onnxconfig", None),
         args  # Pass full args for --full-onnx flag
     )
 

@@ -88,6 +88,8 @@ def init_onnx_sessions(
     onnx_config: dict,
     config_path: Path,
     use_full_onnx: bool = False,
+    postproc_onnx_path: Optional[str] = None,
+    hef_like_proc_onnx_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Initialize ONNX Runtime sessions based on config and mode.
@@ -96,6 +98,8 @@ def init_onnx_sessions(
         onnx_config: Parsed ONNX config dict.
         config_path: Resolved path to the config JSON (for relative model resolution).
         use_full_onnx: If True, load intermediate + postproc models for full-ONNX mode.
+        postproc_onnx_path: Optional explicit postprocessing ONNX path override.
+        hef_like_proc_onnx_path: Optional explicit intermediate ONNX path override.
 
     Returns:
         Dict with keys:
@@ -115,7 +119,7 @@ def init_onnx_sessions(
 
     if use_full_onnx:
         # Intermediate model (outputs HEF-like tensors)
-        intermediate_path = onnx_config.get("hef_like_proc_onnx_path")
+        intermediate_path = hef_like_proc_onnx_path or onnx_config.get("hef_like_proc_onnx_path")
         if not intermediate_path:
             raise ValueError(
                 "full-onnx mode requires hef_like_proc_onnx_path in config"
@@ -125,7 +129,7 @@ def init_onnx_sessions(
         logger.info(f"Loaded HEF-like intermediate ONNX model: {intermediate_path}")
 
         # Postprocessing model
-        postproc_path = onnx_config.get("postproc_onnx_path")
+        postproc_path = postproc_onnx_path or onnx_config.get("postproc_onnx_path")
         if not postproc_path:
             raise ValueError("postproc_onnx_path not specified in ONNX config")
         postproc_path = resolve_onnx_path(postproc_path, config_path)
@@ -140,7 +144,7 @@ def init_onnx_sessions(
             logger.info(f"Loaded full ONNX model (reference): {full_path}")
     else:
         # Postprocessing only (used with HEF outputs)
-        postproc_path = onnx_config.get("postproc_onnx_path")
+        postproc_path = postproc_onnx_path or onnx_config.get("postproc_onnx_path")
         if not postproc_path:
             raise ValueError("postproc_onnx_path not specified in ONNX config")
         postproc_path = resolve_onnx_path(postproc_path, config_path)

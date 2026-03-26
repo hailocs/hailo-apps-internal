@@ -52,6 +52,7 @@ from .defines import (
     RESOURCE_TYPE_VIDEO,
     RESOURCE_TYPE_MODEL,
     CAMERA_KEYWORDS,
+    S3_RESOURCES_BASE_URL,
 )
 
 from .hailo_logger import get_logger
@@ -616,16 +617,6 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
 
     """
 
-    # Map standalone app names to their resource tag names used in resources YAML
-    APP_NAME_MAPPING = {
-        "object_detection": "detection",
-        "yolo26_object_detection": "detection",
-        "yolo26_pose_estimation": "pose_estimation",
-        "simple_detection": "simple_detection",
-        "instance_segmentation": "instance_segmentation",
-        "super_resolution": "super_resolution",
-    }
-
     def resolve_tagged_resource(
         app_name: str,
         preferred_name: str | None = None,
@@ -641,7 +632,7 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
           - Resources are downloaded automatically if required.
         """
 
-        resource_app_name = APP_NAME_MAPPING.get(app_name, app_name)
+        resource_app_name = _map_app_to_resource_group(app_name)
         inputs = get_inputs_for_app(resource_app_name, is_standalone=True)
 
         def pick(section: str) -> str | None:
@@ -771,8 +762,8 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
 def _map_app_to_resource_group(app_name: str) -> str:
     app_mapping = {
         "object_detection": "detection",
-        "yolo26_object_detection": "detection",
-        "yolo26_pose_estimation": "pose_estimation",
+        "object_detection_onnx_postproc": "detection",
+        "pose_estimation_onnx_postproc": "pose_estimation",
         "simple_detection": "simple_detection",
         "instance_segmentation": "instance_segmentation",
         "super_resolution": "super_resolution",
@@ -787,13 +778,53 @@ def _extract_model_name_from_hef_path(hef_path: str | Path) -> str:
     return candidate_name
 
 
-def _detect_standalone_app_dir() -> Path | None:
-    for frame_info in inspect.stack():
-        frame_path = Path(frame_info.filename).resolve()
-        parts = frame_path.parts
-        if "standalone_apps" in parts:
-            return frame_path.parent
-    return None
+def _get_standalone_app_dir(app_name: str) -> Path:
+    return Path(__file__).resolve().parents[2] / "standalone_apps" / app_name
+
+
+def _map_arch_to_s3_segment(arch: str | None) -> str | None:
+    if arch is None:
+        return None
+    mapping = {
+        HAILO8_ARCH: "h8",
+        HAILO8L_ARCH: "h8l",
+        HAILO10H_ARCH: "h10",
+    }
+    return mapping.get(arch)
+
+
+def _build_s3_hef_sibling_url(arch: str | None, filename: str) -> str | None:
+    s3_arch = _map_arch_to_s3_segment(arch)
+    if not s3_arch:
+        return None
+    return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{filename}"
+
+
+def _resolve_hef_parent_dir(hef_path_value: str | Path, model_name: str, arch: str | None) -> Path:
+    candidate = Path(hef_path_value)
+    if candidate.exists():
+        return candidate.resolve().parent
+
+    if arch:
+        inferred = get_resource_path(
+            pipeline_name=None,
+            resource_type=RESOURCES_MODELS_DIR_NAME,
+            arch=arch,
+            model=model_name,
+        )
+        if inferred is not None:
+            return inferred.parent
+
+    fallback = get_resource_path(
+        pipeline_name=None,
+        resource_type=RESOURCES_MODELS_DIR_NAME,
+        arch=os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch(),
+        model=model_name,
+    )
+    if fallback is not None:
+        return fallback.parent
+
+    return Path(hef_path_value).resolve().parent if Path(hef_path_value).parent != Path(".") else Path.cwd()
 
 
 def _download_artifact_if_needed(url: str, destination: Path) -> bool:
@@ -809,17 +840,11 @@ def _download_artifact_if_needed(url: str, destination: Path) -> bool:
 
 
 def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: str) -> None:
-    if not hasattr(args, "onnxconfig"):
-        return
-
-    if app_name not in {"yolo26_object_detection", "yolo26_pose_estimation"}:
-        return
-
-    if getattr(args, "onnxconfig", None):
+    if app_name not in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}:
         return
 
     model_name = _extract_model_name_from_hef_path(args.hef_path)
-    resource_group = _map_app_to_resource_group(app_name)
+    resource_group = app_name
     arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
 
     model_info = None
@@ -832,26 +857,23 @@ def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: st
             if model_info is not None:
                 break
 
-    onnx_meta = model_info.onnx_postproc if model_info is not None else None
-    if onnx_meta is not None and not onnx_meta.get("enabled", False):
-        return
-
-    app_dir = _detect_standalone_app_dir()
-    if app_dir is None:
+    onnx_postproc_name = model_info.onnx_postproc_name if model_info is not None else None
+    if not onnx_postproc_name:
         hailo_logger.error(
-            "Failed to resolve app directory for ONNX config auto-resolution in standalone mode."
+            "Model '%s' for app '%s' does not define required ONNX metadata 'onnx_postproc_name' in resources_config.yaml",
+            model_name,
+            app_name,
         )
         sys.exit(1)
 
-    config_name = (onnx_meta or {}).get("config_name") or f"config_onnx_{model_name}.json"
-    config_path = app_dir / "onnx" / config_name
+    app_dir = _get_standalone_app_dir(app_name)
+
+    config_path = app_dir / "onnx" / f"config_onnx_{model_name}.json"
 
     if not config_path.exists():
         hailo_logger.error(
             "ONNX postprocessing is enabled for model '%s', but config file was not found at: %s\n"
-            "Make it available by one of these methods:\n"
-            "  1) Place the config file at the expected path above\n"
-            "  2) Provide an explicit override with --onnxconfig <path>",
+            "Expected naming convention: config_onnx_<model_name>.json in the app's onnx/ directory.",
             model_name,
             config_path,
         )
@@ -859,42 +881,41 @@ def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: st
 
     args.onnxconfig = str(config_path)
 
-    artifacts = (onnx_meta or {}).get("artifacts", {})
-    if not isinstance(artifacts, dict):
-        return
+    hef_parent_dir = _resolve_hef_parent_dir(args.hef_path, model_name, arch)
 
-    postprocessing = artifacts.get("postprocessing", {})
-    if isinstance(postprocessing, dict):
-        postprocessing_file = postprocessing.get("file") or f"{model_name}_postprocessing.onnx"
-        postprocessing_path = app_dir / "onnx" / postprocessing_file
-        if not postprocessing_path.exists():
-            post_url = postprocessing.get("url")
-            if post_url and _download_artifact_if_needed(post_url, postprocessing_path):
-                hailo_logger.info("Downloaded missing ONNX postprocessing artifact: %s", postprocessing_path)
-            else:
-                hailo_logger.error(
-                    "Missing ONNX postprocessing artifact: %s\n"
-                    "Either place the file at this path or set a downloadable URL in resources_config.yaml under onnx_postproc.artifacts.postprocessing.url",
-                    postprocessing_path,
-                )
-                sys.exit(1)
+    user_onnx_override = getattr(args, "onnx", None)
+    if user_onnx_override:
+        args.onnx = str(Path(user_onnx_override))
+
+    postprocessing_path = Path(getattr(args, "onnx", "")) if getattr(args, "onnx", None) else (hef_parent_dir / onnx_postproc_name)
+    if not postprocessing_path.exists():
+        post_url = _build_s3_hef_sibling_url(arch, onnx_postproc_name)
+        if post_url and _download_artifact_if_needed(post_url, postprocessing_path):
+            hailo_logger.info("Downloaded missing ONNX postprocessing artifact: %s", postprocessing_path)
+        else:
+            hailo_logger.error(
+                "Missing ONNX postprocessing artifact: %s\n"
+                "Either place the file at this path, provide --onnx <path>, or ensure the ONNX sidecar exists next to the HEF artifact.",
+                postprocessing_path,
+            )
+            sys.exit(1)
+    args.onnx = str(postprocessing_path)
 
     if getattr(args, "full_onnx", False):
-        neural_processing = artifacts.get("neural_processing", {})
-        if isinstance(neural_processing, dict):
-            neural_file = neural_processing.get("file") or f"{model_name}_neural_processing.onnx"
-            neural_path = app_dir / "onnx" / neural_file
-            if not neural_path.exists():
-                neural_url = neural_processing.get("url")
-                if neural_url and _download_artifact_if_needed(neural_url, neural_path):
-                    hailo_logger.info("Downloaded missing ONNX neural-processing artifact: %s", neural_path)
-                else:
-                    hailo_logger.error(
-                        "--full-onnx requires ONNX neural-processing artifact, but it is missing: %s\n"
-                        "Either place the file at this path or set a downloadable URL in resources_config.yaml under onnx_postproc.artifacts.neural_processing.url",
-                        neural_path,
-                    )
-                    sys.exit(1)
+        neural_file = f"{model_name}_neural_processing.onnx"
+        neural_path = hef_parent_dir / neural_file
+        if not neural_path.exists():
+            neural_url = _build_s3_hef_sibling_url(arch, neural_file)
+            if neural_url and _download_artifact_if_needed(neural_url, neural_path):
+                hailo_logger.info("Downloaded missing ONNX neural-processing artifact: %s", neural_path)
+            else:
+                hailo_logger.error(
+                    "--full-onnx requires ONNX neural-processing artifact, but it is missing: %s\n"
+                    "Place the file at this path or ensure the ONNX sidecar exists next to the HEF artifact.",
+                    neural_path,
+                )
+                sys.exit(1)
+        args.onnx_neural = str(neural_path)
 
 
 
@@ -935,7 +956,7 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
 
     full_onnx_skip_hef = (
         app_type == APP_TYPE_STANDALONE
-        and APP_NAME in {"yolo26_object_detection", "yolo26_pose_estimation"}
+        and APP_NAME in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}
         and getattr(args, "full_onnx", False)
     )
 

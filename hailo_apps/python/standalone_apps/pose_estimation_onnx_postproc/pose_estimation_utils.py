@@ -1,4 +1,13 @@
 import sys
+
+if __name__ == "__main__":
+    print(
+        "This module is a pose post-processing helper and is not executable by itself.\n"
+        "Run the app entrypoint instead:\n"
+        "  python pose_estimation_onnx_postproc.py -n yolo26m_pose -i bus.jpg"
+    )
+    sys.exit(1)
+
 from collections import deque
 from pathlib import Path
 from multiprocessing import Process
