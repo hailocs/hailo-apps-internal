@@ -1,19 +1,36 @@
-# Running Pre-built Applications
+# Running Applications (Pipeline and Standalone)
 
-This guide explains how to run the ready-to-use AI applications included in this repository. Each application is a command-line tool designed to showcase a specific AI capability on Hailo hardware.
+This guide explains how to run the ready-to-use AI applications included in this repository. It covers both:
+
+- **Full-repository installation flow** (pipeline CLIs + all app groups)
+- **Standalone app flow** (Python/C++ apps run independently)
+
+If you still need installation steps, see the [Installation Guide](installation.md).
 
 ## Setup Environment
-**Note:** This should be run on every new terminal session.
-This will activate the virtual environment and set the PYTHONPATH.
+If you installed only a standalone app independently, you can skip this step and follow that app's local setup instructions in its README.
+
 ```bash
 source setup_env.sh
 ```
+
+## Useful CLI Utilities
+
+| Command | Purpose |
+| --- | --- |
+| `get-usb-camera` | Detect and print available USB camera devices. |
+| `hailo-download-resources` | Download/update model resources (by app group, model, or architecture). |
+| `hailo-post-install` | Complete post-install setup (resources + postprocess compilation). |
+| `hailo-audio-troubleshoot` | Audio diagnostics utility for voice workflows. |
+
 
 ## Available Applications
 
 ### Pipeline Applications
 
 The following applications are available as command-line tools. Each one is a self-contained GStreamer pipeline that can be launched with a simple command.
+
+> **Note:** Pipeline apps rely on resources (models, post-process `.so` files). In full installs this is handled by `install.sh`. For pip/manual installs, run `hailo-post-install` (see [Installation Guide](installation.md)).
 
 | CLI Command           | Application                                                                                    | Description                                                                                                                                                       |
 | --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,124 +46,73 @@ The following applications are available as command-line tools. Each one is a se
 | `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)                        | Text detection and recognition using PaddleOCR models.  This application is currently in BETA.                                                                    |
 | `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)           | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.              |
 
-### GenAI Standalone Applications
+### Python GenAI Applications
 
 These standalone GenAI applications are located in `hailo_apps/python/gen_ai_apps/` and can be run directly as Python scripts.
 
 | Application                                                                                | Description                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 | [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)   | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
 | [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)           | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech.                                                                            |
 | [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)                         | Vision-Language Model chat application combining vision and language understanding.                                                                                       |
+| [Hailo Ollama](../../hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)                 | Ollama integration utilities for running local LLM workflows with Hailo.                                                                                                 |
+| [Simple LLM Chat](../../hailo_apps/python/gen_ai_apps/simple_llm_chat/README.md)           | Minimal text-only LLM chat example.                                                                                                                                        |
+| [Simple VLM Chat](../../hailo_apps/python/gen_ai_apps/simple_vlm_chat/README.md)           | Minimal Vision-Language chat example (image + text).                                                                                                                      |
+| [Simple Whisper Chat](../../hailo_apps/python/gen_ai_apps/simple_whisper_chat/README.md)   | Minimal Whisper-based speech recognition chat example.                                                                                                                     |
 
-**Simple Example Applications:** The `gen_ai_apps/` directory contains additional simple examples including LLM chat, VLM chat, and Whisper chat demonstrations. See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for more details.
+See the [GenAI Apps README](../../hailo_apps/python/gen_ai_apps/README.md) for additional details and usage notes.
 
-### Other Standalone Applications
+### Python Standalone Applications
 
-In addition to the pipeline and GenAI applications above, this repository includes other standalone Python applications for computer vision use cases. These applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
+This repository also includes standalone Python applications for computer vision use cases. These applications are located in `hailo_apps/python/standalone_apps/` and can be run directly as Python scripts.
 
 | Application                                                                                      | Description                                                              |
 | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
 | [Instance Segmentation](../../hailo_apps/python/standalone_apps/instance_segmentation/README.md) | Standalone example of instance segmentation with custom post-processing. |
 | [Lane Detection](../../hailo_apps/python/standalone_apps/lane_detection/README.md)               | Lane detection application for automotive use cases.                     |
 | [Object Detection](../../hailo_apps/python/standalone_apps/object_detection/README.md)           | Standalone object detection example with custom post-processing.         |
+| [Oriented Object Detection](../../hailo_apps/python/standalone_apps/oriented_object_detection/README.md) | Standalone oriented object detection (rotated bounding boxes).           |
 | [PaddleOCR](../../hailo_apps/python/standalone_apps/paddle_ocr/README.md)                        | Standalone text detection and recognition using PaddleOCR models.        |
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
+| [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md)        | Speech recognition for Hailo-8/8L/10H with live mic recording.          |
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 
-## How to Run Pipeline Applications
+### C++ Standalone Applications
 
-Pipeline applications can be run using their CLI command. For example, to start the simple object detection:
+This repository also includes standalone C++ applications under `hailo_apps/cpp/`.
 
+| Application                                                                                 | Description                                                           |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [Classification](../../hailo_apps/cpp/classification/README.md)                            | Image classification with models trained on ImageNet.                |
+| [Mono Depth Estimation](../../hailo_apps/cpp/depth_estimation_mono/README.md)             | Monocular depth estimation with SCDepthV3.                           |
+| [Stereo Depth Estimation](../../hailo_apps/cpp/depth_estimation_stereo/README.md)         | Stereo depth estimation with StereoNet.                              |
+| [Instance Segmentation](../../hailo_apps/cpp/instance_segmentation/README.md)             | Instance segmentation with YOLO segmentation models.                 |
+| [Object Detection](../../hailo_apps/cpp/object_detection/README.md)                        | Generic and asynchronous object detection.                           |
+| [ONNX Runtime Pipeline](../../hailo_apps/cpp/onnxrt_hailo_pipeline/README.md)             | Inference with Hailo and post-processing via ONNX Runtime.           |
+| [Oriented Object Detection](../../hailo_apps/cpp/oriented_object_detection/README.md)      | Detection with rotated bounding boxes.                               |
+| [Pose Estimation](../../hailo_apps/cpp/pose_estimation/README.md)                          | Human pose estimation.                                                |
+| [Semantic Segmentation](../../hailo_apps/cpp/semantic_segmentation/README.md)              | Pixel-wise semantic segmentation (Cityscapes-style outputs).         |
+| [Zero-Shot Classification](../../hailo_apps/cpp/zero_shot_classification/README.md)        | CLIP-based zero-shot image classification.                           |
+
+For C++ build and usage instructions, see [CPP Examples README](../../hailo_apps/cpp/README.md).
+
+## Run Guidance
+
+### Pipeline apps (CLI)
+
+- Use this flow when you installed the full repository.
+- Activate environment per terminal:
 ```bash
-hailo-detect-simple
+source setup_env.sh
 ```
-To close any application, press `Ctrl+C` in the terminal.
-
-![Detection Example](../images/detection.gif)
-
-### Selecting an Input Source
-
-By default, applications may use a pre-packaged video file. You can specify a different input source using the `--input` (or `-i`) flag.
-
-**Run with a Raspberry Pi Camera:**
+- Run any pipeline command directly (for example `hailo-detect`, `hailo-pose`, `hailo-seg`).
+- See app-specific options with:
 ```bash
-hailo-detect --input rpi
+<command> --help
 ```
-
-**Run with a USB Camera (Webcam):**
-This command will automatically find and use the first available USB camera.
-```bash
-hailo-detect --input usb
-```
-
-**Run with a specific camera device:**
-First, find your camera's device path. You can use a command like `ls /dev/video*` or our provided script:
-```bash
-get-usb-camera
-```
-Then, use the device path as the input:
-```bash
-hailo-detect --input /dev/video0
-```
-
-**Run with a video file:**
-```bash
-hailo-detect --input your_video.mp4
-```
-
-**Run with an RTSP (Real-Time Streaming Protocol):**
-```bash
-hailo-detect --input rtsp://username:password@ip_address:port/path
-```
-
-## Customizing with Command-Line Arguments
-
-While the applications run out-of-the-box, you can customize their behavior using command-line arguments.
-
-For a quick list of all options for any command, use the `--help` flag:
-```bash
-hailo-detect --help
-```
-
-All applications share a common set of arguments for controlling the input source, hardware, performance, and display settings.
-
----
-
-## How to Run Standalone Applications
-
-Standalone applications are Python scripts located in `hailo_apps/python/standalone_apps/`. Each application has its own README file with specific instructions.
-
-**General steps to run a standalone application:**
-
-1. Navigate to the application directory:
-```bash
-cd hailo_apps/python/standalone_apps/<application_name>/
-```
-
-2. Install application-specific dependencies (if a `requirements.txt` exists):
-```bash
-pip install -r requirements.txt
-```
-
-3. Run the application:
-```bash
-python <application_name>.py [arguments]
-```
-
-**Example - Running the Voice Assistant:**
-```bash
-cd hailo_apps/python/gen_ai_apps/voice_assistant/
-python voice_assistant.py
-```
-
-Refer to each application's README for detailed usage instructions, configuration options, and specific requirements.
-
----
-
-## Command-Line Argument Reference (Pipeline Applications)
+#### Common Pipeline Arguments
 
 | Flag(s)                  | Description                                                                                                                                   |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -163,3 +129,19 @@ Refer to each application's README for detailed usage instructions, configuratio
 | `--enable-watchdog`      | Monitors the pipeline for stalls (no frames processed for 5s) and automatically rebuilds it. Works with --disable-callback.                   |
 | `--log-level <level>`    | Set logging level: debug, info, warning, error, critical. Default: info. Can also use --debug for debug level.                                |
 | `--log-file <path>`      | Optional log file path for persistent logging. Also respects $HAILO_LOG_FILE environment variable.                                            |
+
+### Standalone apps (Python + C++)
+
+- "Standalone" means standalone **installation flow** (no full `install.sh` flow required).
+- Many standalone apps still depend on shared modules in this repo, so a repo clone is commonly required.
+- Use each app README as source of truth for exact dependencies and run command.
+
+Quick notes:
+- Python CV standalone apps: usually install local `requirements.txt` in app directory.
+- Python GenAI apps: install extras from repo root:
+```bash
+pip install -e ".[gen-ai]"
+```
+- C++ standalone apps: build/run from each app folder (`./build.sh`).
+
+For C++ overview, see [CPP Examples README](../../hailo_apps/cpp/README.md).

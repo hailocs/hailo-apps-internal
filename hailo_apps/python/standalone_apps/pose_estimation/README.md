@@ -127,6 +127,8 @@ Arguments
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `--show-fps`: [optional] Display FPS performance metrics for video/camera input.
 - `--no-display`: [optional] Run without opening a display window. Useful for headless or performance testing.
+- `--video-unpaced`: [optional] Process video input as fast as possible without respecting the original video FPS (no pacing).
+- `-t`, `--time-to-run`: [optional] Maximum runtime in seconds. Stops the application after the specified duration.
 - `cr, --camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
 - `or, --output-resolution`: [optional] Set output size using `sd|hd|fhd`, or pass custom width/height (e.g., `--output-resolution 1920 1080`).
 - `-f, --frame-rate`: [optional][Camera only] Override the camera input framerate.
