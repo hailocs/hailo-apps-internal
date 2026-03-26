@@ -1,6 +1,44 @@
 #!/usr/bin/env python3
 import os
 import sys
+import warnings
+
+import os
+import sys
+import warnings
+
+
+def apply_runtime_compatibility() -> None:
+    """Apply minimal runtime compatibility fixes before third-party imports."""
+    _suppress_known_future_warnings()
+    _ensure_stdlib_distutils_for_older_python()
+
+
+def _suppress_known_future_warnings() -> None:
+    warnings.filterwarnings("ignore", category=FutureWarning, message=r".*np\.bool.*")
+    warnings.filterwarnings("ignore", category=FutureWarning, message=r".*np\.bytes.*")
+
+
+def _ensure_stdlib_distutils_for_older_python() -> None:
+    if sys.version_info >= (3, 12):
+        return
+
+    if os.environ.get("SETUPTOOLS_USE_DISTUTILS") == "stdlib":
+        return
+
+    env = os.environ.copy()
+    env["SETUPTOOLS_USE_DISTUTILS"] = "stdlib"
+
+    try:
+        os.execvpe(sys.executable, [sys.executable, *sys.argv], env)
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to restart process with SETUPTOOLS_USE_DISTUTILS=stdlib"
+        ) from exc
+
+
+apply_runtime_compatibility()
+
 import queue
 import threading
 from types import SimpleNamespace
@@ -10,53 +48,36 @@ import numpy as np
 import collections
 from post_process.postprocessing import inference_result_handler
 
-try:
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        load_json_file,
-        get_labels,
-        visualize,
-        preprocess,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        load_json_file,
-        get_labels,
-        visualize,
-        preprocess,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+from hailo_apps.python.core.tracker.byte_tracker import BYTETracker
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    load_json_file,
+    get_labels,
+    visualize,
+    preprocess,
+    FrameRateTracker,
+    stop_after_timeout
+
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS
+)
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+
 
 APP_NAME = Path(__file__).stem
 logger = get_logger(__name__)
@@ -144,30 +165,19 @@ def inference_callback(
 
 def run_inference_pipeline(
     net,
-    input_src,
+    labels,
     model_type,
-    batch_size,
-    labels_file,
-    output_dir,
-    camera_resolution,
-    output_resolution,
-    frame_rate,
-    save_output=False,
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
     enable_tracking=False,
     show_fps=False,
-    no_display=False
+    time_to_run: int | None = None,
 ) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
     config_data = load_json_file("config.json")
-    labels = get_labels(labels_file)
-
-    # Initialize input source from string: "camera", video file, or image folder
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
+    labels = get_labels(labels)
 
     stop_event = threading.Event()
     tracker = None
@@ -186,7 +196,7 @@ def run_inference_pipeline(
 
     hailo_inference = HailoInfer(
         net,
-        batch_size,
+        input_context.batch_size,
         output_type="FLOAT32")
 
     post_process_callback_fn = partial(
@@ -202,42 +212,59 @@ def run_inference_pipeline(
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue, width, height, cap_processing_mode, None, stop_event)
-    )
-
-    postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(output_queue, cap, save_output, output_dir,
-               post_process_callback_fn, fps_tracker, output_resolution, frame_rate, False, stop_event, no_display)
+        args=(
+            input_context,
+            input_queue,
+            width,
+            height,
+            None,       # Use default preprocess from toolbox
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
 
     infer_thread = threading.Thread(
-        target=infer, args=(hailo_inference, input_queue, output_queue, stop_event)
+        target=infer,
+        args=(hailo_inference, input_queue, output_queue, stop_event),
+        name="infer-thread",
     )
 
     preprocess_thread.start()
-    postprocess_thread.start()
     infer_thread.start()
 
     if show_fps:
         fps_tracker.start()
 
+    if time_to_run is not None:
+        timer_thread = threading.Thread(
+            target=stop_after_timeout,
+            args=(stop_event, time_to_run),
+            name="timer-thread",
+            daemon=True,
+        )
+        timer_thread.start()
+
     try:
+        visualize(
+            input_context,
+            visualization_settings,
+            output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
         infer_thread.join()
-        postprocess_thread.join()
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
+    if show_fps:
+        logger.info(fps_tracker.frame_rate_summary())
 
-    finally:
-        if show_fps:
-            logger.info(fps_tracker.frame_rate_summary())
+    logger.success("Processing completed successfully.")
 
-        logger.success("Inference was successful!")
-        if save_output or input_src.lower() not in ("usb", "rpi"):
-            logger.info(f"Results have been saved in {output_dir}")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -296,22 +323,34 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
-    run_inference_pipeline(
-        args.hef_path,
-        args.input,
-        args.model_type,
-        args.batch_size,
-        args.labels,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
-        args.save_output,
-        args.track,
-        args.show_fps,
-        args.no_display
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
     )
 
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+    )
+
+    run_inference_pipeline(
+        net=args.hef_path,
+        labels=args.labels,
+        model_type=args.model_type,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        enable_tracking=args.track,
+        show_fps=args.show_fps,
+        time_to_run=args.time_to_run
+    )
 
 
 if __name__ == "__main__":

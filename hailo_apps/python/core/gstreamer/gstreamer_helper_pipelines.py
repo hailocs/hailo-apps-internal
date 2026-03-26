@@ -51,6 +51,8 @@ def get_source_type(input_source):
         return "ximage"
     elif input_source.startswith('rtsp://'):
         return 'rtsp'
+    elif input_source.startswith('udp://'):
+        return 'udp'
     else:
         return "file"
 
@@ -96,6 +98,7 @@ def SOURCE_PIPELINE(
     sync=True,
     video_format="RGB",
     mirror_image=True,
+    vertical_mirror=False,
 ):
     """Creates a GStreamer pipeline string for the video source with a separate fps caps
     for frame rate control.
@@ -107,14 +110,16 @@ def SOURCE_PIPELINE(
         video_format (str, optional): The video format. Defaults to 'RGB'.
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'source'.
         mirror_image (bool, optional): Whether to horizontally mirror the image (for camera sources). Defaults to True.
+        vertical_mirror (bool, optional): Whether to vertically flip the image. Defaults to False.
 
     Returns:
         str: A string representing the GStreamer pipeline for the video source.
     """
     source_type = get_source_type(video_source)
 
-    # Build videoflip element string conditionally
+    # Build videoflip element strings conditionally
     videoflip_str = f'videoflip name=videoflip_{name} video-direction=horiz ! ' if mirror_image else ''
+    vertical_mirror_str = f'videoflip name=vflip_{name} video-direction=vert ! ' if vertical_mirror else ''
 
     if source_type == "usb":
         if no_webcam_compression or is_v4l2loopback_device(video_source):
@@ -124,6 +129,7 @@ def SOURCE_PIPELINE(
                 f'v4l2src device={video_source} name={name} ! '
                 f'video/x-raw, width=640, height=480 ! '
                 f'{videoflip_str}'
+                f'{vertical_mirror_str}'
             )
         else:
             # Use compressed format for webcam
@@ -133,34 +139,55 @@ def SOURCE_PIPELINE(
                 f'{QUEUE(name=f"{name}_queue_decode")} ! '
                 f'decodebin name={name}_decodebin ! '
                 f'{videoflip_str}'
+                f'{vertical_mirror_str}'
             )
     elif source_type == "rpi":
         rpi_videoflip_str = "videoflip name=videoflip video-direction=horiz ! " if mirror_image else ""
         source_element = (
             f"appsrc name=app_source is-live=true leaky-type=downstream max-buffers=3 ! "
             f"{rpi_videoflip_str}"
+            f"{vertical_mirror_str}"
             f"video/x-raw, format={video_format}, width={video_width}, height={video_height} ! "
         )
     elif source_type == "libcamera":
         source_element = (
             f"libcamerasrc name={name} ! "
             f"video/x-raw, format={video_format}, width=1536, height=864 ! "
+            f"{videoflip_str}"
+            f"{vertical_mirror_str}"
         )
     elif source_type == "ximage":
         source_element = (
             f"ximagesrc xid={video_source} ! {QUEUE(name=f'{name}queue_scale_')} ! videoscale ! "
+            f"{videoflip_str}"
+            f"{vertical_mirror_str}"
         )
     elif source_type == 'rtsp':  # RTSP stream handling
         source_element = (
             f'rtspsrc location="{video_source}" name={name} ! '
             f'{QUEUE(name=f"{name}_queue_decode")} ! '
             f'decodebin name={name}_decodebin ! '
+            f'{videoflip_str}'
+            f'{vertical_mirror_str}'
+        )
+    elif source_type == 'udp':  # UDP stream handling (e.g., Gazebo camera)
+        # Extract port from udp://host:port or udp://:port
+        port = video_source.split(':')[-1]
+        source_element = (
+            f'udpsrc port={port} name={name} ! '
+            f'application/x-rtp, encoding-name=H264, payload=96 ! '
+            f'{QUEUE(name=f"{name}_queue_decode")} ! '
+            f'rtph264depay ! '
+            f'h264parse ! '
+            f'avdec_h264 name={name}_decodebin ! '
         )
     else:
         source_element = (
             f'filesrc location="{video_source}" name={name} ! '
             f"{QUEUE(name=f'{name}_queue_decode')} ! "
             f"decodebin name={name}_decodebin ! "
+            f"{videoflip_str}"
+            f"{vertical_mirror_str}"
         )
 
     # Set up the fps caps.

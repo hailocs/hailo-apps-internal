@@ -96,7 +96,8 @@ Creates a GStreamer pipeline string for the video source with frame rate control
 - `frame_rate` (int, optional): Target frame rate. Defaults to 30.
 - `sync` (bool, optional): Whether to synchronize frame rate. Defaults to True.
 - `video_format` (str, optional): The video format (e.g., 'RGB'). Defaults to 'RGB'.
-- `mirror_image` (bool, optional): Whether to horizontally mirror the image for camera sources (USB and RPI cameras). Defaults to True. Set to False to disable mirroring.
+- `mirror_image` (bool, optional): Whether to horizontally mirror the image. Applies to all source types. Defaults to True. Set to False to disable mirroring.
+- `vertical_mirror` (bool, optional): Whether to vertically mirror (flip) the image. Applies to all source types. Defaults to False.
 
 **Returns:**
 - `str`: A string representing the GStreamer pipeline for the video source.

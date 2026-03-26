@@ -92,7 +92,6 @@ def get_base_parser() -> argparse.ArgumentParser:
         "--frame-rate",
         "-f",
         type=int,
-        default=30,
         help=(
             "Target frame rate for video processing in frames per second. "
             "Controls the playback speed and processing rate for video sources. "
@@ -273,6 +272,21 @@ def get_standalone_parser() -> argparse.ArgumentParser:
             "When enabled, the application runs without opening a visualization window. "
             "Useful for performance testing or headless execution."
         ),
+    )
+
+    parser.add_argument(
+        "--video-unpaced",
+        action="store_true",
+        default=False,
+        help="Run video files as fast as processing allows (no playback pacing). ",
+    )
+
+    parser.add_argument(
+        "-t", "--time-to-run",
+        type=int,
+        default=None,
+        metavar="UINT:POSITIVE",
+        help="Time to run (seconds)."
     )
 
     parser.add_argument(
