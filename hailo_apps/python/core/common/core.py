@@ -58,13 +58,13 @@ from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
 
 try:
-    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_model_info
+    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_model_info, get_supported_architectures
 except ImportError:
     import sys
     from pathlib import Path
     config_dir = Path(__file__).resolve().parents[3] / "config"
     sys.path.insert(0, str(config_dir))
-    from config_manager import get_default_models, get_inputs_for_app, get_model_info
+    from config_manager import get_default_models, get_inputs_for_app, get_model_info, get_supported_architectures
 hailo_logger = get_logger(__name__)
 
 
@@ -619,6 +619,8 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     # Map standalone app names to their resource tag names used in resources YAML
     APP_NAME_MAPPING = {
         "object_detection": "detection",
+        "yolo26_object_detection": "detection",
+        "yolo26_pose_estimation": "pose_estimation",
         "simple_detection": "simple_detection",
         "instance_segmentation": "instance_segmentation",
         "super_resolution": "super_resolution",
@@ -769,6 +771,8 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
 def _map_app_to_resource_group(app_name: str) -> str:
     app_mapping = {
         "object_detection": "detection",
+        "yolo26_object_detection": "detection",
+        "yolo26_pose_estimation": "pose_estimation",
         "simple_detection": "simple_detection",
         "instance_segmentation": "instance_segmentation",
         "super_resolution": "super_resolution",
@@ -808,18 +812,28 @@ def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: st
     if not hasattr(args, "onnxconfig"):
         return
 
-    if getattr(args, "onnxconfig", None):
+    if app_name not in {"yolo26_object_detection", "yolo26_pose_estimation"}:
         return
 
-    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
-    if not arch:
+    if getattr(args, "onnxconfig", None):
         return
 
     model_name = _extract_model_name_from_hef_path(args.hef_path)
     resource_group = _map_app_to_resource_group(app_name)
-    model_info = get_model_info(resource_group, arch, model_name, app_type="standalone")
+    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+
+    model_info = None
+    if arch:
+        model_info = get_model_info(resource_group, arch, model_name, app_type="standalone")
+
+    if model_info is None:
+        for candidate_arch in get_supported_architectures(resource_group):
+            model_info = get_model_info(resource_group, candidate_arch, model_name, app_type="standalone")
+            if model_info is not None:
+                break
+
     onnx_meta = model_info.onnx_postproc if model_info is not None else None
-    if not onnx_meta or not onnx_meta.get("enabled", False):
+    if onnx_meta is not None and not onnx_meta.get("enabled", False):
         return
 
     app_dir = _detect_standalone_app_dir()
@@ -829,7 +843,7 @@ def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: st
         )
         sys.exit(1)
 
-    config_name = onnx_meta.get("config_name") or f"config_onnx_{model_name}.json"
+    config_name = (onnx_meta or {}).get("config_name") or f"config_onnx_{model_name}.json"
     config_path = app_dir / "onnx" / config_name
 
     if not config_path.exists():
@@ -845,7 +859,7 @@ def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: st
 
     args.onnxconfig = str(config_path)
 
-    artifacts = onnx_meta.get("artifacts", {})
+    artifacts = (onnx_meta or {}).get("artifacts", {})
     if not isinstance(artifacts, dict):
         return
 
@@ -919,7 +933,15 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
         sys.exit(0)
 
 
-    if multi_hef:
+    full_onnx_skip_hef = (
+        app_type == APP_TYPE_STANDALONE
+        and APP_NAME in {"yolo26_object_detection", "yolo26_pose_estimation"}
+        and getattr(args, "full_onnx", False)
+    )
+
+    if full_onnx_skip_hef:
+        hailo_logger.info("--full-onnx enabled: skipping HEF path resolution/download")
+    elif multi_hef:
         # Resolve multiple HEF paths
         try:
             models = resolve_hef_paths(

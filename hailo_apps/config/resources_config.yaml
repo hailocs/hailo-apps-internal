@@ -429,19 +429,6 @@ detection: &detection_app
           source: mz
         - name: yolov11x
           source: mz
-        - name: yolo26n
-          source: s3
-          app_type: [standalone]
-          onnx_postproc:
-            enabled: true
-            config_name: config_onnx_yolo26n.json
-            artifacts:
-              postprocessing:
-                file: yolo26n_postprocessing.onnx
-                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_postprocessing.onnx
-              neural_processing:
-                file: yolo26n_neural_processing.onnx
-                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_neural_processing.onnx
         - name: yolov8s-hailo8l-barcode
           url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
           source: s3
@@ -493,6 +480,54 @@ detection: &detection_app
 
 # Standalone app uses the same model set and defaults as the pipeline app
 object_detection: *detection_app
+
+yolo26_object_detection:
+  models:
+    hailo8:
+      default:
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_postprocessing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_neural_processing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_neural_processing.onnx
+    hailo8l:
+      default:
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_postprocessing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_neural_processing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_neural_processing.onnx
+    hailo10h:
+      default:
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_postprocessing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_neural_processing.onnx
+                url: https://<onnx-artifacts-base-url>/object_detection/onnx/yolo26n_neural_processing.onnx
 
 simple_detection: &simple_detection_app
   models:
@@ -620,6 +655,22 @@ pose_estimation: &pose_estimation_app
       extra:
         - name: yolov8s_pose
           source: mz
+    hailo8l:
+      default:
+        - name: yolov8s_pose
+          source: mz
+    hailo10h:
+      default:
+        - name: yolov8m_pose
+          source: mz
+      extra:
+        - name: yolov8s_pose
+          source: mz
+
+yolo26_pose_estimation:
+  models:
+    hailo8:
+      default:
         - name: yolo26n_pose
           source: s3
           app_type: [standalone]
@@ -633,15 +684,19 @@ pose_estimation: &pose_estimation_app
                 file: yolo26n_pose_neural_processing.onnx
     hailo8l:
       default:
-        - name: yolov8s_pose
-          source: mz
+        - name: yolo26n_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc:
+            enabled: true
+            config_name: config_onnx_yolo26n_pose.json
+            artifacts:
+              postprocessing:
+                file: yolo26n_pose_postprocessing.onnx
+              neural_processing:
+                file: yolo26n_pose_neural_processing.onnx
     hailo10h:
       default:
-        - name: yolov8m_pose
-          source: mz
-      extra:
-        - name: yolov8s_pose
-          source: mz
         - name: yolo26m_pose
           source: s3
           app_type: [standalone]

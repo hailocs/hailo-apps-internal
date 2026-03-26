@@ -23,8 +23,10 @@ def load_onnx_config(onnxconfig: str, caller_file: Optional[str] = None) -> Tupl
     """
     Load and return an ONNX postprocessing configuration JSON file.
 
-    Resolves the path relative to the current directory, or relative to the
-    caller's directory if not found.
+    Resolves the path in this order:
+    1) As provided (absolute or relative to current working directory)
+    2) Relative to the caller's directory
+    3) Relative to the caller's ``onnx/`` subdirectory
 
     Args:
         onnxconfig: Path string to the ONNX config JSON file.
@@ -37,9 +39,16 @@ def load_onnx_config(onnxconfig: str, caller_file: Optional[str] = None) -> Tupl
         FileNotFoundError: If the config file cannot be found.
     """
     config_path = Path(onnxconfig)
-    if not config_path.is_absolute():
-        if not config_path.exists() and caller_file:
-            config_path = Path(caller_file).parent / onnxconfig
+    if not config_path.is_absolute() and not config_path.exists() and caller_file:
+        caller_dir = Path(caller_file).parent
+        caller_relative = caller_dir / onnxconfig
+        caller_onnx_relative = caller_dir / "onnx" / onnxconfig
+
+        if caller_relative.exists():
+            config_path = caller_relative
+        elif caller_onnx_relative.exists():
+            config_path = caller_onnx_relative
+
     if not config_path.exists():
         raise FileNotFoundError(f"ONNX config file not found: {onnxconfig}")
 
@@ -243,44 +252,47 @@ def infer_full_onnx(
     onnx_to_hef = {onnx_name: hef_name for hef_name, (onnx_name, _) in tensor_mapping.items()}
     tensors_to_sigmoid = onnx_config.get("intermediate_tensors_to_add_sigmoid", [])
 
-    while True:
-        next_batch = input_queue.get()
-        if not next_batch:
-            break
+    try:
+        while True:
+            next_batch = input_queue.get()
+            if not next_batch:
+                break
 
-        input_batch, preprocessed_batch = next_batch
+            input_batch, preprocessed_batch = next_batch
 
-        for i, preprocessed_frame in enumerate(preprocessed_batch):
-            # Prepare NCHW float32 input
-            if preprocessed_frame.ndim == 3:  # HWC
-                onnx_input = np.transpose(preprocessed_frame, (2, 0, 1))  # CHW
-                onnx_input = np.expand_dims(onnx_input, axis=0)  # NCHW
-            else:
-                onnx_input = np.expand_dims(preprocessed_frame, axis=0)
-
-            if onnx_input.dtype == np.uint8:
-                onnx_input = onnx_input.astype(np.float32) / 255.0
-
-            # Run intermediate model
-            input_name = intermediate_session.get_inputs()[0].name
-            output_names = [o.name for o in intermediate_session.get_outputs()]
-            intermediates = intermediate_session.run(output_names, {input_name: onnx_input})
-
-            # Optional sigmoid on specified tensors
-            if tensors_to_sigmoid:
-                for idx, name in enumerate(output_names):
-                    if name in tensors_to_sigmoid:
-                        intermediates[idx] = 1.0 / (1.0 + np.exp(-intermediates[idx]))
-
-            # Map ONNX tensor names -> HEF tensor names
-            result: dict = {}
-            for onnx_name, tensor in zip(output_names, intermediates):
-                hef_name = onnx_to_hef.get(onnx_name)
-                if hef_name:
-                    result[hef_name] = tensor
+            for i, preprocessed_frame in enumerate(preprocessed_batch):
+                # Prepare NCHW float32 input
+                if preprocessed_frame.ndim == 3:  # HWC
+                    onnx_input = np.transpose(preprocessed_frame, (2, 0, 1))  # CHW
+                    onnx_input = np.expand_dims(onnx_input, axis=0)  # NCHW
                 else:
-                    logger.warning(
-                        f"ONNX intermediate output '{onnx_name}' not in tensor mapping"
-                    )
+                    onnx_input = np.expand_dims(preprocessed_frame, axis=0)
 
-            output_queue.put((input_batch[i], result))
+                if onnx_input.dtype == np.uint8:
+                    onnx_input = onnx_input.astype(np.float32) / 255.0
+
+                # Run intermediate model
+                input_name = intermediate_session.get_inputs()[0].name
+                output_names = [o.name for o in intermediate_session.get_outputs()]
+                intermediates = intermediate_session.run(output_names, {input_name: onnx_input})
+
+                # Optional sigmoid on specified tensors
+                if tensors_to_sigmoid:
+                    for idx, name in enumerate(output_names):
+                        if name in tensors_to_sigmoid:
+                            intermediates[idx] = 1.0 / (1.0 + np.exp(-intermediates[idx]))
+
+                # Map ONNX tensor names -> HEF tensor names
+                result: dict = {}
+                for onnx_name, tensor in zip(output_names, intermediates):
+                    hef_name = onnx_to_hef.get(onnx_name)
+                    if hef_name:
+                        result[hef_name] = tensor
+                    else:
+                        logger.warning(
+                            f"ONNX intermediate output '{onnx_name}' not in tensor mapping"
+                        )
+
+                output_queue.put((input_batch[i], result))
+    finally:
+        output_queue.put(None)
