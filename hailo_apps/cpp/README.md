@@ -1,7 +1,5 @@
 # CPP Examples
 
-> ⚠️ **Beta:** The C++ applications are currently in beta. Features and APIs may change.
-
 | APP                        | Description                                                      |
 |:---------------------------|:-----------------------------------------------------------------|
 | `classification`           | Image classification with models trained on ImageNet             |
