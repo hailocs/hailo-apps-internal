@@ -46,12 +46,12 @@ The following applications are available as command-line tools. Each one is a se
 | `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)                        | Text detection and recognition using PaddleOCR models.  This application is currently in BETA.                                                                    |
 | `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)           | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.              |
 
-### GenAI Applications
+### Python GenAI Applications
 
 These standalone GenAI applications are located in `hailo_apps/python/gen_ai_apps/` and can be run directly as Python scripts.
 
 | Application                                                                                | Description                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- 
 | [Agent Tools Example](../../hailo_apps/python/gen_ai_apps/agent_tools_example/README.md)   | **Voice-to-action AI agent** with tool integration for controlling hardware (elevators, servos, RGB LEDs) and accessing external services (weather API, math operations). |
 | [Voice Assistant](../../hailo_apps/python/gen_ai_apps/voice_assistant/README.md)           | Complete voice assistant implementation combining speech recognition, LLM, and text-to-speech.                                                                            |
 | [VLM Chat](../../hailo_apps/python/gen_ai_apps/vlm_chat/README.md)                         | Vision-Language Model chat application combining vision and language understanding.                                                                                       |
@@ -112,24 +112,7 @@ source setup_env.sh
 ```bash
 <command> --help
 ```
-
-### Standalone apps (Python/C++/GenAI)
-
-- "Standalone" means standalone **installation flow** (no full `install.sh` flow required).
-- Many standalone apps still depend on shared modules in this repo, so a repo clone is commonly required.
-- Use each app README as source of truth for exact dependencies and run command.
-
-Quick notes:
-- Python CV standalone apps: usually install local `requirements.txt` in app directory.
-- Python GenAI apps: install extras from repo root:
-```bash
-pip install -e ".[gen-ai]"
-```
-- C++ standalone apps: build/run from each app folder (`./build.sh`).
-
-For C++ overview, see [CPP Examples README](../../hailo_apps/cpp/README.md).
-
-## Common Pipeline Arguments
+#### Common Pipeline Arguments
 
 | Flag(s)                  | Description                                                                                                                                   |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -146,3 +129,19 @@ For C++ overview, see [CPP Examples README](../../hailo_apps/cpp/README.md).
 | `--enable-watchdog`      | Monitors the pipeline for stalls (no frames processed for 5s) and automatically rebuilds it. Works with --disable-callback.                   |
 | `--log-level <level>`    | Set logging level: debug, info, warning, error, critical. Default: info. Can also use --debug for debug level.                                |
 | `--log-file <path>`      | Optional log file path for persistent logging. Also respects $HAILO_LOG_FILE environment variable.                                            |
+
+### Standalone apps (Python + C++)
+
+- "Standalone" means standalone **installation flow** (no full `install.sh` flow required).
+- Many standalone apps still depend on shared modules in this repo, so a repo clone is commonly required.
+- Use each app README as source of truth for exact dependencies and run command.
+
+Quick notes:
+- Python CV standalone apps: usually install local `requirements.txt` in app directory.
+- Python GenAI apps: install extras from repo root:
+```bash
+pip install -e ".[gen-ai]"
+```
+- C++ standalone apps: build/run from each app folder (`./build.sh`).
+
+For C++ overview, see [CPP Examples README](../../hailo_apps/cpp/README.md).
