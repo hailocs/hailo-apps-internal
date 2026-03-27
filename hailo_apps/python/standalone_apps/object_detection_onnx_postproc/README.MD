@@ -1,5 +1,5 @@
-Object detection - Yolo26
-=========================
+Object detection - *yolo26* with lightweight onnx postprocessing
+=============================================================
 
 Similar to ../object_detection, adding and exemplifying the following capabilities:
 1. Using the new 2026 Ultralytics release of top performing, NMS-free networks. 
