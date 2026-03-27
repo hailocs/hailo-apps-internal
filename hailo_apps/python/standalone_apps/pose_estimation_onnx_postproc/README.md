@@ -6,7 +6,7 @@ Similar to ../pose_estimation, adding and exemplifying the following capabilitie
 1. Using onnx-runtime engine for the lightweight postprocessing, exemplifying this easy integration pathway.
 1. Adding demo variations exposing the applicative potential of high-quality high-speed pose estimation:
     1. Skeleton tracklet ("following shadow"), showcasing the "dense" (on time axis) recognitions unlocked by the high FPS.
-    1. Integrating ([Ultralytics' "AIGYM"](https://docs.ultralytics.com/guides/workouts-monitoring/)) - counting fitness exercise repetitions; showcasing the general action-recognition potential
+    1. Integrating [Ultralytics' "AIGYM"](https://docs.ultralytics.com/guides/workouts-monitoring/) - counting fitness exercise repetitions; showcasing the general action-recognition potential. Note that in practice it ONLY works smoothly with Hailo's acceleration; the 2-3FPS achievable on RPi by using the smallest network are not sufficient for capturing reasonably fast movement. 
 
 
 TODO visual examples of both.
