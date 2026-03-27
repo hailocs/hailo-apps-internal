@@ -6,10 +6,14 @@ Similar to ../pose_estimation, adding and exemplifying the following capabilitie
 1. Using onnx-runtime engine for the lightweight postprocessing, exemplifying this easy integration pathway.
 1. Adding demo variations exposing the applicative potential of high-quality high-speed pose estimation:
     1. Skeleton tracklet ("following shadow"), showcasing the "dense" (on time axis) recognitions unlocked by the high FPS.
-    1. Integrating [Ultralytics' "AIGYM"](https://docs.ultralytics.com/guides/workouts-monitoring/) - counting fitness exercise repetitions; showcasing the general action-recognition potential. Note that in practice it ONLY works smoothly with Hailo's acceleration; the 2-3FPS achievable on RPi by using the smallest network are not sufficient for capturing reasonably fast movement. 
+    1. Integrating [Ultralytics' AIgym](https://docs.ultralytics.com/guides/workouts-monitoring/) - counting fitness exercise repetitions; showcasing the general action-recognition potential. Note that in practice it ONLY works smoothly with Hailo's acceleration; the 2-3FPS achievable on RPi CPU by using the smallest network are not sufficient for capturing reasonably fast movement. 
 
+<p align="center">
+    <img src="output.gif" width="320" alt="Reflection-loop trail demo" />
+    <img src="output_aigym.gif" width="320" alt="AIGym trail demo" />
+</p>
 
-TODO visual examples of both.
+See usage options for these demos below.
 
 
 Supported Models
@@ -31,3 +35,20 @@ Similarly to hailo_apps/cpp/onnxrt_hailo_pipeline, this example uses onnxruntime
 Install and requirements
 ------------------------
 Same as for base pose estimation.  The postprocessing ONNX binary is lazy-downloaded alongside the HEF.
+
+
+Usage examples
+--------------
+
+Draw a trail of 10 past frames (~0.3sec) and deemphasize background:
+```
+python pose_estimation_onnx_postproc.py --i example.mp4 --hef yolo26m_pose --no-display --mute-background 0.5 --pose-trail 10
+```
+![Reflection-loop trail demo](output.gif)
+
+Count squats for a whole class at once ("aigym"):
+```
+python pose_estimation_onnx_postproc.py --i grok-squats.mp4 --hef yolo26m_pose --no-display --aigym squats
+```
+(try pushups, pullups as well :)
+![aigym trail demo](output_aigym.gif)

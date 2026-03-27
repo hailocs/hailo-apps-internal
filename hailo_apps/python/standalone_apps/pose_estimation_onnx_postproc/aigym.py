@@ -47,7 +47,7 @@ EXERCISE_PRESETS: Dict[str, dict] = {
         # hip → knee → ankle  (left and right)
         "kpts": [(11, 13, 15), (12, 14, 16)],
         "up_angle": 170.0,
-        "down_angle": 90.0,
+        "down_angle": 140.0,
     },
     "pushups": {
         # shoulder → elbow → wrist
