@@ -1,5 +1,5 @@
-Pose Estimation - Yolo26
-========================
+Pose Estimation -  *yolo26* with lightweight onnx postprocessing
+================================================================
 
 Similar to ../pose_estimation, adding and exemplifying the following capabilities:
 1. Using the new 2026 Ultralytics release of top performing, NMS-free networks. 
