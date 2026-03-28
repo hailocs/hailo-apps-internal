@@ -84,19 +84,16 @@ Encapsulates all text encoder logic.
 
 ### 2. GStreamer Pipeline (`yolo_world_pipeline.py`)
 
-Standard GStreamerApp subclass following the detection pattern.
+GStreamerApp subclass using HailoRT standalone inference (not `hailonet`).
 
 **Pipeline:**
 ```
-SOURCE_PIPELINE → INFERENCE_PIPELINE(hef=yolo_world_v2s, post_process_so=libyolo_hailortpp_postprocess.so, nms_config=yolo_world_v2s_nms_config.json) → hailooverlay → DISPLAY_PIPELINE
+SOURCE_PIPELINE → videoscale(640x640) → USER_CALLBACK(HailoRT inference + postprocess) → DISPLAY_PIPELINE(fakesink)
 ```
 
-**Dual-input handling:** The key challenge is feeding the text embedding tensor as `input_layer2` alongside the image. This needs investigation during implementation — possible approaches:
-- Configure `hailonet` element to accept a second input via properties
-- Use HailoRT multi-input vstream configuration
-- Attach embeddings as buffer metadata before `hailonet`
+**Dual-input resolution:** Investigation revealed that `hailonet` GStreamer element does NOT support multi-input HEFs. The solution uses HailoRT's `InferModel` API directly in the callback, following the Whisper decoder pattern (`whisper_pipeline.py`) which also handles two input layers. The GStreamer pipeline only handles video capture and display.
 
-This is the highest-risk item and should be prototyped first during implementation.
+**Postprocessing:** Python numpy-based (not `hailofilter` `.so`), since we bypass `hailonet`. Grid-based box decoding + NMS implemented in `postprocess.py`.
 
 **CLI arguments:**
 
@@ -110,7 +107,7 @@ This is the highest-risk item and should be prototyped first during implementati
 
 ### 3. App Callback (`yolo_world.py`)
 
-Minimal callback — the standard `hailooverlay` element handles bounding box rendering.
+Callback runs HailoRT inference and draws detections via OpenCV (fakesink + use_frame pattern).
 
 **Callback responsibilities:**
 - Extract detections from ROI (standard pattern)
