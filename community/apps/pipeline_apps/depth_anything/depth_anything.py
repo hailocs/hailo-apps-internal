@@ -18,6 +18,7 @@ import numpy as np
 from community.apps.pipeline_apps.depth_anything.depth_anything_pipeline import (
     GStreamerDepthAnythingApp,
 )
+from community.apps.pipeline_apps.depth_anything.metric_depth import MetricDepthConverter, render_scale_bar
 from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
@@ -48,11 +49,41 @@ class DepthAnythingCallback(app_callback_class):
     via a custom display with mouse-based depth readout.
     """
 
-    def __init__(self, display_mode="depth", colormap_name="inferno", alpha=0.5):
+    def __init__(self, display_mode="depth", colormap_name="inferno", alpha=0.5,
+                 depth_mode="relative", scene_type="indoor", max_depth=None,
+                 calibrate_ref=None, export_depth=None, temporal_alpha=0.4,
+                 max_clip=10.0):
         super().__init__()
         self.display_mode = display_mode
         self.colormap_cv2 = COLORMAP_MAP.get(colormap_name, cv2.COLORMAP_INFERNO)
         self.alpha = alpha
+        self.depth_mode = depth_mode
+        self.export_depth = export_depth
+        self.max_clip = max_clip if max_clip and max_clip > 0 else None
+
+        # Temporal smoothing state
+        self.temporal_alpha = temporal_alpha
+        self._prev_depth = None
+        self._smooth_min = None
+        self._smooth_max = None
+
+        # Metric depth converter
+        self.metric_converter = None
+        if depth_mode == "metric":
+            self.metric_converter = MetricDepthConverter(
+                scene_type=scene_type, max_depth=max_depth
+            )
+            # Apply pre-run calibration if provided
+            if calibrate_ref:
+                rel_str, met_str = calibrate_ref.split(":")
+                self.metric_converter.calibrate_from_reference(
+                    relative_values=np.array([float(rel_str)]),
+                    metric_values=np.array([float(met_str)]),
+                )
+
+        # Export directory
+        if export_depth:
+            os.makedirs(export_depth, exist_ok=True)
 
 
 def app_callback(element, buffer, user_data):
@@ -78,11 +109,48 @@ def app_callback(element, buffer, user_data):
     # Depth Anything outputs inverse depth (close=high, far=low). Invert so
     # the values read intuitively: close=small, far=large.
     depth = 1.0 / (depth + 1e-6)
+    depth = np.clip(depth, 0, 1000.0)  # Cap extreme values from near-zero raw pixels
 
-    # Normalize to 0-255 for colormap
-    d_min = depth.min()
-    d_max = depth.max()
-    depth_norm = ((depth - d_min) / (d_max - d_min + 1e-6) * 255).astype(np.uint8)
+    # --- Clip far-end depth outliers ---
+    # Cap at the 95th percentile to remove noise spikes that stretch the
+    # colormap and flatten near-field contrast.
+    if user_data.max_clip is not None:
+        clip_val = np.percentile(depth, 95)
+        depth = np.clip(depth, depth.min(), clip_val)
+
+    # --- Temporal smoothing ---
+    # EMA on depth values reduces frame-to-frame jitter.
+    # Spatial blur reduces per-pixel noise.
+    t_alpha = user_data.temporal_alpha
+    if t_alpha > 0:
+        # Spatial denoising (light bilateral filter preserves edges better than Gaussian)
+        depth_f32 = depth.astype(np.float32)
+        depth = cv2.bilateralFilter(depth_f32, d=5, sigmaColor=0.5, sigmaSpace=5)
+
+        # Temporal EMA on depth map
+        if user_data._prev_depth is not None and user_data._prev_depth.shape == depth.shape:
+            depth = t_alpha * user_data._prev_depth + (1 - t_alpha) * depth
+        user_data._prev_depth = depth.copy()
+
+    # --- Metric depth conversion ---
+    metric_depth_m = None
+    if user_data.depth_mode == "metric" and user_data.metric_converter is not None:
+        metric_depth_m = user_data.metric_converter.convert(depth)
+
+    # Normalize to 0-255 for colormap — use EMA-smoothed min/max to prevent scale jumping
+    d_min = float(depth.min())
+    d_max = float(depth.max())
+    if t_alpha > 0:
+        if user_data._smooth_min is not None:
+            user_data._smooth_min = t_alpha * user_data._smooth_min + (1 - t_alpha) * d_min
+            user_data._smooth_max = t_alpha * user_data._smooth_max + (1 - t_alpha) * d_max
+        else:
+            user_data._smooth_min = d_min
+            user_data._smooth_max = d_max
+        d_min = user_data._smooth_min
+        d_max = user_data._smooth_max
+
+    depth_norm = (255 - ((depth - d_min) / (d_max - d_min + 1e-6) * 255)).astype(np.uint8)
 
     # Apply colormap (produces BGR, which cv2.imshow expects)
     depth_color = cv2.applyColorMap(depth_norm, user_data.colormap_cv2)
@@ -112,8 +180,55 @@ def app_callback(element, buffer, user_data):
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         output = cv2.addWeighted(frame_bgr, 1 - user_data.alpha, depth_color_resized, user_data.alpha, 0)
 
+    elif user_data.display_mode == "metric":
+        if metric_depth_m is not None:
+            # Colorize the metric depth (normalize to [0, max_depth] → [0, 255])
+            max_d = user_data.metric_converter.max_depth
+            depth_clamped = np.clip(metric_depth_m, 0, max_d)
+            depth_vis = (255 - (depth_clamped / max_d * 255)).astype(np.uint8)
+            depth_color = cv2.applyColorMap(depth_vis, user_data.colormap_cv2)
+            output = cv2.resize(depth_color, (width, height), interpolation=cv2.INTER_LINEAR)
+
+            # Draw scale bar
+            min_m = float(metric_depth_m.min())
+            max_m = float(metric_depth_m.max())
+            render_scale_bar(output, min_m, max_m, user_data.colormap_cv2)
+
+            # Draw center distance readout
+            cy, cx = metric_depth_m.shape[0] // 2, metric_depth_m.shape[1] // 2
+            center_depth = metric_depth_m[cy, cx]
+            # Scale center coords to output resolution
+            out_cx = width // 2
+            out_cy = height // 2
+            cv2.drawMarker(output, (out_cx, out_cy), (0, 255, 0), cv2.MARKER_CROSS, 20, 2)
+            cv2.putText(output, f"{center_depth:.2f}m", (out_cx + 15, out_cy - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            # Show raw relative value at center (for calibration reference)
+            cy_raw, cx_raw = depth.shape[0] // 2, depth.shape[1] // 2
+            raw_center = depth[cy_raw, cx_raw]
+            cv2.putText(output, f"raw: {raw_center:.2f}", (out_cx + 15, out_cy + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+            # Draw stats bar at top
+            mean_m = float(metric_depth_m.mean())
+            stats_text = f"Min: {min_m:.2f}m | Max: {max_m:.2f}m | Mean: {mean_m:.2f}m"
+            cv2.putText(output, stats_text, (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        else:
+            output = depth_color_resized  # Fallback to regular depth
+
     else:
         output = depth_color_resized
+
+    # If metric mode is on but display_mode is NOT "metric", still show metric stats
+    if user_data.depth_mode == "metric" and user_data.display_mode != "metric" and metric_depth_m is not None:
+        min_m = float(metric_depth_m.min())
+        max_m = float(metric_depth_m.max())
+        mean_m = float(metric_depth_m.mean())
+        stats_text = f"Depth: {min_m:.1f}-{max_m:.1f}m (avg {mean_m:.1f}m)"
+        cv2.putText(output, stats_text, (10, height - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     # Resize depth float map to display frame dimensions for cursor readout.
     # For side-by-side mode, the depth map covers only the right half.
@@ -122,15 +237,34 @@ def app_callback(element, buffer, user_data):
 
     # Send both display frame and depth map through the queue.
     # We pickle-serialize to avoid issues with multiprocessing Queue and numpy arrays.
+    frame_count = user_data.get_count()
     user_data.set_frame(pickle.dumps((output, depth_resized)))
 
-    # Print depth stats periodically
-    frame_count = user_data.get_count()
-    if frame_count % 30 == 0:
-        hailo_logger.info(
-            "Frame %d | Depth min=%.3f max=%.3f mean=%.3f",
-            frame_count, d_min, d_max, depth.mean(),
+    # Export depth data (uses frame_count already assigned above)
+    if user_data.export_depth:
+        if metric_depth_m is not None:
+            export_data = metric_depth_m
+            suffix = "metric"
+        else:
+            export_data = depth
+            suffix = "relative"
+        np.save(
+            os.path.join(user_data.export_depth, f"depth_{suffix}_{frame_count:06d}.npy"),
+            export_data,
         )
+
+    # Print depth stats periodically
+    if frame_count % 30 == 0:
+        if metric_depth_m is not None:
+            hailo_logger.info(
+                "Frame %d | Metric depth min=%.2fm max=%.2fm mean=%.2fm",
+                frame_count, metric_depth_m.min(), metric_depth_m.max(), metric_depth_m.mean(),
+            )
+        else:
+            hailo_logger.info(
+                "Frame %d | Depth min=%.3f max=%.3f mean=%.3f",
+                frame_count, d_min, d_max, depth.mean(),
+            )
 
 
 def display_depth_frame(user_data):
@@ -206,7 +340,7 @@ def main():
     parser.add_argument(
         "--display-mode",
         type=str,
-        choices=["depth", "side-by-side", "overlay"],
+        choices=["depth", "raw", "side-by-side", "overlay", "metric"],
         default="depth",
         help="Display mode (default: depth)",
     )
@@ -223,6 +357,50 @@ def main():
         default=0.5,
         help="Blend alpha for overlay mode (0.0-1.0, default: 0.5)",
     )
+    parser.add_argument(
+        "--depth-mode",
+        type=str,
+        choices=["relative", "metric"],
+        default="relative",
+        help="Depth output mode: relative (unitless) or metric (meters) (default: relative)",
+    )
+    parser.add_argument(
+        "--scene-type",
+        type=str,
+        choices=["indoor", "outdoor"],
+        default="indoor",
+        help="Scene type for metric depth estimation (default: indoor)",
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=float,
+        default=None,
+        help="Maximum depth in meters (overrides scene-type default). Indoor=20m, outdoor=80m.",
+    )
+    parser.add_argument(
+        "--calibrate-ref",
+        type=str,
+        default=None,
+        help="Calibrate with known reference: 'RELATIVE_DEPTH:REAL_METERS' (e.g., '15.3:2.5')",
+    )
+    parser.add_argument(
+        "--export-depth",
+        type=str,
+        default=None,
+        help="Directory to export metric depth frames as .npy files",
+    )
+    parser.add_argument(
+        "--temporal-alpha",
+        type=float,
+        default=0.4,
+        help="Temporal smoothing factor (0.0=off, 0.9=very smooth, default: 0.4)",
+    )
+    parser.add_argument(
+        "--max-clip",
+        type=float,
+        default=10.0,
+        help="Clip depth values beyond this distance in meters (removes far-end outliers, default: 10.0). Set to 0 to disable.",
+    )
 
     # Pre-parse to get custom args for callback setup
     args, _ = parser.parse_known_args()
@@ -231,6 +409,13 @@ def main():
         display_mode=args.display_mode,
         colormap_name=args.colormap,
         alpha=args.alpha,
+        depth_mode=args.depth_mode,
+        scene_type=args.scene_type,
+        max_depth=args.max_depth,
+        calibrate_ref=args.calibrate_ref,
+        export_depth=args.export_depth,
+        temporal_alpha=args.temporal_alpha,
+        max_clip=args.max_clip,
     )
     app = GStreamerDepthAnythingApp(app_callback, user_data, parser=parser)
 
@@ -253,8 +438,10 @@ def main():
         app.run()
     finally:
         user_data.running = False
-        display_process.terminate()
-        display_process.join()
+        display_process.join(timeout=2)
+        if display_process.is_alive():
+            display_process.terminate()
+            display_process.join()
 
 
 if __name__ == "__main__":

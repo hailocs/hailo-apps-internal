@@ -277,6 +277,9 @@ def scan_contributions() -> list[dict]:
 def scan_community_apps() -> list[dict]:
     """Scan all community apps and return metadata.
 
+    Recursively searches community/apps/ for directories containing app.yaml,
+    handling the nested structure (pipeline_apps/, standalone_apps/, gen_ai_apps/).
+
     Returns:
         List of dicts with path, manifest, validity info.
     """
@@ -284,24 +287,17 @@ def scan_community_apps() -> list[dict]:
     if not COMMUNITY_APPS_DIR.exists():
         return results
 
-    for app_dir in sorted(COMMUNITY_APPS_DIR.iterdir()):
-        if not app_dir.is_dir() or app_dir.name.startswith("."):
-            continue
-        if app_dir.name == "README.md":
-            continue
-
-        manifest_path = app_dir / "app.yaml"
+    # Recursively find all app.yaml manifests
+    for manifest_path in sorted(COMMUNITY_APPS_DIR.rglob("app.yaml")):
+        app_dir = manifest_path.parent
         manifest = {}
         errors = []
 
-        if manifest_path.exists():
-            try:
-                import yaml
-                manifest = yaml.safe_load(manifest_path.read_text()) or {}
-            except Exception as e:
-                errors.append(f"Invalid app.yaml: {e}")
-        else:
-            errors.append("Missing app.yaml manifest")
+        try:
+            import yaml
+            manifest = yaml.safe_load(manifest_path.read_text()) or {}
+        except Exception as e:
+            errors.append(f"Invalid app.yaml: {e}")
 
         # Check required files
         main_py = app_dir / f"{app_dir.name}.py"
@@ -309,8 +305,6 @@ def scan_community_apps() -> list[dict]:
             errors.append(f"Missing main file: {app_dir.name}.py")
         if not (app_dir / "README.md").exists():
             errors.append("Missing README.md")
-        if not (app_dir / "__init__.py").exists():
-            errors.append("Missing __init__.py")
 
         results.append({
             "path": app_dir,
@@ -319,6 +313,27 @@ def scan_community_apps() -> list[dict]:
             "errors": errors,
             "is_valid": len(errors) == 0,
         })
+
+    # Also scan for apps WITHOUT app.yaml (legacy) — just list them as invalid
+    for child in sorted(COMMUNITY_APPS_DIR.iterdir()):
+        if not child.is_dir() or child.name.startswith((".","_")):
+            continue
+        # Check type subdirs (pipeline_apps/, standalone_apps/, gen_ai_apps/)
+        if child.name in ("pipeline_apps", "standalone_apps", "gen_ai_apps"):
+            for app_dir in sorted(child.iterdir()):
+                if not app_dir.is_dir() or app_dir.name.startswith((".","_")):
+                    continue
+                # Skip if already found via app.yaml
+                if any(r["path"] == app_dir for r in results):
+                    continue
+                results.append({
+                    "path": app_dir,
+                    "name": app_dir.name,
+                    "manifest": {},
+                    "errors": ["Missing app.yaml manifest"],
+                    "is_valid": False,
+                })
+
     return results
 
 

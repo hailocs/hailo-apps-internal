@@ -121,7 +121,7 @@ class GStreamerDepthAnythingApp(GStreamerApp):
             parser.add_argument(
                 "--display-mode",
                 type=str,
-                choices=["depth", "side-by-side", "overlay"],
+                choices=["depth", "side-by-side", "overlay", "metric"],
                 default="depth",
                 help="Display mode (default: depth)",
             )

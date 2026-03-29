@@ -18,7 +18,6 @@ Platform-specific configurations (`.github/`, `.claude/`, `.cursor/`) are **gene
 ├── contextual-rules/                  ← File-pattern-triggered context rules
 ├── prompts/                           ← Build prompt templates
 ├── templates/                         ← Scaffold templates for new apps (TODO)
-├── examples/                          ← Minimal runnable examples (TODO)
 └── scripts/                           ← Generator & validation scripts
 ```
 
@@ -117,13 +116,13 @@ Platform-neutral agent definitions. The generator converts these to platform-spe
 
 | File | Description |
 |---|---|
-| `hailo-app-builder.md` | Master router — classifies user request and routes to specialist |
-| `hailo-vlm-builder.md` | VLM app builder specialist |
-| `hailo-pipeline-builder.md` | GStreamer pipeline app builder specialist |
-| `hailo-standalone-builder.md` | Standalone inference app builder specialist |
-| `hailo-llm-builder.md` | LLM chat app builder specialist |
-| `hailo-agent-builder.md` | Agent with tool calling builder specialist |
-| `hailo-voice-builder.md` | Voice assistant builder specialist |
+| `hl-app-builder.md` | Master router — classifies user request and routes to specialist |
+| `hl-vlm-builder.md` | VLM app builder specialist |
+| `hl-pipeline-builder.md` | GStreamer pipeline app builder specialist |
+| `hl-standalone-builder.md` | Standalone inference app builder specialist |
+| `hl-llm-builder.md` | LLM chat app builder specialist |
+| `hl-agent-builder.md` | Agent with tool calling builder specialist |
+| `hl-voice-builder.md` | Voice assistant builder specialist |
 
 ### Neutral Format
 

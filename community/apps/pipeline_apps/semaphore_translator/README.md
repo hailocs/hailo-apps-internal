@@ -4,7 +4,7 @@ Real-time semaphore flag signal translation using body pose estimation. The app 
 
 ## Prerequisites
 
-- Hailo-8 accelerator
+- Hailo-8, Hailo-8L, or Hailo-10H accelerator
 - YOLOv8 pose model (uses the same model as `pose_estimation`)
 - Compiled postprocess plugins (`hailo-compile-postprocess`)
 
