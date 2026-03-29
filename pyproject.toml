@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hailo-apps"
-version = "25.12.0"
+version = "26.03.0"
 description = "Hailo AI applications and pipelines package"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    {name = "Hailo"},
+    { name = "Hailo" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
 ]
 dependencies = [
     # Core dependencies
@@ -25,6 +25,7 @@ dependencies = [
     "Pillow",
     "lancedb",
     "tokenizers",
+
     # Dependencies from hace-internal (tracker, etc.)
     "loguru",
     "scipy>=1.9.3",
@@ -34,7 +35,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Development tools - install with: pip install -e ".[dev]"
 dev = [
     "ruff>=0.5.7",
     "pre-commit>=3.7.0",
@@ -42,15 +42,21 @@ dev = [
     "pytest-timeout>=2.0.0",
 ]
 
-# Gen-AI dependencies (voice assistant, LLM, embeddings) - install with: pip install -e ".[gen-ai]"
 gen-ai = [
     "PyAudio",
     "piper-tts<=1.3.0",
     "sounddevice==0.5.1",
     "webrtcvad-wheels",
+    "requests",
+    "psutil",
+    "soundfile",
+    "openwakeword",
+    "geopy",
+    "json-repair",
+    "flask",
+    "pydantic",
 ]
 
-# OCR dependencies - install with: pip install -e ".[ocr]"
 ocr = [
     "paddlepaddle",
     "shapely",
@@ -58,14 +64,16 @@ ocr = [
     "symspellpy",
 ]
 
-# Speech recognition (Whisper) dependencies - install with: pip install -e ".[speech-rec]"
 speech-rec = [
     "transformers==4.50.1",
     "sounddevice==0.5.1",
     "torch==2.6.0",
-    "torchvision==0.21.0",
-    "streamlit",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hailo-ai/hailo-apps"
+Repository = "https://github.com/hailo-ai/hailo-apps"
+Issues = "https://github.com/hailo-ai/hailo-apps/issues"
 
 [project.scripts]
 get-usb-camera =            "hailo_apps.python.core.common.camera_utils:main"
@@ -116,43 +124,36 @@ include = ["hailo_apps*", "local_resources*"]
 [tool.ruff]
 target-version = "py310"
 line-length = 100
-
-# Optional: keep Ruff off non-Python/third-party dirs
 exclude = [
-  ".git", ".hg", ".mypy_cache", ".ruff_cache", ".venv", "venv", "build", "dist",
-  "__pycache__", "site-packages",
-  "hailo_apps/**/resources/**",
-  "hailo_apps/**/cpp/**",
+    ".git", ".hg", ".mypy_cache", ".ruff_cache", ".venv", "venv", "build", "dist",
+    "__pycache__", "site-packages",
+    "hailo_apps/**/resources/**",
+    "hailo_apps/**/cpp/**",
 ]
 
 [tool.ruff.format]
 indent-style = "space"
-quote-style  = "double"
-line-ending  = "lf"
+quote-style = "double"
+line-ending = "lf"
 
 [tool.ruff.lint]
 select = [
-  "E",   # pycodestyle errors
-  "F",   # pyflakes
-  "I",   # import sorting
-  "B",   # bugbear
-  "UP",  # pyupgrade
-  "C4",  # comprehensions
-  "W",   # pycodestyle warnings
-  "RUF", # ruff-specific rules
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "C4",
+    "W",
+    "RUF",
 ]
 ignore = [
-  "E402",  # allow gi.require_version before imports
-  "F403",  # star import used
-  "F405",  # star import names undefined
-  "E501",  # line length handled by formatter
+    "E402",
+    "F403",
+    "F405",
+    "E501",
 ]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
-known-first-party  = ["hailo_apps"]
-
-# Example (use later if you want targeted ignores instead of global E402/F403/F405):
-# [tool.ruff.lint.per-file-ignores]
-# "hailo_apps/**/gstreamer/*.py" = ["E402"]
-# "**/__init__.py"               = ["F401"]
+known-first-party = ["hailo_apps"]
