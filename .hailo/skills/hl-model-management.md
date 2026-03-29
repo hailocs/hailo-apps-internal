@@ -127,3 +127,10 @@ from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 arch = detect_hailo_arch()  # Auto-detect connected hardware
 ```
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

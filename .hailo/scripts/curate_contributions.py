@@ -5,7 +5,10 @@ Curate community contributions and apps into the official .hailo/ knowledge base
 This script is the "self-learning" pipeline for hailo-apps:
 1. Scans community/contributions/ for knowledge artifacts
 2. Validates format and quality
-3. Incorporates valuable findings into .hailo/memory/ and .hailo/knowledge/
+3. Incorporates valuable findings into .hailo/ using a tiered system:
+   - Tier 1: Full append to memory/ and knowledge/ files
+   - Tier 2: Summary append to ## Community Findings sections in skill/toolset/instruction files
+   - Tier 3: Core structural files — never auto-modified
 4. Deletes curated originals (knowledge now lives in .hailo/)
 
 Also handles community app promotion:
@@ -42,7 +45,7 @@ HAILO_KNOWLEDGE_DIR = REPO_ROOT / ".hailo" / "knowledge"
 DEFINES_PATH = REPO_ROOT / "hailo_apps" / "python" / "core" / "common" / "defines.py"
 RESOURCES_CONFIG_PATH = REPO_ROOT / "hailo_apps" / "config" / "resources_config.yaml"
 
-# Category → target .hailo/ file mapping
+# Category → Tier 1 target .hailo/ file mapping (full content append)
 CATEGORY_TARGET_MAP = {
     "pipeline-optimization": "memory/pipeline_optimization.md",
     "bottleneck-patterns": "memory/pipeline_optimization.md",
@@ -50,11 +53,45 @@ CATEGORY_TARGET_MAP = {
     "hardware-config": "memory/hailo_platform_api.md",
     "model-tuning": "knowledge/best_practices.yaml",
     "general": "memory/common_pitfalls.md",
+    "camera-display": "memory/camera_and_display.md",
+    "voice-audio": "memory/gen_ai_patterns.md",
+}
+
+# Category → Tier 2 target files (summary append to ## Community Findings section)
+# These files get a short pointer to the full entry in the Tier 1 memory file.
+TIER2_TARGET_MAP = {
+    "pipeline-optimization": [
+        "skills/hl-build-pipeline-app.md",
+        "instructions/gstreamer-pipelines.md",
+        "toolsets/gstreamer-elements.md",
+    ],
+    "bottleneck-patterns": [
+        "skills/hl-build-pipeline-app.md",
+    ],
+    "gen-ai-recipes": [
+        "skills/hl-build-vlm-app.md",
+        "skills/hl-build-llm-app.md",
+        "toolsets/gen-ai-utilities.md",
+    ],
+    "hardware-config": [
+        "toolsets/hailo-sdk.md",
+    ],
+    "model-tuning": [
+        "skills/hl-model-management.md",
+    ],
+    "general": [],  # Tier 1 only
+    "camera-display": [
+        "skills/hl-camera.md",
+    ],
+    "voice-audio": [
+        "skills/hl-build-voice-app.md",
+        "toolsets/gen-ai-utilities.md",
+    ],
 }
 
 # Required frontmatter fields
 REQUIRED_FIELDS = {"title", "category", "contributor", "date", "tags"}
-OPTIONAL_FIELDS = {"hailo_arch", "app", "reproducibility"}
+OPTIONAL_FIELDS = {"hailo_arch", "app", "reproducibility", "source_agent"}
 
 # Required content sections
 REQUIRED_SECTIONS = {"Summary", "Context", "Finding", "Solution", "Results", "Applicability"}
@@ -248,6 +285,82 @@ def append_to_target(target_path: Path, formatted_content: str):
         f.write("\n")
 
 
+def format_contribution_summary(fm: dict, body: str, tier1_target: str) -> str:
+    """Format a contribution as a short Tier 2 summary for Community Findings sections.
+
+    Args:
+        fm: Parsed frontmatter dictionary.
+        body: Markdown body content.
+        tier1_target: Relative path to the Tier 1 memory file for cross-reference.
+
+    Returns:
+        Short formatted markdown block (3-5 lines).
+    """
+    title = fm.get("title", "Untitled")
+    date = fm.get("date", "Unknown")
+
+    # Extract Summary section for the one-liner
+    summary_match = re.search(r"^## Summary\s*\n(.+?)(?=^## |\Z)", body, re.MULTILINE | re.DOTALL)
+    if summary_match:
+        summary = summary_match.group(1).strip().split("\n")[0][:150]
+    else:
+        summary = title[:150]
+
+    lines = [
+        f"### {title} ({date})",
+        summary,
+        f"**Full details:** See `{tier1_target}` → \"{title}\"",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def append_to_community_findings(target_path: Path, summary_content: str, title: str):
+    """Append a summary to the ## Community Findings section of a file.
+
+    Finds the '## Community Findings' heading and appends after the sentinel
+    comment, before any next top-level heading or EOF.
+
+    Args:
+        target_path: Path to the skill/toolset/instruction file.
+        summary_content: Short formatted summary block.
+        title: Title for duplicate checking.
+    """
+    if not target_path.exists():
+        return
+
+    content = target_path.read_text(encoding="utf-8")
+
+    # Find the Community Findings section
+    cf_marker = "## Community Findings"
+    if cf_marker not in content:
+        return  # No section to append to — skip silently
+
+    # Check for duplicate in the Community Findings section only
+    cf_start = content.index(cf_marker)
+    cf_section = content[cf_start:]
+    headers = re.findall(r"^###\s+(.+)$", cf_section, re.MULTILINE)
+    for header in headers:
+        ratio = SequenceMatcher(None, title.lower(), header.lower()).ratio()
+        if ratio > 0.7:
+            return  # Duplicate — skip
+
+    # Find insertion point: end of file or just before the next ## heading
+    # after Community Findings
+    after_cf = content[cf_start + len(cf_marker):]
+    next_h2 = re.search(r"^## (?!Community Findings)", after_cf, re.MULTILINE)
+    if next_h2:
+        insert_pos = cf_start + len(cf_marker) + next_h2.start()
+        content = content[:insert_pos] + summary_content + "\n" + content[insert_pos:]
+    else:
+        # Append at end of file
+        if not content.endswith("\n\n"):
+            content += "\n"
+        content += summary_content + "\n"
+
+    target_path.write_text(content, encoding="utf-8")
+
+
 def scan_contributions() -> list[dict]:
     """Scan all contribution files and return metadata.
 
@@ -350,9 +463,12 @@ def cmd_scan():
             title = c["frontmatter"].get("title", "Untitled")
             category = c["category"]
             target = CATEGORY_TARGET_MAP.get(category, "?")
+            tier2 = TIER2_TARGET_MAP.get(category, [])
             print(f"  [{status}] {C.BOLD}{title}{C.RESET}")
             print(f"         File:     {c['relative']}")
             print(f"         Category: {category} → .hailo/{target}")
+            if tier2:
+                print(f"         Tier 2:   {', '.join(tier2)}")
             if not c["is_valid"]:
                 for err in c["errors"]:
                     print(f"         {C.RED}Error: {err}{C.RESET}")
@@ -447,7 +563,19 @@ def cmd_curate(auto: bool = False):
             decision = input(f"\n  {C.BOLD}Accept? [y]es / [n]o / [s]kip: {C.RESET}").strip().lower()
 
         if decision in ("y", "yes", ""):
+            # Tier 1: Full content to memory/knowledge file
             append_to_target(target_path, formatted)
+
+            # Tier 2: Short summary to Community Findings sections
+            tier2_targets = TIER2_TARGET_MAP.get(c["category"], [])
+            tier1_rel = CATEGORY_TARGET_MAP.get(c["category"], "")
+            if tier2_targets:
+                summary = format_contribution_summary(c["frontmatter"], c["body"], tier1_rel)
+                for t2_rel in tier2_targets:
+                    t2_path = REPO_ROOT / ".hailo" / t2_rel
+                    append_to_community_findings(t2_path, summary, title)
+                    print(f"  {C.DIM}  → Tier 2 summary: .hailo/{t2_rel}{C.RESET}")
+
             c["path"].unlink()
             print(f"  {C.GREEN}✓ Curated into .hailo/{target_rel} — original deleted{C.RESET}")
             curated += 1
@@ -471,10 +599,22 @@ def cmd_promote(app_name: str):
     Args:
         app_name: Name of the community app to promote.
     """
+    # Search for app in nested category dirs (community/apps/<type>/<name>/)
     app_dir = COMMUNITY_APPS_DIR / app_name
     if not app_dir.exists():
-        print(f"{C.RED}Error: community/apps/{app_name}/ does not exist{C.RESET}")
-        sys.exit(1)
+        # Try searching subdirectories (pipeline_apps/, gen_ai_apps/, standalone_apps/)
+        candidates = list(COMMUNITY_APPS_DIR.glob(f"*/{app_name}"))
+        if len(candidates) == 1:
+            app_dir = candidates[0]
+        elif len(candidates) > 1:
+            print(f"{C.RED}Error: Multiple matches for '{app_name}':{C.RESET}")
+            for c in candidates:
+                print(f"  - {c.relative_to(REPO_ROOT)}")
+            sys.exit(1)
+        else:
+            print(f"{C.RED}Error: community/apps/{app_name}/ does not exist{C.RESET}")
+            print(f"  Searched: community/apps/{app_name}/ and community/apps/*/{app_name}/")
+            sys.exit(1)
 
     # Load manifest
     manifest_path = app_dir / "app.yaml"
@@ -506,11 +646,11 @@ def cmd_promote(app_name: str):
     print(f"  To:   {target_dir.relative_to(REPO_ROOT)}/")
     print(f"  Type: {app_type}")
 
-    # Step 1: Validate with existing validation script
+    # Step 1: Validate with existing validation script (including smoke tests)
     validate_script = REPO_ROOT / ".hailo" / "scripts" / "validate_app.py"
     if validate_script.exists():
         print(f"\n  Running validation...")
-        ret = os.system(f"python3 {validate_script} {app_dir}")
+        ret = os.system(f"python3 {validate_script} {app_dir} --smoke-test")
         if ret != 0:
             print(f"\n  {C.RED}Validation failed. Fix issues before promoting.{C.RESET}")
             sys.exit(1)
@@ -534,8 +674,16 @@ def cmd_promote(app_name: str):
 
     defines_content = DEFINES_PATH.read_text(encoding="utf-8")
     if app_const not in defines_content:
-        # Find the Gen AI app defaults section and append
-        insert_marker = "# Gen AI app defaults"
+        # Find the appropriate section based on app type
+        section_markers = {
+            "gen_ai": "# Gen AI app defaults",
+            "pipeline": "# Pipeline app defaults",
+            "standalone": "# Standalone app defaults",
+        }
+        insert_marker = section_markers.get(app_type, "# Gen AI app defaults")
+        if insert_marker not in defines_content:
+            # Fall back to Gen AI section if type-specific section doesn't exist
+            insert_marker = "# Gen AI app defaults"
         if insert_marker in defines_content:
             # Find the end of the Gen AI constants block
             lines = defines_content.split("\n")

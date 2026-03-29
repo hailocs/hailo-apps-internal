@@ -159,3 +159,10 @@ from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import VAD
 4. **Queue deadlocks**: Use `maxsize` on queues and `timeout` on `.get()`
 5. **Token filtering**: Filter out `<|im_end|>` tokens from VLM output
 6. **Environment**: Set `QT_QPA_PLATFORM=xcb` before importing OpenCV
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

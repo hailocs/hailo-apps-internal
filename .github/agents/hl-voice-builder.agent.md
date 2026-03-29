@@ -111,7 +111,7 @@ askQuestions:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.github/instructions/skills/add-voice-mode.md` — Voice integration skill
+- `.github/skills/hl-build-voice-app.md` — Voice integration skill
 - `.github/instructions/gen-ai-development.md` — Gen AI development patterns
 - `.github/instructions/coding-standards.md` — Code conventions
 - `.github/toolsets/gen-ai-utilities.md` — Voice processing reference

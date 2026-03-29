@@ -119,3 +119,10 @@ def init_camera(source, source_type):
 - Always convert to RGB before sending to VLM: `cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)`
 - VLM expects **336×336** images — use `Backend.convert_resize_image()`
 - Camera release is critical — always clean up in `finally` blocks
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

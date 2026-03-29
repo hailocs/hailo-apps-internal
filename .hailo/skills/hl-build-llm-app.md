@@ -152,3 +152,10 @@ with llm.generate(prompt=prompt, temperature=0.1, max_generated_tokens=200) as g
 print()
 llm.clear_context()
 ```
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

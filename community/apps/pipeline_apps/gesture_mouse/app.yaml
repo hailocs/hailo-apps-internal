@@ -1,0 +1,12 @@
+name: gesture_mouse
+title: Gesture Mouse Control
+description: Controls the mouse cursor using hand gestures detected via palm detection and hand landmark models.
+type: pipeline
+entry_point: gesture_mouse.py
+models:
+  - palm_detection_lite.hef
+  - hand_landmark_lite.hef
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h

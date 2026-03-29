@@ -119,3 +119,10 @@ tee name=t ! queue ! branch1 t. ! queue ! branch2
 | `USER_CALLBACK_PIPELINE()` | identity (with Python callback) |
 | `TRACKER_PIPELINE()` | hailotracker |
 | `QUEUE()` | queue with configurable buffer sizes |
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

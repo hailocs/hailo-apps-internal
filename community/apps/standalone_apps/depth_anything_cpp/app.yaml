@@ -1,0 +1,14 @@
+name: depth_anything_cpp
+title: Depth Anything C++ Standalone
+description: C++ standalone depth estimation app using HailoRT directly with OpenCV.
+type: standalone
+language: cpp
+entry_point: depth_anything.cpp
+build: ./build.sh
+models:
+  - depth_anything_v1.hef
+  - depth_anything_v2.hef
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h

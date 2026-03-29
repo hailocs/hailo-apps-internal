@@ -1,66 +1,72 @@
 # Community Apps
 
-Example applications built with the `/hl-build-app` skill and community contributors. These live separately from the core framework (`hailo-apps/hailo_apps/`) to ease maintenance and merging.
+Example applications built by AI agents and community contributors. These live separately from the core framework (`hailo_apps/`) and can be promoted to official apps after review.
 
 ## Structure
 
 ```
 community/apps/
-├── pipeline_apps/       # GStreamer real-time video apps
-├── standalone_apps/     # Lightweight HailoRT-only batch apps
-└── gen_ai_apps/         # Hailo-10H GenAI apps
+├── pipeline_apps/       # GStreamer real-time video apps (8)
+├── standalone_apps/     # Lightweight HailoRT-only apps (2)
+└── gen_ai_apps/         # Hailo-10H GenAI apps (0 — coming soon)
 ```
 
 ## Running
 
-All apps use the same framework as main apps. Run from the repo root:
+Each app includes a `run.sh` wrapper. Run from the repo root:
 
 ```bash
-# Pipeline app
-python community/apps/pipeline_apps/<app_name>/<app_name>.py --input usb
+# Via run.sh (recommended)
+./community/apps/pipeline_apps/depth_anything/run.sh --input usb
 
-# Standalone app
-python community/apps/standalone_apps/<app_name>/<app_name>.py --input path/to/video.mp4
-
-# GenAI app (Hailo-10H only)
-python community/apps/gen_ai_apps/<app_name>/<app_name>.py
+# Or directly via Python
+python community/apps/pipeline_apps/depth_anything/depth_anything.py --input usb
 ```
 
 ## Apps
 
-### Pipeline Apps (14)
-| App | Description | Template |
-|-----|-------------|----------|
-| crowd_counting | Count people crossing a virtual line | detection |
-| cat_food_monitor | Identify cats at food bowl with training | face_recognition |
-| semaphore_translator | Translate semaphore flag signals from pose | pose_estimation |
-| room_security_monitor | Face recognition door access with alarm | face_recognition |
-| parking_lot_occupancy | Zone-based vehicle counting | detection |
-| baby_sleep_monitor | Infant sleep position safety alerts | pose_estimation |
-| retail_shelf_analyzer | Tiled small-object counting on shelves | tiling |
-| workout_rep_counter | Exercise rep counting via joint angles | pose_estimation |
-| ppe_safety_checker | Zero-shot PPE compliance via CLIP | clip |
-| multi_entrance_tracker | Cross-camera face re-ID | reid_multisource |
-| depth_proximity_alert | Depth-based closeness warning | depth |
-| multi_camera_store_monitor | 3-camera retail surveillance | multisource |
-| license_plate_reader | Detect plates + OCR text | paddle_ocr |
-| gesture_mouse | Hand gesture mouse control | gesture_detection |
+### Pipeline Apps (8)
 
-### Standalone Apps (5)
-| App | Description | Template |
-|-----|-------------|----------|
-| traffic_light_detector | Classify traffic light state from video | object_detection |
-| document_text_extractor | Batch OCR from document images | paddle_ocr |
-| aerial_object_counter | Rotated bbox counting for drone images | oriented_object_detection |
-| photo_enhancer | Batch 2x upscale with Real-ESRGAN | super_resolution |
-| lane_departure_warning | Lane departure alerts from dashcam | lane_detection |
+| App | Description | Entry Point |
+|-----|-------------|-------------|
+| depth_anything | Monocular depth estimation using Depth Anything v1/v2 | `depth_anything.py` |
+| gesture_detection | Two-stage hand gesture detection (palm + landmarks) | `gesture_detection.py` |
+| gesture_mouse | Hand gesture-based mouse cursor control | `gesture_mouse.py` |
+| hotdog_not_hotdog | Zero-shot "hotdog or not" classification via CLIP | `hotdog_not_hotdog.py` |
+| line_crossing_counter | Count objects crossing a virtual line | `line_crossing_counter.py` |
+| room_security_monitor | Face recognition with enrollment UI for room access | `room_security_monitor.py` |
+| semaphore_translator | Translate flag semaphore arm positions to letters | `semaphore_translator.py` |
+| yolo_world | Open-vocabulary detection with text prompts | `yolo_world.py` |
 
-### GenAI Apps (2)
-| App | Description | Template |
-|-----|-------------|----------|
-| visual_quality_inspector | VLM defect description for manufacturing | vlm_chat |
-| voice_controlled_camera | Voice commands to detect and describe | voice_assistant |
+### Standalone Apps (2)
+
+| App | Description | Entry Point |
+|-----|-------------|-------------|
+| depth_anything_cpp | C++ depth estimation using HailoRT + OpenCV | `depth_anything.cpp` |
+| depth_anything_python | Python depth estimation using HailoInfer + OpenCV | `depth_anything_standalone.py` |
+
+## App Manifest
+
+Each app includes an `app.yaml` manifest:
+
+```yaml
+name: my_app
+title: My App Title
+description: What it does.
+type: pipeline        # pipeline | standalone | gen_ai
+entry_point: my_app.py
+models:
+  - model_name.hef
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h
+```
 
 ## Building New Apps
 
-Use `/hl-build-app` to create new apps with AI assistance, or follow the skill docs in `.hailo/skills/hl-build-app.md`. New apps are scaffolded in this directory automatically.
+Use the AI agent skills in `.hailo/skills/` to scaffold new apps. New apps are placed in this directory automatically and can be promoted to official apps via:
+
+```bash
+python .hailo/scripts/curate_contributions.py --promote <app_name>
+```

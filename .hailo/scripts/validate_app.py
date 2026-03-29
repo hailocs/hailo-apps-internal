@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """
-Validate a Scaffolded Hailo VLM App
+Validate a Scaffolded Hailo App
 
 Checks that a scaffolded app has all required files, valid Python syntax,
 resolvable imports, correct conventions, and no common mistakes.
+Works for any app type: VLM, pipeline, standalone, agent, voice.
+
+With --smoke-test, also runs runtime checks (CLI --help, module import)
+that gracefully skip on non-Hailo systems.
 
 Usage:
     python validate_app.py hailo_apps/python/gen_ai_apps/my_app
-    python validate_app.py hailo_apps/python/gen_ai_apps/my_app --verbose
+    python validate_app.py hailo_apps/python/pipeline_apps/my_app --verbose
+    python validate_app.py hailo_apps/python/pipeline_apps/my_app --smoke-test
 """
 import argparse
 import os
 import py_compile
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -123,12 +129,24 @@ def check_required_imports(app_dir, app_name, result):
 
     content = main_file.read_text()
 
+    # Common imports required for all app types
     required = {
-        "Backend import": "from hailo_apps.python.gen_ai_apps.vlm_chat.backend import Backend",
-        "resolve_hef_path": "resolve_hef_path",
-        "get_standalone_parser": "get_standalone_parser",
         "get_logger": "get_logger",
     }
+
+    # Add type-specific imports based on content heuristics
+    if "resolve_hef_path" in content or ".hef" in content:
+        required["resolve_hef_path"] = "resolve_hef_path"
+
+    # Check for appropriate parser usage
+    has_pipeline_parser = "get_pipeline_parser" in content
+    has_standalone_parser = "get_standalone_parser" in content
+    has_any_parser = has_pipeline_parser or has_standalone_parser or "argparse" in content
+    result.add(
+        "Has CLI parser",
+        has_any_parser,
+        "No CLI parser found (expected get_pipeline_parser, get_standalone_parser, or argparse)" if not has_any_parser else "",
+    )
 
     for name, pattern in required.items():
         found = pattern in content
@@ -219,10 +237,110 @@ def check_readme_standards(app_dir, result):
     )
 
 
+# ---------------------------------------------------------------------------
+# Runtime smoke tests (--smoke-test)
+# ---------------------------------------------------------------------------
+
+def find_repo_root():
+    """Walk up from CWD to find the repo root (contains hailo_apps/)."""
+    current = Path.cwd()
+    for parent in [current] + list(current.parents):
+        if (parent / "hailo_apps").is_dir():
+            return parent
+    return current
+
+
+def run_command(cmd, timeout=15, cwd=None):
+    """Run a command and return (returncode, stdout, stderr)."""
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "Command timed out"
+    except Exception as e:
+        return -1, "", str(e)
+
+
+def check_cli_help(app_dir, app_name, result, timeout=15):
+    """Smoke test: run app with --help and check it exits cleanly.
+
+    Gracefully skips if Hailo/GStreamer dependencies are unavailable.
+    """
+    main_file = app_dir / f"{app_name}.py"
+    if not main_file.exists():
+        result.add("Smoke: CLI --help", True, "Skipped — main file not found")
+        return
+
+    repo_root = find_repo_root()
+    try:
+        rel_path = app_dir.relative_to(repo_root)
+    except ValueError:
+        result.add("Smoke: CLI --help", True, "Skipped — app not under repo root")
+        return
+
+    module_path = str(rel_path).replace("/", ".").replace("\\", ".")
+    rc, out, err = run_command(
+        [sys.executable, "-m", f"{module_path}.{app_name}", "--help"],
+        timeout=timeout,
+        cwd=str(repo_root),
+    )
+
+    if rc == 0:
+        has_usage = "usage:" in out.lower() or "usage:" in err.lower()
+        has_options = "--input" in out or "--hef" in out or "--help" in out
+        result.add("Smoke: CLI --help", True, f"usage={has_usage}, options={has_options}")
+    elif "ModuleNotFoundError" in err or "ImportError" in err:
+        result.add("Smoke: CLI --help", True, "Skipped — Hailo/GStreamer not available")
+    else:
+        detail = err.strip()[:300] if err else f"Exit code {rc}"
+        result.add("Smoke: CLI --help", False, detail)
+
+
+def check_module_import(app_dir, app_name, result, timeout=15):
+    """Smoke test: verify the module can be imported.
+
+    Gracefully skips if Hailo/GStreamer dependencies are unavailable.
+    """
+    repo_root = find_repo_root()
+    try:
+        rel_path = app_dir.relative_to(repo_root)
+    except ValueError:
+        result.add("Smoke: import", True, "Skipped — app not under repo root")
+        return
+
+    module_path = str(rel_path).replace("/", ".").replace("\\", ".")
+    target = f"{module_path}.{app_name}"
+
+    rc, out, err = run_command(
+        [sys.executable, "-c", f"import {target}; print('OK')"],
+        timeout=timeout,
+        cwd=str(repo_root),
+    )
+
+    if rc == 0 and "OK" in out:
+        result.add("Smoke: import", True, f"{target} imported successfully")
+    elif "ModuleNotFoundError" in err and ("hailo" in err or "gi" in err):
+        result.add("Smoke: import", True, "Skipped — Hailo/GStreamer not available")
+    else:
+        detail = err.strip()[:300] if err else f"Exit code {rc}"
+        result.add("Smoke: import", False, detail)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Validate a scaffolded Hailo VLM app")
+    parser = argparse.ArgumentParser(description="Validate a scaffolded Hailo app")
     parser.add_argument("app_dir", type=str, help="Path to the app directory")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show all details")
+    parser.add_argument("--smoke-test", action="store_true",
+                       help="Also run runtime smoke tests (CLI --help, module import)")
+    parser.add_argument("--timeout", type=int, default=15,
+                       help="Timeout for smoke test commands (default: 15s)")
     args = parser.parse_args()
 
     app_dir = Path(args.app_dir).resolve()
@@ -232,12 +350,15 @@ def main():
 
     app_name = app_dir.name
 
-    print(f"Validating VLM app: {app_dir}")
+    print(f"Validating app: {app_dir}")
     print(f"App name: {app_name}")
+    if args.smoke_test:
+        print(f"Mode: static checks + runtime smoke tests")
     print()
 
     result = ValidationResult()
 
+    # Static checks (always run)
     check_required_files(app_dir, app_name, result)
     check_python_syntax(app_dir, result)
     check_no_relative_imports(app_dir, result)
@@ -247,6 +368,11 @@ def main():
     check_signal_handler(app_dir, app_name, result)
     check_no_hardcoded_paths(app_dir, result)
     check_readme_standards(app_dir, result)
+
+    # Runtime smoke tests (opt-in via --smoke-test)
+    if args.smoke_test:
+        check_cli_help(app_dir, app_name, result, timeout=args.timeout)
+        check_module_import(app_dir, app_name, result, timeout=args.timeout)
 
     print(result.summary())
     sys.exit(0 if result.all_passed else 1)

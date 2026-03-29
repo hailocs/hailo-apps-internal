@@ -59,7 +59,7 @@ Present plan, then:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.hailo/skills/create-pipeline-app.md` — Pipeline app skill
+- `.hailo/skills/hl-build-pipeline-app.md` — Pipeline app skill
 - `.hailo/instructions/gstreamer-pipelines.md` — Pipeline composition patterns
 - `.hailo/instructions/coding-standards.md` — Code conventions
 - `.hailo/toolsets/gstreamer-elements.md` — Available GStreamer elements

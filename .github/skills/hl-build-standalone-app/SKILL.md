@@ -156,3 +156,10 @@ python -m hailo_apps.python.standalone_apps.my_standalone_app.my_standalone_app 
 6. **Cleanup**: Always `hailo_infer.close()` in finally block
 7. **Stop event**: `threading.Event()` for graceful shutdown
 8. **Signal handler**: Register SIGINT to set stop_event
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

@@ -59,7 +59,7 @@ Present plan, then:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.hailo/skills/create-standalone-app.md` — Standalone app skill
+- `.hailo/skills/hl-build-standalone-app.md` — Standalone app skill
 - `.hailo/instructions/coding-standards.md` — Code conventions
 - `.hailo/toolsets/core-framework-api.md` — HailoInfer, parsers, camera utils
 - `.hailo/memory/common_pitfalls.md` — Known bugs to avoid

@@ -1,0 +1,11 @@
+name: line_crossing_counter
+title: Line Crossing Counter
+description: Counts objects crossing a user-defined line in a video stream using detection and tracking.
+type: pipeline
+entry_point: line_crossing_counter.py
+models:
+  - yolo detection (via DETECTION_PIPELINE)
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h

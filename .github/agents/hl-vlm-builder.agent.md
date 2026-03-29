@@ -97,7 +97,7 @@ askQuestions:
 ### Phase 2: Load Context (AFTER approval)
 
 Now read the reference files — quickly, in parallel where possible:
-- `.github/instructions/skills/hl-build-vlm-app.md` — VLM skill with patterns and code templates
+- `.github/skills/hl-build-vlm-app.md` — VLM skill with patterns and code templates
 - `.github/instructions/coding-standards.md` — Code conventions
 - `.github/toolsets/vlm-backend-api.md` — Backend class API
 - `.github/memory/common_pitfalls.md` — Known bugs to avoid
@@ -135,9 +135,9 @@ This scanning phase is optional for simple, well-documented tasks.
 **NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`. Registration happens later during promotion.
 
 ### Phase 5: Validate
-Run the validation script to catch common mistakes:
+Run the validation script (static checks + runtime smoke tests):
 ```bash
-python .github/skills/hl-build-vlm-app/scripts/validate_app.py community/apps/<app_name>
+python .github/scripts/validate_app.py community/apps/<app_name> --smoke-test
 ```
 
 Also validate:

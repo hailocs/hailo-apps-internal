@@ -116,7 +116,7 @@ askQuestions:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.github/instructions/skills/create-pipeline-app.md` — Pipeline app skill
+- `.github/skills/hl-build-pipeline-app.md` — Pipeline app skill
 - `.github/instructions/gstreamer-pipelines.md` — Pipeline composition patterns
 - `.github/instructions/coding-standards.md` — Code conventions
 - `.github/toolsets/gstreamer-elements.md` — Available GStreamer elements

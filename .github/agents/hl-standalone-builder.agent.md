@@ -114,7 +114,7 @@ askQuestions:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.github/instructions/skills/create-standalone-app.md` — Standalone app skill
+- `.github/skills/hl-build-standalone-app.md` — Standalone app skill
 - `.github/instructions/coding-standards.md` — Code conventions
 - `.github/toolsets/core-framework-api.md` — HailoInfer, parsers, camera utils
 - `.github/memory/common_pitfalls.md` — Known bugs to avoid

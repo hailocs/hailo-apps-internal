@@ -176,3 +176,10 @@ from hailo_apps.python.core.common.defines import (
     RPI_NAME_I,    # "rpi"
 )
 ```
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

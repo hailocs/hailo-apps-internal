@@ -19,10 +19,10 @@ Read these files before making changes (paths relative to `.hailo/`):
 
 ## Additional Context (load if relevant)
 
-- If VLM: `toolsets/vlm-backend-api.md`, `instructions/skills/create-vlm-app.md`
-- If Agent: `instructions/skills/create-agent-app.md`
-- If Voice/Whisper: `instructions/skills/add-voice-mode.md`
-- If Camera: `memory/camera_and_display.md`, `instructions/skills/camera-integration.md`
+- If VLM: `toolsets/vlm-backend-api.md`, `skills/hl-build-vlm-app.md`
+- If Agent: `skills/hl-build-agent-app.md`
+- If Voice/Whisper: `skills/hl-build-voice-app.md`
+- If Camera: `memory/camera_and_display.md`, `skills/hl-camera.md`
 
 ## Key Patterns for Gen AI
 

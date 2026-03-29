@@ -163,3 +163,10 @@ All pipeline apps inherit these CLI arguments:
 - `--use-frame`: Enable numpy frame access in callback
 - `--enable-watchdog`: Auto-restart on pipeline stall
 - `--dump-dot`: Generate Graphviz pipeline diagram
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

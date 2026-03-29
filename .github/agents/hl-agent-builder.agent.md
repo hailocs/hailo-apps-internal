@@ -116,7 +116,7 @@ askQuestions:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.github/instructions/skills/create-agent-app.md` — Agent app skill
+- `.github/skills/hl-build-agent-app.md` — Agent app skill
 - `.github/instructions/gen-ai-development.md` — Gen AI development patterns
 - `.github/instructions/coding-standards.md` — Code conventions
 - `.github/toolsets/gen-ai-utilities.md` — LLM utils, tool framework

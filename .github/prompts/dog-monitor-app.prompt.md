@@ -37,9 +37,9 @@ Read ALL of these files and return a condensed context brief:
   3. .github/memory/common_pitfalls.md (bugs to avoid)
   4. .github/memory/camera_and_display.md (camera patterns)
   5. .github/memory/hailo_platform_api.md (VDevice, VLM API)
-  6. .github/instructions/skills/create-vlm-app.md (VLM app skill)
-  7. .github/instructions/skills/continuous-monitoring.md (monitoring skill)
-  8. .github/instructions/skills/event-detection.md (event parsing skill)
+  6. .github/skills/hl-build-vlm-app.md (VLM app skill)
+  7. .github/skills/hl-monitoring.md (monitoring skill)
+  8. .github/skills/hl-event-detection.md (event parsing skill)
   9. .github/toolsets/vlm-backend-api.md (Backend class API)
   10. hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py (FULL source - reference app)
   11. hailo_apps/python/gen_ai_apps/vlm_chat/backend.py (FULL source - reused module)
@@ -104,7 +104,7 @@ If either fails → fix before proceeding.
 
 ```
 runSubagent: "Build event_tracker.py for dog monitor"
-Read .github/instructions/skills/event-detection.md for the pattern.
+Read .github/skills/hl-event-detection.md for the pattern.
 
 Create hailo_apps/python/gen_ai_apps/dog_monitor_orch/event_tracker.py with:
 

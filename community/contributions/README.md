@@ -28,13 +28,24 @@ If you're not using Claude Code, you can contribute directly:
 
 ## Categories
 
-| Directory | Description |
-|-----------|-------------|
-| `pipeline-optimization/` | GStreamer pipeline tuning (queue sizes, thread counts, leaky queues) |
-| `bottleneck-patterns/` | Recurring performance patterns and root causes |
-| `model-tuning/` | Model-specific optimizations (batch sizes, scheduling) |
-| `hardware-config/` | Hardware-specific settings, architecture differences |
-| `general/` | Other insights (debugging techniques, tooling, workflows) |
+| Directory | Description | Tier 1 target | Tier 2 targets |
+|-----------|-------------|---------------|----------------|
+| `pipeline-optimization/` | GStreamer pipeline tuning (queue sizes, thread counts, leaky queues) | `memory/pipeline_optimization.md` | `hl-build-pipeline-app.md`, `gstreamer-pipelines.md`, `gstreamer-elements.md` |
+| `bottleneck-patterns/` | Recurring performance patterns and root causes | `memory/pipeline_optimization.md` | `hl-build-pipeline-app.md` |
+| `gen-ai-recipes/` | VLM/LLM patterns, multiprocessing, architecture tips | `memory/gen_ai_patterns.md` | `hl-build-vlm-app.md`, `hl-build-llm-app.md`, `gen-ai-utilities.md` |
+| `model-tuning/` | Model-specific optimizations (batch sizes, scheduling) | `knowledge/best_practices.yaml` | `hl-model-management.md` |
+| `hardware-config/` | Hardware-specific settings, architecture differences | `memory/hailo_platform_api.md` | `hailo-sdk.md` |
+| `camera-display/` | Camera init, BGR/RGB, OpenCV patterns, display setup | `memory/camera_and_display.md` | `hl-camera.md` |
+| `voice-audio/` | Whisper STT, Piper TTS, VAD, audio pipeline patterns | `memory/gen_ai_patterns.md` | `hl-build-voice-app.md`, `gen-ai-utilities.md` |
+| `general/` | Other insights (debugging techniques, tooling, workflows) | `memory/common_pitfalls.md` | *(none)* |
+
+### Tiered Curation System
+
+When `curate_contributions.py --curate` processes a contribution, it writes to two tiers:
+
+- **Tier 1 (full append):** The complete contribution is appended to the memory or knowledge file. This is the permanent record.
+- **Tier 2 (summary append):** A short 3-line summary is appended to the `## Community Findings` section in relevant skill, toolset, and instruction files, with a cross-reference to the full entry in the Tier 1 file.
+- **Tier 3 (never auto-modified):** Core structural files like `coding-standards.md`, `agent-protocols.md`, `orchestration.md` are never touched by curation.
 
 ## Contribution File Format
 
@@ -81,7 +92,9 @@ When does this pattern apply? What to look for.
 
 ### Required Fields
 
-**Frontmatter:** `title`, `category`, `date`, `contributor`, `reproducibility`
+**Frontmatter:** `title`, `category`, `date`, `contributor`, `tags`
+
+**Optional:** `hailo_arch`, `app`, `reproducibility`, `source_agent`
 
 **Body sections:** Summary, Context, Finding, Solution, Results, Applicability
 

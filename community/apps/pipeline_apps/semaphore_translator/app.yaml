@@ -1,0 +1,11 @@
+name: semaphore_translator
+title: Semaphore Translator
+description: Translates flag semaphore arm positions into letters using pose estimation.
+type: pipeline
+entry_point: semaphore_translator.py
+models:
+  - pose estimation (via POSE_ESTIMATION_PIPELINE)
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h

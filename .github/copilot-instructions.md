@@ -41,17 +41,17 @@ Based on what the task involves, read **only** the matching rows:
 
 | If the task mentions... | Read these files |
 |---|---|
-| **VLM, vision, image understanding** | `instructions/skills/create-vlm-app.md`, `toolsets/vlm-backend-api.md`, `memory/gen_ai_patterns.md` |
-| **LLM, chat, text generation** | `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
-| **Agent, tools, function calling** | `instructions/skills/create-agent-app.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
-| **Voice, STT, TTS, Whisper, speech** | `instructions/skills/add-voice-mode.md`, `toolsets/gen-ai-utilities.md` |
-| **Pipeline, GStreamer, video, stream** | `instructions/skills/create-pipeline-app.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` |
-| **Standalone, OpenCV, HailoInfer** | `instructions/skills/create-standalone-app.md`, `toolsets/core-framework-api.md` |
-| **Camera, USB, RPi, capture** | `instructions/skills/camera-integration.md`, `memory/camera_and_display.md` |
-| **HEF, model, download, config** | `instructions/skills/model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
-| **Monitoring, events, alerts** | `instructions/skills/continuous-monitoring.md`, `instructions/skills/event-detection.md` |
-| **Testing, validation, pytest** | `instructions/skills/validate-and-test.md`, `instructions/testing-patterns.md` |
-| **Complex multi-file app** | `instructions/orchestration.md`, `instructions/skills/plan-and-execute.md`, `instructions/agent-protocols.md` |
+| **VLM, vision, image understanding** | `skills/hl-build-vlm-app.md`, `toolsets/vlm-backend-api.md`, `memory/gen_ai_patterns.md` |
+| **LLM, chat, text generation** | `skills/hl-build-llm-app.md`, `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Agent, tools, function calling** | `skills/hl-build-agent-app.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
+| **Voice, STT, TTS, Whisper, speech** | `skills/hl-build-voice-app.md`, `toolsets/gen-ai-utilities.md` |
+| **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` |
+| **Standalone, OpenCV, HailoInfer** | `skills/hl-build-standalone-app.md`, `toolsets/core-framework-api.md` |
+| **Camera, USB, RPi, capture** | `skills/hl-camera.md`, `memory/camera_and_display.md` |
+| **HEF, model, download, config** | `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
+| **Monitoring, events, alerts** | `skills/hl-monitoring.md`, `skills/hl-event-detection.md` |
+| **Testing, validation, pytest** | `skills/hl-validate.md`, `instructions/testing-patterns.md` |
+| **Complex multi-file app** | `instructions/orchestration.md`, `skills/hl-plan-and-execute.md`, `instructions/agent-protocols.md` |
 | **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
 
 All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` and community contributions at `community/contributions/` can be checked when you need recipes or patterns.
@@ -141,6 +141,14 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 ```
 .github/
 ├── copilot-instructions.md          ← You are here (global instructions)
+├── agents/
+│   ├── hl-app-builder.md            ← Router agent: delegates to specialist builders
+│   ├── hl-vlm-builder.md            ← Specialist: VLM applications
+│   ├── hl-pipeline-builder.md       ← Specialist: GStreamer pipeline apps
+│   ├── hl-standalone-builder.md     ← Specialist: Standalone inference apps
+│   ├── hl-agent-builder.md          ← Specialist: Agent with tool calling
+│   ├── hl-llm-builder.md            ← Specialist: LLM text generation apps
+│   └── hl-voice-builder.md          ← Specialist: Voice-enabled apps
 ├── instructions/
 │   ├── architecture.md              ← System architecture deep dive
 │   ├── coding-standards.md          ← Code style & conventions
@@ -148,25 +156,30 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 │   ├── gstreamer-pipelines.md       ← GStreamer pipeline patterns
 │   ├── testing-patterns.md          ← Test writing guide
 │   ├── orchestration.md             ← Multi-agent orchestration framework
-│   ├── agent-protocols.md           ← Agent behavioral contracts
-│   └── skills/
-│       ├── create-vlm-app.md        ← Skill: Build VLM-based applications
-│       ├── create-pipeline-app.md   ← Skill: Build GStreamer pipeline apps
-│       ├── create-standalone-app.md ← Skill: Build standalone inference apps
-│       ├── create-agent-app.md      ← Skill: Build agent with tool calling
-│       ├── add-voice-mode.md        ← Skill: Add voice input/output
-│       ├── continuous-monitoring.md ← Skill: Build continuous monitoring apps
-│       ├── event-detection.md       ← Skill: Detect & report events from video
-│       ├── camera-integration.md    ← Skill: Camera setup & management
-│       ├── model-management.md      ← Skill: HEF resolution & model config
-│       ├── plan-and-execute.md      ← Skill: Plan-and-execute loop pattern
-│       └── validate-and-test.md     ← Skill: Validation at every phase gate
+│   └── agent-protocols.md           ← Agent behavioral contracts
+├── skills/
+│   ├── hl-build-vlm-app.md          ← Skill: Build VLM applications
+│   ├── hl-build-pipeline-app.md     ← Skill: Build GStreamer pipeline apps
+│   ├── hl-build-standalone-app.md   ← Skill: Build standalone inference apps
+│   ├── hl-build-agent-app.md        ← Skill: Build agent with tool calling
+│   ├── hl-build-llm-app.md          ← Skill: Build LLM text generation apps
+│   ├── hl-build-voice-app.md        ← Skill: Build voice-enabled apps
+│   ├── hl-monitoring.md             ← Skill: Continuous monitoring patterns
+│   ├── hl-event-detection.md        ← Skill: Detect & report events from video
+│   ├── hl-camera.md                 ← Skill: Camera setup & management
+│   ├── hl-model-management.md       ← Skill: HEF resolution & model config
+│   ├── hl-plan-and-execute.md       ← Skill: Plan-and-execute loop pattern
+│   └── hl-validate.md               ← Skill: Validation at every phase gate
 ├── prompts/
-│   ├── dog-monitor-app.prompt.md    ← Demo: Orchestrated dog monitoring build
-│   ├── orchestrated-build.prompt.md ← Meta-template: Orchestrated build (any app)
-│   ├── new-vlm-variant.prompt.md    ← Template: Create VLM app variant
-│   ├── new-pipeline-app.prompt.md   ← Template: Create pipeline app
-│   └── new-agent-tool.prompt.md     ← Template: Create new agent tool
+│   ├── dog-monitor-app.md           ← Demo: Orchestrated dog monitoring build
+│   ├── dog-monitor-flat.md          ← Demo: Flat (non-orchestrated) dog monitor
+│   ├── orchestrated-build.md        ← Meta-template: Orchestrated build (any app)
+│   ├── new-vlm-variant.md           ← Template: Create VLM app variant
+│   ├── new-pipeline-app.md          ← Template: Create pipeline app
+│   ├── new-standalone-app.md        ← Template: Create standalone app
+│   ├── new-llm-app.md               ← Template: Create LLM app
+│   ├── new-voice-app.md             ← Template: Create voice app
+│   └── new-agent-tool.md            ← Template: Create new agent tool
 ├── toolsets/
 │   ├── hailo-sdk.md                 ← Hailo SDK API reference
 │   ├── gstreamer-elements.md        ← Available GStreamer elements
@@ -182,13 +195,31 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 │   └── common_pitfalls.md           ← Bugs & anti-patterns
 ├── knowledge/
 │   └── knowledge_base.yaml          ← Machine-readable recipes & patterns
+├── contextual-rules/
+│   ├── gen-ai-apps.md               ← Auto-loaded for gen_ai_apps/** files
+│   ├── pipeline-apps.md             ← Auto-loaded for pipeline_apps/** files
+│   ├── standalone-apps.md           ← Auto-loaded for standalone_apps/** files
+│   ├── core-framework.md            ← Auto-loaded for core/** files
+│   └── tests.md                     ← Auto-loaded for tests/** files
+├── scripts/
+│   ├── generate_platforms.py        ← Generator: .hailo/ → platform-specific files
+│   ├── validate_app.py              ← Validate scaffolded app conventions (--smoke-test for runtime checks)
+│   ├── curate_contributions.py      ← Tiered curation: knowledge → memory + skill/toolset summaries
+│   ├── curate_and_propose.py        ← Curate, sync platforms, and propose PRs
+│   └── push_community_apps.py       ← Push community apps to external repo
 CLAUDE.md                             ← Claude Code entry point (root)
 community/
+├── apps/                             ← Community-built apps (10 apps)
+│   ├── pipeline_apps/               ← 8 pipeline apps
+│   ├── standalone_apps/             ← 2 standalone apps
+│   └── gen_ai_apps/                 ← Gen AI apps (coming soon)
 └── contributions/                    ← Community-contributed insights
     ├── README.md
     ├── pipeline-optimization/
     ├── bottleneck-patterns/
     ├── gen-ai-recipes/
     ├── hardware-config/
+    ├── camera-display/
+    ├── voice-audio/
     └── general/
 ```

@@ -118,12 +118,12 @@ def header(source_rel: str) -> str:
 
 def path_hailo_to_github(body: str) -> str:
     """Convert .hailo/ paths in body text to .github/ paths."""
-    body = body.replace(".hailo/skills/", ".github/instructions/skills/")
+    body = body.replace(".hailo/skills/", ".github/skills/")
     body = body.replace(".hailo/instructions/", ".github/instructions/")
     body = body.replace(".hailo/toolsets/", ".github/toolsets/")
     body = body.replace(".hailo/memory/", ".github/memory/")
     body = body.replace(".hailo/knowledge/", ".github/knowledge/")
-    body = body.replace(".hailo/scripts/", ".github/skills/hl-build-vlm-app/scripts/")
+    body = body.replace(".hailo/scripts/", ".github/scripts/")
     body = body.replace(".hailo/prompts/", ".github/prompts/")
     return body
 
@@ -333,14 +333,14 @@ def generate_copilot():
             out_path = GITHUB_DIR / "prompts" / out_name
             generated_files[out_path] = content
 
-    # 7. Scripts — copy to skills dir
+    # 7. Scripts — copy to .github/scripts/
     scripts_src = HAILO_DIR / "scripts"
     if scripts_src.is_dir():
         for src_file in sorted(scripts_src.glob("*.py")):
             if src_file.name == "generate_platforms.py":
                 continue  # Don't copy the generator itself
             content = read_file(src_file)
-            out_path = GITHUB_DIR / "skills" / "hl-build-vlm-app" / "scripts" / src_file.name
+            out_path = GITHUB_DIR / "scripts" / src_file.name
             generated_files[out_path] = content
 
     return generated_files

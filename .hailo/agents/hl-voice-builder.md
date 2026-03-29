@@ -59,7 +59,7 @@ Present plan, then:
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
 Read these files:
-- `.hailo/skills/add-voice-mode.md` — Voice integration skill
+- `.hailo/skills/hl-build-voice-app.md` — Voice integration skill
 - `.hailo/instructions/gen-ai-development.md` — Gen AI development patterns
 - `.hailo/instructions/coding-standards.md` — Code conventions
 - `.hailo/toolsets/gen-ai-utilities.md` — Voice processing reference

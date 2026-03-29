@@ -12,7 +12,7 @@ You are working on **tests** for the Hailo Apps repository.
 Read these files before making changes (paths relative to `.hailo/`):
 
 - `instructions/testing-patterns.md` — pytest framework, markers, fixtures, patterns
-- `instructions/skills/validate-and-test.md` — 5 validation levels, test templates
+- `skills/hl-validate.md` — 5 validation levels, test templates
 - `instructions/coding-standards.md` — Import rules, logging conventions
 - `memory/common_pitfalls.md` — Known anti-patterns to avoid
 

@@ -179,3 +179,10 @@ To add voice to any existing LLM/VLM app:
 4. Replace `input()` with `vim.listen()` when `--voice` is set
 5. Add `vim.speak(response)` after generating output
 6. Add `abort_event` for interruption support
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

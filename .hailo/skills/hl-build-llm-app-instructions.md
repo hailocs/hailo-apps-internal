@@ -1,6 +1,6 @@
 # Skill: Create LLM Chat Application
 
-> **When to use**: Building a text-only LLM application (chatbot, Q&A, text processor) for Hailo-10H. For vision + language, use `create-vlm-app.md` instead.
+> **When to use**: Building a text-only LLM application (chatbot, Q&A, text processor) for Hailo-10H. For vision + language, use `hl-build-vlm-app.md` instead.
 
 ## Prerequisites
 

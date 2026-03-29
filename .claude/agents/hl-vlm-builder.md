@@ -103,9 +103,9 @@ This scanning phase is optional for simple, well-documented tasks.
 **NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`. Registration happens later during promotion.
 
 ### Phase 5: Validate
-Run the validation script to catch common mistakes:
+Run the validation script (static checks + runtime smoke tests):
 ```bash
-python .hailo/scripts/validate_app.py community/apps/<app_name>
+python .hailo/scripts/validate_app.py community/apps/<app_name> --smoke-test
 ```
 
 Also validate:

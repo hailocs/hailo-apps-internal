@@ -8,7 +8,7 @@ You are building a new VLM application variant in the hailo-apps repository. Fol
 
 ### Required Context (Read These First)
 1. `.hailo/instructions/gen-ai-development.md` — Gen AI patterns
-2. `.hailo/skills/create-vlm-app.md` — VLM app skill
+2. `.hailo/skills/hl-build-vlm-app.md` — VLM app skill
 3. `.hailo/toolsets/vlm-backend-api.md` — Backend API
 4. `.hailo/toolsets/hailo-sdk.md` — SDK reference
 5. `hailo_apps/python/gen_ai_apps/vlm_chat/` — Reference implementation

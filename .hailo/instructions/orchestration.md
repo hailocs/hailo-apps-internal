@@ -60,7 +60,7 @@ MANDATORY READS (in this order):
 runSubagent: "Read these files and return a condensed context brief:
   - .hailo/memory/MEMORY.md
   - .hailo/memory/gen_ai_patterns.md
-  - .hailo/skills/create-vlm-app.md
+  - .hailo/skills/hl-build-vlm-app.md
   - .hailo/toolsets/vlm-backend-api.md
   - hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py
   - hailo_apps/python/gen_ai_apps/vlm_chat/backend.py
@@ -92,7 +92,7 @@ runSubagent: "Read these files and return a condensed context brief:
 **Sub-agent delegation strategy**: Break into independent units that can be built in parallel:
 ```
 Sub-agent A: "Implement event_tracker.py with EventType enum, Event dataclass,
-             EventTracker class. Follow patterns from .hailo/skills/event-detection.md"
+             EventTracker class. Follow patterns from .hailo/skills/hl-event-detection.md"
 
 Sub-agent B: "Implement the main app class in dog_monitor.py following the VLM chat
              pattern from vlm_chat.py. Reuse Backend from vlm_chat/backend.py"
@@ -195,7 +195,7 @@ runSubagent:
     1. .hailo/memory/MEMORY.md
     2. .hailo/memory/gen_ai_patterns.md
     3. .hailo/memory/common_pitfalls.md
-    4. .hailo/skills/create-vlm-app.md
+    4. .hailo/skills/hl-build-vlm-app.md
     5. .hailo/toolsets/vlm-backend-api.md
     6. hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py (full source)
     7. hailo_apps/python/gen_ai_apps/vlm_chat/backend.py (full source)
@@ -220,7 +220,7 @@ runSubagent:
     Create the file hailo_apps/python/gen_ai_apps/dog_monitor/event_tracker.py
 
     ## Context
-    Read .hailo/skills/event-detection.md for the pattern.
+    Read .hailo/skills/hl-event-detection.md for the pattern.
     This module tracks dog activities detected by VLM analysis.
 
     ## Constraints

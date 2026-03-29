@@ -47,8 +47,8 @@ Launch a sub-agent to load ALL relevant context before writing any code:
   SKILLS (read the relevant ones):
     - .hailo/skills/<primary_skill>.md
     - .hailo/skills/<secondary_skill>.md
-    - .hailo/skills/plan-and-execute.md
-    - .hailo/skills/validate-and-test.md
+    - .hailo/skills/hl-plan-and-execute.md
+    - .hailo/skills/hl-validate.md
 
   TOOLSETS (read the relevant ones):
     - .hailo/toolsets/<relevant_api>.md
@@ -136,8 +136,8 @@ Mark all todos complete. Report deliverables.
 | `<APP_NAME>` | security_monitor |
 | `<APP_CONSTANT>` | SECURITY_MONITOR_APP |
 | `<app_category>` | gen_ai_apps |
-| `<primary_skill>` | create-vlm-app |
-| `<secondary_skill>` | continuous-monitoring |
+| `<primary_skill>` | hl-build-vlm-app |
+| `<secondary_skill>` | hl-monitoring |
 | `<relevant_api>` | vlm-backend-api |
 | `<reference_app_main_file>` | hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py |
 
@@ -149,8 +149,8 @@ Mark all todos complete. Report deliverables.
 | `<APP_NAME>` | ppe_detection |
 | `<APP_CONSTANT>` | PPE_DETECTION_APP |
 | `<app_category>` | pipeline_apps |
-| `<primary_skill>` | create-pipeline-app |
-| `<secondary_skill>` | event-detection |
+| `<primary_skill>` | hl-build-pipeline-app |
+| `<secondary_skill>` | hl-event-detection |
 | `<relevant_api>` | gstreamer-elements |
 | `<reference_app_main_file>` | hailo_apps/python/pipeline_apps/detection/detection_app.py |
 
@@ -162,8 +162,8 @@ Mark all todos complete. Report deliverables.
 | `<APP_NAME>` | badge_reader |
 | `<APP_CONSTANT>` | BADGE_READER_APP |
 | `<app_category>` | standalone_apps |
-| `<primary_skill>` | create-standalone-app |
-| `<secondary_skill>` | camera-integration |
+| `<primary_skill>` | hl-build-standalone-app |
+| `<secondary_skill>` | hl-camera |
 | `<relevant_api>` | core-framework-api |
 | `<reference_app_main_file>` | hailo_apps/python/standalone_apps/face_recognition/face_recon.py |
 
@@ -175,8 +175,8 @@ Mark all todos complete. Report deliverables.
 | `<APP_NAME>` | home_assistant |
 | `<APP_CONSTANT>` | HOME_ASSISTANT_APP |
 | `<app_category>` | gen_ai_apps |
-| `<primary_skill>` | create-agent-app |
-| `<secondary_skill>` | add-voice-mode |
+| `<primary_skill>` | hl-build-agent-app |
+| `<secondary_skill>` | hl-build-voice-app |
 | `<relevant_api>` | gen-ai-utilities |
 | `<reference_app_main_file>` | hailo_apps/python/gen_ai_apps/agent_tools_example/agent.py |
 

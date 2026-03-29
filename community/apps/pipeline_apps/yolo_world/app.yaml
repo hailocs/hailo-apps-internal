@@ -1,0 +1,11 @@
+name: yolo_world
+title: YOLO World Open-Vocabulary Detection
+description: Open-vocabulary object detection using YOLO-World, enabling text-prompt-based detection of arbitrary categories.
+type: pipeline
+entry_point: yolo_world.py
+models:
+  - yolo_world_v2s.hef
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h

@@ -8,7 +8,7 @@ You are building a new GStreamer pipeline application in the hailo-apps reposito
 
 ### Required Context (Read These First)
 1. `.hailo/instructions/gstreamer-pipelines.md` — Pipeline patterns
-2. `.hailo/skills/create-pipeline-app.md` — Pipeline app skill
+2. `.hailo/skills/hl-build-pipeline-app.md` — Pipeline app skill
 3. `.hailo/toolsets/gstreamer-elements.md` — Available elements
 4. `.hailo/toolsets/core-framework-api.md` — Framework API
 5. `hailo_apps/python/core/gstreamer/gstreamer_app.py` — Base class

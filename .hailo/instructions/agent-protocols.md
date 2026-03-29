@@ -327,9 +327,20 @@ python .hailo/scripts/curate_contributions.py --curate       # Interactive
 python .hailo/scripts/curate_contributions.py --curate --auto # Auto-accept valid
 ```
 
-This processes `community/contributions/` → `.hailo/memory/` and `.hailo/knowledge/`,
-then deletes the curated originals. The knowledge is now part of the official `.hailo/`
-knowledge base and will inform future agent sessions.
+This processes `community/contributions/` into `.hailo/` using a **tiered system**:
+
+| Tier | Behavior | Target files |
+|------|----------|-------------|
+| **Tier 1** (full append) | Complete contribution content appended | `memory/*.md`, `knowledge/*.yaml` |
+| **Tier 2** (summary append) | Short 3-line summary with cross-reference to Tier 1 | `## Community Findings` sections in skills, toolsets, instructions |
+| **Tier 3** (never auto-modified) | Core structural files | `coding-standards.md`, `agent-protocols.md`, `orchestration.md`, `copilot-instructions.md` |
+
+After curation, originals are deleted. Run `generate_platforms.py --generate` to sync
+`.hailo/` changes to `.github/` and `.claude/`. The `curate_and_propose.py` wrapper
+does this automatically and opens a PR.
+
+**Categories**: `pipeline-optimization`, `bottleneck-patterns`, `gen-ai-recipes`,
+`hardware-config`, `model-tuning`, `camera-display`, `voice-audio`, `general`.
 
 ---
 

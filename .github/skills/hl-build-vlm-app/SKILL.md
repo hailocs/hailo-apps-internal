@@ -60,7 +60,7 @@ PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/<app_name>.py" "$@"
 
 **NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`.
 Community apps are run via `run.sh`. Registration happens during promotion
-(`python .github/skills/hl-build-vlm-app/scripts/curate_contributions.py --promote <app_name>`).
+(`python .github/scripts/curate_contributions.py --promote <app_name>`).
 
 ### Step 2: Create Contribution Recipe
 
@@ -140,14 +140,9 @@ if __name__ == "__main__":
 
 ### Step 4: Validate
 
-Run the automated validation script:
+Run the automated validation script (includes static checks + runtime smoke tests):
 ```bash
-python .github/skills/hl-build-vlm-app/scripts/validate_app.py hailo_apps/python/gen_ai_apps/<app_name>
-```
-
-Then run the smoke test:
-```bash
-python .github/skills/hl-build-vlm-app/scripts/test_scaffold.py hailo_apps/python/gen_ai_apps/<app_name>
+python .github/scripts/validate_app.py hailo_apps/python/gen_ai_apps/<app_name> --smoke-test
 ```
 
 ### Step 5: Write README
@@ -294,7 +289,7 @@ Community apps do NOT need registration. These steps are only needed after promo
 1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `DOG_MONITOR_APP = "dog_monitor"`)
 2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
 
-Use `python .github/skills/hl-build-vlm-app/scripts/curate_contributions.py --promote <app_name>` to automate this.
+Use `python .github/scripts/curate_contributions.py --promote <app_name>` to automate this.
 
 ## Lessons Learned (from real builds)
 
@@ -341,9 +336,10 @@ the target lines with `read_file` and copy the exact whitespace. Include 3-5
 context lines from the actual file output, not from memory.
 
 ### 8. Validation Script Is the Single Gate Check
-The `validate_app.py` script runs 20 checks (file existence, syntax, imports,
-conventions, README quality). If it passes 20/20, the app is convention-compliant.
-Run it once at the end instead of manual grep checks — it catches everything.
+The `validate_app.py` script runs ~15 static checks (file existence, syntax, imports,
+conventions, README quality). With `--smoke-test`, it also runs CLI `--help` and module
+import tests (gracefully skipping on non-Hailo systems). If all checks pass, the app is
+convention-compliant. Run it once at the end instead of manual grep checks — it catches everything.
 
 ### 9. Local Docs Are Sufficient — Kapa MCP Is for Edge Cases
 The `.hailo/` documentation (this SKILL.md, memory files, toolset refs, and the
@@ -364,3 +360,10 @@ autonomous agentic workflows. Without it, every tool call requires manual approv
 | Scene | "Describe what you see concisely." | "Describe the image" |
 | Counter | "Count objects precisely. Reply JSON." | "Count all {objects}" |
 | Traffic | "Analyze traffic patterns." | "Describe traffic and vehicles" |
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+

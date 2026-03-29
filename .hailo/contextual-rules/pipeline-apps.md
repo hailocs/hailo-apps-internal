@@ -19,8 +19,8 @@ Read these files before making changes (paths relative to `.hailo/`):
 
 ## Additional Context (load if relevant)
 
-- If camera input: `memory/camera_and_display.md`, `instructions/skills/camera-integration.md`
-- If adding models: `instructions/skills/model-management.md`, `toolsets/hailo-sdk.md`
+- If camera input: `memory/camera_and_display.md`, `skills/hl-camera.md`
+- If adding models: `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`
 
 ## Key Patterns for Pipelines
 

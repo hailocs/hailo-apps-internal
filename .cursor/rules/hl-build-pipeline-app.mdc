@@ -145,3 +145,10 @@ python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 | Cascaded | `CROPPER_PIPELINE(...)` | Face detection → recognition |
 | Multi-source | Multiple `SOURCE_PIPELINE` + compositor | Dashboard view |
 | Tiling | Custom tiling pipeline | Small object detection |
+
+
+## Community Findings
+
+<!-- Auto-curated from community/contributions/ — do not edit above this section -->
+<!-- New findings are appended here automatically by curate_contributions.py -->
+
