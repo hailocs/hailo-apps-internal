@@ -2,7 +2,7 @@
 name: HL VLM Builder
 description: Build Vision-Language Model applications for Hailo-10H. Say what you
   want to build and I'll create a complete, production-ready VLM app.
-argument-hint: '[describe your VLM app, e.g., ''dog monitoring camera app'']'
+argument-hint: 'e.g., dog monitoring camera app'
 tools:
 - agent/runSubagent
 - edit/createDirectory
