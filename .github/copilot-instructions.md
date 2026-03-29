@@ -203,6 +203,7 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 │   └── knowledge_base.yaml          ← Machine-readable recipes & patterns
 ├── scripts/
 │   ├── generate_platforms.py        ← Generator: .hailo/ → platform-specific files
+│   ├── validate_framework.py        ← Cross-reference integrity validator (routing table, file tree, leaks)
 │   ├── validate_app.py              ← Validate scaffolded app conventions (--smoke-test for runtime checks)
 │   ├── curate_contributions.py      ← Tiered curation: knowledge → memory + skill/toolset summaries
 │   ├── curate_and_propose.py        ← Curate, sync platforms, and propose PRs

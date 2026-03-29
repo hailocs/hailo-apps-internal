@@ -200,10 +200,11 @@ Skill and toolset files include **Community Findings** sections that grow automa
 | Script | Purpose |
 |--------|---------|
 | `validate_app.py` | Validate app conventions (15 static checks + `--smoke-test` runtime checks) |
+| `validate_framework.py` | Cross-reference integrity: routing table paths, file tree accuracy, `.hailo/` leak detection, agent handoffs |
 | `curate_contributions.py` | Process community findings into knowledge base; promote apps to official |
 | `curate_and_propose.py` | All-in-one: curate + sync platforms + propose PR |
 | `push_community_apps.py` | Push community apps to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples) |
-| `generate_platforms.py` | Sync `.hailo/` → `.github/`, `.claude/`, `.cursor/` |
+| `generate_platforms.py` | Sync `.hailo/` → `.github/`, `.claude/`, `.cursor/` (includes cross-ref validation via `--check`) |
 
 All scripts live in `.hailo/scripts/` (source of truth) and are mirrored to `.github/scripts/`.
 
@@ -225,7 +226,7 @@ This produces `.github/` (Copilot), `.claude/` + `CLAUDE.md` (Claude Code), and 
 | Agent writes relative imports | Convention bug — agent should always use absolute imports |
 | App fails `--help` | Check `run.sh` sets PYTHONPATH correctly |
 | Agent builds in wrong directory | Should always be `community/apps/<name>/`, not in `hailo_apps/` |
-| Platform configs are stale | Run `python .hailo/scripts/generate_platforms.py --generate` |
+| Platform configs are stale | Run `python .hailo/scripts/generate_platforms.py --generate` |\n| Cross-references broken | Run `python .hailo/scripts/validate_framework.py -v` to find broken paths |
 | Validation fails on hardware checks | Use `--smoke-test` — it gracefully skips if Hailo/GStreamer unavailable |
 | Contribution not showing in agents | Run `curate_contributions.py --curate` to process it into the knowledge base |
 | Agent doesn't see community patterns | Check that `## Community Findings` sections exist in the relevant skill files |

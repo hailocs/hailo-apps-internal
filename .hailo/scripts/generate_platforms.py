@@ -696,6 +696,35 @@ def main():
 
     elif args.check:
         clean = check(platforms)
+
+        # Also run cross-reference validation if validate_framework is available
+        try:
+            from validate_framework import (
+                ValidationResult,
+                validate_routing_table,
+                validate_file_tree,
+                validate_no_hailo_leaks,
+                validate_agent_handoffs,
+                validate_skill_sections,
+                validate_community_dirs,
+                validate_hailo_source_files,
+            )
+            print("\n--- Cross-reference validation ---")
+            result = ValidationResult(verbose=False)
+            validate_hailo_source_files(result)
+            validate_community_dirs(result)
+            if "copilot" in platforms or args.platform == "all":
+                validate_routing_table(result)
+                validate_file_tree(result)
+                validate_no_hailo_leaks(result)
+                validate_agent_handoffs(result)
+                validate_skill_sections(result)
+            print(f"\nCross-ref: {result.summary()}")
+            if not result.clean:
+                clean = False
+        except ImportError:
+            pass  # validate_framework.py not available — skip
+
         sys.exit(0 if clean else 1)
 
 

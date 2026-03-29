@@ -210,7 +210,8 @@ Automation scripts for validation, curation, platform sync, and publishing.
 | `curate_and_propose.py` | Maintainer | Runs curation + platform sync + opens internal PR (all-in-one) |
 | `push_community_apps.py` | Maintainer | Pushes community apps to public `hailo-ai/hailo-rpi5-examples` repo as PRs |
 | `generate_platforms.py --generate` | Maintainer | Syncs `.hailo/` → `.github/` + `.claude/` + `.cursor/` |
-| `generate_platforms.py --check` | CI / Maintainer | Verifies generated files are in sync with `.hailo/` |
+| `generate_platforms.py --check` | CI / Maintainer | Verifies generated files are in sync with `.hailo/` + runs cross-reference validation |
+| `validate_framework.py` | CI / Maintainer | Cross-reference integrity: routing table paths, file tree accuracy, .hailo/ leak detection, agent handoffs, required sections |
 
 ---
 
