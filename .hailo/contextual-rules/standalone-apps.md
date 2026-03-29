@@ -10,7 +10,7 @@ You are working on a **standalone inference application** (HailoInfer + OpenCV, 
 
 Read these files before making changes (paths relative to `.hailo/`):
 
-- `skills/hl-build-standalone-app.md` — Standalone app patterns
+- `skills/hl-build-standalone-app/SKILL.md` — Standalone app patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution
 - `toolsets/core-framework-api.md` — HailoInfer, camera_utils, parsers
 - `toolsets/hailo-sdk.md` — VDevice, HEF resolution, constants

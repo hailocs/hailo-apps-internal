@@ -8,7 +8,7 @@ You are working on **tests** for the Hailo Apps repository.
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.hailo/`):
+Read these files before making changes (paths relative to `.github/`):
 
 - `instructions/testing-patterns.md` — pytest framework, markers, fixtures, patterns
 - `skills/hl-validate.md` — 5 validation levels, test templates

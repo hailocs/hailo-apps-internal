@@ -8,7 +8,7 @@ You are working on the **core framework** (shared utilities, GStreamerApp base c
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.hailo/`):
+Read these files before making changes (paths relative to `.github/`):
 
 - `instructions/architecture.md` — System architecture, module dependency graph
 - `instructions/coding-standards.md` — Import rules, logging, conventions

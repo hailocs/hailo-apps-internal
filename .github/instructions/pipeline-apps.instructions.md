@@ -8,7 +8,7 @@ You are working on a **GStreamer pipeline application**.
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.hailo/`):
+Read these files before making changes (paths relative to `.github/`):
 
 - `instructions/gstreamer-pipelines.md` — Pipeline composition, fragments, architecture
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution

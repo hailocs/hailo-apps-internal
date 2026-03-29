@@ -29,8 +29,8 @@
 
 ### Validation
 
-- [ ] `python .hailo/scripts/validate_app.py <app_dir>` — all static checks pass
-- [ ] `python .hailo/scripts/validate_app.py <app_dir> --smoke-test` — smoke tests pass (or gracefully skip on missing hardware)
+- [ ] `python .github/scripts/validate_app.py <app_dir>` — all static checks pass
+- [ ] `python .github/scripts/validate_app.py <app_dir> --smoke-test` — smoke tests pass (or gracefully skip on missing hardware)
 
 ### Hardware Tested
 

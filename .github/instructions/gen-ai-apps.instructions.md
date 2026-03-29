@@ -8,7 +8,7 @@ You are working on a **Gen AI application** (VLM, LLM, Whisper, Voice, or Agent)
 
 ## Required Context Files
 
-Read these files before making changes (paths relative to `.hailo/`):
+Read these files before making changes (paths relative to `.github/`):
 
 - `instructions/gen-ai-development.md` — VLM/LLM/Whisper development patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution
@@ -19,9 +19,9 @@ Read these files before making changes (paths relative to `.hailo/`):
 
 ## Additional Context (load if relevant)
 
-- If VLM: `toolsets/vlm-backend-api.md`, `skills/hl-build-vlm-app.md`
-- If Agent: `skills/hl-build-agent-app.md`
-- If Voice/Whisper: `skills/hl-build-voice-app.md`
+- If VLM: `toolsets/vlm-backend-api.md`, `skills/hl-build-vlm-app/SKILL.md`
+- If Agent: `skills/hl-build-agent-app/SKILL.md`
+- If Voice/Whisper: `skills/hl-build-voice-app/SKILL.md`
 - If Camera: `memory/camera_and_display.md`, `skills/hl-camera.md`
 
 ## Key Patterns for Gen AI
