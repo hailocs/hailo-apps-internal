@@ -3,6 +3,7 @@
 import os
 import queue
 import sys
+import inspect
 from pathlib import Path
 from typing import Optional, Tuple
 from dataclasses import dataclass
@@ -57,13 +58,13 @@ from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
 
 try:
-    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app
+    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_supported_architectures
 except ImportError:
     import sys
     from pathlib import Path
     config_dir = Path(__file__).resolve().parents[3] / "config"
     sys.path.insert(0, str(config_dir))
-    from config_manager import get_default_models
+    from config_manager import get_default_models, get_inputs_for_app, get_supported_architectures
 hailo_logger = get_logger(__name__)
 
 
@@ -615,14 +616,6 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
 
     """
 
-    # Map standalone app names to their resource tag names used in resources YAML
-    APP_NAME_MAPPING = {
-        "object_detection": "detection",
-        "simple_detection": "simple_detection",
-        "instance_segmentation": "instance_segmentation",
-        "super_resolution": "super_resolution",
-    }
-
     def resolve_tagged_resource(
         app_name: str,
         preferred_name: str | None = None,
@@ -638,7 +631,7 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
           - Resources are downloaded automatically if required.
         """
 
-        resource_app_name = APP_NAME_MAPPING.get(app_name, app_name)
+        resource_app_name = _map_app_to_resource_group(app_name)
         inputs = get_inputs_for_app(resource_app_name, is_standalone=True)
 
         def pick(section: str) -> str | None:
@@ -765,11 +758,23 @@ def resolve_input_arg(app: str, input_arg: str | None) -> str:
     sys.exit(1)
 
 
+def _map_app_to_resource_group(app_name: str) -> str:
+    app_mapping = {
+        "object_detection": "detection",
+        "object_detection_onnx_postproc": "detection",
+        "pose_estimation_onnx_postproc": "pose_estimation",
+        "simple_detection": "simple_detection",
+        "instance_segmentation": "instance_segmentation",
+        "super_resolution": "super_resolution",
+    }
+    return app_mapping.get(app_name, app_name)
+
+
 
 # =============================================================================
 # Handle and Resolve Common Args
 # =============================================================================
-def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_hef: bool = False) -> None:
+def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: bool = False) -> None:
     """
     Handle common CLI argument logic for Hailo applications.
 
@@ -801,7 +806,15 @@ def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_
         sys.exit(0)
 
 
-    if multi_hef:
+    debug_ref_onnx_skip_hef = (
+        app_type == APP_TYPE_STANDALONE
+        and APP_NAME in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}
+        and bool(getattr(args, "neural_onnx_ref", None))
+    )
+
+    if debug_ref_onnx_skip_hef:
+        hailo_logger.info("--neural-onnx-ref set: skipping HEF path resolution/download (debug reference mode)")
+    elif multi_hef:
         # Resolve multiple HEF paths
         try:
             models = resolve_hef_paths(
@@ -818,6 +831,15 @@ def handle_and_resolve_args(args: argparse.ArgumentParser, APP_NAME: str, multi_
         if args.hef_path is None:
             hailo_logger.error("Failed to resolve HEF path for %s", APP_NAME)
             sys.exit(1)
+
+    if app_type == APP_TYPE_STANDALONE:
+        from .onnx_utils import resolve_onnx_postproc_for_standalone
+
+        resolve_onnx_postproc_for_standalone(
+            args=args,
+            app_name=APP_NAME,
+            download_resource_cb=_download_resource,
+        )
 
     #resolve input source
     args.input = resolve_input_arg(APP_NAME, args.input)

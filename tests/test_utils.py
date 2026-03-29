@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
@@ -132,12 +133,12 @@ def run_pipeline_generic(
 
 def run_pipeline_module_with_args(module: str, args: list[str], log_file: str, **kwargs):
     """Run a pipeline as a Python module."""
-    return run_pipeline_generic(["python", "-u", "-m", module, *args], log_file, **kwargs)
+    return run_pipeline_generic([sys.executable, "-u", "-m", module, *args], log_file, **kwargs)
 
 
 def run_pipeline_pythonpath_with_args(script: str, args: list[str], log_file: str, **kwargs):
     """Run a pipeline script using the current environment (setup_env sets PYTHONPATH)."""
-    return run_pipeline_generic(["python3", "-u", script, *args], log_file, **kwargs)
+    return run_pipeline_generic([sys.executable, "-u", script, *args], log_file, **kwargs)
 
 
 def run_pipeline_cli_with_args(cli: str, args: list[str], log_file: str, **kwargs):

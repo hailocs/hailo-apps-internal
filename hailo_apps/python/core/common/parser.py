@@ -327,6 +327,16 @@ def get_standalone_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # parser.add_argument(
+    #     "--no-display",
+    #     action="store_true",
+    #     help=(
+    #         "Disable real-time GUI display (headless mode). "
+    #         "Useful when no display server (e.g. X11/Wayland/Qt) is available. "
+    #         "Automatically enables --save-output so results are written to disk."
+    #     ),
+    # )
+
     return parser
 
 

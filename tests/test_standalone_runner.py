@@ -376,6 +376,7 @@ _test_cases = generate_test_cases(_hailo_arch, _host_arch)
 # ============================================================================
 
 
+@pytest.mark.standalone
 @pytest.mark.requires_device
 @pytest.mark.parametrize(
     "test_case",
