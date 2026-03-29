@@ -12,13 +12,13 @@ import shutil
 from pathlib import Path
 
 
-def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_image, output_dir):
+def run_detection_mode(mode_name, use_debug_ref_onnx, config_path, hef_path, input_image, output_dir, neural_onnx_ref=None):
     """
     Run object detection in specified mode and save output.
     
     Args:
         mode_name: Descriptive name for the mode
-        use_full_onnx: True for full ONNX mode, False for HEF+ONNX postproc
+        use_debug_ref_onnx: True for debug reference ONNX mode, False for HEF+ONNX postproc
         config_path: Path to ONNX config file
         hef_path: Path to HEF model
         input_image: Path to input image
@@ -32,7 +32,7 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Build command - use --full-onnx flag instead of config editing
+    # Build command for requested mode
     cmd = [
         sys.executable,
         'object_detection.py',  # In parent directory
@@ -43,9 +43,11 @@ def run_detection_mode(mode_name, use_full_onnx, config_path, hef_path, input_im
         '--output-dir', output_dir
     ]
     
-    # Add --full-onnx flag if needed
-    if use_full_onnx:
-        cmd.append('--full-onnx')
+    # Add debug reference ONNX if needed
+    if use_debug_ref_onnx:
+        if not neural_onnx_ref:
+            raise ValueError("Debug reference ONNX mode requires neural_onnx_ref path")
+        cmd.extend(['--neural-onnx-ref', neural_onnx_ref])
     
     print(f"Running: {' '.join(cmd)}\n")
     
@@ -105,6 +107,7 @@ def main():
     config_path = 'onnx/config_onnx_yolo26n.json' 
     hef_path = '/usr/local/hailo/resources/models/hailo8/yolo26n.hef'
     input_image = 'bus.jpg'
+    neural_onnx_ref = 'onnx/yolo26n_neural_processing.onnx'
     
     # Validate inputs
     for path, name in [(config_path, "Config"), (hef_path, "HEF")]: #, (input_image, "Image")]:
@@ -116,6 +119,7 @@ def main():
     print(f"  Config:  {config_path}")
     print(f"  HEF:     {hef_path}")
     print(f"  Input:   {input_image}")
+    print(f"  Neural ONNX ref (debug): {neural_onnx_ref}")
     
     # Test both modes
     results = {}
@@ -123,7 +127,7 @@ def main():
     # Mode 1: HEF + ONNX Postprocessing (standard mode)
     success, output_path = run_detection_mode(
         mode_name="HEF + ONNX Postprocessing",
-        use_full_onnx=False,
+        use_debug_ref_onnx=False,
         config_path=config_path,
         hef_path=hef_path,
         input_image=input_image,
@@ -134,13 +138,14 @@ def main():
     # Mode 2: Full ONNX (debug mode - bypasses HEF)
     success, output_path = run_detection_mode(
         mode_name="Full ONNX (Debug Mode)",
-        use_full_onnx=True,
+        use_debug_ref_onnx=True,
         config_path=config_path,
         hef_path=hef_path,
         input_image=input_image,
-        output_dir="onnx/output_full_onnx"  # In parent directory
+        output_dir="onnx/output_debug_ref_onnx",  # In parent directory
+        neural_onnx_ref=neural_onnx_ref,
     )
-    results['full_onnx'] = {'success': success, 'output_path': output_path}
+    results['debug_ref_onnx'] = {'success': success, 'output_path': output_path}
     
     # Summary
     print(f"\n{'='*80}")
@@ -151,9 +156,9 @@ def main():
     if results['hef_onnx']['output_path']:
         print(f"   Output: {results['hef_onnx']['output_path']}")
     
-    print(f"\n2. Full ONNX (Debug Mode):    {'✅ PASS' if results['full_onnx']['success'] else '❌ FAIL'}")
-    if results['full_onnx']['output_path']:
-        print(f"   Output: {results['full_onnx']['output_path']}")
+    print(f"\n2. Debug Reference ONNX:      {'✅ PASS' if results['debug_ref_onnx']['success'] else '❌ FAIL'}")
+    if results['debug_ref_onnx']['output_path']:
+        print(f"   Output: {results['debug_ref_onnx']['output_path']}")
     
     print(f"\n{'='*80}")
     print("How ONNX Postprocessing Works:")

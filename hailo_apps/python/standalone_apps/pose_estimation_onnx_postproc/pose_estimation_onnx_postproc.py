@@ -25,7 +25,7 @@ try:
         load_onnx_config,
         init_onnx_sessions,
         normalized_preprocess,
-        infer_full_onnx,
+        infer_debug_ref_onnx,
     )
     from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.pose_estimation_utils import PoseEstPostProcessing
     from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
@@ -64,7 +64,7 @@ except ImportError:
         load_onnx_config,
         init_onnx_sessions,
         normalized_preprocess,
-        infer_full_onnx,
+        infer_debug_ref_onnx,
     )
     from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.pose_estimation_utils import PoseEstPostProcessing
     from hailo_apps.python.standalone_apps.pose_estimation_onnx_postproc.aigym import AIGymCallback, make_tracker_args, EXERCISE_PRESETS
@@ -128,12 +128,13 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--full-onnx",
-        action="store_true",
+        "--neural-onnx-ref",
+        type=str,
+        default=None,
         help=(
-            "Use full ONNX mode (bypass HEF, run entire model in ONNX). "
-            "Overrides use_full_onnx_mode setting in config. "
-            "Requires hef_like_proc_onnx_path in ONNX config."
+            "Debug reference mode: path to ONNX model that reproduces HEF-like output tensors. "
+            "When set, HEF inference is bypassed and this ONNX model feeds the postprocessing ONNX. "
+            "If --hef-path is omitted, provide both --onnxconfig and --onnx explicitly."
         ),
     )
 
@@ -271,7 +272,7 @@ def run_inference_pipeline(
         save_output (bool): If True, saves the output stream as a video file.
         show_fps (bool): If True, display real-time FPS on the output.
         onnxconfig (str): Path to ONNX postprocessing config JSON (or None).
-        args: Full parsed CLI args (for --full-onnx flag).
+        args: Full parsed CLI args (for --neural-onnx-ref debug mode).
 
     Returns:
         None
@@ -282,8 +283,8 @@ def run_inference_pipeline(
     # --- ONNX setup ---
     onnx_config = None
     onnx_session = None
-    full_onnx_intermediate_session = None
-    use_full_onnx = False
+    debug_ref_onnx_intermediate_session = None
+    use_debug_ref_onnx = False
 
     if not onnxconfig:
         raise ValueError(
@@ -292,19 +293,16 @@ def run_inference_pipeline(
             "Expected naming convention: config_onnx_<model_name>.json under app onnx/."
         )
     onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
-    use_full_onnx = (
-        getattr(args, "full_onnx", False)
-        or onnx_config.get("use_full_onnx_mode", False)
-    )
+    use_debug_ref_onnx = bool(getattr(args, "neural_onnx_ref", None))
     sessions = init_onnx_sessions(
         onnx_config,
         config_path,
-        use_full_onnx,
+        use_debug_ref_onnx,
         postproc_onnx_path=getattr(args, "onnx", None),
-        hef_like_proc_onnx_path=getattr(args, "onnx_neural", None),
+        neural_onnx_ref_path=getattr(args, "neural_onnx_ref", None),
     )
     onnx_session = sessions["onnx_session"]
-    full_onnx_intermediate_session = sessions["full_onnx_intermediate_session"]
+    debug_ref_onnx_intermediate_session = sessions["debug_ref_onnx_intermediate_session"]
 
     # --- Post-processing ---
     pose_post_processing = PoseEstPostProcessing(
@@ -339,9 +337,9 @@ def run_inference_pipeline(
 
     # --- Model / shape setup ---
     hailo_inference = None
-    if use_full_onnx:
+    if use_debug_ref_onnx:
         # Derive input shape from the intermediate ONNX model
-        input_info = full_onnx_intermediate_session.get_inputs()[0]
+        input_info = debug_ref_onnx_intermediate_session.get_inputs()[0]
         input_shape = input_info.shape
         if len(input_shape) == 4:
             if input_shape[1] in [1, 3]:  # NCHW
@@ -349,9 +347,9 @@ def run_inference_pipeline(
             else:  # NHWC
                 height, width = input_shape[1], input_shape[2]
         else:
-            raise ValueError(f"Unexpected full ONNX input shape: {input_shape}")
+            raise ValueError(f"Unexpected debug reference ONNX input shape: {input_shape}")
         logger.info(
-            f"Full ONNX mode enabled – intermediate + ONNX postproc (input {height}x{width})"
+            f"Debug reference ONNX mode enabled – intermediate + ONNX postproc (input {height}x{width})"
         )
     else:
         output_type = "FLOAT32" if onnx_session is not None else "FLOAT32"
@@ -392,7 +390,7 @@ def run_inference_pipeline(
             input_queue,
             width,
             height,
-            normalized_preprocess if use_full_onnx else None,
+            normalized_preprocess if use_debug_ref_onnx else None,
             stop_event,
         ),
     )
@@ -409,10 +407,10 @@ def run_inference_pipeline(
         ),
     )
 
-    if use_full_onnx:
+    if use_debug_ref_onnx:
         infer_thread = threading.Thread(
-            target=infer_full_onnx,
-            args=(full_onnx_intermediate_session, onnx_session,
+            target=infer_debug_ref_onnx,
+            args=(debug_ref_onnx_intermediate_session, onnx_session,
                   onnx_config, input_queue, output_queue),
     )
     else:

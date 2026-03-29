@@ -495,12 +495,6 @@ object_detection_onnx_postproc:
           source: s3
           app_type: [standalone]
           onnx_postproc_name: yolo26n_postprocessing.onnx
-    hailo10h:
-      default:
-        - name: yolo26n
-          source: s3
-          app_type: [standalone]
-          onnx_postproc_name: yolo26n_postprocessing.onnx
 
 simple_detection: &simple_detection_app
   models:
@@ -643,18 +637,6 @@ pose_estimation: &pose_estimation_app
 
 pose_estimation_onnx_postproc:
   models:
-    hailo8:
-      default:
-        - name: yolo26m_pose
-          source: s3
-          app_type: [standalone]
-          onnx_postproc_name: yolo26m_pose_postprocessing.onnx
-    hailo8l:
-      default:
-        - name: yolo26m_pose
-          source: s3
-          app_type: [standalone]
-          onnx_postproc_name: yolo26m_pose_postprocessing.onnx
     hailo10h:
       default:
         - name: yolo26m_pose

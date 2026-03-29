@@ -52,20 +52,19 @@ from .defines import (
     RESOURCE_TYPE_VIDEO,
     RESOURCE_TYPE_MODEL,
     CAMERA_KEYWORDS,
-    S3_RESOURCES_BASE_URL,
 )
 
 from .hailo_logger import get_logger
 from .installation_utils import detect_hailo_arch
 
 try:
-    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_model_info, get_supported_architectures
+    from hailo_apps.config.config_manager import get_default_models, get_inputs_for_app, get_supported_architectures
 except ImportError:
     import sys
     from pathlib import Path
     config_dir = Path(__file__).resolve().parents[3] / "config"
     sys.path.insert(0, str(config_dir))
-    from config_manager import get_default_models, get_inputs_for_app, get_model_info, get_supported_architectures
+    from config_manager import get_default_models, get_inputs_for_app, get_supported_architectures
 hailo_logger = get_logger(__name__)
 
 
@@ -771,153 +770,6 @@ def _map_app_to_resource_group(app_name: str) -> str:
     return app_mapping.get(app_name, app_name)
 
 
-def _extract_model_name_from_hef_path(hef_path: str | Path) -> str:
-    candidate_name = Path(hef_path).name
-    if candidate_name.endswith(HAILO_FILE_EXTENSION):
-        return candidate_name[: -len(HAILO_FILE_EXTENSION)]
-    return candidate_name
-
-
-def _get_standalone_app_dir(app_name: str) -> Path:
-    return Path(__file__).resolve().parents[2] / "standalone_apps" / app_name
-
-
-def _map_arch_to_s3_segment(arch: str | None) -> str | None:
-    if arch is None:
-        return None
-    mapping = {
-        HAILO8_ARCH: "h8",
-        HAILO8L_ARCH: "h8l",
-        HAILO10H_ARCH: "h10",
-    }
-    return mapping.get(arch)
-
-
-def _build_s3_hef_sibling_url(arch: str | None, filename: str) -> str | None:
-    s3_arch = _map_arch_to_s3_segment(arch)
-    if not s3_arch:
-        return None
-    return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{filename}"
-
-
-def _resolve_hef_parent_dir(hef_path_value: str | Path, model_name: str, arch: str | None) -> Path:
-    candidate = Path(hef_path_value)
-    if candidate.exists():
-        return candidate.resolve().parent
-
-    if arch:
-        inferred = get_resource_path(
-            pipeline_name=None,
-            resource_type=RESOURCES_MODELS_DIR_NAME,
-            arch=arch,
-            model=model_name,
-        )
-        if inferred is not None:
-            return inferred.parent
-
-    fallback = get_resource_path(
-        pipeline_name=None,
-        resource_type=RESOURCES_MODELS_DIR_NAME,
-        arch=os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch(),
-        model=model_name,
-    )
-    if fallback is not None:
-        return fallback.parent
-
-    return Path(hef_path_value).resolve().parent if Path(hef_path_value).parent != Path(".") else Path.cwd()
-
-
-def _download_artifact_if_needed(url: str, destination: Path) -> bool:
-    try:
-        from hailo_apps.installation.download_resources import download_file
-
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        download_file(url=url, dest_path=destination, show_progress=True)
-        return destination.exists()
-    except Exception as exc:
-        hailo_logger.error("Failed to download ONNX artifact from %s: %s", url, exc)
-        return False
-
-
-def _resolve_onnx_postproc_for_standalone(args: argparse.Namespace, app_name: str) -> None:
-    if app_name not in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}:
-        return
-
-    model_name = _extract_model_name_from_hef_path(args.hef_path)
-    resource_group = app_name
-    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
-
-    model_info = None
-    if arch:
-        model_info = get_model_info(resource_group, arch, model_name, app_type="standalone")
-
-    if model_info is None:
-        for candidate_arch in get_supported_architectures(resource_group):
-            model_info = get_model_info(resource_group, candidate_arch, model_name, app_type="standalone")
-            if model_info is not None:
-                break
-
-    onnx_postproc_name = model_info.onnx_postproc_name if model_info is not None else None
-    if not onnx_postproc_name:
-        hailo_logger.error(
-            "Model '%s' for app '%s' does not define required ONNX metadata 'onnx_postproc_name' in resources_config.yaml",
-            model_name,
-            app_name,
-        )
-        sys.exit(1)
-
-    app_dir = _get_standalone_app_dir(app_name)
-
-    config_path = app_dir / "onnx" / f"config_onnx_{model_name}.json"
-
-    if not config_path.exists():
-        hailo_logger.error(
-            "ONNX postprocessing is enabled for model '%s', but config file was not found at: %s\n"
-            "Expected naming convention: config_onnx_<model_name>.json in the app's onnx/ directory.",
-            model_name,
-            config_path,
-        )
-        sys.exit(1)
-
-    args.onnxconfig = str(config_path)
-
-    hef_parent_dir = _resolve_hef_parent_dir(args.hef_path, model_name, arch)
-
-    user_onnx_override = getattr(args, "onnx", None)
-    if user_onnx_override:
-        args.onnx = str(Path(user_onnx_override))
-
-    postprocessing_path = Path(getattr(args, "onnx", "")) if getattr(args, "onnx", None) else (hef_parent_dir / onnx_postproc_name)
-    if not postprocessing_path.exists():
-        post_url = _build_s3_hef_sibling_url(arch, onnx_postproc_name)
-        if post_url and _download_artifact_if_needed(post_url, postprocessing_path):
-            hailo_logger.info("Downloaded missing ONNX postprocessing artifact: %s", postprocessing_path)
-        else:
-            hailo_logger.error(
-                "Missing ONNX postprocessing artifact: %s\n"
-                "Either place the file at this path, provide --onnx <path>, or ensure the ONNX sidecar exists next to the HEF artifact.",
-                postprocessing_path,
-            )
-            sys.exit(1)
-    args.onnx = str(postprocessing_path)
-
-    if getattr(args, "full_onnx", False):
-        neural_file = f"{model_name}_neural_processing.onnx"
-        neural_path = hef_parent_dir / neural_file
-        if not neural_path.exists():
-            neural_url = _build_s3_hef_sibling_url(arch, neural_file)
-            if neural_url and _download_artifact_if_needed(neural_url, neural_path):
-                hailo_logger.info("Downloaded missing ONNX neural-processing artifact: %s", neural_path)
-            else:
-                hailo_logger.error(
-                    "--full-onnx requires ONNX neural-processing artifact, but it is missing: %s\n"
-                    "Place the file at this path or ensure the ONNX sidecar exists next to the HEF artifact.",
-                    neural_path,
-                )
-                sys.exit(1)
-        args.onnx_neural = str(neural_path)
-
-
 
 # =============================================================================
 # Handle and Resolve Common Args
@@ -954,14 +806,14 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
         sys.exit(0)
 
 
-    full_onnx_skip_hef = (
+    debug_ref_onnx_skip_hef = (
         app_type == APP_TYPE_STANDALONE
         and APP_NAME in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}
-        and getattr(args, "full_onnx", False)
+        and bool(getattr(args, "neural_onnx_ref", None))
     )
 
-    if full_onnx_skip_hef:
-        hailo_logger.info("--full-onnx enabled: skipping HEF path resolution/download")
+    if debug_ref_onnx_skip_hef:
+        hailo_logger.info("--neural-onnx-ref set: skipping HEF path resolution/download (debug reference mode)")
     elif multi_hef:
         # Resolve multiple HEF paths
         try:
@@ -981,7 +833,13 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
             sys.exit(1)
 
     if app_type == APP_TYPE_STANDALONE:
-        _resolve_onnx_postproc_for_standalone(args, APP_NAME)
+        from .onnx_utils import resolve_onnx_postproc_for_standalone
+
+        resolve_onnx_postproc_for_standalone(
+            args=args,
+            app_name=APP_NAME,
+            download_resource_cb=_download_resource,
+        )
 
     #resolve input source
     args.input = resolve_input_arg(APP_NAME, args.input)
