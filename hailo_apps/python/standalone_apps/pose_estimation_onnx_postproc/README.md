@@ -41,16 +41,18 @@ Install: [same as base pose estimation](https://github.com/hailo-ai/hailo-apps/b
 The postprocessing ONNX binary is lazy-downloaded alongside the HEF.
 
 
-Usage
+Arguments
 --------------
 [As in base pose estimation](https://github.com/hailo-ai/hailo-apps/blob/main/hailo_apps/python/standalone_apps/pose_estimation/README.md#arguments) + the following additions:
 
---onnx ONNX_PP_FILE Optional override path to ONNX postprocessing model file (2nd part of split). If omitted, use existing resource lazy-downloaded from preconfigured cloud path (alongside the HEF) \
---aigym EXERCISE   Enable exercise rep-counting mode. Adds ByteTrack multi-person tracking and angle-based hysteresis counting. Choices of EXERCISE: squats, pushups, pullups. \
-  --pose-trail N        Number of previous frames whose pose skeletons are kept and drawn as a fading trail behind the current detection. 0 (default) disables the trail. Typical value: 10. \
-  --mute-background ALPHA Dim the background image to emphasize pose skeletons. \
-  --neural-onnx-ref ONNX_HEF_EQ_FILE  For debug or quality/speed benchmarking - use a 'neural ONNX' file (1st part of splitting - corresponding to the HEF) to bypass hardware and run reference hef-equivalent model on the host CPU via the onnx-runtime engine. 
-  
+- `--onnx ONNX_PP_FILE`: [optional] Override path to ONNX postprocessing model file (2nd part of split). If omitted, use existing resource lazy-downloaded from preconfigured cloud path (alongside the HEF)
+- `--onnx-config ONNX_CONFIG_FILE`: [optional] Path to the ONNX postprocessing configuration file. If omitted, a default configuration is used if available.
+- `--aigym EXERCISE`: [optional] Enable exercise rep-counting mode. Adds ByteTrack multi-person tracking and angle-based hysteresis counting. Choices of EXERCISE: squats, pushups, pullups.
+- `--pose-trail N`: [optional]Number of previous frames whose pose skeletons are kept and drawn as a fading trail behind the current detection. 0 (default) disables the trail. Typical value: 10.
+- `--mute-background ALPHA`: [optional] Dim the background image to emphasize pose skeletons.
+- `--neural-onnx-ref ONNX_HEF_EQ_FILE`: [optional] For debug or quality/speed benchmarking - use a 'neural ONNX' file (1st part of splitting - corresponding to the HEF) to bypass hardware and run reference hef-equivalent model on the host CPU via the onnx-runtime engine.
+
+
 Examples:
 
 [Note - exemplified for video but available for real-time feed with --i usb or --i rpi as in other apps]
@@ -65,5 +67,6 @@ Count squats for a whole class at once ("aigym"):
 ```
 python pose_estimation_onnx_postproc.py --i grok-squats.mp4 --hef yolo26m_pose --no-display --aigym squats
 ```
-(try pushups, pullups as well :)
+try pushups, pullups as well :)
+
 ![aigym trail demo](output_aigym.gif)

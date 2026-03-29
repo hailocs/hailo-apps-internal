@@ -14,29 +14,9 @@ import argparse
 from .defines import (
     DEFAULT_DOTENV_PATH,
     DEFAULT_LOCAL_RESOURCES_PATH,
-    DEPTH_MODEL_NAME,
-    DEPTH_PIPELINE,
-    DETECTION_MODEL_NAME_H8,
-    DETECTION_MODEL_NAME_H8L,
-    DETECTION_PIPELINE,
     DIC_CONFIG_VARIANTS,
-    FACE_DETECTION_MODEL_NAME_H8,
-    FACE_DETECTION_MODEL_NAME_H8L,
-    FACE_DETECTION_PIPELINE,
-    FACE_RECOGNITION_MODEL_NAME_H8,
-    FACE_RECOGNITION_MODEL_NAME_H8L,
-    FACE_RECOGNITION_PIPELINE,
-    HAILO8_ARCH,
-    HAILO8L_ARCH,
-    HAILO10H_ARCH,
     HAILO_ARCH_KEY,
     HAILO_FILE_EXTENSION,
-    INSTANCE_SEGMENTATION_MODEL_NAME_H8,
-    INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
-    INSTANCE_SEGMENTATION_PIPELINE,
-    POSE_ESTIMATION_MODEL_NAME_H8,
-    POSE_ESTIMATION_MODEL_NAME_H8L,
-    POSE_ESTIMATION_PIPELINE,
     RESOURCES_JSON_DIR_NAME,
     RESOURCES_MODELS_DIR_NAME,
     RESOURCES_NPY_DIR_NAME,
@@ -45,10 +25,9 @@ from .defines import (
     RESOURCES_ROOT_PATH_DEFAULT,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
-    SIMPLE_DETECTION_MODEL_NAME,
-    SIMPLE_DETECTION_PIPELINE,
     CAMERA_RESOLUTION_MAP,
     RESOURCE_TYPE_IMAGE,
+    RESOURCE_TYPE_ONNX,
     RESOURCE_TYPE_VIDEO,
     RESOURCE_TYPE_MODEL,
     CAMERA_KEYWORDS,
@@ -128,23 +107,6 @@ def configure_multi_model_hef_path(parser):
     return common_parser.configure_multi_model_hef_path(parser)
 
 
-def get_model_name(pipeline_name: str, arch: str) -> str:
-    hailo_logger.debug(f"Getting model name for pipeline={pipeline_name}, arch={arch}")
-    is_h8 = arch in (HAILO8_ARCH, HAILO10H_ARCH)
-    pipeline_map = {
-        DEPTH_PIPELINE: DEPTH_MODEL_NAME,
-        SIMPLE_DETECTION_PIPELINE: SIMPLE_DETECTION_MODEL_NAME,
-        DETECTION_PIPELINE: DETECTION_MODEL_NAME_H8 if is_h8 else DETECTION_MODEL_NAME_H8L,
-        INSTANCE_SEGMENTATION_PIPELINE: INSTANCE_SEGMENTATION_MODEL_NAME_H8 if is_h8 else INSTANCE_SEGMENTATION_MODEL_NAME_H8L,
-        POSE_ESTIMATION_PIPELINE: POSE_ESTIMATION_MODEL_NAME_H8 if is_h8 else POSE_ESTIMATION_MODEL_NAME_H8L,
-        FACE_DETECTION_PIPELINE: FACE_DETECTION_MODEL_NAME_H8 if is_h8 else FACE_DETECTION_MODEL_NAME_H8L,
-        FACE_RECOGNITION_PIPELINE: FACE_RECOGNITION_MODEL_NAME_H8 if is_h8 else FACE_RECOGNITION_MODEL_NAME_H8L,
-    }
-    name = pipeline_map[pipeline_name]
-    hailo_logger.debug(f"Resolved model name: {name}")
-    return name
-
-
 def get_resource_path(
     pipeline_name: str, resource_type: str, arch: str | None = None, model: str | None = None
 ) -> Path | None:
@@ -180,12 +142,7 @@ def get_resource_path(
             if "." in model:
                 return model_path.with_name(model_path.name + HAILO_FILE_EXTENSION)
             return model_path.with_suffix(HAILO_FILE_EXTENSION)
-        if pipeline_name:
-            name = get_model_name(pipeline_name, arch)
-            name_path = root / RESOURCES_MODELS_DIR_NAME / arch / name
-            if "." in name:
-                return name_path.with_name(name_path.name + HAILO_FILE_EXTENSION)
-            return name_path.with_suffix(HAILO_FILE_EXTENSION)
+
     return None
 
 
@@ -336,17 +293,10 @@ def resolve_hef_path(
     Returns:
         Path to the HEF file, or None if not found
     """
-    try:
-        from hailo_apps.config.config_manager import (
-            get_model_names,
-            get_default_model_name,
-        )
-    except ImportError:
-        hailo_logger.warning("Could not import config_manager, using legacy resolution")
-        # Fallback to legacy resolution
-        if hef_path is None:
-            return get_resource_path(app_name, RESOURCES_MODELS_DIR_NAME, arch)
-        return Path(hef_path) if hef_path else None
+    from hailo_apps.config.config_manager import (
+        get_model_names,
+        get_default_model_name,
+    )
 
     resources_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
 
@@ -378,10 +328,6 @@ def resolve_hef_path(
             is_using_default = True
             hailo_logger.info(f"Using default model: {default_model}")
         else:
-            # Fallback to legacy pipeline-based model
-            legacy_path = get_resource_path(app_name, RESOURCES_MODELS_DIR_NAME, arch)
-            if legacy_path and legacy_path.exists():
-                return legacy_path
             hailo_logger.error(f"No default model found for {app_name}/{arch}")
             return None
     
@@ -450,7 +396,10 @@ def _download_resource(resource_name: str, resource_type: str, app_name: str, ar
 
     Args:
         resource_name: Name of the resource to download
-        resource_type: Type of the resource (e.g., model, video)
+        resource_type: Type of the resource.
+                       Supported values: "model", "image", "video", "onnx"
+        app_name: Application/group name used by the downloader
+        arch: Optional Hailo architecture override
 
     Returns:
         True if download succeeded, False otherwise
@@ -567,6 +516,106 @@ def resolve_hef_paths(
 
     return resolved
 
+
+def resolve_postprocess_onnx_path(
+    resolved_hef_path: Path,
+    onnx_path: str | None = None,
+    app_name: str | None = None,
+    app_type: str | None = None,
+) -> Path | None:
+    """
+    Resolve ONNX postprocessing file for a given HEF.
+
+    Order:
+    1. User-provided ONNX (--onnx)
+    2. Sibling file next to HEF
+    3. Resources directory
+    4. download (model package)
+
+    Naming:
+        <model_name>_postprocessing.onnx
+    """
+
+    # ------------------------------------------------------------------
+    # 1. User override
+    # ------------------------------------------------------------------
+    if onnx_path:
+        user_path = Path(onnx_path)
+        if user_path.exists():
+            resolved = user_path.resolve()
+            hailo_logger.info(f"Using ONNX from user path: {resolved}")
+            return resolved
+
+        hailo_logger.error(f"Provided ONNX path does not exist: {onnx_path}")
+        return None
+
+    # ------------------------------------------------------------------
+    # 2. Infer ONNX name from HEF
+    # ------------------------------------------------------------------
+    model_name = resolved_hef_path.stem
+    onnx_filename = f"{model_name}_postprocessing.onnx"
+
+    # ------------------------------------------------------------------
+    # 3. Check sibling (same folder as HEF)
+    # ------------------------------------------------------------------
+    sibling = resolved_hef_path.with_name(onnx_filename)
+    if sibling.exists():
+        hailo_logger.info(f"Using ONNX next to HEF: {sibling}")
+        return sibling.resolve()
+
+    # ------------------------------------------------------------------
+    # 4. Check resources directory
+    # ------------------------------------------------------------------
+
+    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
+    if not arch:
+        hailo_logger.error("Could not detect Hailo architecture.")
+        return None
+
+    resources_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
+    models_dir = resources_root / RESOURCES_MODELS_DIR_NAME / arch
+    resource_path = models_dir / onnx_filename
+
+    if resource_path.exists():
+        hailo_logger.info(f"Found ONNX in resources: {resource_path}")
+        return resource_path
+
+    # ------------------------------------------------------------------
+    # 5. Attempt download
+    # ------------------------------------------------------------------
+    if app_name is not None:
+        try:
+            from hailo_apps.config.config_manager import get_model_names
+            available_models = get_model_names(app_name, arch, tier="all", app_type=app_type)
+        except Exception:
+            available_models = []
+
+        if model_name in available_models:
+
+            onnx_resource_name = f"{model_name}_postprocessing.onnx"
+
+            print(f"\n⚠️  WARNING: Missing ONNX '{onnx_filename}'")
+            print(f"   Downloading ONNX resource for {app_name}/{arch}...\n")
+
+            if _download_resource(onnx_resource_name, RESOURCE_TYPE_ONNX, app_name, arch):
+                if resource_path.exists():
+                    hailo_logger.info(f"ONNX downloaded successfully: {resource_path}")
+                    return resource_path
+
+                hailo_logger.error(f"Download succeeded but ONNX not found: {resource_path}")
+                return None
+
+            hailo_logger.error(f"Failed to download model: {model_name}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Final fallback
+    # ------------------------------------------------------------------
+    hailo_logger.error(
+        f"ONNX postprocess file not found for model '{model_name}'. "
+        f"Expected: {onnx_filename}"
+    )
+    return None
 
 
 # =============================================================================
@@ -774,7 +823,7 @@ def _map_app_to_resource_group(app_name: str) -> str:
 # =============================================================================
 # Handle and Resolve Common Args
 # =============================================================================
-def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: bool = False) -> None:
+def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: bool = False, using_onnx_pp=False) -> None:
     """
     Handle common CLI argument logic for Hailo applications.
 
@@ -791,6 +840,7 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
     Args:
         args: Parsed argparse.Namespace from the application
         APP_NAME: The application name for model/input resolution
+        using_onnx_pp: Whether the app uses ONNX postprocessing
     """
     # Auto-detect app_type from caller's location
     app_type = _detect_app_type_from_caller()
@@ -805,15 +855,6 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
         list_inputs_for_app(APP_NAME)
         sys.exit(0)
 
-
-    debug_ref_onnx_skip_hef = (
-        app_type == APP_TYPE_STANDALONE
-        and APP_NAME in {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}
-        and bool(getattr(args, "neural_onnx_ref", None))
-    )
-
-    if debug_ref_onnx_skip_hef:
-        hailo_logger.info("--neural-onnx-ref set: skipping HEF path resolution/download (debug reference mode)")
     elif multi_hef:
         # Resolve multiple HEF paths
         try:
@@ -832,14 +873,17 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
             hailo_logger.error("Failed to resolve HEF path for %s", APP_NAME)
             sys.exit(1)
 
-    if app_type == APP_TYPE_STANDALONE:
-        from .onnx_utils import resolve_onnx_postproc_for_standalone
-
-        resolve_onnx_postproc_for_standalone(
-            args=args,
+        # Resolve optional ONNX postprocess path
+        args.onnx = resolve_postprocess_onnx_path(
+            resolved_hef_path=args.hef_path,
+            onnx_path=args.onnx,
             app_name=APP_NAME,
-            download_resource_cb=_download_resource,
+            app_type=app_type,
         )
+
+        if args.onnx is None:
+            hailo_logger.error("Failed to resolve ONNX path for %s", APP_NAME)
+            sys.exit(1)
 
     #resolve input source
     args.input = resolve_input_arg(APP_NAME, args.input)

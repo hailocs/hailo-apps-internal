@@ -124,9 +124,23 @@ def parse_args():
         "--onnx",
         type=str,
         default=None,
+        metavar="ONNX_PP_FILE",
         help=(
             "Optional override path to ONNX postprocessing model file. "
             "If omitted, standalone resolver uses model-sidecar placement near the HEF path."
+        ),
+    )
+
+
+    parser.add_argument(
+        "--onnx-config",
+        type=str,
+        default=None,
+        metavar="ONNX_CONFIG_FILE",
+        help=(
+            "Optional override path to ONNX postprocessing config JSON file. "
+            "If omitted, the config is resolved automatically based on the HEF model name "
+            "(onnx/config_onnx_<model_name>.json)."
         ),
     )
 
@@ -148,7 +162,7 @@ def parse_args():
 def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,  
           save_output=False, camera_resolution="sd", output_resolution=None,
           enable_tracking=False, show_fps=False, frame_rate=None, draw_trail=False,
-          no_display=False, onnxconfig=None, onnxconfig_args=None) -> None:
+          no_display=False, onnx_config=None, onnxconfig_args=None) -> None:
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
@@ -156,18 +170,11 @@ def run_inference_pipeline(net, input_src, batch_size, labels, output_dir,
     config_data = load_json_file("config.json")
     
     # Load ONNX config and initialize sessions if specified
-    onnx_config = None
     onnx_session = None
     debug_ref_onnx_intermediate_session = None
     use_debug_ref_onnx = False
-    
-    if not onnxconfig:
-        raise ValueError(
-            "This app runs ONNX-postprocessing only. "
-            "Required ONNX config file was not resolved. "
-            "Expected naming convention: config_onnx_<model_name>.json under app onnx/."
-        )
-    onnx_config, config_path = load_onnx_config(onnxconfig, caller_file=__file__)
+
+    onnx_config, config_path = load_onnx_config(onnx_config, caller_file=__file__)
     use_debug_ref_onnx = bool(getattr(onnxconfig_args, "neural_onnx_ref", None))
     sessions = init_onnx_sessions(
         onnx_config,
@@ -380,11 +387,13 @@ def main() -> None:
     """
     args = parse_args()
     init_logging(level=level_from_args(args))
-    handle_and_resolve_args(args, APP_NAME)
+    handle_and_resolve_args(args, APP_NAME, using_onnx_pp=True)
 
-    # --no-display implies --save-output
-    no_display = getattr(args, "no_display", False)
-    save_output = args.save_output or no_display
+    if args.onnx_config is None:
+        args.onnx_config = resolve_onnx_config_from_hef(
+            args.hef_path,
+            __file__
+        )
 
     run_inference_pipeline(
         args.hef_path,
@@ -392,15 +401,15 @@ def main() -> None:
         args.batch_size,
         args.labels,
         args.output_dir,
-        save_output,
+        args.save_output,
         args.camera_resolution,
         args.output_resolution,
         args.track,
         args.show_fps,
         args.frame_rate,
         args.draw_trail,
-        no_display,
-        getattr(args, "onnxconfig", None),
+        args.no_display,
+        args.onnx_config,
         args  # Pass full args for --neural-onnx-ref debug mode
     )
 
