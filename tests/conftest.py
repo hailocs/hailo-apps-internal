@@ -90,6 +90,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "resources: Resource file validation tests")
     config.addinivalue_line("markers", "requires_device: Tests requiring a Hailo device")
     config.addinivalue_line("markers", "requires_gstreamer: Tests requiring GStreamer")
+    config.addinivalue_line("markers", "pipeline: GStreamer pipeline functional tests")
+    config.addinivalue_line("markers", "standalone: Standalone app smoke tests")
+    config.addinivalue_line("markers", "genai: Generative AI app tests")
 
 
 def pytest_runtest_teardown(item, nextitem):
