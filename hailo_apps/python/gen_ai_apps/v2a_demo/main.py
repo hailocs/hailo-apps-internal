@@ -7,9 +7,12 @@ the full pipeline: STT -> Tool Selection -> LLM -> Tool Execution -> TTS.
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from pipeline import V2APipeline
 from listener import WakeWordListener
+
+RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
 
 
 def configure_logger(debug: bool):
@@ -33,7 +36,7 @@ def create_parser():
 
     parser.add_argument(
         "--wake-word-model",
-        default="resources/hey_hailo.onnx",
+        default=str(RESOURCES_DIR / "hey_hailo.onnx"),
         help="Path to wake word model"
     )
 

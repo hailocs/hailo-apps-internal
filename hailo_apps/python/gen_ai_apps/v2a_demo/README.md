@@ -1,8 +1,116 @@
-# Hailo Voice-to-Action Demo
+Hailo Voice-to-Action Demo
+==========================
 
 A voice-controlled AI assistant powered by a Hailo-10H AI accelerator. Speak a command, and the system will identify the right tool, extract parameters, execute it, and speak the results back — all using on-device AI inference.
 
-## Available Tools
+Requirements
+------------
+- Hailo-10H host device
+- Microphone and speaker
+- Python 3.10+
+- HailoRT Python package (`hailo-platform`) installed per [Hailo documentation](https://hailo.ai/developer-zone/)
+- Dependencies from `requirements.txt`
+
+Supported Models
+----------------
+
+This example uses the following models:
+
+- Wake Word Detection: OpenWakeWord (ONNX, CPU)
+- Stage 1 — STT: Whisper-Base (HEF, Hailo)
+- Stage 2 — Tool Selection: all-MiniLM-L6-v2 (HEF, Hailo)
+- Stage 3 — LLM: Qwen2.5-Coder-1.5B-Instruct (HEF, Hailo)
+- Stage 5 — TTS: Piper TTS (ONNX, CPU)
+
+HEF resources are resolved via the shared resources catalog and auto-downloaded on first run (same flow as standalone apps).
+
+## Linux Installation
+
+This app supports standalone installation only.
+
+### Standalone Installation
+
+To avoid compatibility issues, it's recommended to use a clean virtual environment.
+
+0. Install PCIe driver and PyHailoRT
+    - Download and install the PCIe driver and PyHailoRT from the Hailo website.
+    - To install the PyHailoRT wheel:
+    ```shell script
+    pip install hailort-X.X.X-cpXX-cpXX-linux_x86_64.whl
+    ```
+
+1. Clone the repository:
+    ```shell script
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps/hailo_apps/python/gen_ai_apps/v2a_demo
+    ```
+
+2. Install dependencies:
+    ```shell script
+    pip install -r requirements.txt
+    ```
+
+3. Set required API key:
+    ```shell script
+    export OPENWEATHER_API_KEY="your_key_here"
+    ```
+
+4. (Optional) Pre-download HEF resources:
+    ```shell script
+    python -m hailo_apps.installation.download_resources --group v2a_demo
+    ```
+
+### Run
+After completing installation, run from the application folder:
+```shell script
+python main.py
+```
+
+## Windows Installation
+
+To avoid compatibility issues, it's recommended to use a clean virtual environment.
+
+0. Install HailoRT (MSI) + PyHailoRT
+    1. Download and install the **HailoRT Windows MSI** from the Hailo website.
+    2. During installation, make sure **PyHailoRT** is selected.
+    3. Create and activate a virtual environment:
+    ```powershell
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+    ```
+    4. Install the PyHailoRT wheel:
+    ```powershell
+    pip install "C:\Program Files\HailoRT\python\hailort-*.whl"
+    ```
+
+1. Clone the repository:
+    ```powershell
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps\hailo_apps\python\gen_ai_apps\v2a_demo
+    ```
+
+2. Install dependencies:
+    ```powershell
+    pip install -r requirements.txt
+    ```
+
+3. Set required API key:
+    ```powershell
+    $env:OPENWEATHER_API_KEY="your_key_here"
+    ```
+
+4. (Optional) Pre-download HEF resources:
+    ```powershell
+    python -m hailo_apps.installation.download_resources --group v2a_demo
+    ```
+
+### Run
+```powershell
+python .\main.py
+```
+
+Available Tools
+---------------
 
 | Tool | Description | Example Command |
 |------|-------------|-----------------|
@@ -13,38 +121,50 @@ A voice-controlled AI assistant powered by a Hailo-10H AI accelerator. Speak a c
 | `system_check` | CPU, RAM, disk, temperature report | "Hey Hailo, run a system check" |
 | `explain_tools` | List available capabilities | "Hey Hailo, what can you do?" |
 
-## Prerequisites
+Arguments
+---------
 
-- A host with a Hailo-10H AI accelerator
-- Microphone and speaker connected
-- Python 3.10+
-- HailoRT Python package (`hailo-platform`) installed per [Hailo's documentation](https://hailo.ai/developer-zone/)
+- `--wake-word-model`: [optional] Path to wake-word model. Default: `resources/hey_hailo.onnx`.
+- `--audio-input-path`: [optional] Process a pre-recorded audio file once and exit.
+- `--audio-output-path`: [optional] Save generated TTS output to a file.
+- `--audio-device`: [optional] Microphone device index.
+- `--debug`: [optional] Enable debug logs.
 
-## Quick Start
+For more information:
+```shell script
+python main.py -h
+```
 
-```bash
-cd v2a_demo
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+Example
+-------
 
-# Set up API keys
-# Free API key from https://openweathermap.org/api (required for weather tool)
-export OPENWEATHER_API_KEY="your_key_here"
-
-# Run the demo
+**Standard mode**
+```shell script
 python main.py
 ```
 
-### CLI Options
-
-```bash
-python main.py                                             # Standard mode
-python main.py --audio-device 2                            # Select microphone device
-python main.py --wake-word-model resources/hey_hailo.onnx  # Use a different wake word
+**Select microphone device**
+```shell script
+python main.py --audio-device 2
 ```
 
-## Adding a New Tool
+**Use a different wake-word model**
+```shell script
+python main.py --wake-word-model resources/hey_hailo.onnx
+```
+
+**Process pre-recorded input**
+```shell script
+python main.py --audio-input-path sample.wav
+```
+
+**Save TTS output**
+```shell script
+python main.py --audio-output-path reply.wav
+```
+
+Adding a New Tool
+-----------------
 
 Adding a tool requires one new file and one line in the registry.
 
@@ -96,30 +216,41 @@ _REGISTRY = {
 
 For tools that take no parameters (like `system_check`), set `TOOL_PROMPT` to output `{}` and add the tool name to `NO_PARAM_TOOLS` in `tools/__init__.py`.
 
+Pipeline Architecture
+---------------------
 
-## Pipeline Architecture
-
-```
+```text
 Microphone
     |
     v
-[Wake Word Detection]     OpenWakeWord (ONNX, CPU)
+[Wake Word Detection]      OpenWakeWord (ONNX, CPU)
     |
     v
-[Stage 1 — STT]           Whisper-Base (HEF, Hailo)
+[Stage 1 — STT]            Whisper-Base (HEF, Hailo)
     |  text
     v
 [Stage 2 — Tool Selection] all-MiniLM-L6-v2 (HEF, Hailo)
     |  tool name
     v
-[Stage 3 — LLM]           Qwen2.5-Coder-1.5B-Instruct (HEF, Hailo)
+[Stage 3 — LLM]            Qwen2.5-Coder-1.5B-Instruct (HEF, Hailo)
     |  JSON params
     v
 [Stage 4 — Tool Execution] Python function call
     |  response text
     v
-[Stage 5 — TTS]           Piper TTS (ONNX, CPU)
+[Stage 5 — TTS]            Piper TTS (ONNX, CPU)
     |
     v
 Speaker
 ```
+
+Additional Notes
+----------------
+
+- This demo targets Hailo-10H systems.
+- `OPENWEATHER_API_KEY` is required only for weather requests.
+- If `--audio-input-path` is not provided, the app runs in continuous listening mode.
+
+Disclaimer
+----------
+This code example is provided by Hailo solely on an “AS IS” basis and “with all faults”. No responsibility or liability is accepted or shall be imposed upon Hailo regarding the accuracy, merchantability, completeness or suitability of the code example. Hailo shall not have any liability or responsibility for errors or omissions in, or any business decisions made by you in reliance on this code example or any part of it. If an error occurs when running this example, please open a ticket in the "Issues" tab.

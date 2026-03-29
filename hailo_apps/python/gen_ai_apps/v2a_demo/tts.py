@@ -19,8 +19,9 @@ from piper import PiperVoice
 
 logger = logging.getLogger("v2a_demo")
 
-TTS_MODEL_PATH = "resources/en_US-joe-medium.onnx"
-TTS_CONFIG_PATH = "resources/en_US-joe-medium.onnx.json"
+RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
+TTS_MODEL_PATH = str(RESOURCES_DIR / "en_US-joe-medium.onnx")
+TTS_CONFIG_PATH = str(RESOURCES_DIR / "en_US-joe-medium.onnx.json")
 
 class TTSEngine:
     """Text-to-Speech engine using Piper."""

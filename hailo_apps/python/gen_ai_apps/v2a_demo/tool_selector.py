@@ -14,16 +14,32 @@ pre-computed tool description embeddings.
 import hashlib
 import json
 import logging
+import sys
+from pathlib import Path
 import numpy as np
 from transformers import AutoTokenizer
 from hailo_platform import VDevice, FormatType
 from tools import TOOL_DESCRIPTIONS
 
+try:
+    from hailo_apps.python.core.common.core import resolve_hef_path
+    from hailo_apps.python.core.common.defines import HAILO10H_ARCH, V2A_DEMO_APP
+except ImportError:
+    repo_root = None
+    for p in Path(__file__).resolve().parents:
+        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+            repo_root = p
+            break
+    if repo_root is not None:
+        sys.path.insert(0, str(repo_root))
+    from hailo_apps.python.core.common.core import resolve_hef_path
+    from hailo_apps.python.core.common.defines import HAILO10H_ARCH, V2A_DEMO_APP
+
 logger = logging.getLogger("v2a_demo")
 
-TOOL_SELECTOR_HEF_PATH = "resources/all_minilm_l6_v2.hef"
-WORD_EMBEDDINGS_PATH = "resources/word_embeddings_weight.npy"
-TOOL_EMBEDDINGS_CACHE_PATH = "resources/tool_embeddings_cache.npz"
+RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
+WORD_EMBEDDINGS_PATH = RESOURCES_DIR / "word_embeddings_weight.npy"
+TOOL_EMBEDDINGS_CACHE_PATH = RESOURCES_DIR / "tool_embeddings_cache.npz"
 
 TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 MAX_SEQ_LEN = 128
@@ -61,7 +77,15 @@ class ToolSelector:
         self._tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_MODEL)
         self._text_embeddings = np.load(WORD_EMBEDDINGS_PATH)
 
-        self._infer_model = vdevice.create_infer_model(TOOL_SELECTOR_HEF_PATH)
+        model_path = resolve_hef_path(
+            hef_path="all_minilm_l6_v2",
+            app_name=V2A_DEMO_APP,
+            arch=HAILO10H_ARCH,
+        )
+        if model_path is None:
+            raise RuntimeError("Failed to resolve HEF path for tool selector model 'all_minilm_l6_v2'")
+
+        self._infer_model = vdevice.create_infer_model(str(model_path))
         for inp in self._infer_model.inputs:
             inp.set_format_type(FormatType.FLOAT32)
         for out in self._infer_model.outputs:
@@ -113,6 +137,7 @@ class ToolSelector:
     def _load_embeddings_from_cache(self) -> bool:
         """Try to load tool embeddings from disk cache. Returns True if successful."""
         current_hash = _descriptions_hash()
+        TOOL_EMBEDDINGS_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
         try:
             cache = np.load(TOOL_EMBEDDINGS_CACHE_PATH, allow_pickle=True)
             if str(cache["hash"]) == current_hash:
