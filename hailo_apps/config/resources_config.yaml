@@ -14,6 +14,7 @@
 #         - {name: "model_name", source: "s3"}  # S3 model (URL built dynamically)
 #         - {name: "model_name", url: "https://...", source: "s3"}  # S3 model with explicit URL (backward compatibility)
 #         - {name: "model_name", source: "gen-ai-mz"}  # Gen-AI model from server (URL built from metadata)
+#         - {name: "model_name", onnx_postproc_name: "model_postprocessing.onnx"}  # Optional ONNX postprocessing model filename
 #
 #   json: [list of JSON config file entries - shared across all apps]
 #   npy: [list of npy file entries - shared across all apps]
@@ -480,6 +481,21 @@ detection: &detection_app
 # Standalone app uses the same model set and defaults as the pipeline app
 object_detection: *detection_app
 
+object_detection_onnx_postproc:
+  models:
+    hailo8:
+      default:
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc_name: yolo26n_postprocessing.onnx
+    hailo8l:
+      default:
+        - name: yolo26n
+          source: s3
+          app_type: [standalone]
+          onnx_postproc_name: yolo26n_postprocessing.onnx
+
 simple_detection: &simple_detection_app
   models:
     hailo8:
@@ -617,6 +633,25 @@ pose_estimation: &pose_estimation_app
       extra:
         - name: yolov8s_pose
           source: mz
+ 
+
+pose_estimation_onnx_postproc:
+  models:
+    hailo10h:
+      default:
+        - name: yolo26m_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc_name: yolo26m_pose_postprocessing.onnx
+      extra: 
+        - name: yolo26s_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc_name: yolo26s_pose_postprocessing.onnx
+        - name: yolo26n_pose
+          source: s3
+          app_type: [standalone]
+          onnx_postproc_name: yolo26n_pose_postprocessing.onnx
 
 depth: &depth_app
   models:
