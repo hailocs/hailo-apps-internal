@@ -14,7 +14,7 @@ The text-image contrastive matching runs entirely on the Hailo accelerator. Chan
 
 ## Prerequisites
 
-- **Hardware**: Hailo-10H
+- **Hardware**: Hailo-10H (Hailo-8 and Hailo-8L are not supported — the dual-input HEF architecture requires Hailo-10H)
 - **Model**: `yolo_world_v2s` HEF (auto-downloaded on first run)
 - **Python packages**: `transformers`, `torch` (for text encoding; not needed if using cached embeddings)
 

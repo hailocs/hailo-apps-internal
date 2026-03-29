@@ -2,12 +2,14 @@
 
 Control your computer mouse with hand gestures using Hailo-8 accelerated hand tracking.
 
-Uses the MediaPipe Blaze palm detection + hand landmark models running on Hailo-8 to track your index fingertip and map it to cursor position. Pinch your thumb and index finger together to click.
+Uses the MediaPipe Blaze palm detection + hand landmark models running on Hailo to track your index fingertip and map it to cursor position. Pinch your thumb and index finger together to click.
+
+**Supported hardware:** Hailo-8, Hailo-8L, Hailo-10H (architecture auto-detected; correct models downloaded automatically)
 
 ## Prerequisites
 
-- Hailo-8 or Hailo-8L
-- Gesture detection models downloaded (`python -m hailo_apps.python.pipeline_apps.gesture_detection.download_blaze_models`)
+- Hailo-8, Hailo-8L, or Hailo-10H
+- Gesture detection models (auto-downloaded on first run, or manually: `python -m community.apps.pipeline_apps.gesture_detection.download_models`)
 - C++ postprocess plugins compiled (`hailo-compile-postprocess`)
 - `pynput` installed (`pip install pynput`)
 - Optional: `screeninfo` for auto screen size detection (`pip install screeninfo`)

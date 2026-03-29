@@ -6,6 +6,7 @@ from hailo_apps.python.core.common.core import (
     get_pipeline_parser,
     resolve_hef_path,
 )
+from hailo_apps.python.core.common.defines import HAILO10H_ARCH
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
@@ -66,6 +67,18 @@ class GStreamerYoloWorldApp(GStreamerApp):
         logger.info("Initializing GStreamer YOLO World App...")
 
         super().__init__(parser, user_data)
+
+        # Validate architecture — YOLO World requires Hailo-10H
+        SUPPORTED_ARCHS = [HAILO10H_ARCH]
+        if self.arch not in SUPPORTED_ARCHS:
+            supported = ", ".join(SUPPORTED_ARCHS)
+            logger.error(
+                "YOLO World requires Hailo-10H (detected: %s). "
+                "Supported architectures: %s",
+                self.arch, supported,
+            )
+            import sys
+            sys.exit(1)
 
         # Use fakesink — all visualization via OpenCV in callback
         self.video_sink = "fakesink"
