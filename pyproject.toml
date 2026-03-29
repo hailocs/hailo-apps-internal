@@ -125,6 +125,20 @@ exclude = [
   "hailo_apps/**/cpp/**",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --tb=short"
+markers = [
+    "sanity: Quick environment sanity checks",
+    "installation: Installation validation tests",
+    "resources: Resource file validation tests",
+    "requires_device: Tests requiring a Hailo device",
+    "requires_gstreamer: Tests requiring GStreamer",
+    "pipeline: GStreamer pipeline functional tests",
+    "standalone: Standalone app smoke tests",
+    "genai: Generative AI app tests",
+]
+
 [tool.ruff.format]
 indent-style = "space"
 quote-style  = "double"

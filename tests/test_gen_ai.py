@@ -6,6 +6,9 @@ import time
 import signal
 from pathlib import Path
 
+# Apply genai marker to all tests in this module
+pytestmark = pytest.mark.genai
+
 # Constants
 TIMEOUT_DEFAULT = 60
 TIMEOUT_LONG = 120
