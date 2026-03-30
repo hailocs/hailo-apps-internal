@@ -111,6 +111,25 @@ KeyError: 'my_new_app'  ← This means resources_config.yaml is missing the entr
 my_new_app: *vlm_chat_app
 ```
 
+## USB Camera Device Selection
+
+### Wrong: Hardcoding /dev/video0 for USB camera
+`/dev/video0` is typically the **integrated webcam** (laptop built-in), not the USB camera.
+```bash
+# ❌ /dev/video0 is usually the integrated webcam
+python my_app.py --input /dev/video0
+```
+
+### Right: Use --input usb for auto-detection
+```bash
+# ✅ Auto-detects the correct USB camera device
+python my_app.py --input usb
+
+# ✅ Or identify first, then use specific device
+v4l2-ctl --list-devices  # Find the USB camera device path
+python my_app.py --input /dev/video4
+```
+
 ## Environment / Driver Checks (Pre-Launch)
 
 ### PCIe driver check is unreliable
@@ -137,6 +156,29 @@ python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_ap
 
 # 4. Input file exists (if file input)
 ls -la /path/to/video.mp4
+```
+
+## Custom Background Apps — Don't Blend Camera Feed
+
+### Wrong: Blending camera feed with background
+When the user provides a custom background image (games, virtual scenes), showing
+the live camera feed blended with the background produces a confusing semi-transparent
+display where the user sees themselves ghost-overlaid on the background.
+```python
+# ❌ WRONG — user sees camera feed blended with background
+output = cv2.addWeighted(self.background, 0.4, frame, 0.6, 0)
+```
+
+### Right: Use background only, draw game elements on top
+The camera frame should only be used for **data extraction** (pose keypoints,
+detections). The rendered output should be a clean copy of the background with
+game elements and body markers drawn on top.
+```python
+# ✅ CORRECT — clean background, no camera feed visible
+output = self.background.copy()
+# Draw eggs, hand markers, HUD, etc. on output
+output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+user_data.set_frame(output)
 ```
 
 ## OpenCV Display

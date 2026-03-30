@@ -18,6 +18,15 @@ devices = get_usb_video_devices()  # Uses udevadm, filters virtual devices
 
 **Gotcha**: `get_usb_video_devices()` returns device indices (int), not paths.
 
+### CRITICAL: Never assume `/dev/video0` is the USB camera
+`/dev/video0` is usually the **integrated webcam** (e.g., laptop built-in camera).
+External USB cameras are typically at `/dev/video4` or higher. Always use:
+- `--input usb` for GStreamer pipeline apps (auto-detects USB camera)
+- `v4l2-ctl --list-devices` to identify the correct device
+- `get_usb_video_devices()` for standalone/OpenCV apps
+
+**Never hardcode `/dev/video0` when the user asks for USB camera.**
+
 ## Camera Init Pattern
 
 Always use a tuple-returning factory for clean abstraction:

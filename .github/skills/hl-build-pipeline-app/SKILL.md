@@ -15,9 +15,12 @@ Build a complete GStreamer pipeline app for real-time video processing on Hailo-
 
 ## Reference Implementations
 
-Study `hailo_apps/python/pipeline_apps/detection/` — the canonical pipeline app:
-- `detection.py` — Subclasses `GStreamerApp`, per-frame callback, pipeline composition
-- Also see: `pose_estimation/`, `instance_segmentation/`, `face_recognition/`
+The canonical pipeline app is `detection/`. Other examples: `pose_estimation/`, `instance_segmentation/`, `face_recognition/`.
+
+**Do NOT read these source files.** This SKILL.md contains all patterns needed to build any pipeline app. The sections below cover: basic pipelines, frame overlays, custom backgrounds, pose extraction, detection data, and subclassing existing pipeline classes.
+
+### Minimum Context for Any Pipeline App
+Read this SKILL.md (full file, single read) + `common_pitfalls.md`. That's it. Build immediately.
 
 ## Build Process
 
@@ -137,6 +140,7 @@ python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 
 ## Critical Conventions
 
+0. **USB camera input**: Always use `--input usb` for USB cameras — the framework auto-detects the correct device. **NEVER** hardcode `/dev/video0` — that is often the integrated webcam, not the USB camera. If you need a specific device, run `v4l2-ctl --list-devices` first.
 1. **CLI parser**: `get_pipeline_parser()` (NOT `get_standalone_parser()`)
 2. **Pipeline composition**: Use helper functions — `SOURCE_PIPELINE`, `INFERENCE_PIPELINE`, `DISPLAY_PIPELINE`
 3. **Callback**: `app_callback(element, buffer, user_data)` — never call `user_data.increment()`
@@ -207,6 +211,31 @@ def app_callback(element, buffer, user_data):
 - Must convert to **BGR** with `cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)` before `set_frame()`
 - Always check `user_data.use_frame` and that `frame is not None`
 - Pass `--use-frame` on CLI to enable (or set `self.use_frame = True` in callback class)
+
+### Custom Background Pattern (games, virtual scenes)
+
+When the user wants a **custom background image** (not the live camera feed), use `background.copy()` — **never blend** the camera feed with the background via `addWeighted` or similar.
+
+```python
+# ✅ CORRECT — background only, no camera feed visible
+if self.background is not None:
+    output = self.background.copy()
+else:
+    output = np.zeros_like(frame)
+
+# Draw game elements on output...
+# Draw hand/body markers from pose data on output...
+
+output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+user_data.set_frame(output)
+```
+
+```python
+# ❌ WRONG — blends camera feed, user sees themselves + background = confusing
+output = cv2.addWeighted(self.background, 0.4, frame, 0.6, 0)
+```
+
+**Rule**: If the user provides a background image or asks for a virtual scene, the camera feed is used **only for pose/detection data extraction** — it must NOT appear in the rendered output. The `frame` from `get_numpy_from_buffer()` is still needed to extract detections, but the display output should be `background.copy()` with game elements drawn on top.
 
 ---
 

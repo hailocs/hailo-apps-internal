@@ -75,11 +75,14 @@ All paths above are relative to `.github/`. The knowledge base at `.github/knowl
 > Agents MUST follow these rules to minimize tool calls and eliminate redundant work.
 
 1. **Fast-path for clear requests** — If the user's request is specific and unambiguous, skip interactive questions and present the plan inline. Only ask when genuinely ambiguous.
-2. **SKILL.md is sufficient** — Do NOT read reference source code (vlm_chat.py, backend.py, etc.). SKILL.md + toolset API refs + memory files contain 100% of the context needed for standard builds.
-3. **validate_app.py is the single gate** — Run `python .github/scripts/validate_app.py <app_dir> --smoke-test` instead of manual grep/import/lint checks. One command, one gate.
-4. **Community apps don't need registration** — Don't register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh`.
-5. **Parallelize independent operations** — Batch reads together, batch file creates together.
-6. **Pre-launch device check** — Always run `hailortcli fw-control identify` before launching any Hailo app. Do NOT use `lsmod | grep hailo_pci` (unreliable).
+2. **SKILL.md is sufficient** — Do NOT read reference source code (vlm_chat.py, backend.py, pose_estimation.py, etc.). SKILL.md + common_pitfalls.md contain 100% of the context needed for standard builds. Do NOT launch sub-agents to find source code that SKILL.md already documents.
+3. **Read SKILL.md fully in one call** — SKILL.md files are <400 lines. Read the entire file in a single `read_file` call. Never split into partial reads (e.g., lines 1-300 then 300-600) — that wastes a round trip.
+4. **Minimum context = SKILL.md + common_pitfalls.md** — For any standard app build, read exactly these two files in parallel, then build. Do not read coding-standards.md, toolset refs, or source code unless SKILL.md is genuinely missing a pattern.
+5. **validate_app.py is the single gate** — Run `python .github/scripts/validate_app.py <app_dir> --smoke-test` instead of manual grep/import/lint checks. One command, one gate.
+6. **Community apps don't need registration** — Don't register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh`.
+7. **Parallelize independent operations** — Batch reads together, batch file creates together.
+8. **Pre-launch device check** — Always run `hailortcli fw-control identify` before launching any Hailo app. Do NOT use `lsmod | grep hailo_pci` (unreliable).
+9. **USB camera: always `--input usb`** — Never hardcode `/dev/video0`. Use `--input usb` for auto-detection. `/dev/video0` is typically the integrated webcam, not the USB camera.
 
 ## Orchestrated Agent Workflow
 

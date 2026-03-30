@@ -15,6 +15,9 @@ Read `.hailo/README.md` for the complete master index.
 4. **Logging**: Use `get_logger(__name__)`
 5. **CLI parsers**: Use `get_pipeline_parser()` or `get_standalone_parser()`
 6. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag
+7. **USB camera**: Always `--input usb` for auto-detection. Never hardcode `/dev/video0`.
+8. **SKILL.md is sufficient**: Read SKILL.md + common_pitfalls.md only. Do NOT read source code.
+9. **Custom background**: Use `background.copy()` — never blend camera feed with background.
 
 ## Available Skills
 

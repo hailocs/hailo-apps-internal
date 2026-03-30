@@ -42,6 +42,9 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 4. **Logging**: Use `get_logger(__name__)`
 5. **CLI parsers**: Use `get_pipeline_parser()` or `get_standalone_parser()`
 6. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag
+7. **USB camera**: Always `--input usb` for auto-detection. Never hardcode `/dev/video0` (typically integrated webcam).
+8. **SKILL.md is sufficient**: Read SKILL.md + common_pitfalls.md. Do NOT read source code files.
+9. **Custom background**: When user provides a background image, use `background.copy()` — never blend camera feed.
 
 ## Hardware
 

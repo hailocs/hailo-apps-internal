@@ -13,12 +13,22 @@
 
 ```
 REQUIRED SEQUENCE:
-1. Read .hailo/memory/MEMORY.md
-2. Read skill file for the task type
-3. Read reference implementation source code
-4. THEN plan
-5. THEN implement
+1. Read the SKILL.md for the task type (FULL file, single read — never partial)
+2. Read .github/memory/common_pitfalls.md
+3. THEN plan
+4. THEN implement
 ```
+
+**SKILL.md is sufficient** — Do NOT read reference source code (e.g., pose_estimation.py,
+vlm_chat.py, detection.py). SKILL.md contains complete patterns, extraction code, and
+subclass examples. Reading source code wastes tool calls and adds no new information.
+
+Only read source code if the SKILL.md explicitly says "see <file> for this specific pattern"
+and the pattern is not already in SKILL.md.
+
+**Read files fully** — Always read SKILL.md in a single `read_file` call covering the entire
+file. Splitting into partial reads (e.g., lines 1-300 then 300-600) wastes a round trip.
+Check file length first if unsure, but SKILL.md files are typically <400 lines.
 
 Why: Without context, agents hallucinate imports, invent nonexistent APIs, and violate conventions. Every memory file exists because an agent previously made a mistake that is now documented.
 
@@ -48,7 +58,7 @@ Each phase produces deliverables. Each deliverable has a validation command. Run
 ```
 IF gate_check FAILS:
   1. Read the error message
-  2. Search .hailo/memory/common_pitfalls.md for the error
+  2. Search .github/memory/common_pitfalls.md for the error
   3. If found → apply documented fix
   4. If not found → diagnose, fix, then UPDATE common_pitfalls.md
   5. Re-run gate check
@@ -119,6 +129,19 @@ Every sub-agent prompt MUST include these sections:
 
 ### Sub-Agent Types
 
+**Anti-pattern: Sub-agent to read source code already covered by SKILL.md**
+```
+# ❌ WRONG — launching a sub-agent to find pose_estimation_pipeline.py contents
+# when SKILL.md already documents GStreamerPoseEstimationApp and how to subclass it
+runSubagent("Find pose estimation pipeline class and read its source code")
+
+# ✅ RIGHT — SKILL.md has complete subclass patterns, just use them directly
+# No sub-agent needed. Read SKILL.md → build.
+```
+
+Use sub-agents for: parallel file creation, independent module builds, validation runs.
+Do NOT use sub-agents for: looking up information that's already in SKILL.md or memory files.
+
 | Type | When | Prompt Focus |
 |---|---|---|
 | **Context Loader** | Phase 0 | "Read X files, return condensed brief" |
@@ -165,10 +188,10 @@ grep -n "def main\|__name__" <file> # Should find entry point
 
 | Discovery | Update File |
 |---|---|
-| New API pattern that works | `.hailo/memory/<domain>.md` |
-| Bug or gotcha found | `.hailo/memory/common_pitfalls.md` |
-| Performance optimization | `.hailo/memory/pipeline_optimization.md` |
-| New recipe/workflow | `.hailo/knowledge/knowledge_base.yaml` |
+| New API pattern that works | `.github/memory/<domain>.md` |
+| Bug or gotcha found | `.github/memory/common_pitfalls.md` |
+| Performance optimization | `.github/memory/pipeline_optimization.md` |
+| New recipe/workflow | `.github/knowledge/knowledge_base.yaml` |
 
 ### Memory Update Format
 
@@ -195,7 +218,7 @@ Error encountered →
   1. Read the full error message
   2. Search memory files for this error pattern
   3. Search codebase for similar code that works
-  4. Check .hailo/knowledge/knowledge_base.yaml for known patterns
+  4. Check .github/knowledge/knowledge_base.yaml for known patterns
   5. If all else fails:
      a. Create a minimal reproducer
      b. Document the issue in memory
@@ -216,7 +239,7 @@ When Copilot Coding Agent picks up an issue:
    - Task type (new app / bug fix / feature / docs)
    - App archetype (pipeline / standalone / gen-ai)
    - Specific requirements
-3. **Follow the orchestration phases** from `.hailo/instructions/orchestration.md`
+3. **Follow the orchestration phases** from `.github/instructions/orchestration.md`
 4. **Create a PR** with:
    - All code changes
    - Updated memory files (if applicable)
@@ -295,7 +318,7 @@ ONLY read reference source code when:
 ### 10c: validate_app.py Is the Single Gate
 
 ```
-DO    run: python .hailo/scripts/validate_app.py <app_dir> --smoke-test
+DO    run: python .github/scripts/validate_app.py <app_dir> --smoke-test
 DON'T run: manual grep checks, individual import tests, manual lint
 
 The validation script checks 20+ things:

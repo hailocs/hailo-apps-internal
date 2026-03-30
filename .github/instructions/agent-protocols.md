@@ -13,12 +13,22 @@
 
 ```
 REQUIRED SEQUENCE:
-1. Read .github/memory/MEMORY.md
-2. Read skill file for the task type
-3. Read reference implementation source code
-4. THEN plan
-5. THEN implement
+1. Read the SKILL.md for the task type (FULL file, single read — never partial)
+2. Read .github/memory/common_pitfalls.md
+3. THEN plan
+4. THEN implement
 ```
+
+**SKILL.md is sufficient** — Do NOT read reference source code (e.g., pose_estimation.py,
+vlm_chat.py, detection.py). SKILL.md contains complete patterns, extraction code, and
+subclass examples. Reading source code wastes tool calls and adds no new information.
+
+Only read source code if the SKILL.md explicitly says "see <file> for this specific pattern"
+and the pattern is not already in SKILL.md.
+
+**Read files fully** — Always read SKILL.md in a single `read_file` call covering the entire
+file. Splitting into partial reads (e.g., lines 1-300 then 300-600) wastes a round trip.
+Check file length first if unsure, but SKILL.md files are typically <400 lines.
 
 Why: Without context, agents hallucinate imports, invent nonexistent APIs, and violate conventions. Every memory file exists because an agent previously made a mistake that is now documented.
 
@@ -118,6 +128,19 @@ Every sub-agent prompt MUST include these sections:
 ```
 
 ### Sub-Agent Types
+
+**Anti-pattern: Sub-agent to read source code already covered by SKILL.md**
+```
+# ❌ WRONG — launching a sub-agent to find pose_estimation_pipeline.py contents
+# when SKILL.md already documents GStreamerPoseEstimationApp and how to subclass it
+runSubagent("Find pose estimation pipeline class and read its source code")
+
+# ✅ RIGHT — SKILL.md has complete subclass patterns, just use them directly
+# No sub-agent needed. Read SKILL.md → build.
+```
+
+Use sub-agents for: parallel file creation, independent module builds, validation runs.
+Do NOT use sub-agents for: looking up information that's already in SKILL.md or memory files.
 
 | Type | When | Prompt Focus |
 |---|---|---|

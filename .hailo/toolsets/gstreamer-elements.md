@@ -63,7 +63,7 @@ hailomuxer name=mux
 ### Sources
 | Element | Usage |
 |---|---|
-| `v4l2src` | USB camera (`device=/dev/video0`) |
+| `v4l2src` | USB camera (use `--input usb` to auto-detect; do NOT hardcode `/dev/video0` — it may be the integrated webcam, not the USB camera. Use `v4l2-ctl --list-devices` to identify the correct device) |
 | `libcamerasrc` | RPi camera |
 | `filesrc` | Video file input |
 | `rtspsrc` | RTSP stream |
