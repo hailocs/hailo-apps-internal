@@ -21,10 +21,10 @@ Study `hailo_apps/python/gen_ai_apps/simple_llm_chat/simple_llm_chat.py` — the
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (type: gen_ai)
 ├── run.sh                # Launch wrapper
 ├── __init__.py
@@ -37,7 +37,6 @@ Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build Main App
 
@@ -157,10 +156,4 @@ with llm.generate(prompt=prompt, temperature=0.1, max_generated_tokens=200) as g
 print()
 llm.clear_context()
 ```
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 

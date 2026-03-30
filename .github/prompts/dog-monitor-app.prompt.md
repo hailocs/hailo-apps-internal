@@ -256,47 +256,6 @@ If any new patterns or pitfalls were discovered during implementation, add them 
 - `.github/memory/gen_ai_patterns.md` (new VLM patterns)
 - `.github/knowledge/knowledge_base.yaml` (new recipe for "monitoring" variant)
 
-#### Main agent: Community contribution
-
-Create a community contribution file documenting this build as a reusable recipe:
-
-```
-Create community/contributions/gen-ai-recipes/dog-monitor-orch-recipe.md with:
-
----
-title: "Dog Monitor — Continuous VLM Monitoring App"
-author: "AI Agent (auto-generated)"
-date: <today's date>
-category: gen-ai-recipes
-tags: [vlm, monitoring, camera, event-tracking, continuous]
----
-
-# Dog Monitor Recipe
-
-## What It Does
-Continuous camera monitoring with VLM-based dog activity classification.
-
-## Key Patterns Used
-- Backend reuse from vlm_chat (no code duplication)
-- EventTracker with keyword-based VLM response classification
-- Timer-based capture loop with configurable interval
-- SIGINT handler with session summary report
-- Optional frame saving on event detection
-
-## Files Created
-- dog_monitor.py (~200 lines) — Main app with camera + VLM loop
-- event_tracker.py (~120 lines) — Event classification and statistics
-
-## Reusable For
-- Security camera monitoring (change VLM prompt + event categories)
-- Baby monitor (change VLM prompt + event categories)
-- Wildlife camera trap (change VLM prompt + event categories)
-- Retail shelf monitoring (change VLM prompt + event categories)
-
-## Build Stats
-<include session stats from below>
-```
-
 **PHASE 4 GATE** (FINAL):
 ```bash
 # README exists
@@ -368,7 +327,7 @@ After ALL gates pass and todos are complete, print this **Session Stats Report**
     Phase 1 (Plan):        <duration>  ← register + directory
     Phase 2 (Build):       <duration>  ← implementation
     Phase 3 (Validate):    <duration>  ← checks + fixes
-    Phase 4 (Document):    <duration>  ← README + memory + community
+    Phase 4 (Document):    <duration>  ← README + memory
   
   FILES CREATED:
     New files:      <count> files, <total lines> lines of code

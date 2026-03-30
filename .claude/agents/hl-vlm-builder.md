@@ -51,7 +51,7 @@ Quickly present a **build plan** — no file reading required, use your knowledg
 **Input:** <camera / file / RTSP>
 **VLM prompt:** "<what the VLM will look for>"
 **Events:** <list if monitoring, or N/A>
-**Output:** `community/apps/<name>/`
+**Output:** `hailo_apps/python/<type>/<app_name>/`
 ```
 
 **Ask the user:** Ready to build?
@@ -82,42 +82,37 @@ After loading static context, scan actual implementations for deeper understandi
 
 **Step 3a: List official apps** — List `hailo_apps/python/gen_ai_apps/` to discover all VLM/gen-ai app directories. Read 1-2 closest reference apps beyond what Phase 2 already covered.
 
-**Step 3b: Check community index** — Fetch `https://github.com/hailo-ai/hailo-rpi5-examples/blob/main/community_projects/community_projects.md` and note any community apps with a similar VLM task that could provide reusable patterns.
 
 **Step 3c: Adaptive depth** — Use your judgment:
 - Task closely matches an existing official app → skim its structure only
-- Task is novel or complex → read deeper into the closest reference + any relevant community app
-- Community has a matching app → fetch its README for reusable patterns
 
 This scanning phase is optional for simple, well-documented tasks.
 
 ### Phase 4: Build
-1. **Create directory** — `community/apps/<app_name>/`
+1. **Create directory** — the appropriate `hailo_apps/python/<type>/<app_name>/` directory
 2. **Create `app.yaml`** — App manifest with name, title, type, hailo_arch, model, tags, status: draft
 3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
 4. **Build support modules** — Event tracker, custom logic, etc.
 5. **Build main app** — Following VLM Chat pattern: Backend reuse, camera loop, signal handling
 6. **Write README** — Usage, requirements, architecture
-7. **Create contribution recipe** — `community/contributions/gen-ai-recipes/<date>_<app_name>_recipe.md` with proper YAML frontmatter (title, contributor, date, category, hailo_arch, app, tags, reproducibility) and required sections (Summary, Context, Finding, Solution, Results, Applicability)
 
-**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`. Registration happens later during promotion.
 
 ### Phase 5: Validate
 Run the validation script (static checks + runtime smoke tests):
 ```bash
-python .hailo/scripts/validate_app.py community/apps/<app_name> --smoke-test
+python .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
 
 Also validate:
 ```bash
 # Convention compliance - no relative imports
-grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
+grep -rn "^from \.|^import \." hailo_apps/python/<type>/<app_name>/*.py
 
 # Logger used
-grep -rn "get_logger" community/apps/<app_name>/*.py
+grep -rn "get_logger" hailo_apps/python/<type>/<app_name>/*.py
 
 # CLI works (via run.sh)
-./community/apps/<app_name>/run.sh --help
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --help
 ```
 
 Fix any failures and re-run until all pass.
@@ -130,13 +125,13 @@ Present the completed app with:
 **How to Run** — show the ACTUAL shell commands to run the app, not just file edits. Always include:
 ```bash
 # Basic usage (via run.sh)
-./community/apps/<app_name>/run.sh --input usb
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
 
 # With custom interval
-./community/apps/<app_name>/run.sh --input usb --interval 15
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb --interval 15
 
 # Or directly with PYTHONPATH
-PYTHONPATH=. python3 community/apps/<app_name>/<app_name>.py --input usb
+python3 -m hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
 ```
 
 **What It Does** — bullet list of the app's behavior.
@@ -169,7 +164,7 @@ python -c "from hailo_apps.python.core.common.defines import *; print('hailo_app
 **Step 2: Launch the app**
 ```bash
 cd <repo_root>
-./community/apps/<app_name>/run.sh --input <video_file_path>
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --input <video_file_path>
 ```
 
 Run this in a background terminal so the user can see the video output. The app will display the camera feed with overlay. If the user provided `--interval`, pass it through.

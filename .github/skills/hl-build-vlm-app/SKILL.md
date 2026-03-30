@@ -24,10 +24,10 @@ Study `hailo_apps/python/gen_ai_apps/vlm_chat/` — the canonical VLM app:
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (required)
 ├── run.sh                # Launch wrapper (sets PYTHONPATH)
 ├── __init__.py           # Empty
@@ -60,14 +60,12 @@ PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/<app_name>.py" "$@"
 
 **NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`.
 Community apps are run via `run.sh`. Registration happens during promotion
-(`python .github/scripts/curate_contributions.py --promote <app_name>`).
 
 ### Step 2: Create Contribution Recipe
 
 After building the app, create a contribution recipe documenting lessons learned:
 
 ```
-community/contributions/gen-ai-recipes/YYYY-MM-DD_<app_name>_recipe.md
 ```
 
 With YAML frontmatter: `title`, `contributor`, `date`, `category: gen-ai-recipes`,
@@ -289,7 +287,6 @@ Community apps do NOT need registration. These steps are only needed after promo
 1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `DOG_MONITOR_APP = "dog_monitor"`)
 2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
 
-Use `python .github/scripts/curate_contributions.py --promote <app_name>` to automate this.
 
 ## Lessons Learned (from real builds)
 
@@ -360,10 +357,4 @@ autonomous agentic workflows. Without it, every tool call requires manual approv
 | Scene | "Describe what you see concisely." | "Describe the image" |
 | Counter | "Count objects precisely. Reply JSON." | "Count all {objects}" |
 | Traffic | "Analyze traffic patterns." | "Describe traffic and vehicles" |
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 

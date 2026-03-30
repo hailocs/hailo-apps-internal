@@ -7,8 +7,6 @@ description: Build a complete GStreamer pipeline app for real-time video process
 
 Build a complete GStreamer pipeline app for real-time video processing on Hailo-8/8L/10H.
 
-> **Self-sufficient for simple variants**: The template below contains complete, buildable code with exact imports. For detection variants (class filtering, counting, custom overlays), this SKILL.md + `detection_pipeline.py` + `common_pitfalls.md` is all the context needed. Skip toolset/helper reads for these cases.
-
 ## When This Skill Is Loaded
 
 - User wants **real-time video processing** (detection, pose, segmentation)
@@ -25,10 +23,10 @@ Study `hailo_apps/python/pipeline_apps/detection/` — the canonical pipeline ap
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (required)
 ├── run.sh                # Launch wrapper
 ├── __init__.py
@@ -41,7 +39,6 @@ Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build Main App
 
@@ -147,10 +144,4 @@ python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 | Cascaded | `CROPPER_PIPELINE(...)` | Face detection → recognition |
 | Multi-source | Multiple `SOURCE_PIPELINE` + compositor | Dashboard view |
 | Tiling | Custom tiling pipeline | Small object detection |
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 

@@ -29,10 +29,10 @@ Also study the agent utilities:
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (type: gen_ai)
 ├── run.sh                # Launch wrapper
 ├── __init__.py
@@ -50,7 +50,6 @@ Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build a Tool
 
@@ -175,10 +174,4 @@ LLM generates response
     │
     └── No tool call? → Direct response to user
 ```
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 

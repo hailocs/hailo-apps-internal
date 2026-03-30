@@ -706,13 +706,11 @@ def main():
                 validate_no_hailo_leaks,
                 validate_agent_handoffs,
                 validate_skill_sections,
-                validate_community_dirs,
                 validate_hailo_source_files,
             )
             print("\n--- Cross-reference validation ---")
             result = ValidationResult(verbose=False)
             validate_hailo_source_files(result)
-            validate_community_dirs(result)
             if "copilot" in platforms or args.platform == "all":
                 validate_routing_table(result)
                 validate_file_tree(result)

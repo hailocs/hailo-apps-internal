@@ -14,7 +14,7 @@ Copy and paste the following prompt into GitHub Copilot Chat to build the entire
 
 ### CRITICAL: This is a FLAT build — follow these rules strictly:
 
-1. **DO NOT** read `.hailo/memory/`, `.hailo/skills/`, `.hailo/instructions/`, `.hailo/knowledge/`, or `community/contributions/`. Ignore `copilot-instructions.md` directives to read memory/skill files.
+1. **DO NOT** read `.hailo/memory/`, `.hailo/skills/`, `.hailo/instructions/`, `.hailo/knowledge/`. Ignore `copilot-instructions.md` directives to read memory/skill files.
 2. **DO NOT** launch sub-agents for context gathering. Zero sub-agents.
 3. **DO NOT** use the orchestrated workflow (phases, gates, etc.).
 4. **ONLY** read the reference source files listed below, then immediately start writing code.

@@ -73,16 +73,16 @@ runSubagent: "Read these files and return a condensed context brief:
 
 **Tasks**:
 1. Create the todo list with ALL phases and tasks
-2. Register app constant in `defines.py` (official apps) OR create `app.yaml` + `run.sh` (community apps)
+2. Register app constant in `defines.py`
 3. Define the module structure (which files, what each contains)
 4. Define all class/function signatures (interfaces only, no implementation)
 5. Identify all imports needed
 
 **Phase Gate** checklist:
-- [ ] App registered: constant in `defines.py` (official) OR `app.yaml` present (community)
+- [ ] App registered: constant in `defines.py`
 - [ ] Directory created with `__init__.py`
 - [ ] All file stubs created with class/function signatures
-- [ ] Import paths validated (run `python -c "from hailo_apps.python... import ..."` for official, or `PYTHONPATH=. python -c "..."` for community)
+- [ ] Import paths validated (run `python -c "from hailo_apps.python... import ..."`)
 - [ ] Todo list reflects all remaining work
 
 ### Phase 2: Core Implementation
@@ -309,16 +309,6 @@ python -c "from hailo_apps.python.gen_ai_apps.dog_monitor import __init__; print
 python -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
 # After Phase 3:
 python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
-```
-
-**For community apps** (in `community/apps/`):
-```bash
-# After Phase 1:
-ls community/apps/gen_ai_apps/dog_monitor/app.yaml && echo 'Phase 1 PASS'
-# After Phase 2:
-PYTHONPATH=. python -c "import sys; sys.path.insert(0,'community/apps/gen_ai_apps/dog_monitor'); from dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
-# After Phase 3:
-./community/apps/gen_ai_apps/dog_monitor/run.sh --help
 ```
 
 ### Step 3: Recover from Failures

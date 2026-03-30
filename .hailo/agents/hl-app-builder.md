@@ -82,7 +82,7 @@ Present a concise plan (no file reading yet — use your knowledge):
 **Type:** <Pipeline / VLM / LLM / Agent / Voice / Standalone>
 **Hardware:** <Hailo-8/8L or Hailo-10H>
 **Key features:** <bullet list>
-**Output:** `community/apps/<app_name>/`
+**Output:** `hailo_apps/python/<type>/<app_name>/`
 ```
 
 Then ask:

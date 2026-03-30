@@ -96,18 +96,15 @@ After loading static context, scan actual implementations for deeper understandi
 
 **Step 3a: List official apps** — List `hailo_apps/python/pipeline_apps/` to discover all pipeline app directories. Read 1-2 closest reference apps beyond what Phase 2 already covered.
 
-**Step 3b: Check community index** — Fetch `https://github.com/hailo-ai/hailo-rpi5-examples/blob/main/community_projects/community_projects.md` and note any community apps with a similar pipeline task that could provide reusable patterns.
 
 **Step 3c: Adaptive depth** — Use your judgment:
 - Task closely matches an existing official app → skim its structure only
-- Task is novel or complex → read deeper into the closest reference + any relevant community app
-- Community has a matching app → fetch its README for reusable patterns
 
 This scanning phase is optional for simple, well-documented tasks.
 
 ### Phase 4: Build
 
-1. **Create directory** — `community/apps/<app_name>/`
+1. **Create directory** — the appropriate `hailo_apps/python/<type>/<app_name>/` directory
 2. **Create `app.yaml`** — App manifest with name, title, type: pipeline, hailo_arch, model, tags, status: draft
 3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
 4. **Create `__init__.py`**
@@ -118,21 +115,19 @@ This scanning phase is optional for simple, well-documented tasks.
    - `main()` function wiring it all together
 6. **Create postprocess** if needed (custom overlay, counting, etc.)
 7. **Write `README.md`**
-8. **Create contribution recipe** — `community/contributions/pipeline-optimization/<date>_<app_name>_recipe.md` with proper YAML frontmatter and required sections
 
-**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`.
 
 ### Phase 5: Validate
 
 ```bash
 # Convention compliance
-grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
+grep -rn "^from \.|^import \." hailo_apps/python/<type>/<app_name>/*.py
 
 # Logger used
-grep -rn "get_logger" community/apps/<app_name>/*.py
+grep -rn "get_logger" hailo_apps/python/<type>/<app_name>/*.py
 
 # CLI works
-./community/apps/<app_name>/run.sh --help
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --help
 ```
 
 ### Phase 6: Report

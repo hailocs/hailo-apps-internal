@@ -191,9 +191,3 @@ sm.save_state(state_data)
 state = sm.load_state("default")
 ```
 
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
-

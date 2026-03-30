@@ -126,7 +126,7 @@ def validate_file_tree(result: ValidationResult) -> None:
 
         entry = m.group(1).strip()
         # Skip directory entries (end with /) and non-.github paths
-        if entry.endswith("/") or entry.startswith("CLAUDE") or entry.startswith("community"):
+        if entry.endswith("/") or entry.startswith("CLAUDE"):
             continue
 
         # Determine which directory this file is in by indentation / section context
@@ -254,29 +254,6 @@ def validate_skill_sections(result: ValidationResult) -> None:
                 result.fail(f"section: {skill_dir.name} missing '{section}'")
 
 
-def validate_community_dirs(result: ValidationResult) -> None:
-    """Check that community directories referenced in agent instructions exist."""
-    print("\n[6/7] Community directory structure")
-
-    expected_dirs = [
-        "community/apps/gen_ai_apps",
-        "community/apps/pipeline_apps",
-        "community/apps/standalone_apps",
-        "community/contributions/gen-ai-recipes",
-        "community/contributions/pipeline-optimization",
-        "community/contributions/bottleneck-patterns",
-        "community/contributions/hardware-config",
-        "community/contributions/camera-display",
-        "community/contributions/voice-audio",
-        "community/contributions/general",
-    ]
-
-    for d in expected_dirs:
-        full = REPO_ROOT / d
-        if full.is_dir():
-            result.ok(f"dir: {d}")
-        else:
-            result.fail(f"dir: {d} → directory not found")
 
 
 def validate_hailo_source_files(result: ValidationResult) -> None:
@@ -376,7 +353,6 @@ def main() -> None:
 
     # Always validate .hailo/ source
     validate_hailo_source_files(result)
-    validate_community_dirs(result)
 
     # Platform-specific checks
     if args.platform in ("copilot", "all"):

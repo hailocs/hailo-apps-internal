@@ -18,10 +18,10 @@ Study `hailo_apps/python/pipeline_apps/detection/` — the canonical pipeline ap
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (required)
 ├── run.sh                # Launch wrapper
 ├── __init__.py
@@ -34,7 +34,6 @@ Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build Main App
 
@@ -140,10 +139,4 @@ python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 | Cascaded | `CROPPER_PIPELINE(...)` | Face detection → recognition |
 | Multi-source | Multiple `SOURCE_PIPELINE` + compositor | Dashboard view |
 | Tiling | Custom tiling pipeline | Small object detection |
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 

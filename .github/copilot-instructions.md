@@ -16,8 +16,6 @@
 | **Pipeline Apps** (`hailo_apps/python/pipeline_apps/`) | GStreamer-based video pipelines (detection, pose, segmentation, etc.) |
 | **Standalone Apps** (`hailo_apps/python/standalone_apps/`) | Direct inference apps using HailoInfer + OpenCV (no GStreamer) |
 | **Gen AI Apps** (`hailo_apps/python/gen_ai_apps/`) | Hailo-10H generative AI: VLM, LLM, Whisper, Voice Assistant, Agent |
-| **Community Apps** (`community/apps/`) | Agent-built apps staged for review before promotion to official |
-| **Community Contributions** (`community/contributions/`) | Lessons learned, recipes, optimization patterns from real builds |
 | **Postprocess** (`hailo_apps/postprocess/`) | C++ shared libraries for model-specific postprocessing |
 | **Config** (`hailo_apps/config/`) | YAML-driven model registry, resource paths, test definitions |
 
@@ -55,29 +53,7 @@ Based on what the task involves, read **only** the matching rows:
 | **Building any new app** | The specialist agent (loaded via VS Code `@agent`) handles interactive flow. If not using agents, read `instructions/orchestration.md` and the relevant `skills/hl-build-*/SKILL.md` |
 | **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
 
-All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` and community contributions at `community/contributions/` can be checked when you need recipes or patterns.
-
-### Community App Workflow
-
-There are **two paths** for community apps:
-
-**Agent-internal path** (agents building within this repo):
-1. Place app code in `community/apps/<type>/<app_name>/` with `app.yaml` manifest and `run.sh` wrapper
-   (where `<type>` is `gen_ai_apps/`, `pipeline_apps/`, or `standalone_apps/`)
-2. Create a contribution recipe in `community/contributions/<category>/` documenting lessons learned
-3. Do NOT register in `defines.py` or `resources_config.yaml` — that happens during promotion
-4. Run via `./community/apps/<type>/<app_name>/run.sh --input <source>`
-5. Maintainer pushes to hailo-rpi5-examples via `push_community_apps.py`
-
-**External contributor path** (community users contributing directly):
-1. Contributors open PRs to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples)
-2. Apps are placed in `community_projects/<app_name>/` (flat layout, includes `app.yaml`)
-3. Knowledge findings go in `community_projects/<app_name>/contributions/`
-4. To develop and run, contributors copy their app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` — this is required because code uses `from hailo_apps.python.core...` imports
-5. Maintainer pulls findings back via `curate_contributions.py --pull-external`
-
-Promotion to official: `python .github/scripts/curate_contributions.py --promote <app_name>`
-Curation of knowledge: `python .github/scripts/curate_contributions.py --curate`
+All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` can be checked when you need recipes or patterns.
 
 ### Persistent Memory
 
@@ -214,23 +190,6 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 ├── scripts/
 │   ├── generate_platforms.py        ← Generator: .hailo/ → platform-specific files
 │   ├── validate_framework.py        ← Cross-reference integrity validator (routing table, file tree, leaks)
-│   ├── validate_app.py              ← Validate scaffolded app conventions (--smoke-test for runtime checks)
-│   ├── curate_contributions.py      ← Tiered curation: knowledge → memory + skill/toolset summaries
-│   ├── curate_and_propose.py        ← Curate, sync platforms, and propose PRs
-│   └── push_community_apps.py       ← Push community apps to external repo
+│   └── validate_app.py              ← Validate scaffolded app conventions (--smoke-test for runtime checks)
 CLAUDE.md                             ← Claude Code entry point (root)
-community/
-├── apps/                             ← Community-built apps
-│   ├── pipeline_apps/               ← Pipeline apps
-│   ├── standalone_apps/             ← Standalone apps
-│   └── gen_ai_apps/                 ← Gen AI apps
-└── contributions/                    ← Community-contributed insights
-    ├── README.md
-    ├── pipeline-optimization/
-    ├── bottleneck-patterns/
-    ├── gen-ai-recipes/
-    ├── hardware-config/
-    ├── camera-display/
-    ├── voice-audio/
-    └── general/
 ```

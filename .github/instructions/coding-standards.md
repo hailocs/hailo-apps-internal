@@ -105,31 +105,15 @@ DOG_MONITOR_APP_TITLE = "Dog Monitor"
 DOG_MONITOR_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
 ```
 
-**Community apps** (in `community/apps/`) do NOT register in `defines.py` or `resources_config.yaml`.
-They run via their own `run.sh` wrapper and reuse existing app names for HEF resolution
-(e.g., `VLM_CHAT_APP` for VLM community apps). Registration happens later during promotion:
-`python .github/scripts/curate_contributions.py --promote <app_name>`
-
 ## File Structure for New Apps
 
-### Official apps (after promotion)
 ```
-hailo_apps/python/gen_ai_apps/{app_name}/
+hailo_apps/python/<type>/{app_name}/
 ├── __init__.py              # Empty or minimal
 ├── {app_name}.py            # Main app class + entry point
 ├── backend.py               # Inference backend (if needed)
 ├── README.md                # Usage documentation (required)
 └── requirements.txt         # Extra dependencies (if any)
-```
-
-### Community apps (agent-built, before promotion)
-```
-community/apps/<type>/{app_name}/
-├── app.yaml                 # App manifest (required)
-├── run.sh                   # Launch wrapper (sets PYTHONPATH)
-├── __init__.py              # Empty
-├── {app_name}.py            # Main app class + entry point
-└── README.md                # Usage documentation (required)
 ```
 
 Where `<type>` is `gen_ai_apps/`, `pipeline_apps/`, or `standalone_apps/`.

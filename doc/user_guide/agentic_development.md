@@ -26,7 +26,7 @@ The agent will:
 1. Ask clarifying questions (model type, features, input source)
 2. Present a build plan for your approval
 3. Route to the **pipeline builder**
-4. Generate all code in `community/apps/<app_name>/`
+4. Generate all code in `hailo_apps/python/<type>/<app_name>/`
 5. Validate and report
 
 ### Example 2: Build a VLM Monitor (directly)
@@ -40,7 +40,7 @@ If you know you want a VLM app, go straight to the specialist:
 The agent will:
 1. Ask key decisions (continuous monitor vs interactive, camera type)
 2. Load VLM patterns and reference implementations
-3. Scan official and community apps for similar patterns
+3. Scan official apps for similar patterns
 4. Build the complete app with backend reuse, event tracking, graceful shutdown
 5. Validate conventions and deliver with run instructions
 
@@ -67,47 +67,25 @@ Each agent follows a structured workflow:
 
 1. **Phase 1: Understand** — The agent responds immediately, asks key questions, presents a plan
 2. **Phase 2: Load Context** — After you approve, it reads relevant skill files, patterns, and conventions
-3. **Phase 3: Scan Code** — Scans official and community apps for similar implementations
-4. **Phase 4: Build** — Creates all files in `community/apps/<app_name>/`
+3. **Phase 3: Scan Code** — Scans official apps for similar implementations
+4. **Phase 4: Build** — Creates all files in `hailo_apps/python/<type>/<app_name>/`
 5. **Phase 5: Validate** — Checks conventions, imports, CLI, runs automated validation
 6. **Phase 6: Report** — Presents what was built, how to run it, what it does
 
 ### What Gets Created
 
 ```
-community/apps/<your_app>/
-├── app.yaml          # App manifest (name, type, model, tags)
-├── run.sh            # Launch wrapper with PYTHONPATH setup
+hailo_apps/python/<type>/<app_name>/
 ├── <app_name>.py     # Main application code
 ├── README.md         # Usage and architecture docs
 └── ...               # Additional modules as needed
 ```
 
-Plus a contribution recipe in `community/contributions/` documenting patterns and lessons learned.
-
 ### Running Your App
 
 ```bash
-# Via run.sh wrapper (recommended)
-./community/apps/<your_app>/run.sh --input usb
-
-# Or directly with PYTHONPATH
-PYTHONPATH=. python3 community/apps/<your_app>/<your_app>.py --input usb
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
 ```
-
-## Contributing
-
-Whether you build an app with an AI agent or write one by hand, contributions follow the same workflow.
-
-See **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for the full guide, including:
-- App directory structure and `app.yaml` manifest format
-- Knowledge finding format (YAML frontmatter + required sections)
-- Coding conventions that must pass validation
-- How to develop and test (copy app into hailo-apps clone)
-
-**Community PRs go to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples)**, not to this repo. Apps are placed in `community_projects/<app_name>/` (flat layout). To develop and run, copy the app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` — this is required because apps use `from hailo_apps.python.core...` imports.
-
-Pull requests to hailo-rpi5-examples use the [community PR template](../../community/rpi5_examples_PULL_REQUEST_TEMPLATE.md) with validation checkboxes.
 
 ### Validating Your App
 
@@ -115,81 +93,13 @@ Before submitting, run the automated validator:
 
 ```bash
 # Static checks only (~15 convention checks)
-python .hailo/scripts/validate_app.py community/apps/<type>/<app_name>
+python .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name>
 
 # Static checks + runtime smoke tests (CLI --help, module import)
-python .hailo/scripts/validate_app.py community/apps/<type>/<app_name> --smoke-test
+python .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
 
 Smoke tests gracefully skip if Hailo hardware or GStreamer aren't available.
-
-## Community Workflow
-
-There are **two paths** for community apps:
-
-```
-External: Contributor → PR to hailo-rpi5-examples → Maintainer pulls back → Curate → Promote
-Internal: Agent builds locally → push_community_apps.py → PR to hailo-rpi5-examples
-```
-
-### External Contributor Path
-
-Community users contribute directly to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples):
-
-1. **Fork & create** — App goes in `community_projects/<app_name>/` (flat layout, includes `app.yaml`)
-2. **Develop & test** — Copy app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` to run (required for `hailo_apps.*` imports)
-3. **PR** — Open PR to hailo-rpi5-examples
-4. **Maintainer review** — Maintainer copies app to hailo-apps clone, runs `validate_app.py --smoke-test`, merges in hailo-rpi5-examples
-5. **Pull back** — Maintainer runs `curate_contributions.py --pull-external` to fetch knowledge findings into this repo
-
-**Contribution categories:** `pipeline-optimization`, `bottleneck-patterns`, `gen-ai-recipes`, `hardware-config`, `model-tuning`, `camera-display`, `voice-audio`, `general`
-
-### Agent-Internal Path
-
-AI agents build apps directly in `community/apps/<type>/<app_name>/` within this repo. Maintainers push to hailo-rpi5-examples via `push_community_apps.py`.
-
-### 3. Curate (Knowledge Self-Learning)
-
-Knowledge findings are processed into the agent knowledge base via **tiered curation**:
-
-| Tier | What Happens | Target Files |
-|------|--------------|--------------|
-| **Tier 1** | Full content appended | `.hailo/memory/`, `.hailo/knowledge/` |
-| **Tier 2** | 3-line summary appended | `## Community Findings` sections in skills, toolsets, instructions |
-| **Tier 3** | Never auto-modified | Core framework code, agent definitions |
-
-This means the agents **learn from every contribution** — patterns discovered in the community feed back into the skills and toolsets that guide future builds.
-
-```bash
-# Pull knowledge findings from hailo-rpi5-examples
-python .hailo/scripts/curate_contributions.py --pull-external
-
-# Process findings into knowledge base (interactive)
-python .hailo/scripts/curate_contributions.py --curate
-
-# All-in-one: pull external + curate + sync platforms + propose PR
-python .hailo/scripts/curate_and_propose.py
-```
-
-### 4. Promote
-
-Mature community apps can be promoted to official `hailo_apps/`:
-
-```bash
-python .hailo/scripts/curate_contributions.py --promote <app_name>
-```
-
-This copies the app, runs validation with `--smoke-test`, and registers it.
-
-### 5. Publish (Agent-Internal Path Only)
-
-Agent-built apps are pushed to hailo-rpi5-examples via:
-
-```bash
-python .hailo/scripts/push_community_apps.py
-```
-
-External contributors skip this step — they PR directly to hailo-rpi5-examples.
 
 ## Knowledge Base
 
@@ -198,13 +108,11 @@ The agentic knowledge lives in `.hailo/` and is automatically adapted for each I
 | Directory | Content |
 |-----------|---------|
 | `.hailo/agents/` | Agent definitions (7 agents) |
-| `.hailo/skills/` | Detailed build skills per app type (with Community Findings sections) |
+| `.hailo/skills/` | Detailed build skills per app type |
 | `.hailo/instructions/` | Coding standards, architecture, testing |
-| `.hailo/toolsets/` | SDK and API references (with Community Findings sections) |
+| `.hailo/toolsets/` | SDK and API references |
 | `.hailo/memory/` | Persistent patterns and pitfall avoidance |
 | `.hailo/scripts/` | Automation tools (see below) |
-
-Skill and toolset files include **Community Findings** sections that grow automatically as contributions are curated — this is how the agents get smarter over time.
 
 ### Scripts
 
@@ -212,9 +120,6 @@ Skill and toolset files include **Community Findings** sections that grow automa
 |--------|---------|
 | `validate_app.py` | Validate app conventions (15 static checks + `--smoke-test` runtime checks) |
 | `validate_framework.py` | Cross-reference integrity: routing table paths, file tree accuracy, `.hailo/` leak detection, agent handoffs |
-| `curate_contributions.py` | Process community findings into knowledge base; promote apps to official |
-| `curate_and_propose.py` | All-in-one: curate + sync platforms + propose PR |
-| `push_community_apps.py` | Push community apps to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples) |
 | `generate_platforms.py` | Sync `.hailo/` → `.github/`, `.claude/`, `.cursor/` (includes cross-ref validation via `--check`) |
 
 All scripts live in `.hailo/scripts/` (source of truth) and are mirrored to `.github/scripts/`.
@@ -236,8 +141,7 @@ This produces `.github/` (Copilot), `.claude/` + `CLAUDE.md` (Claude Code), and 
 | Agent doesn't know Hailo APIs | Check that `.hailo/` directory exists and is populated |
 | Agent writes relative imports | Convention bug — agent should always use absolute imports |
 | App fails `--help` | Check `run.sh` sets PYTHONPATH correctly |
-| Agent builds in wrong directory | Should always be `community/apps/<name>/`, not in `hailo_apps/` |
-| Platform configs are stale | Run `python .hailo/scripts/generate_platforms.py --generate` |\n| Cross-references broken | Run `python .hailo/scripts/validate_framework.py -v` to find broken paths |
+| Agent builds in wrong directory | Should always be in `hailo_apps/python/<type>/`, using absolute imports |
+| Platform configs are stale | Run `python .hailo/scripts/generate_platforms.py --generate` |
+| Cross-references broken | Run `python .hailo/scripts/validate_framework.py -v` to find broken paths |
 | Validation fails on hardware checks | Use `--smoke-test` — it gracefully skips if Hailo/GStreamer unavailable |
-| Contribution not showing in agents | Run `curate_contributions.py --curate` to process it into the knowledge base |
-| Agent doesn't see community patterns | Check that `## Community Findings` sections exist in the relevant skill files |

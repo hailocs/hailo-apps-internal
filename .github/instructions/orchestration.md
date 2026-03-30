@@ -39,25 +39,6 @@ Every non-trivial task MUST follow this loop:
 
 **Goal**: Load all relevant knowledge before writing any code.
 
-#### Context Budget: Match Depth to Complexity
-
-Not all tasks need the same amount of context. Over-reading costs time and tokens.
-
-| Task complexity | Context reads needed | Examples |
-|---|---|---|
-| **Simple variant** (reuses existing app pattern) | SKILL.md + 1 reference file + common_pitfalls.md | People counter, custom overlay, class filter |
-| **Standard new app** (new logic, existing infra) | SKILL.md + coding-standards.md + 1-2 reference files + common_pitfalls.md | Monitoring app, dashboard, multi-source |
-| **Complex/novel app** (new patterns, multi-module) | Full routing table + multiple reference files + toolset APIs | Agent with tools, cascaded pipeline, voice+VLM |
-
-**Fast-path rule**: If the SKILL.md contains a complete buildable template AND the task is a straightforward variant of that template, read only:
-1. The relevant `SKILL.md` (has template code with exact imports)
-2. The closest reference implementation source file (1 file, not the whole app)
-3. `.github/memory/common_pitfalls.md`
-
-Skip toolset references, helper pipeline internals, and framework source code — the SKILL template already encodes the correct usage.
-
-#### Full Context Loading (for standard/complex tasks)
-
 ```
 MANDATORY READS (in this order):
 1. .github/memory/MEMORY.md                    ← Index of known patterns
@@ -92,16 +73,16 @@ runSubagent: "Read these files and return a condensed context brief:
 
 **Tasks**:
 1. Create the todo list with ALL phases and tasks
-2. Register app constant in `defines.py` (official apps) OR create `app.yaml` + `run.sh` (community apps)
+2. Register app constant in `defines.py`
 3. Define the module structure (which files, what each contains)
 4. Define all class/function signatures (interfaces only, no implementation)
 5. Identify all imports needed
 
 **Phase Gate** checklist:
-- [ ] App registered: constant in `defines.py` (official) OR `app.yaml` present (community)
+- [ ] App registered: constant in `defines.py`
 - [ ] Directory created with `__init__.py`
 - [ ] All file stubs created with class/function signatures
-- [ ] Import paths validated (run `python -c "from hailo_apps.python... import ..."` for official, or `PYTHONPATH=. python -c "..."` for community)
+- [ ] Import paths validated (run `python -c "from hailo_apps.python... import ..."`)
 - [ ] Todo list reflects all remaining work
 
 ### Phase 2: Core Implementation
@@ -328,16 +309,6 @@ python -c "from hailo_apps.python.gen_ai_apps.dog_monitor import __init__; print
 python -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
 # After Phase 3:
 python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
-```
-
-**For community apps** (in `community/apps/`):
-```bash
-# After Phase 1:
-ls community/apps/gen_ai_apps/dog_monitor/app.yaml && echo 'Phase 1 PASS'
-# After Phase 2:
-PYTHONPATH=. python -c "import sys; sys.path.insert(0,'community/apps/gen_ai_apps/dog_monitor'); from dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
-# After Phase 3:
-./community/apps/gen_ai_apps/dog_monitor/run.sh --help
 ```
 
 ### Step 3: Recover from Failures

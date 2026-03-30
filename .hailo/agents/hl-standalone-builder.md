@@ -74,18 +74,15 @@ After loading static context, scan actual implementations for deeper understandi
 
 **Step 3a: List official apps** — List `hailo_apps/python/standalone_apps/` to discover all standalone app directories. Read 1-2 closest reference apps beyond what Phase 2 already covered.
 
-**Step 3b: Check community index** — Fetch `https://github.com/hailo-ai/hailo-rpi5-examples/blob/main/community_projects/community_projects.md` and note any community apps with a similar standalone inference task that could provide reusable patterns.
 
 **Step 3c: Adaptive depth** — Use your judgment:
 - Task closely matches an existing official app → skim its structure only
-- Task is novel or complex → read deeper into the closest reference + any relevant community app
-- Community has a matching app → fetch its README for reusable patterns
 
 This scanning phase is optional for simple, well-documented tasks.
 
 ### Phase 4: Build
 
-1. **Create directory** — `community/apps/<app_name>/`
+1. **Create directory** — the appropriate `hailo_apps/python/<type>/<app_name>/` directory
 2. **Create `app.yaml`** — App manifest with name, title, type: standalone, hailo_arch, model, tags, status: draft
 3. **Create `run.sh`** — Launch wrapper that sets PYTHONPATH and calls the main script
 4. **Create `__init__.py`**
@@ -98,18 +95,16 @@ This scanning phase is optional for simple, well-documented tasks.
 6. **Create `<app_name>_post_process.py`** — Custom postprocessing
 7. **Create `config.json`** if needed (labels, thresholds)
 8. **Write `README.md`**
-9. **Create contribution recipe** — `community/contributions/general/<date>_<app_name>_recipe.md` with proper YAML frontmatter and required sections
 
-**NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh` or `PYTHONPATH=. python3 community/apps/<name>/<name>.py`.
 
 ### Phase 5: Validate
 
 ```bash
 # Convention compliance
-grep -rn "^from \.|^import \." community/apps/<app_name>/*.py
+grep -rn "^from \.|^import \." hailo_apps/python/<type>/<app_name>/*.py
 
 # CLI works
-./community/apps/<app_name>/run.sh --help
+python hailo_apps/python/<type>/<app_name>/<app_name>.py --help
 ```
 
 ### Phase 6: Report

@@ -29,10 +29,10 @@ Study these:
 
 ### Step 1: Create App Directory
 
-Create the app under `community/apps/` (staging area for agent-built apps):
+Create the app directory:
 
 ```
-community/apps/<app_name>/
+hailo_apps/python/<type>/<app_name>/
 ├── app.yaml              # App manifest (type: gen_ai)
 ├── run.sh                # Launch wrapper
 ├── __init__.py
@@ -45,7 +45,6 @@ Do NOT register in `defines.py` or `resources_config.yaml`.
 
 ### Step 2: Create Directory Structure
 
-Same as Step 1 above — all files go in `community/apps/<app_name>/`.
 
 ### Step 3: Build Main App
 
@@ -179,10 +178,4 @@ To add voice to any existing LLM/VLM app:
 4. Replace `input()` with `vim.listen()` when `--voice` is set
 5. Add `vim.speak(response)` after generating output
 6. Add `abort_event` for interruption support
-
-
-## Community Findings
-
-<!-- Auto-curated from community/contributions/ — do not edit above this section -->
-<!-- New findings are appended here automatically by curate_contributions.py -->
 
