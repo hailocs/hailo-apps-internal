@@ -169,6 +169,16 @@ class UserAppCallback(app_callback_class):
         self.use_frame = True  # Enables frame access in callback
 ```
 
+**CRITICAL**: Setting `use_frame = True` in the callback class alone is NOT enough when subclassing a pipeline class (e.g., `GStreamerPoseEstimationApp`). `GStreamerApp.__init__()` overwrites `user_data.use_frame` from the CLI default (`False`). You MUST also force it in the app class:
+```python
+class MyApp(GStreamerPoseEstimationApp):
+    def __init__(self, app_callback, user_data, parser=None):
+        super().__init__(app_callback, user_data, parser)
+        self.options_menu.use_frame = True  # starts display process
+        user_data.use_frame = True          # enables frame extraction
+```
+Without this, `set_frame()` calls are silently ignored and only the raw camera feed is shown.
+
 ### 2. Get the frame in the callback
 ```python
 import cv2

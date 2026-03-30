@@ -2,6 +2,28 @@
 
 > Bugs found, anti-patterns encountered, and lessons learned. Check before writing new code.
 
+## Game / Interactive App — Follow the User's Exact Description
+
+### Wrong: Assuming common game archetypes
+When a user says "build an Easter eggs game where an egg should be placed and
+user catches it", **do NOT** assume the standard falling-objects arcade pattern.
+The user described: one egg, stationary, placed randomly, catch-and-replace.
+```
+# ❌ User said "an egg should be placed" → agent built falling eggs from above
+#    "an egg" = singular, "placed" = stationary, not falling
+```
+
+### Right: Parse the mechanics literally from the prompt
+1. **Count**: "an egg" = one at a time; "eggs fall" = multiple
+2. **Motion**: "placed" = stationary; "falling/dropping" = moving
+3. **Flow**: "catch it … another one placed" = sequential spawn on catch
+4. **Interaction**: "find" = search; "catch" = touch/collide; "dodge" = avoid
+
+**Rule**: For interactive/game apps, extract exact mechanics from the user's
+words before building. If ambiguous, ask. Never substitute a genre assumption
+for what the user actually wrote. Re-read the prompt once more before coding
+the game loop.
+
 ## Import Errors
 
 ### Wrong: Relative imports in app code
@@ -92,6 +114,36 @@ user_data.set_frame(frame)
 ```
 **Forgetting this conversion produces blue-tinted output.** The display pipeline
 expects BGR.
+
+## use_frame Overwritten by GStreamerApp Constructor
+
+### Wrong: Setting use_frame only in callback class
+`GStreamerApp.__init__()` unconditionally overwrites `user_data.use_frame` from
+`self.options_menu.use_frame` (CLI default: `False`). Setting it in the callback
+class constructor has **no effect** — the parent constructor runs after and resets it.
+```python
+# ❌ WRONG — gets overwritten to False by GStreamerApp.__init__()
+class MyCallback(app_callback_class):
+    def __init__(self):
+        super().__init__()
+        self.use_frame = True  # overwritten!
+```
+The result: the `display_user_data_frame` process never starts, so `set_frame()`
+calls are silently ignored and only the raw camera feed is displayed.
+
+### Right: Force use_frame in the app's __init__ AFTER super().__init__()
+```python
+# ✅ CORRECT — override after parent constructor
+class MyGame(GStreamerPoseEstimationApp):
+    def __init__(self, app_callback, user_data, parser=None):
+        super().__init__(app_callback, user_data, parser)
+        self.options_menu.use_frame = True  # needed for display process to start
+        user_data.use_frame = True          # needed for callback to access frame
+```
+**Both** `self.options_menu.use_frame` AND `user_data.use_frame` must be set.
+The options_menu flag controls whether `display_user_data_frame` process is
+spawned in `GStreamerApp.run()`. The user_data flag controls frame extraction
+in the callback.
 
 ## HEF Path Resolution
 
