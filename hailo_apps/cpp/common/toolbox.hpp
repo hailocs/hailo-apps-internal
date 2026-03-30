@@ -240,6 +240,7 @@ namespace hailo_utils {
         double &framerate,
         size_t &batch_size,
         const bool &save_stream_output,
+        const bool &no_display,
         const std::string &output_dir,
         const std::string &output_resolution,
         std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
@@ -268,7 +269,7 @@ namespace hailo_utils {
                         bool no_display,
                         std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>,
                         std::vector<cv::Mat>>>> preprocessed_batch_queue,
-                        std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue)
+                        std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue);
     // ─────────────────────────────────────────────────────────────────────────────
     // VISUALIZATION PARAMETERS
     // ─────────────────────────────────────────────────────────────────────────────

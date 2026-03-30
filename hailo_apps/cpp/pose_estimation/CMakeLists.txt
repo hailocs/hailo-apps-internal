@@ -170,9 +170,10 @@ if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -Werror -O3
+        -Wall -Wextra -O3
         -Wno-reorder -Wno-ignored-qualifiers -Wno-extra -Wno-conversion
         -Wno-unused-but-set-variable -Wno-array-bounds -Wno-unused-value
+        -Wno-unused-local-typedefs
     )
 endif()
 

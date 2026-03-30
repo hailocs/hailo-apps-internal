@@ -868,7 +868,7 @@ hailo_status run_post_process(
     double &framerate,
     size_t &batch_size,
     const bool &save_stream_output,
-    const bool &no_display
+    const bool &no_display,
     const std::string &output_dir,
     const std::string &output_resolution,
     std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
@@ -981,7 +981,7 @@ hailo_status run_post_process(
         i++;
     }
 
-    release_resources(capture, video, input_type, nullptr, results_queue);
+    release_resources(capture, video, input_type, no_display, nullptr, results_queue);
     return HAILO_SUCCESS;
 }
 

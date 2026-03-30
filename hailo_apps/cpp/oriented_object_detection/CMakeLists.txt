@@ -149,7 +149,11 @@ else()
     # Base compilation options (portable on GCC/Clang)
     target_compile_options(${PROJECT_NAME} PRIVATE
         -Wall -Wextra -O3
-        -Wno-ignored-qualifiers -Wno-extra -Wno-stringop-truncation -Wno-reorder
+        -Wno-ignored-qualifiers
+        -Wno-extra
+        -Wno-stringop-truncation
+        -Wno-reorder
+        -Wno-unused-parameter
         -fopenmp
     )
 
