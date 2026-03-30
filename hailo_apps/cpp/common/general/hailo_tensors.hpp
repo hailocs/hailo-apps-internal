@@ -12,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+using uint = unsigned int;
 
 class HailoTensor
 {

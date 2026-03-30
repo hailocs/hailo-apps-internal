@@ -6,6 +6,23 @@
 #include <cmath>
 #include "../common/labels/coco_eighty.hpp"
 
+#include <string>
+
+#ifdef _WIN32
+  #include <windows.h>
+  static std::wstring to_wstring_utf8(const std::string &s)
+  {
+      if (s.empty()) return std::wstring();
+      int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+      std::wstring ws(len, L'\0');
+      MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, ws.data(), len);
+      // remove the extra null terminator from std::wstring size
+      if (!ws.empty() && ws.back() == L'\0') ws.pop_back();
+      return ws;
+  }
+#endif
+
+
 namespace {
 struct LetterboxParams { int model_w, model_h; int resized_w, resized_h; int pad_right, pad_bottom; float scale; };
 
@@ -48,7 +65,13 @@ InstanceSegDecodeONNX::InstanceSegDecodeONNX(const std::string &model_path)
     Ort::SessionOptions session_options;
     session_options.SetIntraOpNumThreads(1);
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+#ifdef _WIN32
+    const std::wstring wpath = to_wstring_utf8(model_path);
+    _sess = Ort::Session(_env, wpath.c_str(), session_options);
+#else
     _sess = Ort::Session(_env, model_path.c_str(), session_options);
+#endif
 
     // cache I/O names
     Ort::AllocatorWithDefaultOptions alloc;
