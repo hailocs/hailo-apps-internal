@@ -286,7 +286,7 @@ The `hailo_apps/` package is the official, reviewed codebase. Agent-built apps n
 review before promotion. The `community/apps/` staging area isolates experimental
 code while still allowing it to import and reuse core utilities.
 
-### App Creation Flow
+### App Creation Flow (Agent-Internal Path)
 
 ```
 Agent builds app →
@@ -295,6 +295,34 @@ Agent builds app →
   3. Do NOT modify defines.py or resources_config.yaml
   4. Run via: ./community/apps/<app_name>/run.sh --input <source>
 ```
+
+### External Contributor Path
+
+Community users contribute directly to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples):
+
+```
+Contributor →
+  1. Fork hailo-rpi5-examples
+  2. Create community_projects/<app_name>/ (flat layout, includes app.yaml)
+  3. Knowledge findings go in community_projects/<app_name>/contributions/
+  4. Develop & test by copying app into hailo-apps clone at community/apps/<type>_apps/<app_name>/
+     (required because code uses from hailo_apps.python.core... imports)
+  5. Open PR to hailo-rpi5-examples
+```
+
+### Running Community Apps
+
+Apps from hailo-rpi5-examples must be copied into a hailo-apps clone to run:
+
+```bash
+# Type mapping from app.yaml: pipeline → pipeline_apps/, standalone → standalone_apps/, gen_ai → gen_ai_apps/
+cp -r community_projects/<app_name> hailo-apps/community/apps/<type>_apps/<app_name>
+cd hailo-apps
+./community/apps/<type>_apps/<app_name>/run.sh --input <source>
+```
+
+This is required because app code uses `from hailo_apps.python.core...` imports which
+only resolve when the app is inside the hailo-apps directory tree with the package installed.
 
 ### Required app.yaml Fields
 

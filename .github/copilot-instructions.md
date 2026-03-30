@@ -59,12 +59,22 @@ All paths above are relative to `.github/`. The knowledge base at `.github/knowl
 
 ### Community App Workflow
 
-When building new apps, agents MUST:
+There are **two paths** for community apps:
+
+**Agent-internal path** (agents building within this repo):
 1. Place app code in `community/apps/<type>/<app_name>/` with `app.yaml` manifest and `run.sh` wrapper
    (where `<type>` is `gen_ai_apps/`, `pipeline_apps/`, or `standalone_apps/`)
 2. Create a contribution recipe in `community/contributions/<category>/` documenting lessons learned
 3. Do NOT register in `defines.py` or `resources_config.yaml` — that happens during promotion
 4. Run via `./community/apps/<type>/<app_name>/run.sh --input <source>`
+5. Maintainer pushes to hailo-rpi5-examples via `push_community_apps.py`
+
+**External contributor path** (community users contributing directly):
+1. Contributors open PRs to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples)
+2. Apps are placed in `community_projects/<app_name>/` (flat layout, includes `app.yaml`)
+3. Knowledge findings go in `community_projects/<app_name>/contributions/`
+4. To develop and run, contributors copy their app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` — this is required because code uses `from hailo_apps.python.core...` imports
+5. Maintainer pulls findings back via `curate_contributions.py --pull-external`
 
 Promotion to official: `python .github/scripts/curate_contributions.py --promote <app_name>`
 Curation of knowledge: `python .github/scripts/curate_contributions.py --curate`

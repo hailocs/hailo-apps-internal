@@ -2,7 +2,8 @@
 name: HL App Builder
 description: Build any Hailo AI application. I'll help you choose the right architecture,
   plan the build, and route you to the specialist builder — or build it myself.
-argument-hint: 'e.g., person detection pipeline'
+argument-hint: '[describe your app, e.g., ''person detection pipeline'' or ''VLM dog
+  monitor'']'
 tools:
 - agent/runSubagent
 - edit/createDirectory

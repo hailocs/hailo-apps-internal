@@ -2,7 +2,8 @@
 name: HL Standalone Builder
 description: Build standalone inference applications using HailoInfer + OpenCV. Direct
   model inference without GStreamer — best for custom processing pipelines.
-argument-hint: 'e.g., YOLOv8 detection on video files'
+argument-hint: '[describe your app, e.g., ''YOLOv8 detection on video files with JSON
+  output'']'
 tools:
 - agent/runSubagent
 - edit/createDirectory

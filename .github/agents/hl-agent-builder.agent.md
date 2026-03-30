@@ -2,7 +2,8 @@
 name: HL Agent Builder
 description: Build agent applications with LLM tool calling for Hailo-10H. Create
   AI agents that can execute tools, query APIs, and perform multi-step reasoning.
-argument-hint: 'e.g., smart home controller agent'
+argument-hint: '[describe your agent, e.g., ''smart home controller agent with weather
+  and lights tools'']'
 tools:
 - agent/runSubagent
 - edit/createDirectory

@@ -2,7 +2,8 @@
 name: HL Pipeline Builder
 description: Build GStreamer pipeline applications for real-time video processing
   on Hailo-8/8L/10H. Detection, pose estimation, segmentation, tracking, and more.
-argument-hint: 'e.g., person detection with tracking'
+argument-hint: '[describe your pipeline app, e.g., ''person detection with tracking
+  on USB camera'']'
 tools:
 - agent/runSubagent
 - edit/createDirectory

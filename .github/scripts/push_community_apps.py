@@ -121,47 +121,71 @@ def adapt_readme(app_dir, manifest):
     has_usage = "## Usage" in existing
 
     if has_overview and has_setup and has_usage:
-        return existing  # Already good enough
-
-    # Build template-compliant README
-    hardware = manifest.get("hardware", ["hailo8", "hailo8l", "hailo10h"])
-    if isinstance(hardware, str):
-        hardware = [hardware]
-    hw_str = ", ".join(hardware)
-
-    readme = f"# {title}\n\n"
-    if has_overview:
-        readme += existing.split("## Overview")[1].split("\n## ")[0] if "## Overview" in existing else ""
+        # Already has main sections — just append "How to Run" if missing
+        if "## How to Run" in existing:
+            return existing
+        readme = existing.rstrip() + "\n\n"
     else:
-        readme += f"## Overview\n\n{description}\n\n"
-        readme += f"**Supported hardware:** {hw_str}\n\n"
+        # Build template-compliant README
+        hardware = manifest.get("hardware", ["hailo8", "hailo8l", "hailo10h"])
+        if isinstance(hardware, str):
+            hardware = [hardware]
+        hw_str = ", ".join(hardware)
 
-    readme += "## Video\n\n<!-- Add a demo video link here -->\n\n"
-    readme += "## Versions\n\nVerified with hailo-apps `feature/gen-ai` branch.\n\n"
+        readme = f"# {title}\n\n"
+        if has_overview:
+            readme += existing.split("## Overview")[1].split("\n## ")[0] if "## Overview" in existing else ""
+        else:
+            readme += f"## Overview\n\n{description}\n\n"
+            readme += f"**Supported hardware:** {hw_str}\n\n"
 
-    if not has_setup:
-        readme += textwrap.dedent(f"""\
-        ## Setup Instructions
+        readme += "## Video\n\n<!-- Add a demo video link here -->\n\n"
+        readme += "## Versions\n\nVerified with hailo-apps `feature/gen-ai` branch.\n\n"
 
-        ```bash
-        # Clone and setup
-        git clone https://github.com/hailo-ai/hailo-apps.git
-        cd hailo-apps
-        source setup_env.sh
-        pip install -e .
-        ```
+        if not has_setup:
+            readme += textwrap.dedent(f"""\
+            ## Setup Instructions
 
-        """)
+            ```bash
+            # Clone and setup hailo-apps
+            git clone https://github.com/hailo-ai/hailo-apps.git
+            cd hailo-apps
+            source setup_env.sh
+            pip install -e .
+            ```
 
-    if not has_usage:
-        entry = manifest.get("entry_point", f"{app_dir.name}.py")
-        readme += textwrap.dedent(f"""\
-        ## Usage
+            """)
 
-        ```bash
-        python {entry}
-        ```
-        """)
+    # Always add "How to Run" section with copy-to-hailo-apps instructions
+    app_type = manifest.get("type", "pipeline")
+    type_dir_map = {"pipeline": "pipeline_apps", "standalone": "standalone_apps", "gen_ai": "gen_ai_apps"}
+    type_dir = type_dir_map.get(app_type, f"{app_type}_apps")
+    entry = manifest.get("entry_point", f"{app_dir.name}.py")
+
+    readme += textwrap.dedent(f"""\
+    ## How to Run
+
+    Apps use `hailo_apps.*` imports, so you must copy this app into a hailo-apps clone to run it:
+
+    ```bash
+    # 1. Set up hailo-apps (if not already done)
+    git clone https://github.com/hailo-ai/hailo-apps.git
+    cd hailo-apps
+    source setup_env.sh
+    pip install -e .
+
+    # 2. Copy this app into the hailo-apps tree
+    cp -r /path/to/community_projects/{name} community/apps/{type_dir}/{name}/
+
+    # 3. Run
+    ./community/apps/{type_dir}/{name}/run.sh --input usb
+    # or: PYTHONPATH=. python3 community/apps/{type_dir}/{name}/{entry} --input usb
+    ```
+
+    > **Why copy?** App code uses `from hailo_apps.python.core...` imports which only
+    > resolve inside the hailo-apps directory tree with the package installed.
+
+    """)
 
     # Append any remaining content from existing README
     if existing and not existing.startswith("# "):
@@ -258,9 +282,9 @@ def push_app(app_dir, manifest, dry_run=False, clone_dir=None):
         shutil.rmtree(target_dir)
     target_dir.mkdir(parents=True)
 
-    # Copy app files (flat — no type subdirs)
+    # Copy app files (flat — no type subdirs, app.yaml included)
     for item in app_dir.iterdir():
-        if item.name in ("__pycache__", ".pyc", "app.yaml"):
+        if item.name in ("__pycache__", ".pyc"):
             continue
         if item.is_dir():
             shutil.copytree(item, target_dir / item.name,

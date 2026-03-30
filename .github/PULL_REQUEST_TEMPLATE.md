@@ -1,10 +1,15 @@
+> **Community contributors:** This PR template is for internal and agent-built contributions to this repository.
+> If you're contributing a community app or knowledge finding, please open your PR to
+> [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples) instead.
+> See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full guide.
+
 ## Description
 
 <!-- Brief description of your changes -->
 
 ## Contribution Type
 
-- [ ] **New app** (`community/apps/`)
+- [ ] **New app** (`community/apps/`) — agent-built, to be pushed to hailo-rpi5-examples
 - [ ] **Knowledge finding** (`community/contributions/`)
 - [ ] **Bug fix**
 - [ ] **Documentation improvement**

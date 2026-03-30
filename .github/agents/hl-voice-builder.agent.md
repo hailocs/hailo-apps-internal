@@ -2,7 +2,8 @@
 name: HL Voice Builder
 description: Build voice assistant applications for Hailo-10H with speech-to-text
   (Whisper on Hailo) and text-to-speech (Piper on CPU). Add voice to any Hailo app.
-argument-hint: 'e.g., voice-controlled assistant'
+argument-hint: '[describe your voice app, e.g., ''voice-controlled home assistant''
+  or ''add voice to my LLM chat'']'
 tools:
 - agent/runSubagent
 - edit/createDirectory

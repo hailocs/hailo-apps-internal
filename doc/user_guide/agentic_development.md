@@ -103,9 +103,11 @@ See **[CONTRIBUTING.md](../../CONTRIBUTING.md)** for the full guide, including:
 - App directory structure and `app.yaml` manifest format
 - Knowledge finding format (YAML frontmatter + required sections)
 - Coding conventions that must pass validation
-- Fork → PR → review → merge workflow
+- How to develop and test (copy app into hailo-apps clone)
 
-Pull requests use the [PR template](../../.github/PULL_REQUEST_TEMPLATE.md) with validation checkboxes.
+**Community PRs go to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples)**, not to this repo. Apps are placed in `community_projects/<app_name>/` (flat layout). To develop and run, copy the app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` — this is required because apps use `from hailo_apps.python.core...` imports.
+
+Pull requests to hailo-rpi5-examples use the [community PR template](../../community/rpi5_examples_PULL_REQUEST_TEMPLATE.md) with validation checkboxes.
 
 ### Validating Your App
 
@@ -123,21 +125,28 @@ Smoke tests gracefully skip if Hailo hardware or GStreamer aren't available.
 
 ## Community Workflow
 
-Apps and knowledge findings follow a pipeline from contribution to publication:
+There are **two paths** for community apps:
 
 ```
-Contribute → Validate → Merge → Curate → Promote → Publish
+External: Contributor → PR to hailo-rpi5-examples → Maintainer pulls back → Curate → Promote
+Internal: Agent builds locally → push_community_apps.py → PR to hailo-rpi5-examples
 ```
 
-### 1. Contribute
+### External Contributor Path
 
-Apps go in `community/apps/<type>/<app_name>/`. Knowledge findings go in `community/contributions/<category>/`.
+Community users contribute directly to [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples):
+
+1. **Fork & create** — App goes in `community_projects/<app_name>/` (flat layout, includes `app.yaml`)
+2. **Develop & test** — Copy app into a hailo-apps clone at `community/apps/<type>_apps/<app_name>/` to run (required for `hailo_apps.*` imports)
+3. **PR** — Open PR to hailo-rpi5-examples
+4. **Maintainer review** — Maintainer copies app to hailo-apps clone, runs `validate_app.py --smoke-test`, merges in hailo-rpi5-examples
+5. **Pull back** — Maintainer runs `curate_contributions.py --pull-external` to fetch knowledge findings into this repo
 
 **Contribution categories:** `pipeline-optimization`, `bottleneck-patterns`, `gen-ai-recipes`, `hardware-config`, `model-tuning`, `camera-display`, `voice-audio`, `general`
 
-### 2. Validate & Merge
+### Agent-Internal Path
 
-Maintainers run `validate_app.py --smoke-test` and review the PR. Once merged, the app is available to all users.
+AI agents build apps directly in `community/apps/<type>/<app_name>/` within this repo. Maintainers push to hailo-rpi5-examples via `push_community_apps.py`.
 
 ### 3. Curate (Knowledge Self-Learning)
 
@@ -152,13 +161,13 @@ Knowledge findings are processed into the agent knowledge base via **tiered cura
 This means the agents **learn from every contribution** — patterns discovered in the community feed back into the skills and toolsets that guide future builds.
 
 ```bash
-# Scan contributions and their status
-python .hailo/scripts/curate_contributions.py --scan
+# Pull knowledge findings from hailo-rpi5-examples
+python .hailo/scripts/curate_contributions.py --pull-external
 
 # Process findings into knowledge base (interactive)
 python .hailo/scripts/curate_contributions.py --curate
 
-# All-in-one: curate + sync platforms + propose PR
+# All-in-one: pull external + curate + sync platforms + propose PR
 python .hailo/scripts/curate_and_propose.py
 ```
 
@@ -172,13 +181,15 @@ python .hailo/scripts/curate_contributions.py --promote <app_name>
 
 This copies the app, runs validation with `--smoke-test`, and registers it.
 
-### 5. Publish
+### 5. Publish (Agent-Internal Path Only)
 
-Community apps can be pushed to the public [hailo-rpi5-examples](https://github.com/hailo-ai/hailo-rpi5-examples) repo:
+Agent-built apps are pushed to hailo-rpi5-examples via:
 
 ```bash
 python .hailo/scripts/push_community_apps.py
 ```
+
+External contributors skip this step — they PR directly to hailo-rpi5-examples.
 
 ## Knowledge Base
 

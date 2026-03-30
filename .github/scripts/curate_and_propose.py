@@ -2,9 +2,11 @@
 """
 Curate community contributions and propose updates to .hailo/ via PR.
 
-Runs the existing curate_contributions.py --curate --auto to process
-contribution recipes into .hailo/memory/, then if any files changed,
-creates a branch and opens a PR to the dev branch of hailo-apps-internal.
+Runs the full pipeline:
+1. Pulls external contributions from hailo-rpi5-examples (--pull-external)
+2. Runs curate_contributions.py --curate --auto to process findings into .hailo/memory/
+3. Syncs platforms (.hailo/ → .github/, .claude/)
+4. If any files changed, creates a branch and opens a PR
 
 Prerequisites:
     - `gh` CLI installed and authenticated (`gh auth login`)
@@ -79,6 +81,27 @@ def run_platform_sync():
     return result.returncode == 0
 
 
+def run_pull_external(dry_run=False):
+    """Run curate_contributions.py --pull-external to fetch from hailo-rpi5-examples.
+
+    Args:
+        dry_run: If True, run with --dry-run.
+
+    Returns:
+        True if pull ran successfully.
+    """
+    cmd = f"python3 {CURATE_SCRIPT} --pull-external"
+    if dry_run:
+        cmd += " --dry-run"
+
+    print(f"\n{C.BOLD}Pulling external contributions from hailo-rpi5-examples...{C.RESET}")
+    result = subprocess.run(
+        cmd, shell=True, cwd=str(REPO_ROOT),
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def run_curation(dry_run=False):
     """Run curate_contributions.py --curate --auto.
 
@@ -109,7 +132,10 @@ def main():
                        help="Scan contributions without curating or creating PR")
     args = parser.parse_args()
 
-    # Step 1: Run curation
+    # Step 1: Pull external contributions from hailo-rpi5-examples
+    run_pull_external(dry_run=args.dry_run)
+
+    # Step 2: Run curation
     success = run_curation(dry_run=args.dry_run)
     if not success:
         print(f"{C.RED}Curation had issues — check output above{C.RESET}")
@@ -118,10 +144,10 @@ def main():
         print(f"\n{C.YELLOW}[DRY RUN] No changes made. Run without --dry-run to curate and propose.{C.RESET}")
         return
 
-    # Step 2: Sync platforms (.hailo/ → .github/, .claude/)
+    # Step 3: Sync platforms (.hailo/ → .github/, .claude/)
     run_platform_sync()
 
-    # Step 3: Check if .hailo/ or .github/ changed
+    # Step 4: Check if .hailo/ or .github/ changed
     diff = get_hailo_diff()
     if not diff:
         print(f"\n{C.DIM}No changes to .hailo/ or .github/ after curation. Nothing to propose.{C.RESET}")
@@ -130,13 +156,13 @@ def main():
     print(f"\n{C.BOLD}Changes:{C.RESET}")
     print(diff)
 
-    # Step 4: Check gh CLI
+    # Step 5: Check gh CLI
     if not check_gh_cli():
         print(f"\n{C.RED}Error: gh CLI not authenticated. Run: gh auth login{C.RESET}")
         print(f"{C.DIM}Changes are staged locally — commit manually if needed.{C.RESET}")
         sys.exit(1)
 
-    # Step 5: Create branch and commit
+    # Step 6: Create branch and commit
     date_str = datetime.now().strftime("%Y%m%d-%H%M")
     branch_name = f"curate/{date_str}"
 
@@ -149,7 +175,7 @@ def main():
     commit_msg = f"curate: auto-incorporate community contributions\n\nUpdated files:\n{changed_files}"
     run_cmd(f'git commit -m "{commit_msg}"')
 
-    # Step 5: Push and create PR
+    # Step 7: Push and create PR
     print(f"\n{C.BOLD}Pushing and creating PR...{C.RESET}")
     run_cmd(f"git push origin {branch_name}")
 

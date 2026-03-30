@@ -16,18 +16,28 @@ Also handles community app promotion:
 6. Moves to hailo_apps/python/<category>/<name>/
 7. Registers in defines.py and resources_config.yaml
 
+Pull external contributions from hailo-rpi5-examples:
+8. Clones/fetches hailo-ai/hailo-rpi5-examples
+9. Scans community_projects/*/contributions/ for knowledge findings
+10. Copies findings into local community/contributions/ for standard curation
+11. Copies app directories into community/apps/<type>/ for promotion pipeline
+
 Usage:
     python .hailo/scripts/curate_contributions.py --scan
     python .hailo/scripts/curate_contributions.py --curate
     python .hailo/scripts/curate_contributions.py --curate --auto
     python .hailo/scripts/curate_contributions.py --promote <app_name>
+    python .hailo/scripts/curate_contributions.py --pull-external
+    python .hailo/scripts/curate_contributions.py --pull-external --dry-run
 """
 
 import argparse
 import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import textwrap
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -43,6 +53,17 @@ COMMUNITY_APPS_DIR = REPO_ROOT / "community" / "apps"
 HAILO_MEMORY_DIR = REPO_ROOT / ".hailo" / "memory"
 HAILO_KNOWLEDGE_DIR = REPO_ROOT / ".hailo" / "knowledge"
 DEFINES_PATH = REPO_ROOT / "hailo_apps" / "python" / "core" / "common" / "defines.py"
+
+# External repo for community contributions (hailo-rpi5-examples)
+EXTERNAL_REPO = "hailo-ai/hailo-rpi5-examples"
+EXTERNAL_COMMUNITY_DIR = "community_projects"
+
+# App type → community/apps subdirectory mapping
+COMMUNITY_TYPE_DIR = {
+    "pipeline": "pipeline_apps",
+    "standalone": "standalone_apps",
+    "gen_ai": "gen_ai_apps",
+}
 RESOURCES_CONFIG_PATH = REPO_ROOT / "hailo_apps" / "config" / "resources_config.yaml"
 
 # Category → Tier 1 target .hailo/ file mapping (full content append)
@@ -765,6 +786,149 @@ def cmd_promote(app_name: str):
     print(f"  3. Commit the changes")
 
 
+# ---------------------------------------------------------------------------
+# Pull External Contributions from hailo-rpi5-examples
+# ---------------------------------------------------------------------------
+
+def _run_cmd(cmd, cwd=None, check=True):
+    """Run a shell command and return stdout."""
+    result = subprocess.run(
+        cmd, shell=True, cwd=str(cwd) if cwd else None,
+        check=check, capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
+def cmd_pull_external(dry_run=False, clone_dir=None):
+    """Pull knowledge findings and apps from hailo-rpi5-examples into local tree.
+
+    Clones/fetches hailo-ai/hailo-rpi5-examples, then:
+    1. Scans community_projects/*/contributions/ for knowledge finding .md files
+    2. Copies findings into local community/contributions/<category>/
+    3. Copies app directories into community/apps/<type>_apps/<app_name>/
+       (using app.yaml type field for the type mapping)
+
+    Args:
+        dry_run: If True, only show what would be pulled without copying.
+        clone_dir: Pre-existing clone of hailo-rpi5-examples to reuse.
+    """
+    import yaml
+
+    print(f"{C.BOLD}Pulling external contributions from {EXTERNAL_REPO}...{C.RESET}\n")
+
+    # Clone or reuse external repo
+    if clone_dir:
+        ext_root = Path(clone_dir)
+        if not ext_root.exists():
+            print(f"{C.RED}Error: --clone-dir {clone_dir} does not exist{C.RESET}")
+            sys.exit(1)
+        _run_cmd("git pull", cwd=ext_root, check=False)
+    else:
+        ext_root = Path(tempfile.mkdtemp(prefix="hailo-rpi5-"))
+        print(f"{C.DIM}Cloning {EXTERNAL_REPO} to {ext_root}...{C.RESET}")
+        try:
+            _run_cmd(f"gh repo clone {EXTERNAL_REPO} {ext_root}", check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fall back to git clone if gh CLI not available
+            _run_cmd(f"git clone https://github.com/{EXTERNAL_REPO}.git {ext_root}", check=True)
+
+    community_dir = ext_root / EXTERNAL_COMMUNITY_DIR
+    if not community_dir.exists():
+        print(f"{C.DIM}No {EXTERNAL_COMMUNITY_DIR}/ directory found in {EXTERNAL_REPO}{C.RESET}")
+        return
+
+    # Scan all app directories in community_projects/
+    findings_pulled = 0
+    apps_pulled = 0
+
+    for app_dir in sorted(community_dir.iterdir()):
+        if not app_dir.is_dir():
+            continue
+        if app_dir.name.startswith(".") or app_dir.name == "__pycache__":
+            continue
+
+        app_name = app_dir.name
+        manifest_path = app_dir / "app.yaml"
+
+        # Read manifest for type mapping
+        manifest = {}
+        if manifest_path.exists():
+            try:
+                manifest = yaml.safe_load(manifest_path.read_text()) or {}
+            except Exception:
+                pass
+
+        app_type = manifest.get("type", "pipeline")
+        type_dir = COMMUNITY_TYPE_DIR.get(app_type, f"{app_type}_apps")
+
+        # 1. Pull knowledge findings from contributions/ subfolder
+        contrib_dir = app_dir / "contributions"
+        if contrib_dir.exists():
+            for finding_path in sorted(contrib_dir.glob("*.md")):
+                if finding_path.name == "README.md":
+                    continue
+
+                # Determine category from frontmatter
+                category = "general"
+                try:
+                    content = finding_path.read_text()
+                    fm, _ = parse_frontmatter(content)
+                    category = fm.get("category", "general")
+                except Exception:
+                    pass
+
+                target_dir = CONTRIBUTIONS_DIR / category
+                target_path = target_dir / finding_path.name
+
+                if target_path.exists():
+                    print(f"  {C.DIM}Skip (exists): {finding_path.name}{C.RESET}")
+                    continue
+
+                if dry_run:
+                    print(f"  {C.YELLOW}[DRY RUN] Would pull finding: {finding_path.name} → {category}/{C.RESET}")
+                else:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(finding_path, target_path)
+                    print(f"  {C.GREEN}Pulled finding: {finding_path.name} → {category}/{C.RESET}")
+                findings_pulled += 1
+
+        # 2. Copy app directory into community/apps/<type>_apps/<app_name>/
+        local_app_dir = COMMUNITY_APPS_DIR / type_dir / app_name
+        if local_app_dir.exists():
+            print(f"  {C.DIM}Skip (exists): {app_name} in community/apps/{type_dir}/{C.RESET}")
+            continue
+
+        if dry_run:
+            print(f"  {C.YELLOW}[DRY RUN] Would pull app: {app_name} → community/apps/{type_dir}/{app_name}/{C.RESET}")
+        else:
+            local_app_dir.mkdir(parents=True, exist_ok=True)
+            for item in app_dir.iterdir():
+                if item.name in ("__pycache__", "contributions"):
+                    continue
+                if item.is_dir():
+                    shutil.copytree(item, local_app_dir / item.name,
+                                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                else:
+                    shutil.copy2(item, local_app_dir / item.name)
+            print(f"  {C.GREEN}Pulled app: {app_name} → community/apps/{type_dir}/{app_name}/{C.RESET}")
+        apps_pulled += 1
+
+    # Summary
+    action = "Would pull" if dry_run else "Pulled"
+    print(f"\n{C.BOLD}{action}: {findings_pulled} finding(s), {apps_pulled} app(s){C.RESET}")
+
+    if not clone_dir:
+        print(f"{C.DIM}Temp clone at: {ext_root}{C.RESET}")
+        print(f"{C.DIM}(delete manually or reuse with --clone-dir){C.RESET}")
+
+    if not dry_run and (findings_pulled > 0 or apps_pulled > 0):
+        print(f"\n{C.BOLD}Next steps:{C.RESET}")
+        if findings_pulled > 0:
+            print(f"  Run: python .hailo/scripts/curate_contributions.py --curate")
+        if apps_pulled > 0:
+            print(f"  Run: python .hailo/scripts/curate_contributions.py --promote <app_name>")
+
+
 def main():
     """Entry point for the curation script."""
     parser = argparse.ArgumentParser(
@@ -776,6 +940,8 @@ def main():
               %(prog)s --curate                   Interactive curation
               %(prog)s --curate --auto            Auto-accept valid contributions
               %(prog)s --promote my_app           Promote community app to official
+              %(prog)s --pull-external            Pull from hailo-rpi5-examples
+              %(prog)s --pull-external --dry-run  Preview what would be pulled
         """),
     )
 
@@ -795,11 +961,27 @@ def main():
         metavar="APP_NAME",
         help="Promote a community app to official hailo_apps/",
     )
+    group.add_argument(
+        "--pull-external",
+        action="store_true",
+        help="Pull contributions and apps from hailo-rpi5-examples into local tree",
+    )
 
     parser.add_argument(
         "--auto",
         action="store_true",
         help="Auto-accept valid contributions without prompting (with --curate)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview what would be done without making changes (with --pull-external)",
+    )
+    parser.add_argument(
+        "--clone-dir",
+        type=str,
+        default=None,
+        help="Reuse an existing clone of hailo-rpi5-examples (with --pull-external)",
     )
 
     args = parser.parse_args()
@@ -810,6 +992,8 @@ def main():
         cmd_curate(auto=args.auto)
     elif args.promote:
         cmd_promote(args.promote)
+    elif args.pull_external:
+        cmd_pull_external(dry_run=args.dry_run, clone_dir=args.clone_dir)
 
 
 if __name__ == "__main__":

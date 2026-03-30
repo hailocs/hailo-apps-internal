@@ -222,26 +222,32 @@ Automation scripts for validation, curation, platform sync, and publishing.
 | Repo | Visibility | Purpose |
 |------|-----------|---------|
 | `hailo-apps-internal` (this repo) | Private | Development, staging, agentic knowledge base |
-| `hailo-ai/hailo-rpi5-examples` | Public | Where community users find and use example apps |
-| Community user's fork | Public | Where users prepare their contributions |
+| `hailo-ai/hailo-rpi5-examples` | Public | Where community users contribute and find example apps |
+| Community user's fork of hailo-rpi5-examples | Public | Where users prepare their contributions via PRs |
 
 ### How Community Users Contribute
 
+Community contributors open PRs directly to **hailo-rpi5-examples** (not to this repo).
+
 **Contributing an app:**
 ```
-Fork this repo → create community/apps/<type>/<app_name>/
-  ├── app.yaml, <app_name>.py, __init__.py, run.sh, README.md
-  → Open PR to this repo
+Fork hailo-rpi5-examples → create community_projects/<app_name>/
+  ├── app.yaml, <app_name>.py, __init__.py, run.sh, README.md, requirements.txt
+  ├── contributions/   (optional: knowledge findings)
+  → Develop & test by copying app into a hailo-apps clone at community/apps/<type>_apps/<app_name>/
+  → Open PR to hailo-rpi5-examples
 ```
 
-**Contributing a knowledge finding:**
+**Running a community app** (for users):
 ```
-Fork this repo → create community/contributions/<category>/YYYY-MM-DD_<app>_<slug>.md
-  (YAML frontmatter + 6 required sections)
-  → Open PR to this repo
+Clone hailo-rpi5-examples → copy community_projects/<app_name>/ into hailo-apps clone
+  → Place at community/apps/<type>_apps/<app_name>/ (type from app.yaml)
+  → Run via run.sh or PYTHONPATH=. python3 ...
 ```
 
-**Agent-assisted:** An AI agent builds the app and/or generates a contribution recipe during a session. The user reviews and opens a PR.
+> **Why copy into hailo-apps?** App code uses `from hailo_apps.python.core...` imports which only resolve inside the hailo-apps directory tree with the package installed.
+
+**Agent-assisted (internal path):** AI agents build apps directly in `community/apps/<type>/<app_name>/` within this repo. Maintainers push to hailo-rpi5-examples via `push_community_apps.py`.
 
 ### Contribution Categories
 
@@ -258,19 +264,37 @@ Fork this repo → create community/contributions/<category>/YYYY-MM-DD_<app>_<s
 
 ### Maintainer Procedures
 
-#### 1. Review Incoming PR
+#### 1. Review Incoming PR (in hailo-rpi5-examples)
+
+Community PRs arrive at `hailo-ai/hailo-rpi5-examples`. Review the app in `community_projects/<app_name>/`.
+
+To validate, copy the app into your hailo-apps clone and run checks:
 
 ```bash
-# Validate an app (static + runtime)
-python .hailo/scripts/validate_app.py community/apps/<type>/<app_name> --smoke-test
+# Copy app to hailo-apps for testing
+cp -r /path/to/hailo-rpi5-examples/community_projects/<app_name> \
+      community/apps/<type>_apps/<app_name>
 
-# Scan contributions for validity
-python .hailo/scripts/curate_contributions.py --scan
+# Validate (static + runtime)
+python .hailo/scripts/validate_app.py community/apps/<type>_apps/<app_name> --smoke-test
 ```
 
-If OK → merge the PR.
+If OK → merge the PR in hailo-rpi5-examples.
 
-#### 2. Curate Knowledge (Tiered System)
+#### 2. Pull External Contributions
+
+After merging community PRs in hailo-rpi5-examples, pull knowledge findings back into this repo:
+
+```bash
+# Pull knowledge findings from hailo-rpi5-examples into local community/contributions/
+# Also copies app directories into community/apps/<type>/ for promotion pipeline
+python .hailo/scripts/curate_contributions.py --pull-external
+
+# Preview only
+python .hailo/scripts/curate_contributions.py --pull-external --dry-run
+```
+
+#### 3. Curate Knowledge (Tiered System)
 
 ```bash
 # Interactive: review each contribution
@@ -290,7 +314,7 @@ python .hailo/scripts/curate_contributions.py --curate --auto
 
 After curation, original contribution files are **deleted** (knowledge now lives in `.hailo/`).
 
-#### 3. Sync Platforms
+#### 4. Sync Platforms
 
 ```bash
 # Regenerate .github/, .claude/, .cursor/ from .hailo/
@@ -299,11 +323,11 @@ python .hailo/scripts/generate_platforms.py --generate
 
 Or use the all-in-one wrapper:
 ```bash
-# Curate + sync + open PR
+# Pull external + curate + sync + open internal PR
 python .hailo/scripts/curate_and_propose.py
 ```
 
-#### 4. Promote Community App to Official
+#### 5. Promote Community App to Official (optional)
 
 ```bash
 python .hailo/scripts/curate_contributions.py --promote <app_name>
@@ -311,7 +335,9 @@ python .hailo/scripts/curate_contributions.py --promote <app_name>
 
 This: validates → copies to `hailo_apps/python/<type>/` → registers in `defines.py` + `resources_config.yaml` → deletes community copy.
 
-#### 5. Push to Public RPi Examples Repo
+#### 6. Push Agent-Built Apps to hailo-rpi5-examples (agent-internal path only)
+
+For apps built by agents within this repo (not from external contributors):
 
 ```bash
 # Preview what would be pushed
@@ -321,30 +347,35 @@ python .hailo/scripts/push_community_apps.py --dry-run
 python .hailo/scripts/push_community_apps.py --app <app_name>
 ```
 
-This clones `hailo-ai/hailo-rpi5-examples`, copies the app to `community_projects/<app_name>/`, generates README + requirements.txt, updates the `community_projects.md` index, and opens a PR.
+This clones `hailo-ai/hailo-rpi5-examples`, copies the app to `community_projects/<app_name>/` (including `app.yaml`), generates README with copy-to-hailo-apps usage instructions + requirements.txt, updates the `community_projects.md` index, and opens a PR.
 
 ### Visual Flow
 
 ```
-COMMUNITY USER                          MAINTAINER
-──────────────                          ──────────
-Fork repo                              
-Create app or contribution              
-Open PR ──────────────────────────────→ Review PR
-                                        validate_app.py --smoke-test
-                                        Merge PR
-                                            │
-                                        curate_contributions.py --curate
-                                        │   Tier 1: full → memory/*.md
-                                        │   Tier 2: summary → skills/*.md
-                                        │   Delete originals
-                                        │
-                                        generate_platforms.py --generate
-                                        │   .hailo/ → .github/ + .claude/
-                                        │
-                                        curate_contributions.py --promote
-                                        │   community/ → hailo_apps/ + defines.py
-                                        │
-                                        push_community_apps.py
-                                            Opens PR to hailo-rpi5-examples
+COMMUNITY USER                            MAINTAINER
+──────────────                            ──────────
+Fork hailo-rpi5-examples                 
+Create app in community_projects/         
+(develop by copying to hailo-apps         
+ clone at community/apps/<type>_apps/)    
+Open PR to hailo-rpi5-examples ────────→ Review PR in hailo-rpi5-examples
+                                          (copy to hailo-apps clone to validate)
+                                          Merge PR
+                                              │
+                                          curate_contributions.py --pull-external
+                                          │   Fetches findings + apps → local tree
+                                          │
+                                          curate_contributions.py --curate
+                                          │   Tier 1: full → memory/*.md
+                                          │   Tier 2: summary → skills/*.md
+                                          │   Delete originals
+                                          │
+                                          generate_platforms.py --generate
+                                          │   .hailo/ → .github/ + .claude/
+                                          │
+                                          curate_contributions.py --promote (optional)
+                                              community/apps/ → hailo_apps/ + defines.py
+
+AGENT-INTERNAL PATH (separate):
+  Agent builds in community/apps/ → push_community_apps.py → PR to hailo-rpi5-examples
 ```
