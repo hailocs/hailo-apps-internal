@@ -29,7 +29,7 @@ try:
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
+    from hailo_apps.python.standalone_apps.onnxrt_hailo_pipeline.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
     from hailo_apps.python.core.common.core import handle_and_resolve_args
     from hailo_apps.python.core.common.onnx_utils import (
         load_onnx_config,
@@ -68,7 +68,7 @@ except ImportError:
     )
     from hailo_apps.python.core.common.parser import get_standalone_parser
     from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.standalone_apps.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
+    from hailo_apps.python.standalone_apps.onnxrt_hailo_pipeline.object_detection_onnx_postproc.object_detection_utils import inference_result_handler
     from hailo_apps.python.core.common.onnx_utils import (
         load_onnx_config,
         init_onnx_sessions,
