@@ -1,3 +1,0 @@
-visualization_params:
-  score_thresh: 0.25
-  max_boxes_to_draw: 50
