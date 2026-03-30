@@ -26,7 +26,8 @@
 - **Event keyword order**: Specific actions first, generic states last — first match wins
 - **Video duration check**: For file inputs, verify duration > interval before launch
 - **Display**: Always resize VLM frames to 640×640+, wrap overlay text, print events to terminal
-- **Driver check**: Use `hailortcli fw-control identify`, NOT `lsmod | grep hailo_pci`
+- **Driver check**: Use `hailortcli fw-control identify`, NOT `lsmod | grep hailo_pci` — and verify output contains "Device Architecture", not just exit code (can return 0 with empty output)
+- **Guided questions**: VLM builder agent MUST ask guided questions (app style, input source) even when user's request seems specific — fast-path only on explicit "just build it"
 - **python3 not python**: Ubuntu has no `python` binary; always use `python3` in commands
 - **YAML edits**: Whitespace-exact matching required; re-read target lines if first edit fails
 - **Validation script**: `validate_app.py` runs ~15 static checks + optional runtime smoke tests (`--smoke-test`) — single gate replaces manual greps

@@ -43,7 +43,7 @@ Based on what the task involves, read **only** the matching rows:
 | **LLM, chat, text generation** | `skills/hl-build-llm-app/SKILL.md`, `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
 | **Agent, tools, function calling** | `skills/hl-build-agent-app/SKILL.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
 | **Voice, STT, TTS, Whisper, speech** | `skills/hl-build-voice-app/SKILL.md`, `toolsets/gen-ai-utilities.md` |
-| **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app/SKILL.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` — **Fast path for simple variants** (detection filter, counter, custom overlay): SKILL.md + `detection_pipeline.py` + `common_pitfalls.md` is sufficient |
+| **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app/SKILL.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` — **Fast path for simple variants** (detection filter, counter, custom overlay): SKILL.md + `memory/common_pitfalls.md` is sufficient |
 | **Game, interactive, pose game** | `skills/hl-build-pipeline-app/SKILL.md`, `toolsets/pose-keypoints.md`, `toolsets/core-framework-api.md`, `memory/common_pitfalls.md` |
 | **Standalone, OpenCV, HailoInfer** | `skills/hl-build-standalone-app/SKILL.md`, `toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `skills/hl-camera.md`, `memory/camera_and_display.md` |
@@ -70,19 +70,45 @@ All paths above are relative to `.github/`. The knowledge base at `.github/knowl
 
 **Rules**: Read relevant memory files at task start (use routing table above). Update them when discovering new patterns.
 
+## Interactive Design (MANDATORY — Phase 0)
+
+> **HARD GATE**: You MUST ask the user 2-3 real design questions and get answers BEFORE writing any code or reading SKILL.md files. A rubber-stamp "Ready to build?" confirmation does NOT count. The questions must surface actual design choices the user cares about.
+
+**When to ask** — ALWAYS, unless the user explicitly says "just build it", "use defaults", or "skip questions".
+
+**What to ask** — Pick 2-3 from this list depending on app type. Use `ask_questions` with concrete options:
+
+| App type | Question 1 | Question 2 | Question 3 |
+|---|---|---|---|
+| **VLM / monitoring** | App style? (continuous monitor, interactive chat, scene logger) | What to track? (activities, objects, safety hazards, custom) | Output? (display overlay, terminal log, file, alerts) |
+| **Pipeline / video** | What processing? (detection, pose, segmentation, tracking) | Display? (bounding boxes, custom overlay, game, headless) | Input? (USB camera, RPi camera, RTSP, video file) |
+| **Standalone / OpenCV** | Inference task? (classification, detection, segmentation) | Input? (single image, batch, camera, video) | Output? (display, JSON, annotated image, CSV) |
+| **Gen AI / LLM / agent** | Interaction mode? (chat, tool-calling agent, pipeline) | What tools/capabilities? | Input? (text, voice, vision) |
+
+**Anti-pattern (DO NOT DO THIS)**:
+```
+❌ Present a fully-formed plan → ask "Build it?" → build on approval
+   This is a rubber stamp. The user had no input into the design choices.
+```
+
+**Correct pattern**:
+```
+✅ Ask 2-3 questions with concrete options → incorporate answers → present plan → build
+   The user shaped the design. Misunderstandings are caught before code is written.
+```
+
 ## Execution Speed Rules
 
 > Agents MUST follow these rules to minimize tool calls and eliminate redundant work.
 
-1. **Fast-path for clear requests** — If the user's request is specific and unambiguous, skip interactive questions and present the plan inline. Only ask when genuinely ambiguous.
-2. **SKILL.md is sufficient** — Do NOT read reference source code (vlm_chat.py, backend.py, pose_estimation.py, etc.). SKILL.md + common_pitfalls.md contain 100% of the context needed for standard builds. Do NOT launch sub-agents to find source code that SKILL.md already documents.
-3. **Read SKILL.md fully in one call** — SKILL.md files are <400 lines. Read the entire file in a single `read_file` call. Never split into partial reads (e.g., lines 1-300 then 300-600) — that wastes a round trip.
-4. **Minimum context = SKILL.md + common_pitfalls.md** — For any standard app build, read exactly these two files in parallel, then build. Do not read coding-standards.md, toolset refs, or source code unless SKILL.md is genuinely missing a pattern.
-5. **validate_app.py is the single gate** — Run `python .github/scripts/validate_app.py <app_dir> --smoke-test` instead of manual grep/import/lint checks. One command, one gate.
-6. **Community apps don't need registration** — Don't register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh`.
-7. **Parallelize independent operations** — Batch reads together, batch file creates together.
-8. **Pre-launch device check** — Always run `hailortcli fw-control identify` before launching any Hailo app. Do NOT use `lsmod | grep hailo_pci` (unreliable).
-9. **USB camera: always `--input usb`** — Never hardcode `/dev/video0`. Use `--input usb` for auto-detection. `/dev/video0` is typically the integrated webcam, not the USB camera.
+1. **SKILL.md is sufficient** — Do NOT read reference source code (vlm_chat.py, backend.py, pose_estimation.py, etc.). SKILL.md + common_pitfalls.md contain 100% of the context needed for standard builds. Do NOT launch sub-agents to find source code that SKILL.md already documents.
+2. **Read SKILL.md fully in one call** — SKILL.md files are <400 lines. Read the entire file in a single `read_file` call. Never split into partial reads (e.g., lines 1-300 then 300-600) — that wastes a round trip.
+3. **Minimum context = SKILL.md + common_pitfalls.md** — For any standard app build, read exactly these two files in parallel, then build. Do not read coding-standards.md, toolset refs, or source code unless SKILL.md is genuinely missing a pattern.
+4. **validate_app.py is the single gate** — Run `python .github/scripts/validate_app.py <app_dir> --smoke-test` instead of manual grep/import/lint checks. One command, one gate.
+5. **Community apps don't need registration** — Don't register in `defines.py` or `resources_config.yaml`. Community apps are run via `run.sh`.
+6. **Parallelize independent operations** — Batch reads together, batch file creates together.
+7. **Pre-launch device check** — Always run `hailortcli fw-control identify` before launching any Hailo app. Do NOT use `lsmod | grep hailo_pci` (unreliable).
+8. **USB camera: always `--input usb`** — Never hardcode `/dev/video0`. Use `--input usb` for auto-detection. `/dev/video0` is typically the integrated webcam, not the USB camera.
 
 ## Orchestrated Agent Workflow
 

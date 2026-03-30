@@ -188,17 +188,25 @@ python my_app.py --input /dev/video4
 `lsmod | grep hailo_pci` may return empty even when the device is functional
 (e.g., built-in driver, different module name).
 
-**Reliable check**: Use `hailortcli fw-control identify` instead — it directly
-queries the device firmware and confirms the architecture:
+**Reliable check**: Use `hailortcli fw-control identify` and **verify output content**,
+not just exit code. The CLI can return exit code 0 with empty output when no device
+is present (silent false positive).
 ```bash
-hailortcli fw-control identify
+output=$(hailortcli fw-control identify 2>&1)
+if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+    echo "ERROR: No Hailo device detected"
+    exit 1
+fi
 # Expected: "Device Architecture: HAILO10H" + firmware version
 ```
 
 ### Full pre-launch verification sequence
 ```bash
-# 1. Device accessible (reliable)
-which hailortcli && hailortcli fw-control identify
+# 1. Device accessible (verify OUTPUT, not just exit code)
+output=$(hailortcli fw-control identify 2>&1)
+if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+    echo "ERROR: No Hailo device detected"; exit 1
+fi
 
 # 2. Python SDK importable
 python3 -c "import hailo_platform; print('hailo_platform OK')"
@@ -422,3 +430,39 @@ tool call (file write, terminal command, etc.). A 46-tool-call build means
 ```
 This makes the agent fully autonomous. Add to `.vscode/settings.json` at the
 workspace level (not user level) so it only applies to this repo.
+
+### hailortcli fw-control identify — Silent False Positive
+`hailortcli fw-control identify` can return **exit code 0 with no output** on
+machines where the CLI is installed but no Hailo device is connected. The
+pre-launch check treats exit code 0 as success and proceeds to launch, which
+then fails with `HAILO_OUT_OF_PHYSICAL_DEVICES` (error 74).
+```bash
+# ❌ Exit code alone is not enough
+hailortcli fw-control identify
+# Returns exit code 0, empty output → check passes → app crashes
+
+# ✅ Verify output content, not just exit code
+output=$(hailortcli fw-control identify 2>&1)
+if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+    echo "ERROR: No Hailo device detected"
+    exit 1
+fi
+```
+**Rule**: When checking device availability, always verify that the output
+contains `"Device Architecture"` — not just that the command succeeded.
+
+### Agent Skipping Guided Questions (VLM Builder)
+The VLM builder agent's Phase 1 specifies a **mandatory guided path**: ask the
+user about app style (Monitor / Chat / Logger) and input source (USB / RPi /
+Video / RTSP) before presenting the build plan. Even when the user's request
+seems specific enough to infer all answers, the agent must still ask guided
+questions unless the user explicitly says "just build it" or "use defaults".
+
+**What went wrong**: Agent saw "dog monitoring" + "sample video: dog.mp4" and
+inferred all choices, skipping straight to the build plan confirmation. This
+bypasses the collaborative workflow and misses the chance to catch wrong
+assumptions (e.g., maybe the user wanted an interactive chat, not a monitor).
+
+**Rule**: Guided questions are MANDATORY unless the user uses trigger phrases
+("just build it", "use defaults", "skip questions"). Inferring from context
+is not a valid reason to skip them.

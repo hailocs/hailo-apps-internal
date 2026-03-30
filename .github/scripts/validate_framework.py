@@ -315,7 +315,7 @@ def validate_hailo_source_files(result: ValidationResult) -> None:
         # Scripts
         "scripts/generate_platforms.py",
         "scripts/validate_app.py",
-        "scripts/curate_contributions.py",
+        "scripts/validate_framework.py",
     ]
 
     for f in expected_files:

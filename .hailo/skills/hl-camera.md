@@ -67,7 +67,8 @@ picam2.stop()
 
 ### RTSP Stream
 ```python
-cap = cv2.VideoCapture("rtsp://user:pass@192.168.1.100:554/stream")
+# Replace with your camera's actual RTSP URL and credentials
+cap = cv2.VideoCapture("rtsp://<username>:<password>@<camera-ip>:554/stream")
 ```
 
 ## CLI Source Selection

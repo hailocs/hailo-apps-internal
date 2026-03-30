@@ -87,7 +87,16 @@ Forgetting #2 causes `KeyError: 'my_app'` at runtime.
 
 ### Pre-Launch Environment Checks
 Before launching a VLM app, verify in this order:
-1. `hailortcli fw-control identify` — confirms device is accessible, shows architecture
+1. `hailortcli fw-control identify` — confirms device is accessible, shows architecture.
+   **CRITICAL**: Check output content, not just exit code. `hailortcli` can return
+   exit code 0 with empty output when no device is present. Verify the output
+   contains `"Device Architecture"` or treat it as a failure.
+   ```bash
+   output=$(hailortcli fw-control identify 2>&1)
+   if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+       echo "ERROR: No Hailo device detected"; exit 1
+   fi
+   ```
 2. `python3 -c "import hailo_platform"` — SDK installed
 3. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
 4. Input file exists (for file sources): `ls -la /path/to/video`

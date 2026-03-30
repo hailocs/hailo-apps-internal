@@ -186,6 +186,45 @@ def interaction_to_inline(body: str) -> str:
     return re.sub(r"<!-- INTERACTION:.*?-->", _convert, body, flags=re.DOTALL)
 
 
+def first_paragraph(content: str) -> str:
+    """Extract first non-heading, non-empty, non-frontmatter line as a short description."""
+    in_frontmatter = False
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped == "---":
+            in_frontmatter = not in_frontmatter
+            continue
+        if in_frontmatter:
+            continue
+        if stripped and not stripped.startswith("#") and not stripped.startswith(">"):
+            # Escape double quotes for safe YAML embedding
+            return stripped[:200].replace('"', '\\"')
+    return "Hailo development reference"
+
+
+# Routing table (canonical, using .hailo/ paths) — embedded in Cursor global rule and CLAUDE.md
+ROUTING_TABLE = """
+### Context Routing Table
+
+Based on what the task involves, read **only** the matching rows:
+
+| If the task mentions... | Read these files |
+|---|---|
+| **VLM, vision, image understanding** | `{pfx}skills/hl-build-vlm-app.md`, `{pfx}toolsets/vlm-backend-api.md`, `{pfx}memory/gen_ai_patterns.md` |
+| **LLM, chat, text generation** | `{pfx}skills/hl-build-llm-app.md`, `{pfx}instructions/gen-ai-development.md`, `{pfx}toolsets/gen-ai-utilities.md`, `{pfx}memory/gen_ai_patterns.md` |
+| **Agent, tools, function calling** | `{pfx}skills/hl-build-agent-app.md`, `{pfx}toolsets/gen-ai-utilities.md`, `{pfx}memory/gen_ai_patterns.md` |
+| **Voice, STT, TTS, Whisper, speech** | `{pfx}skills/hl-build-voice-app.md`, `{pfx}toolsets/gen-ai-utilities.md` |
+| **Pipeline, GStreamer, video, stream** | `{pfx}skills/hl-build-pipeline-app.md`, `{pfx}instructions/gstreamer-pipelines.md`, `{pfx}toolsets/gstreamer-elements.md`, `{pfx}memory/pipeline_optimization.md` |
+| **Game, interactive, pose game** | `{pfx}skills/hl-build-pipeline-app.md`, `{pfx}toolsets/pose-keypoints.md`, `{pfx}toolsets/core-framework-api.md`, `{pfx}memory/common_pitfalls.md` |
+| **Standalone, OpenCV, HailoInfer** | `{pfx}skills/hl-build-standalone-app.md`, `{pfx}toolsets/core-framework-api.md` |
+| **Camera, USB, RPi, capture** | `{pfx}skills/hl-camera.md`, `{pfx}memory/camera_and_display.md` |
+| **HEF, model, download, config** | `{pfx}skills/hl-model-management.md`, `{pfx}toolsets/hailo-sdk.md`, `{pfx}memory/hailo_platform_api.md` |
+| **Monitoring, events, alerts** | `{pfx}skills/hl-monitoring.md`, `{pfx}skills/hl-event-detection.md` |
+| **Testing, validation, pytest** | `{pfx}skills/hl-validate.md`, `{pfx}instructions/testing-patterns.md` |
+| **ALWAYS read (every task)** | `{pfx}memory/common_pitfalls.md`, `{pfx}instructions/coding-standards.md` |
+"""
+
+
 # ---------------------------------------------------------------------------
 # Copilot Generator
 # ---------------------------------------------------------------------------
@@ -384,6 +423,13 @@ def generate_claude():
 All skills, instructions, toolsets, knowledge bases, and memory live in `.hailo/`.
 Read `.hailo/README.md` for the complete master index.
 
+## Interactive Workflow (MUST FOLLOW)
+
+**Always walk through key decisions with the user before building.** Ask 2-3 targeted
+questions to confirm app type, features, and input source. This creates a collaborative
+workflow and catches misunderstandings early. Only skip questions if the user explicitly
+says "just build it" or "use defaults".
+
 ## Quick Reference
 
 ```bash
@@ -401,6 +447,8 @@ pip install -e .                       # Install in editable mode
 | `/hl-build-agent-app` | Build AI agent apps with tool calling |
 | `/hl-build-llm-app` | Build LLM chat apps |
 | `/hl-build-voice-app` | Build voice assistant apps |
+
+{ROUTING_TABLE.replace("{pfx}", ".hailo/")}
 
 ## Python Imports
 
@@ -531,12 +579,78 @@ Persistent knowledge in `.hailo/memory/`. Read at task start, update when learni
             out_path = CLAUDE_DIR / "rules" / src_file.name
             generated_files[out_path] = out_content
 
-    # 5. Claude memory redirect
+    # 5. Claude memory — redirect to .hailo/memory/ (Claude reads files directly)
     generated_files[CLAUDE_DIR / "memory" / "MEMORY.md"] = (
         "# Memory Redirect\n\n"
         "Memory files are centralized in `.hailo/memory/`.\n"
-        "See `.hailo/memory/MEMORY.md` for the unified index.\n"
+        "See `.hailo/memory/MEMORY.md` for the unified index.\n\n"
+        "Files:\n"
+        "- `.hailo/memory/common_pitfalls.md` — Bugs & anti-patterns (read on every task)\n"
+        "- `.hailo/memory/gen_ai_patterns.md` — VLM/LLM architecture patterns\n"
+        "- `.hailo/memory/pipeline_optimization.md` — GStreamer bottleneck fixes\n"
+        "- `.hailo/memory/camera_and_display.md` — Camera & OpenCV patterns\n"
+        "- `.hailo/memory/hailo_platform_api.md` — SDK usage patterns\n"
     )
+
+    # 6. Claude utility skills — thin wrappers pointing to .hailo/
+    utility_skills = [
+        ("hl-monitoring", "Continuous monitoring patterns for Hailo apps."),
+        ("hl-event-detection", "Detect and report events from video streams."),
+        ("hl-camera", "Camera setup, USB/RPi configuration, and troubleshooting."),
+        ("hl-model-management", "HEF resolution, model download, and config management."),
+        ("hl-plan-and-execute", "Plan-and-execute loop pattern for complex builds."),
+        ("hl-validate", "Validation at every phase gate."),
+    ]
+    if skills_src.is_dir():
+        for skill_name, desc in utility_skills:
+            src_file = skills_src / f"{skill_name}.md"
+            if src_file.exists():
+                out_content = (
+                    f"---\n"
+                    f'name: {skill_name}\n'
+                    f'description: "{desc}"\n'
+                    f"---\n\n"
+                    f"<!-- Thin wrapper — canonical doc lives in .hailo/ -->\n\n"
+                    f"Read `.hailo/skills/{skill_name}.md` for the complete skill documentation.\n"
+                )
+                out_path = CLAUDE_DIR / "skills" / skill_name / "SKILL.md"
+                generated_files[out_path] = out_content
+
+    # 7. Claude toolsets — thin wrappers pointing to .hailo/
+    toolsets_src = HAILO_DIR / "toolsets"
+    if toolsets_src.is_dir():
+        for src_file in sorted(toolsets_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"# Toolset: {src_file.stem}\n\n"
+                f"Read `.hailo/toolsets/{src_file.name}` for the complete reference.\n"
+            )
+            out_path = CLAUDE_DIR / "toolsets" / src_file.name
+            generated_files[out_path] = out_content
+
+    # 8. Claude instructions — thin wrappers pointing to .hailo/
+    instructions_src = HAILO_DIR / "instructions"
+    if instructions_src.is_dir():
+        for src_file in sorted(instructions_src.glob("*.md")):
+            out_content = (
+                f"# Instruction: {src_file.stem}\n\n"
+                f"Read `.hailo/instructions/{src_file.name}` for the complete guide.\n"
+            )
+            out_path = CLAUDE_DIR / "instructions" / src_file.name
+            generated_files[out_path] = out_content
+
+    # 9. Claude prompts — thin wrappers pointing to .hailo/
+    prompts_src = HAILO_DIR / "prompts"
+    if prompts_src.is_dir():
+        for src_file in sorted(prompts_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"# Prompt: {src_file.stem}\n\n"
+                f"{desc}\n\n"
+                f"Read `.hailo/prompts/{src_file.name}` for the complete prompt template.\n"
+            )
+            out_path = CLAUDE_DIR / "prompts" / src_file.name
+            generated_files[out_path] = out_content
 
     return generated_files
 
@@ -550,7 +664,8 @@ def generate_cursor():
     """Generate .cursor/ from .hailo/."""
     generated_files = {}
 
-    # 1. Global rule — always applied
+    # 1. Global rule — always applied (with routing table)
+    routing = ROUTING_TABLE.replace("{pfx}", ".hailo/")
     global_rule = (
         "---\n"
         "alwaysApply: true\n"
@@ -558,6 +673,11 @@ def generate_cursor():
         "# Hailo Apps — Global Rules\n\n"
         "All skills, instructions, toolsets, knowledge bases, and memory live in `.hailo/`.\n"
         "Read `.hailo/README.md` for the complete master index.\n\n"
+        "## Interactive Workflow (MUST FOLLOW)\n\n"
+        "**Always walk through key decisions with the user before building.** Ask 2-3 targeted\n"
+        "questions to confirm app type, features, and input source. This creates a collaborative\n"
+        "workflow and catches misunderstandings early. Only skip questions if the user explicitly\n"
+        "says \"just build it\" or \"use defaults\".\n\n"
         "## Critical Conventions\n\n"
         "1. **Imports are always absolute**: `from hailo_apps.python.core.common.xyz import ...`\n"
         "2. **HEF resolution**: Always use `resolve_hef_path(path, app_name, arch)`\n"
@@ -568,6 +688,7 @@ def generate_cursor():
         "7. **USB camera**: Always `--input usb` for auto-detection. Never hardcode `/dev/video0`.\n"
         "8. **SKILL.md is sufficient**: Read SKILL.md + common_pitfalls.md only. Do NOT read source code.\n"
         "9. **Custom background**: Use `background.copy()` — never blend camera feed with background.\n\n"
+        + routing + "\n"
         "## Available Skills\n\n"
         "| Skill | Doc |\n"
         "|-------|-----|\n"
@@ -622,6 +743,92 @@ def generate_cursor():
                 f"---\n\n{body}"
             )
             out_path = CURSOR_DIR / "rules" / (src_file.stem + ".mdc")
+            generated_files[out_path] = out_content
+
+    # 4. Utility skills — description-matched rules
+    utility_skills = [
+        "hl-monitoring.md", "hl-event-detection.md", "hl-camera.md",
+        "hl-model-management.md", "hl-plan-and-execute.md", "hl-validate.md",
+    ]
+    if skills_src.is_dir():
+        for skill_name in utility_skills:
+            src_file = skills_src / skill_name
+            if src_file.exists():
+                content = read_file(src_file)
+                desc = first_paragraph(content)
+                body = interaction_to_inline(content)
+                out_content = (
+                    f"---\n"
+                    f'description: "{desc}"\n'
+                    f"alwaysApply: false\n"
+                    f"---\n\n{body}"
+                )
+                out_path = CURSOR_DIR / "rules" / (src_file.stem + ".mdc")
+                generated_files[out_path] = out_content
+
+    # 5. Toolsets — thin redirect rules (Cursor reads .hailo/ directly)
+    toolsets_src = HAILO_DIR / "toolsets"
+    if toolsets_src.is_dir():
+        for src_file in sorted(toolsets_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"---\n"
+                f'description: "Toolset: {desc}"\n'
+                f"alwaysApply: false\n"
+                f"---\n\n"
+                f"# Toolset: {src_file.stem}\n\n"
+                f"Read `.hailo/toolsets/{src_file.name}` for the complete API reference.\n"
+            )
+            out_path = CURSOR_DIR / "rules" / ("toolset-" + src_file.stem + ".mdc")
+            generated_files[out_path] = out_content
+
+    # 6. Memory — thin redirect rules (Cursor reads .hailo/ directly)
+    memory_src = HAILO_DIR / "memory"
+    if memory_src.is_dir():
+        for src_file in sorted(memory_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"---\n"
+                f'description: "Memory: {desc}"\n'
+                f"alwaysApply: false\n"
+                f"---\n\n"
+                f"# Memory: {src_file.stem}\n\n"
+                f"Read `.hailo/memory/{src_file.name}` for the complete content.\n"
+            )
+            out_path = CURSOR_DIR / "rules" / ("memory-" + src_file.stem + ".mdc")
+            generated_files[out_path] = out_content
+
+    # 7. Instructions — thin redirect rules (Cursor reads .hailo/ directly)
+    instructions_src = HAILO_DIR / "instructions"
+    if instructions_src.is_dir():
+        for src_file in sorted(instructions_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"---\n"
+                f'description: "Instruction: {desc}"\n'
+                f"alwaysApply: false\n"
+                f"---\n\n"
+                f"# Instruction: {src_file.stem}\n\n"
+                f"Read `.hailo/instructions/{src_file.name}` for the complete guide.\n"
+            )
+            out_path = CURSOR_DIR / "rules" / ("inst-" + src_file.stem + ".mdc")
+            generated_files[out_path] = out_content
+
+    # 8. Prompts — thin redirect rules (Cursor reads .hailo/ directly)
+    prompts_src = HAILO_DIR / "prompts"
+    if prompts_src.is_dir():
+        for src_file in sorted(prompts_src.glob("*.md")):
+            desc = first_paragraph(read_file(src_file))
+            out_content = (
+                f"---\n"
+                f'description: "Prompt template: {desc}"\n'
+                f"alwaysApply: false\n"
+                f"---\n\n"
+                f"# Prompt: {src_file.stem}\n\n"
+                f"{desc}\n\n"
+                f"Read `.hailo/prompts/{src_file.name}` for the complete prompt template.\n"
+            )
+            out_path = CURSOR_DIR / "rules" / ("prompt-" + src_file.stem + ".mdc")
             generated_files[out_path] = out_content
 
     return generated_files

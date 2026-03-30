@@ -23,7 +23,7 @@ The **app builder** is the master router — describe any app and it picks the r
 ```
 
 The agent will:
-1. Ask clarifying questions (model type, features, input source)
+1. Ask clarifying questions (app type, model, features, input source)
 2. Present a build plan for your approval
 3. Route to the **pipeline builder**
 4. Generate all code in `hailo_apps/python/<type>/<app_name>/`
@@ -38,11 +38,10 @@ If you know you want a VLM app, go straight to the specialist:
 ```
 
 The agent will:
-1. Ask key decisions (continuous monitor vs interactive, camera type)
-2. Load VLM patterns and reference implementations
-3. Scan official apps for similar patterns
-4. Build the complete app with backend reuse, event tracking, graceful shutdown
-5. Validate conventions and deliver with run instructions
+1. Ask key decisions (continuous monitor vs interactive, camera type, events to track)
+2. Load VLM patterns and conventions
+3. Build the complete app with backend reuse, event tracking, graceful shutdown
+4. Validate conventions and deliver with run instructions
 
 ## Available Agents
 
@@ -63,22 +62,29 @@ The agent will:
 
 ## How Agents Work
 
+All agents follow an **interactive workflow** — they walk through key decisions with you before building, even when the request seems clear. This catches misunderstandings early and creates a collaborative experience.
+
 Each agent follows a structured workflow:
 
-1. **Phase 1: Understand** — The agent responds immediately, asks key questions, presents a plan
+1. **Phase 1: Understand** — The agent responds immediately, asks 2-3 key questions, presents a plan for approval
 2. **Phase 2: Load Context** — After you approve, it reads relevant skill files, patterns, and conventions
-3. **Phase 3: Scan Code** — Scans official apps for similar implementations
-4. **Phase 4: Build** — Creates all files in `hailo_apps/python/<type>/<app_name>/`
-5. **Phase 5: Validate** — Checks conventions, imports, CLI, runs automated validation
-6. **Phase 6: Report** — Presents what was built, how to run it, what it does
+3. **Phase 3: Build** — Creates all files in `hailo_apps/python/<type>/<app_name>/`
+4. **Phase 4: Validate** — Checks conventions, imports, CLI, runs automated validation
+5. **Phase 5: Report** — Presents what was built, how to run it, what it does
+6. **Phase 6: Launch** — If you provide a video file or say "launch", runs the app automatically
+
+> **Tip:** If you want to skip the interactive questions, say "just build it" or "use defaults" and the agent will proceed with sensible defaults.
 
 ### What Gets Created
 
 ```
 hailo_apps/python/<type>/<app_name>/
-├── <app_name>.py     # Main application code
-├── README.md         # Usage and architecture docs
-└── ...               # Additional modules as needed
+├── __init__.py    # Package marker
+├── <app_name>.py  # Main application code
+├── app.yaml       # App manifest (name, type, hardware, model, tags)
+├── run.sh         # Launch wrapper (sets PYTHONPATH)
+├── README.md      # Usage and architecture docs
+└── ...            # Additional modules as needed
 ```
 
 ### Running Your App
@@ -132,7 +138,15 @@ Platform-specific files are generated from `.hailo/` by running:
 python .hailo/scripts/generate_platforms.py --generate
 ```
 
-This produces `.github/` (Copilot), `.claude/` + `CLAUDE.md` (Claude Code), and `.cursor/` (Cursor).
+This produces:
+
+| Platform | Entry Point | Output | Files | Strategy |
+|---|---|---|---|---|
+| GitHub Copilot | `copilot-instructions.md` | `.github/` | 59 | Full copies (auto-loaded by IDE) |
+| Claude Code | `CLAUDE.md` | `.claude/` | 50 | Thin redirects → `.hailo/` |
+| Cursor | `.cursor/rules/` | `.cursor/` | 48 | Thin `.mdc` redirects → `.hailo/` |
+
+Copilot needs full copies because its auto-load mechanism can't read arbitrary files. Claude and Cursor read `.hailo/` directly at runtime, so thin redirects avoid duplication.
 
 ## Troubleshooting
 

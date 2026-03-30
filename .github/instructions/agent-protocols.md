@@ -374,19 +374,30 @@ unnecessary confirmations). Review and optimize.
 
 **Before launching ANY Hailo app, verify the device is accessible.**
 
+**CRITICAL**: Check output content, not just exit code. `hailortcli` can return
+exit code 0 with empty output when no device is present (silent false positive).
+
 ```bash
-# RELIABLE check — directly queries the device firmware
-hailortcli fw-control identify
+# RELIABLE check — verify output contains device info
+output=$(hailortcli fw-control identify 2>&1)
+if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+    echo "ERROR: No Hailo device detected"
+    # STOP — do not launch the app
+fi
 # Expected: "Device Architecture: HAILO10H" (or HAILO8, HAILO8L) + firmware version
 ```
 
 **Do NOT use** `lsmod | grep hailo_pci` — it's unreliable (built-in drivers, different module names).
+**Do NOT rely on exit code alone** — `hailortcli` can return 0 with empty output.
 
 ### Full Pre-Launch Sequence
 
 ```bash
-# 1. Device accessible (RELIABLE)
-hailortcli fw-control identify
+# 1. Device accessible (verify OUTPUT content)
+output=$(hailortcli fw-control identify 2>&1)
+if [[ -z "$output" ]] || ! echo "$output" | grep -q "Device Architecture"; then
+    echo "ERROR: No Hailo device detected"; exit 1
+fi
 
 # 2. Python SDK importable
 python3 -c "import hailo_platform; print('hailo_platform OK')"
