@@ -479,7 +479,7 @@ def main() -> None:
         no_display=args.no_display,
         pose_trail=args.pose_trail,
         mute_background=args.mute_background,
-        onnxconfig=args.onnx_config,
+        onnx_config=args.onnx_config,
         aigym=args.aigym,
         args=args        
     )

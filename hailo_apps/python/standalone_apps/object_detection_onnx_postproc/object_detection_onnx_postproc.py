@@ -20,6 +20,7 @@ try:
         preprocess,
         visualize,
         FrameRateTracker,
+        resolve_onnx_config_from_hef
     )
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,
@@ -58,6 +59,7 @@ except ImportError:
         preprocess,
         visualize,
         FrameRateTracker,
+        resolve_onnx_config_from_hef
     )
     from hailo_apps.python.core.common.defines import (
         MAX_INPUT_QUEUE_SIZE,

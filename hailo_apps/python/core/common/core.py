@@ -360,6 +360,7 @@ def resolve_hef_path(
 
     # Case 4: Model not found locally - check if it's in the available models list
     if model_name in available_models:
+
         # Show warning before downloading
         if is_using_default:
             print(f"\n⚠️  WARNING: Default model '{model_name}' is not downloaded.")
@@ -873,17 +874,19 @@ def handle_and_resolve_args(args: argparse.Namespace, APP_NAME: str, multi_hef: 
             hailo_logger.error("Failed to resolve HEF path for %s", APP_NAME)
             sys.exit(1)
 
-        # Resolve optional ONNX postprocess path
-        args.onnx = resolve_postprocess_onnx_path(
-            resolved_hef_path=args.hef_path,
-            onnx_path=args.onnx,
-            app_name=APP_NAME,
-            app_type=app_type,
-        )
 
-        if args.onnx is None:
-            hailo_logger.error("Failed to resolve ONNX path for %s", APP_NAME)
-            sys.exit(1)
+        if using_onnx_pp:
+            # Resolve optional ONNX postprocess path
+            args.onnx = resolve_postprocess_onnx_path(
+                resolved_hef_path=args.hef_path,
+                onnx_path=args.onnx,
+                app_name=APP_NAME,
+                app_type=app_type,
+            )
+
+            if args.onnx is None:
+                hailo_logger.error("Failed to resolve ONNX path for %s", APP_NAME)
+                sys.exit(1)
 
     #resolve input source
     args.input = resolve_input_arg(APP_NAME, args.input)
