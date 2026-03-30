@@ -35,8 +35,7 @@ struct Decodings {
 };
 
 
-__BEGIN_DECLS
+
 std::pair<std::vector<KeyPt>, std::vector<PairPairs>> yolov8(HailoROIPtr roi);
 void filter(HailoROIPtr roi);
 void filter_letterbox(HailoROIPtr roi);
-__END_DECLS

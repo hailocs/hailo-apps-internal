@@ -191,9 +191,9 @@ def SOURCE_PIPELINE(
         )
 
     # Set up the fps caps.
-    # If sync is True, constrain the rate with the given frame_rate.
+    # If sync is True and frame_rate is specified, constrain the rate.
     # Otherwise, pass through (no framerate limitation).
-    if sync:
+    if sync and frame_rate is not None:
         fps_caps = f"video/x-raw, framerate={frame_rate}/1"
     else:
         fps_caps = "video/x-raw"

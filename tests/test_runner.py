@@ -487,6 +487,8 @@ def _get_test_id(tc: Dict) -> str:
     return f"{tc['app']}_{tc['architecture']}_{model_str}_{tc['run_method']}_{tc['test_suite']}"
 
 
+@pytest.mark.pipeline
+@pytest.mark.requires_device
 @pytest.mark.parametrize(
     "test_case",
     _test_cases,

@@ -92,6 +92,10 @@ logging:
 # ============================================================================
 # Test combinations configuration
 # ============================================================================
+# Preset modes that override per-app custom_tests settings.
+# When a preset is enabled, test_runner uses its mode (default/extra/all) for
+# every app, ignoring the per-app test_suite_mode.
+# Leave all presets disabled to use the per-app settings under custom_tests.
 
 test_combinations:
   ci_run:
@@ -157,6 +161,24 @@ custom_tests:
       model_selection: "default"  # default | extra | all
       description: "CLIP Pipeline"
 
+    lane_detection:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Lane Detection Pipeline"
+
+    super_resolution:
+      test_suite_mode: "default"  # None | default | extra | all
+      model_selection: "default"  # default | extra | all
+      description: "Super Resolution Pipeline"
+
+# Per-app run-time overrides (seconds)
+# Use this to give slow-starting apps extra time beyond the default_run_time.
+run_time_overrides:
+  face_recognition: 60
+  paddle_ocr: 60
+  reid_multisource: 60
+  clip: 60
+
 standalone_tests:
   enabled: true  # Enable standalone app tests
   apps:
@@ -184,6 +206,26 @@ standalone_tests:
       test_suite_mode: "default"
       model_selection: "default"
       description: "Standalone Paddle OCR (smoke + show-fps only)"
+
+# GenAI tests configuration
+genai_tests:
+  enabled: false
+  apps:
+    llm:
+      enabled: true
+      description: "Large Language Model generation tests"
+    vlm:
+      enabled: true
+      description: "Vision-Language Model tests"
+    whisper:
+      enabled: true
+      description: "Whisper speech-to-text tests"
+    voice_assistant:
+      enabled: true
+      description: "Voice assistant end-to-end tests"
+    agent:
+      enabled: true
+      description: "Agent framework tests"
 
 # Special tests configuration
 special_tests:
