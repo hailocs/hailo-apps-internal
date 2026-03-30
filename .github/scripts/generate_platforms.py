@@ -195,15 +195,13 @@ def generate_copilot():
     """Generate .github/ from .hailo/."""
     generated_files = {}
 
-    # 1. copilot-instructions.md — use existing .github/copilot-instructions.md as base
-    #    but mark it as generated. For now, copy the current one and add header.
-    existing_ci = GITHUB_DIR / "copilot-instructions.md"
-    if existing_ci.exists():
-        content = read_file(existing_ci)
-        # Don't overwrite if it already has auto-generated header — it's already managed
-        if "AUTO-GENERATED" not in content:
-            # First run — leave the existing file as-is, we'll circle back
-            pass
+    # 1. copilot-instructions.md — generated from .hailo/templates/copilot-instructions.md
+    ci_template = HAILO_DIR / "templates" / "copilot-instructions.md"
+    if ci_template.exists():
+        content = read_file(ci_template)
+        # The template already uses .github/ paths (it's Copilot-specific)
+        out_path = GITHUB_DIR / "copilot-instructions.md"
+        generated_files[out_path] = content
 
     # 2. Agents — convert neutral format to chatagent
     agents_src = HAILO_DIR / "agents"

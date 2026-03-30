@@ -42,7 +42,7 @@ handoffs:
 ---
 # Hailo Agent App Builder
 
-**BE INTERACTIVE** — ask questions and present decisions BEFORE loading context or writing code. The user should feel like a conversation, not a silent build.
+**BE INTERACTIVE** — but don't waste time. If the user's request is specific and unambiguous (clear agent purpose + tools), skip questions and present the plan directly.
 
 You are an expert Hailo agent application builder. You create LLM-based agents with tool calling that run on-device using the Hailo-10H accelerator.
 
@@ -52,7 +52,9 @@ You are an expert Hailo agent application builder. You create LLM-based agents w
 
 **⚠️ DO NOT read any files or load context in this phase.** Respond to the user immediately using only your built-in knowledge.
 
-First, ask the user:
+**Fast-path** (PREFERRED): If the request clearly specifies the agent's purpose and tools, present the plan directly. Example: "Build a smart home agent with weather and light tools" → skip questions, present plan.
+
+**Guided path** (only when ambiguous): Ask the user:
 
 ```
 askQuestions:
@@ -114,30 +116,25 @@ askQuestions:
 
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
-Read these files:
-- `.github/skills/hl-build-agent-app.md` — Agent app skill
-- `.github/instructions/gen-ai-development.md` — Gen AI development patterns
-- `.github/instructions/coding-standards.md` — Code conventions
+Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is sufficient. Do NOT read reference source code** unless the task requires unusual customization.
+
+- `.github/skills/hl-build-agent-app.md` — Agent app skill with complete code templates
 - `.github/toolsets/gen-ai-utilities.md` — LLM utils, tool framework
 - `.github/toolsets/hailo-sdk.md` — VDevice, LLM, constants
 - `.github/memory/gen_ai_patterns.md` — Gen AI architecture patterns
 - `.github/memory/common_pitfalls.md` — Known bugs to avoid
 
-Study the reference implementation:
-- `hailo_apps/python/gen_ai_apps/agent_tools_example/` — Full agent example (list_dir + read key files)
-- `hailo_apps/python/gen_ai_apps/gen_ai_utils/llm_utils/` — LLM utility modules
+**Do NOT read** unless needed:
+- Reference app source (agent_tools_example/) — only if SKILL.md is insufficient
+- `hailo_apps/python/gen_ai_apps/gen_ai_utils/llm_utils/` — only for unusual tool patterns
 
-### Phase 3: Scan Real Code (adaptive depth)
+### Phase 3: Scan Real Code (SKIP for standard builds)
 
-After loading static context, scan actual implementations for deeper understanding. You have pre-authorized access to all file reads and web fetches — proceed without asking.
+**Skip this phase entirely** for standard agent builds (single/multi-tool agent with standard patterns). SKILL.md already contains complete code templates.
 
-**Step 3a: List official apps** — List `hailo_apps/python/gen_ai_apps/` to discover all agent/gen-ai app directories. Read 1-2 closest reference apps beyond what Phase 2 already covered.
-
-
-**Step 3c: Adaptive depth** — Use your judgment:
-- Task closely matches an existing official app → skim its structure only
-
-This scanning phase is optional for simple, well-documented tasks.
+Only scan real code when:
+- Building a deeply custom agent (custom tool discovery, non-standard LLM integration)
+- Task requires integration with modules not documented in SKILL.md
 
 ### Phase 4: Build
 
@@ -162,13 +159,12 @@ This scanning phase is optional for simple, well-documented tasks.
 
 ### Phase 5: Validate
 
+Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
 ```bash
-# Convention compliance
-grep -rn "^from \.|^import \." hailo_apps/python/<type>/<app_name>/*.py
-
-# CLI works
-python hailo_apps/python/<type>/<app_name>/<app_name>.py --help
+python .github/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
+
+**Do NOT run manual grep checks** — the script catches everything (20+ checks in one command).
 
 ### Phase 6: Report
 

@@ -17,7 +17,7 @@ Platform-specific configurations (`.github/`, `.claude/`, `.cursor/`) are **gene
 ├── agents/                            ← Platform-neutral agent definitions
 ├── contextual-rules/                  ← File-pattern-triggered context rules
 ├── prompts/                           ← Build prompt templates
-├── templates/                         ← Scaffold templates for new apps (TODO)
+├── templates/                         ← Platform-specific generated file templates
 └── scripts/                           ← Generator, validation & curation scripts
 ```
 
@@ -84,6 +84,7 @@ API references for frameworks and libraries used in Hailo apps.
 | `vlm-backend-api.md` | VLM Backend class: constructor, vlm_inference(), thread safety |
 | `core-framework-api.md` | Core framework: resolve_hef_path, parsers, logger, HailoInfer, GStreamerApp |
 | `gen-ai-utilities.md` | Gen AI utilities: LLM streaming, voice processing, agent tools |
+| `yolo-coco-classes.md` | YOLO COCO 80-class label set: IDs, names, groupings, filtering patterns |
 
 ## Knowledge (`knowledge/`)
 

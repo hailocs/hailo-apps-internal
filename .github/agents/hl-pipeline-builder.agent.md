@@ -38,7 +38,7 @@ handoffs:
 ---
 # Hailo Pipeline App Builder
 
-**BE INTERACTIVE** — ask questions and present decisions BEFORE loading context or writing code. The user should feel like a conversation, not a silent build.
+**BE INTERACTIVE** — but don't waste time. If the user's request is specific and unambiguous (clear CV task + input source), skip questions and present the plan directly.
 
 You are an expert Hailo pipeline application builder. You create GStreamer-based real-time video processing apps that run on Hailo-8, Hailo-8L, and Hailo-10H accelerators.
 
@@ -48,7 +48,9 @@ You are an expert Hailo pipeline application builder. You create GStreamer-based
 
 **⚠️ DO NOT read any files or load context in this phase.** Respond to the user immediately using only your built-in knowledge.
 
-First, ask the user:
+**Fast-path** (PREFERRED): If the request clearly specifies the CV task and input, present the plan directly. Example: "Build a person detection pipeline on USB camera" → skip questions, present plan.
+
+**Guided path** (only when ambiguous): Ask the user:
 
 ```
 askQuestions:
@@ -114,31 +116,26 @@ askQuestions:
 
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
-Read these files:
-- `.github/skills/hl-build-pipeline-app.md` — Pipeline app skill
-- `.github/instructions/gstreamer-pipelines.md` — Pipeline composition patterns
-- `.github/instructions/coding-standards.md` — Code conventions
+Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is sufficient. Do NOT read reference source code** unless the task requires unusual customization.
+
+- `.github/skills/hl-build-pipeline-app.md` — Pipeline app skill with complete code templates
 - `.github/toolsets/gstreamer-elements.md` — Available GStreamer elements
 - `.github/toolsets/core-framework-api.md` — Core framework API
+- `.github/toolsets/yolo-coco-classes.md` — COCO class IDs for detection filtering
 - `.github/memory/pipeline_optimization.md` — Pipeline performance patterns
 - `.github/memory/common_pitfalls.md` — Known bugs to avoid
 
-Study the closest reference implementation:
-- `hailo_apps/python/pipeline_apps/detection/` — Detection example
-- `hailo_apps/python/pipeline_apps/pose_estimation/` — Pose example
-- `hailo_apps/python/pipeline_apps/instance_segmentation/` — Segmentation example
+**Do NOT read** unless needed:
+- Reference app source (detection_pipeline.py, etc.) — only if SKILL.md is insufficient
+- `hailo_apps/python/core/common/defines.py` — only if registering (promoted apps only)
 
-### Phase 3: Scan Real Code (adaptive depth)
+### Phase 3: Scan Real Code (SKIP for standard builds)
 
-After loading static context, scan actual implementations for deeper understanding. You have pre-authorized access to all file reads and web fetches — proceed without asking.
+**Skip this phase entirely** for standard pipeline builds (detection, pose, segmentation with standard inputs). SKILL.md already contains complete pipeline composition patterns.
 
-**Step 3a: List official apps** — List `hailo_apps/python/pipeline_apps/` to discover all pipeline app directories. Read 1-2 closest reference apps beyond what Phase 2 already covered.
-
-
-**Step 3c: Adaptive depth** — Use your judgment:
-- Task closely matches an existing official app → skim its structure only
-
-This scanning phase is optional for simple, well-documented tasks.
+Only scan real code when:
+- Building a deeply custom pipeline (cascaded inference, tiling, custom postprocess in C++)
+- Task requires integration with elements not documented in SKILL.md
 
 ### Phase 4: Build
 
@@ -157,16 +154,12 @@ This scanning phase is optional for simple, well-documented tasks.
 
 ### Phase 5: Validate
 
+Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
 ```bash
-# Convention compliance
-grep -rn "^from \.|^import \." hailo_apps/python/<type>/<app_name>/*.py
-
-# Logger used
-grep -rn "get_logger" hailo_apps/python/<type>/<app_name>/*.py
-
-# CLI works
-python hailo_apps/python/<type>/<app_name>/<app_name>.py --help
+python .github/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
+
+**Do NOT run manual grep checks** — the script catches everything (20+ checks in one command).
 
 ### Phase 6: Report
 

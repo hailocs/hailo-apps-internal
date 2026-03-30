@@ -251,22 +251,155 @@ Within a phase, create ALL files first, THEN validate the phase as a whole.
 
 ---
 
+## Protocol 10: Execution Speed
+
+**Minimize tool calls and eliminate redundant work. Speed is a first-class concern.**
+
+### 10a: Fast-Path for Clear Requests
+
+```
+IF the user's request is specific and unambiguous
+   (clear app type + purpose + input source):
+   → Skip interactive questions
+   → Skip plan approval (present plan inline, start building)
+   → Treat as "Quick build" mode automatically
+
+ONLY ask questions when:
+   - App type is genuinely ambiguous
+   - Critical design choice affects architecture (e.g., monitoring vs interactive)
+   - User explicitly says "let's discuss options"
+```
+
+**Example fast-path**: "Build a dog monitoring VLM app and launch with /path/to/dog.mp4"
+→ App type: VLM. Purpose: dog monitor. Input: file. Style: monitoring (continuous).
+→ No questions needed. Present plan inline and build.
+
+### 10b: SKILL.md Is Sufficient — Don't Read Source Code
+
+```
+DO    read: SKILL.md + toolset API refs + memory files
+DON'T read: reference implementation source code (vlm_chat.py, backend.py, etc.)
+
+SKILL.md contains:
+  - Complete code templates with all imports
+  - Constructor signatures and method APIs
+  - Patterns, pitfalls, and configuration constants
+  - The FULL pattern needed to build a standard app
+
+ONLY read reference source code when:
+  - The task requires unusual customization NOT covered by SKILL.md
+  - You need to understand an internal mechanism (e.g., queue protocol)
+  - SKILL.md explicitly directs you to read a specific file
+```
+
+### 10c: validate_app.py Is the Single Gate
+
+```
+DO    run: python .github/scripts/validate_app.py <app_dir> --smoke-test
+DON'T run: manual grep checks, individual import tests, manual lint
+
+The validation script checks 20+ things:
+  - File existence, syntax, no relative imports
+  - Logger usage, CLI parser, entry point
+  - SIGINT handler, no hardcoded paths
+  - README quality, CLI --help, module import
+
+One command replaces 10+ manual checks.
+```
+
+### 10d: Community Apps Don't Need Registration
+
+```
+Community apps (run via run.sh) do NOT need:
+  - Constants in defines.py
+  - Entries in resources_config.yaml
+
+Registration is only for PROMOTED apps (official apps in the main menu).
+SKILL.md explicitly states this — follow it.
+```
+
+### 10e: Parallelize Independent Operations
+
+```
+BATCH these together (all independent reads):
+  - SKILL.md + toolset + memory files → one parallel read
+
+BATCH these together (all file creates):
+  - __init__.py + app.yaml + run.sh + main app + support modules + README
+
+DON'T do sequentially:
+  - Read file A → Read file B → Read file C  (parallelize!)
+  - Create file A → validate → Create file B → validate  (create all, validate once)
+```
+
+### 10f: Target Tool Call Budget
+
+| Task Type | Target Tool Calls | Max |
+|---|---|---|
+| Simple VLM/LLM variant | 8-12 | 15 |
+| Pipeline app | 10-14 | 18 |
+| Standalone app | 10-14 | 18 |
+| Complex agent app | 12-16 | 20 |
+| Bug fix | 5-8 | 12 |
+
+Exceeding the max indicates unnecessary work (redundant reads, manual checks,
+unnecessary confirmations). Review and optimize.
+
+---
+
+## Protocol 11: Pre-Launch Device Verification
+
+**Before launching ANY Hailo app, verify the device is accessible.**
+
+```bash
+# RELIABLE check — directly queries the device firmware
+hailortcli fw-control identify
+# Expected: "Device Architecture: HAILO10H" (or HAILO8, HAILO8L) + firmware version
+```
+
+**Do NOT use** `lsmod | grep hailo_pci` — it's unreliable (built-in drivers, different module names).
+
+### Full Pre-Launch Sequence
+
+```bash
+# 1. Device accessible (RELIABLE)
+hailortcli fw-control identify
+
+# 2. Python SDK importable
+python3 -c "import hailo_platform; print('hailo_platform OK')"
+
+# 3. App framework importable
+python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_apps OK')"
+
+# 4. Input source exists (for file inputs)
+ls -la /path/to/video.mp4
+
+# 5. For short videos: check duration and set --interval appropriately
+python3 -c "import cv2; c=cv2.VideoCapture('/path/to/video'); print(f'{c.get(cv2.CAP_PROP_FRAME_COUNT)/c.get(cv2.CAP_PROP_FPS):.0f}s')"
+```
+
+**If any check fails**: Report the failure clearly and STOP. Do NOT launch.
+
+---
+
 ## Protocol Summary Card
 
 ```
-┌─────────────────────────────────────────────┐
-│          AGENT PROTOCOL QUICK REF           │
-├─────────────────────────────────────────────┤
-│ 1. CONTEXT FIRST — read before you code     │
-│ 2. PHASE GATES  — validate before advance   │
-│ 3. TODO LIST    — track everything          │
-│ 4. SUB-AGENTS   — delegate when independent │
-│ 5. CONVENTIONS  — verify every file         │
-│ 6. MEMORY LOOP  — learn and record          │
-│ 7. RECOVERY     — never silently fail       │
-│ 8. ISSUE AGENT  — label-triggered workflow  │
-│ 9. ATOMIC FILES — create all, then validate │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│          AGENT PROTOCOL QUICK REF            │
+├──────────────────────────────────────────────┤
+│  1. CONTEXT FIRST  — read before you code    │
+│  2. PHASE GATES    — validate before advance │
+│  3. TODO LIST      — track everything        │
+│  4. SUB-AGENTS     — delegate when indep.    │
+│  5. CONVENTIONS    — verify every file       │
+│  6. MEMORY LOOP    — learn and record        │
+│  7. RECOVERY       — never silently fail     │
+│  8. ISSUE AGENT    — label-triggered         │
+│  9. ATOMIC FILES   — create all, validate    │
+│ 10. SPEED          — fast-path, no bloat     │
+│ 11. DEVICE CHECK   — hailortcli before run   │
+└──────────────────────────────────────────────┘
 ```
 
 ````
