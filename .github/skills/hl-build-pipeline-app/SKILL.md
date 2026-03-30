@@ -7,6 +7,8 @@ description: Build a complete GStreamer pipeline app for real-time video process
 
 Build a complete GStreamer pipeline app for real-time video processing on Hailo-8/8L/10H.
 
+> **Self-sufficient for simple variants**: The template below contains complete, buildable code with exact imports. For detection variants (class filtering, counting, custom overlays), this SKILL.md + `detection_pipeline.py` + `common_pitfalls.md` is all the context needed. Skip toolset/helper reads for these cases.
+
 ## When This Skill Is Loaded
 
 - User wants **real-time video processing** (detection, pose, segmentation)

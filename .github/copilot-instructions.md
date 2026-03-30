@@ -45,7 +45,7 @@ Based on what the task involves, read **only** the matching rows:
 | **LLM, chat, text generation** | `skills/hl-build-llm-app/SKILL.md`, `instructions/gen-ai-development.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
 | **Agent, tools, function calling** | `skills/hl-build-agent-app/SKILL.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
 | **Voice, STT, TTS, Whisper, speech** | `skills/hl-build-voice-app/SKILL.md`, `toolsets/gen-ai-utilities.md` |
-| **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app/SKILL.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` |
+| **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app/SKILL.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` — **Fast path for simple variants** (detection filter, counter, custom overlay): SKILL.md + `detection_pipeline.py` + `common_pitfalls.md` is sufficient |
 | **Standalone, OpenCV, HailoInfer** | `skills/hl-build-standalone-app/SKILL.md`, `toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `skills/hl-camera.md`, `memory/camera_and_display.md` |
 | **HEF, model, download, config** | `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |

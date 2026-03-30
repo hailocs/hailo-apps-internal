@@ -39,6 +39,25 @@ Every non-trivial task MUST follow this loop:
 
 **Goal**: Load all relevant knowledge before writing any code.
 
+#### Context Budget: Match Depth to Complexity
+
+Not all tasks need the same amount of context. Over-reading costs time and tokens.
+
+| Task complexity | Context reads needed | Examples |
+|---|---|---|
+| **Simple variant** (reuses existing app pattern) | SKILL.md + 1 reference file + common_pitfalls.md | People counter, custom overlay, class filter |
+| **Standard new app** (new logic, existing infra) | SKILL.md + coding-standards.md + 1-2 reference files + common_pitfalls.md | Monitoring app, dashboard, multi-source |
+| **Complex/novel app** (new patterns, multi-module) | Full routing table + multiple reference files + toolset APIs | Agent with tools, cascaded pipeline, voice+VLM |
+
+**Fast-path rule**: If the SKILL.md contains a complete buildable template AND the task is a straightforward variant of that template, read only:
+1. The relevant `SKILL.md` (has template code with exact imports)
+2. The closest reference implementation source file (1 file, not the whole app)
+3. `.github/memory/common_pitfalls.md`
+
+Skip toolset references, helper pipeline internals, and framework source code — the SKILL template already encodes the correct usage.
+
+#### Full Context Loading (for standard/complex tasks)
+
 ```
 MANDATORY READS (in this order):
 1. .github/memory/MEMORY.md                    ← Index of known patterns
