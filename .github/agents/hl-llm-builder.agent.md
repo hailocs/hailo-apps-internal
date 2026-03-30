@@ -2,8 +2,7 @@
 name: HL LLM Builder
 description: Build LLM chat and text generation applications for Hailo-10H. Chatbots,
   Q&A systems, text processing — all running on-device.
-argument-hint: '[describe your LLM app, e.g., ''technical support chatbot'' or ''document
-  summarizer'']'
+argument-hint: e.g., technical support chatbot
 tools:
 - agent/runSubagent
 - edit/createDirectory
