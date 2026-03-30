@@ -6,7 +6,8 @@
 #include "hailo/hailort.hpp"
 #include "common.h"
 #include "tokenizer/nn_embeddings.hpp"
-#include "../common/toolbox.hpp"
+#include "toolbox.hpp"
+#include "resources_manager.hpp"
 
 #include <iostream>
 #include <future>
@@ -24,6 +25,10 @@
 #include <sys/mman.h>
 #endif
 
+#ifdef _MSC_VER
+#include <Windows.h>
+#endif
+
 std::mutex m;
 
 using namespace hailort;
@@ -36,9 +41,13 @@ static std::shared_ptr<T> page_aligned_alloc(size_t size, void* buff = nullptr)
     if (MAP_FAILED == addr) throw std::bad_alloc();
     return std::shared_ptr<T>(reinterpret_cast<T*>(addr), [size](void *addr) { munmap(addr, size); });
 #elif defined(_MSC_VER)
-    auto addr = VirtualAlloc(buff, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    void *addr = VirtualAlloc(buff, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!addr) throw std::bad_alloc();
-    return std::shared_ptr<uint8_t>(reinterpret_cast<uint8_t*>(addr), [](void *addr){ VirtualFree(addr, 0, MEM_RELEASE); });
+
+    return std::shared_ptr<T>(
+        reinterpret_cast<T*>(addr),
+        [](void *p) { VirtualFree(p, 0, MEM_RELEASE); }
+    );
 #else
 #pragma error("Aligned alloc not supported")
 #endif
@@ -696,28 +705,29 @@ static inline ZeroShotArgs parse_zero_shot_args(int argc, char **argv)
     return args;
 }
 
-static inline std::pair<std::string, std::string>
-resolve_zero_shot_nets(const std::string &app,
-                       const ZeroShotArgs &args,
-                       const std::string &dest_dir = "hefs")
+void post_parse_args(const std::string &app, ZeroShotArgs &args, int argc, char **argv)
 {
-    if (args.text_encoder.empty() && args.image_encoder.empty()) {
-        std::cerr
-            << "Error: Missing -te= and -ie=.\n"
-            << app << " requires 2 networks: text encoder + image encoder.\n";
-        hailo_utils::list_networks(app);
-        std::exit(1);
-    }
+
     if (args.text_encoder.empty() || args.image_encoder.empty()) {
         std::cerr
-            << "Error: Both -te= and -ie= must be provided.\n";
-        hailo_utils::list_networks(app);
+            << "Error: text encoder + image encoder models must be provided.\n";
         std::exit(1);
     }
 
-    std::string text_hef  = hailo_utils::resolve_net_arg(app, args.text_encoder,  dest_dir);
-    std::string image_hef = hailo_utils::resolve_net_arg(app, args.image_encoder, dest_dir);
-    return {text_hef, image_hef};
+    try {
+        hailo_apps::ResourcesManager rm;
+
+        if (hailo_utils::has_flag(argc, argv, "--list-models")) {
+            rm.print_models(app);
+            std::exit(0);
+        }
+        args.text_encoder = rm.resolve_net_arg(app, args.text_encoder);
+        args.image_encoder = rm.resolve_net_arg(app, args.image_encoder);        
+    }
+    catch (const std::exception &e) {
+            std::cerr << "ResourcesManager ERROR: " << e.what() << std::endl;
+            std::exit(1);
+    }
 }
 
 
@@ -730,19 +740,7 @@ int main(int argc, char** argv)
 
     // Parse all CLI args once
     ZeroShotArgs args = parse_zero_shot_args(argc, argv);
-
-    if (hailo_utils::has_flag(argc, argv, "--list-nets")) {
-        hailo_utils::list_networks(APP_NAME);
-        return 0;
-    }
-    if (hailo_utils::has_flag(argc, argv, "--list-inputs")) {
-        hailo_utils::list_inputs(APP_NAME);
-        return 0;
-    }
-
-    // Resolve to actual HEF paths (model name or .hef → real path + arch check)
-    auto [text_encoder_hef, image_encoder_hef] =
-        resolve_zero_shot_nets(APP_NAME, args, "hefs");
+    post_parse_args(APP_NAME, args, argc, argv);
 
     // Build text_vec from prompt (possibly comma-separated)
     std::vector<std::string> text_vec;
@@ -772,7 +770,7 @@ int main(int argc, char** argv)
 
     auto t_start = clock::now();
 
-    auto status = run_text_encoder(text_encoder_hef,
+    auto status = run_text_encoder(args.text_encoder,
                                    std::ref(text_vec),
                                    std::ref(text_embeddings_queue));
     if (HAILO_SUCCESS != status) {
@@ -781,7 +779,7 @@ int main(int argc, char** argv)
     }
 
     status = run_image_encoder(text_vec,
-                               image_encoder_hef,
+                               args.image_encoder,
                                std::ref(text_embeddings_queue),
                                std::ref(args.input_path),
                                args.image_num,
