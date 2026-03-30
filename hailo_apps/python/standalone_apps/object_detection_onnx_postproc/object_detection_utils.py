@@ -506,7 +506,7 @@ def parse_yolon26_output(onnx_results, image: np.ndarray, onnx_config: dict, con
     if DEBUG and len(confidences) > 0:
         from hailo_apps.python.core.common.hailo_logger import get_logger
         logger = get_logger(__name__)
-        logger.info(f"YOLOv26n detections after threshold {score_threshold}: {len(confidences)}")
+        logger.debug(f"YOLOv26n detections after threshold {score_threshold}: {len(confidences)}")
     
     # Group by class ID in HailoRT-NMS format: list of per-class detections
     # Each detection must match HailoRT-NMS output format which is [ymin, xmin, ymax, xmax, score]

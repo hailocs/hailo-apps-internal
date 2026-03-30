@@ -449,9 +449,9 @@ def run_inference_pipeline(
             logger.info(fps_tracker.frame_rate_summary())
 
         logger.success("Processing completed successfully.")
-        if save_output or input_context.has_images:
-            logger.info(f"Saved outputs to '{output_dir}'.")
 
+        if visualization_settings.save_stream_output or input_context.has_images:
+            logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def main() -> None:

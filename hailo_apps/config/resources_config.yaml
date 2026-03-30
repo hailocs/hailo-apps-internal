@@ -23,14 +23,21 @@
 # Shared videos for all apps
 # Tags use app names only (no _p/_s suffixes)
 videos:
+  - name: grok-squats.mp4
+    source: s3
+    tag:
+      - pose_estimation
+      - pose_estimation_onnx_postproc
   - name: example.mp4
     source: s3
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - semantic_segmentation
       - classifier
       - depth
@@ -43,9 +50,11 @@ videos:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - semantic_segmentation
       - classifier
       - depth
@@ -67,11 +76,13 @@ videos:
       - tiling
       - detection
       - object_detection
+      - object_detection_onnx_postproc
   - name: barcode.mp4
     source: s3
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
   - name: clip_example.mp4
     source: s3
     tag:
@@ -82,9 +93,11 @@ videos:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - semantic_segmentation
       - classifier
       - depth
@@ -111,9 +124,11 @@ images:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - classifier
       - semantic_segmentation
   - name: dog_bicycle.jpg
@@ -121,9 +136,11 @@ images:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - classifier
       - semantic_segmentation
   - name: bus.jpg
@@ -131,9 +148,11 @@ images:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - classifier
       - semantic_segmentation
   - name: input_image.png
@@ -141,9 +160,11 @@ images:
     tag:
       - detection
       - object_detection
+      - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
       - pose_estimation
+      - pose_estimation_onnx_postproc
       - classifier
       - semantic_segmentation
   - name: ocr_img1.png

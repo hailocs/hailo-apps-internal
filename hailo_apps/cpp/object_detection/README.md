@@ -65,7 +65,7 @@ Usage
         cmake --build build --config Release
         ```
 
-    This creates the directory hierarchy build/Release and compile an executable file called classifier
+    This creates the directory hierarchy build/Release and compile an executable file called object_detection
 
 3. Run the example:
 
