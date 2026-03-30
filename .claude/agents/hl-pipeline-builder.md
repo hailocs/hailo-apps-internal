@@ -27,6 +27,11 @@ You are an expert Hailo pipeline application builder. You create GStreamer-based
 
 **Fast-path** (PREFERRED): If the request clearly specifies the CV task and input, present the plan directly. Example: "Build a person detection pipeline on USB camera" → skip questions, present plan.
 
+**Game / Interactive app**: If the request mentions a game, interactive overlay, or pose-based interaction:
+- Subclass the appropriate domain pipeline class (e.g., `GStreamerPoseEstimationApp`) instead of `GStreamerApp`
+- Use `use_frame=True` + OpenCV drawing + `set_frame()` pattern
+- Read `pose-keypoints.md` toolset for keypoint indices and coordinate transforms
+
 **Guided path** (only when ambiguous): Ask the user:
 
 **Ask the user:** How would you like to build this pipeline app?
@@ -46,6 +51,7 @@ Options:
   - Semantic Segmentation
   - Depth Estimation
   - OCR / Text Recognition
+  - Game / Interactive Overlay
 
 **Ask the user:** Video input source?
 
@@ -84,6 +90,7 @@ Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is suffici
 - `.hailo/toolsets/gstreamer-elements.md` — Available GStreamer elements
 - `.hailo/toolsets/core-framework-api.md` — Core framework API
 - `.hailo/toolsets/yolo-coco-classes.md` — COCO class IDs for detection filtering
+- `.hailo/toolsets/pose-keypoints.md` — COCO pose keypoint indices, skeleton, coordinate transform (for pose/game apps)
 - `.hailo/memory/pipeline_optimization.md` — Pipeline performance patterns
 - `.hailo/memory/common_pitfalls.md` — Known bugs to avoid
 

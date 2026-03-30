@@ -187,12 +187,21 @@ class app_callback_class:
 
 ### get_numpy_from_buffer()
 ```python
-def get_numpy_from_buffer(buffer, pad, format: str = "RGB") -> np.ndarray:
+def get_numpy_from_buffer(buffer, format: str, width: int, height: int) -> np.ndarray:
 ```
-Converts GStreamer buffer to numpy array. Supports RGB, NV12, YUYV formats.
+Converts GStreamer buffer to numpy array. `format`, `width`, `height` come from `get_caps_from_pad()`. Supports RGB, NV12, YUYV formats.
+
+**Usage pattern:**
+```python
+from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer
+
+pad = element.get_static_pad("src")
+format, width, height = get_caps_from_pad(pad)
+frame = get_numpy_from_buffer(buffer, format, width, height)  # Returns RGB numpy array (H, W, 3)
+```
 
 ### get_caps_from_pad()
 ```python
-def get_caps_from_pad(pad) -> dict:
+def get_caps_from_pad(pad) -> tuple:
 ```
-Extracts width, height, format from GStreamer pad capabilities.
+Extracts (format, width, height) from GStreamer pad capabilities. Returns tuple of (str, int, int).

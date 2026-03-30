@@ -76,8 +76,22 @@ finally:
 - OpenCV displays **BGR**
 - `cv2.imwrite()` expects **BGR**
 - PIL/Pillow reads as **RGB**
+- GStreamer `get_numpy_from_buffer()` returns **RGB**
 
 **Rule**: Convert to RGB only when sending to VLM. Keep BGR for everything else.
+
+### GStreamer set_frame() Requires BGR
+When using `use_frame=True` in GStreamer pipeline callbacks, frames from
+`get_numpy_from_buffer()` are **RGB**. You MUST convert before `set_frame()`:
+```python
+# Frame comes as RGB from GStreamer
+frame = get_numpy_from_buffer(buffer, format, width, height)
+# ... draw on frame with OpenCV ...
+frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # MUST convert
+user_data.set_frame(frame)
+```
+**Forgetting this conversion produces blue-tinted output.** The display pipeline
+expects BGR.
 
 ## HEF Path Resolution
 

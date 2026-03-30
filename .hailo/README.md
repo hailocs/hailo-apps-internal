@@ -85,6 +85,7 @@ API references for frameworks and libraries used in Hailo apps.
 | `core-framework-api.md` | Core framework: resolve_hef_path, parsers, logger, HailoInfer, GStreamerApp |
 | `gen-ai-utilities.md` | Gen AI utilities: LLM streaming, voice processing, agent tools |
 | `yolo-coco-classes.md` | YOLO COCO 80-class label set: IDs, names, groupings, filtering patterns |
+| `pose-keypoints.md` | COCO 17 pose keypoints: indices, skeleton connections, coordinate transform |
 
 ## Knowledge (`knowledge/`)
 
@@ -159,6 +160,7 @@ Build prompt templates. Platform-neutral markdown — the generator wraps them f
 | `new-llm-app.md` | Create an LLM app |
 | `new-agent-tool.md` | Create an agent tool |
 | `new-voice-app.md` | Create a voice app |
+| `new-pose-game.md` | Create a pose estimation game |
 | `orchestrated-build.md` | Meta-template for orchestrated builds |
 
 ## Platform Integration

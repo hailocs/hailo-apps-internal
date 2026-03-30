@@ -47,6 +47,8 @@ import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
 
+import hailo  # Required for detection/landmark extraction in callbacks
+
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.core import resolve_hef_path, handle_list_models_flag
 from hailo_apps.python.core.common.parser import get_pipeline_parser
@@ -55,9 +57,15 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_cal
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE,
     INFERENCE_PIPELINE,
+    INFERENCE_PIPELINE_WRAPPER,
     DISPLAY_PIPELINE,
     TRACKER_PIPELINE,
+    USER_CALLBACK_PIPELINE,
     QUEUE,
+)
+from hailo_apps.python.core.common.buffer_utils import (
+    get_caps_from_pad,
+    get_numpy_from_buffer,
 )
 
 logger = get_logger(__name__)
@@ -97,6 +105,8 @@ class MyPipelineApp(GStreamerApp):
                 hef_path=self.hef_path,
                 batch_size=self.batch_size,
             )
+            + " ! "
+            + USER_CALLBACK_PIPELINE()
             + " ! "
             + DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync)
         )
@@ -141,7 +151,143 @@ python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 |---|---|---|
 | Basic inference | `INFERENCE_PIPELINE(hef_path=...)` | Single model |
 | With tracking | `+ TRACKER_PIPELINE()` | Object tracking |
+| With user callback | `+ USER_CALLBACK_PIPELINE()` | Per-frame processing |
 | Cascaded | `CROPPER_PIPELINE(...)` | Face detection → recognition |
 | Multi-source | Multiple `SOURCE_PIPELINE` + compositor | Dashboard view |
 | Tiling | Custom tiling pipeline | Small object detection |
+
+---
+
+## Frame Overlay Pattern (use_frame + OpenCV Drawing)
+
+When you need to draw on frames (overlays, game graphics, custom visualizations), use the `use_frame` pattern:
+
+### 1. Enable use_frame in your callback class
+```python
+class UserAppCallback(app_callback_class):
+    def __init__(self):
+        super().__init__()
+        self.use_frame = True  # Enables frame access in callback
+```
+
+### 2. Get the frame in the callback
+```python
+import cv2
+import hailo
+from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer
+
+def app_callback(element, buffer, user_data):
+    pad = element.get_static_pad("src")
+    format, width, height = get_caps_from_pad(pad)
+
+    frame = None
+    if user_data.use_frame and format and width and height:
+        # Signature: get_numpy_from_buffer(buffer, format, width, height)
+        # Returns RGB numpy array (H, W, 3)
+        frame = get_numpy_from_buffer(buffer, format, width, height)
+```
+
+### 3. Draw with OpenCV, convert RGB→BGR, then set_frame()
+```python
+    if user_data.use_frame and frame is not None:
+        # Draw on the frame (frame is RGB from GStreamer)
+        cv2.circle(frame, (x, y), 10, (0, 255, 0), -1)
+        cv2.putText(frame, "Hello", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+
+        # CRITICAL: Convert RGB → BGR before set_frame (OpenCV expects BGR)
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        user_data.set_frame(frame)
+
+    return Gst.FlowReturn.OK
+```
+
+**Key rules:**
+- `get_numpy_from_buffer(buffer, format, width, height)` — NOT `(buffer, pad, format)`
+- Frame comes in **RGB** from GStreamer
+- Must convert to **BGR** with `cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)` before `set_frame()`
+- Always check `user_data.use_frame` and that `frame is not None`
+- Pass `--use-frame` on CLI to enable (or set `self.use_frame = True` in callback class)
+
+---
+
+## Detection Data Extraction in Callbacks
+
+### Getting ROI and Detections
+```python
+import hailo
+
+def app_callback(element, buffer, user_data):
+    roi = hailo.get_roi_from_buffer(buffer)
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+
+    for detection in detections:
+        label = detection.get_label()        # e.g., "person", "car"
+        confidence = detection.get_confidence()  # 0.0 - 1.0
+        bbox = detection.get_bbox()          # Normalized bounding box
+        # bbox.xmin(), bbox.ymin(), bbox.width(), bbox.height() — all normalized [0,1]
+```
+
+### Getting Track IDs (requires TRACKER_PIPELINE in pipeline)
+```python
+        track_id = 0
+        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        if len(track) == 1:
+            track_id = track[0].get_id()
+```
+
+### Getting Pose Landmarks (pose estimation models)
+```python
+        landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
+        if landmarks:
+            points = landmarks[0].get_points()
+            # Each point has .x() and .y() — normalized to bounding box
+            # Convert to pixel coordinates:
+            for point in points:
+                pixel_x = int((point.x() * bbox.width() + bbox.xmin()) * frame_width)
+                pixel_y = int((point.y() * bbox.height() + bbox.ymin()) * frame_height)
+```
+
+### Hailo Detection Types Reference
+| Type | Constant | Method | Returns |
+|---|---|---|---|
+| Detection boxes | `hailo.HAILO_DETECTION` | `roi.get_objects_typed()` | List of detections |
+| Track IDs | `hailo.HAILO_UNIQUE_ID` | `detection.get_objects_typed()` | List with single ID object |
+| Pose landmarks | `hailo.HAILO_LANDMARKS` | `detection.get_objects_typed()` | List of landmark sets |
+| Classification | `hailo.HAILO_CLASSIFICATION` | `detection.get_objects_typed()` | List of classifications |
+| Masks | `hailo.HAILO_CONF_CLASS_MASK` | `detection.get_objects_typed()` | Segmentation masks |
+
+---
+
+## Reusing Existing Pipeline Classes
+
+For apps that extend existing pipelines (e.g., a pose estimation game), **subclass the domain-specific pipeline class** instead of the base `GStreamerApp`:
+
+```python
+from hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_pipeline import (
+    GStreamerPoseEstimationApp,
+)
+
+class MyPoseGame(GStreamerPoseEstimationApp):
+    """Inherits full pose pipeline: SOURCE → INFERENCE → TRACKER → USER_CALLBACK → DISPLAY"""
+    pass  # Pipeline is already configured — just write your callback
+
+def app_callback(element, buffer, user_data):
+    # All pose detection data is available here
+    ...
+
+def main():
+    user_data = UserAppCallback()
+    app = MyPoseGame(app_callback, user_data)  # No pipeline config needed
+    app.run()
+```
+
+**Available pipeline classes to subclass:**
+| Class | Module | Pipeline includes |
+|---|---|---|
+| `GStreamerPoseEstimationApp` | `pose_estimation.pose_estimation_pipeline` | Inference + Tracker + User Callback |
+| `GStreamerDetectionApp` | `detection.detection_pipeline` | Inference + User Callback |
+| `GStreamerInstanceSegmentationApp` | `instance_segmentation.instance_segmentation_pipeline` | Inference + User Callback |
+| `GStreamerFaceRecognitionApp` | `face_recognition.face_recognition_pipeline` | Cascaded inference + Tracker |
+
+When subclassing, you get the full pipeline for free — just provide your custom `app_callback` and `app_callback_class`.
 

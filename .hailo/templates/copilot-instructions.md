@@ -44,6 +44,7 @@ Based on what the task involves, read **only** the matching rows:
 | **Agent, tools, function calling** | `skills/hl-build-agent-app/SKILL.md`, `toolsets/gen-ai-utilities.md`, `memory/gen_ai_patterns.md` |
 | **Voice, STT, TTS, Whisper, speech** | `skills/hl-build-voice-app/SKILL.md`, `toolsets/gen-ai-utilities.md` |
 | **Pipeline, GStreamer, video, stream** | `skills/hl-build-pipeline-app/SKILL.md`, `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`, `memory/pipeline_optimization.md` — **Fast path for simple variants** (detection filter, counter, custom overlay): SKILL.md + `detection_pipeline.py` + `common_pitfalls.md` is sufficient |
+| **Game, interactive, pose game** | `skills/hl-build-pipeline-app/SKILL.md`, `toolsets/pose-keypoints.md`, `toolsets/core-framework-api.md`, `memory/common_pitfalls.md` |
 | **Standalone, OpenCV, HailoInfer** | `skills/hl-build-standalone-app/SKILL.md`, `toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `skills/hl-camera.md`, `memory/camera_and_display.md` |
 | **HEF, model, download, config** | `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
@@ -185,6 +186,7 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 │   ├── new-standalone-app.prompt.md ← Template: Create standalone app
 │   ├── new-llm-app.prompt.md        ← Template: Create LLM app
 │   ├── new-voice-app.prompt.md      ← Template: Create voice app
+│   ├── new-pose-game.prompt.md      ← Template: Create pose estimation game
 │   └── new-agent-tool.prompt.md     ← Template: Create new agent tool
 ├── toolsets/
 │   ├── hailo-sdk.md                 ← Hailo SDK API reference
@@ -192,7 +194,8 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 │   ├── vlm-backend-api.md           ← VLM Backend class API
 │   ├── core-framework-api.md        ← Core framework API reference
 │   ├── gen-ai-utilities.md          ← Gen AI utilities reference
-│   └── yolo-coco-classes.md         ← YOLO COCO 80-class label reference
+│   ├── yolo-coco-classes.md         ← YOLO COCO 80-class label reference
+│   └── pose-keypoints.md            ← COCO 17 pose keypoints, skeleton, coordinate transform
 ├── memory/
 │   ├── MEMORY.md                    ← Index + quick reference
 │   ├── gen_ai_patterns.md           ← VLM/LLM patterns & gotchas
