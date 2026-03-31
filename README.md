@@ -13,6 +13,8 @@ Use AI coding agents to quickly create Hailo applications. Just describe your id
 
  Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
 
+<img src="doc/images/agentic_ai.gif" width="600"/>
+
 ## Supported Platforms and Devices
 | Platforms | Accelerators |
 |---|---|
