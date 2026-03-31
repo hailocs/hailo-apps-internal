@@ -2,7 +2,7 @@
 
 # Hailo-Apps
 
-High performance AI applications for Hailo accelerators, including GStreamer pipelines, GenAI assistants, and standalone C++/Python HailoRT apps.
+High performance AI applications for Hailo accelerators, including GStreamer pipelines, GenAI assistants, and standalone C++/Python apps.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps)
 
@@ -36,6 +36,7 @@ Use AI coding agents to quickly create Hailo applications. Just describe your id
 
 ### New in v26.03.0
 Windows support, YOLO26 models, Voice2Action demo, AI-powered agentic development, and more.
+
 [Full changelog →](./changelog.md)
 
 ## Requirements
