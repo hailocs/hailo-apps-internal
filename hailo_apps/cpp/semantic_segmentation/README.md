@@ -30,12 +30,19 @@ Usage
     git clone https://github.com/hailo-ai/hailo-apps.git
     cd hailo-apps/hailo_apps/cpp/semantic_segmentation
     ``` 
-
 2. Compile the project on the development machine  
-    ```shell script
-    ./build.sh
-    ```
-    This creates the directory hierarchy build/ and compile an executable file called semantic_segmentation
+
+    - **Linux**
+        ```shell script
+        ./build.sh
+        ```
+    - **Windows**
+        ```shell script
+        cmake -S. -Bbuild -DCMAKE_FIND_PACKAGE_RESOLVE_SYMLINKS=True
+        cmake --build build --config Release
+        ```
+
+    This creates the directory hierarchy build/Release and compile an executable file called semantic_segmentation
 
 3. Run the example:
 

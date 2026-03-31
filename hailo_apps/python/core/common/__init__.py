@@ -13,7 +13,7 @@ standalone apps and installation scripts to work without GStreamer/gi.
 """
 
 # Core utilities that don't require GStreamer
-from .core import FIFODropQueue, get_model_name, get_resource_path, load_environment
+from .core import FIFODropQueue, get_resource_path, load_environment
 from .hailo_logger import (
     add_logging_cli_args,
     get_logger,

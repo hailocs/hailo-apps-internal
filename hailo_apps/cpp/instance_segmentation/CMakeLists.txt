@@ -121,29 +121,21 @@ if(HAILO_USE_SYSTEM_DEPS)
     find_package(xtensor CONFIG REQUIRED)
     set(USE_SYSTEM_XTENSOR ON)
 else()
-    find_package(xtl CONFIG QUIET)
-    find_package(xtensor CONFIG QUIET)
+    message(STATUS "Fetching xtl/xtensor (build tree only)")
+    include(FetchContent)
 
-    if(xtl_FOUND AND xtensor_FOUND)
-        message(STATUS "Using system/vcpkg xtl/xtensor")
-        set(USE_SYSTEM_XTENSOR ON)
-    else()
-        message(STATUS "Fetching xtl/xtensor (build tree only)")
-        include(FetchContent)
-
-        FetchContent_Declare(
-            xtl
-            GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
-            GIT_TAG        0.7.7
-        )
-        FetchContent_Declare(
-            xtensor
-            GIT_REPOSITORY https://github.com/xtensor-stack/xtensor.git
-            GIT_TAG        0.26.0
-        )
-        FetchContent_MakeAvailable(xtl xtensor)
-        set(USE_SYSTEM_XTENSOR OFF)
-    endif()
+    FetchContent_Declare(
+        xtl
+        GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
+        GIT_TAG        0.7.7
+    )
+    FetchContent_Declare(
+        xtensor
+        GIT_REPOSITORY https://github.com/xtensor-stack/xtensor.git
+        GIT_TAG        0.26.0
+    )
+    FetchContent_MakeAvailable(xtl xtensor)
+    set(USE_SYSTEM_XTENSOR OFF)
 endif()
 
 # ============================================================

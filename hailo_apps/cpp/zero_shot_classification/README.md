@@ -28,11 +28,19 @@ Usage
 
     Note: Some downloaded files (e.g., text_projection.bin, ViT-L-14_laion2b_s32b_b82k.npy, and bpe_simple_vocab_16e6.txt) are essential even if you are using your own HEF files.
 
-2. Compile the project
-	```shell script
-    ./build.sh
-    ```
-	This will create a build/x86 directory containing the executable file zero_shot_classification .
+2. Compile the project on the development machine  
+
+    - **Linux**
+        ```shell script
+        ./build.sh
+        ```
+    - **Windows**
+        ```shell script
+        cmake -S. -Bbuild -DCMAKE_FIND_PACKAGE_RESOLVE_SYMLINKS=True
+        cmake --build build --config Release
+        ```
+
+    This creates the directory hierarchy build/Release and compile an executable file called zero_shot_classification
 
 3. Run the example:
 

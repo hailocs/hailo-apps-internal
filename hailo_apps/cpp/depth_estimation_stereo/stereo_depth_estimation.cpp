@@ -63,6 +63,7 @@ struct StereoArgs {
     std::string left;
     std::string right;
     bool save_stream_output;
+    bool no_display;
     size_t batch_size;
     double framerate;
     std::string output_resolution;
@@ -124,6 +125,7 @@ static inline StereoArgs parse_stereo_args(int argc, char **argv) {
         getCmdOptionWithShortFlag(argc, argv, "--left",  "-l"),
         getCmdOptionWithShortFlag(argc, argv, "--right", "-r"),
         has_flag(argc, argv, "-s") || has_flag(argc, argv, "--save-stream-output"),
+        has_flag(argc, argv, "--no-display"),
         batch_size,
         framerate,
         out_res_str,
