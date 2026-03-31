@@ -1,0 +1,146 @@
+# Skill: Build LLM Chat Application
+
+Build a complete LLM text generation app running on Hailo-10H.
+
+## When This Skill Is Loaded
+
+- User wants **text generation** or **chat** without vision
+- User mentions: LLM, chat, chatbot, text generation, Q&A
+- User needs on-device language model inference (NOT vision — that's VLM)
+
+## Reference Implementation
+
+Study `hailo_apps/python/gen_ai_apps/simple_llm_chat/simple_llm_chat.py` — the canonical LLM app.
+
+## Build Process
+
+### Step 1: Create App Directory
+
+Create the app directory:
+
+```
+hailo_apps/python/<type>/<app_name>/
+├── app.yaml              # App manifest (type: gen_ai)
+├── run.sh                # Launch wrapper
+├── __init__.py
+├── <app_name>.py         # Main app
+└── README.md             # Usage documentation (REQUIRED — never skip)
+```
+
+Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.
+Do NOT register in `defines.py` or `resources_config.yaml`.
+
+### Step 2: Build Main App
+
+```python
+import signal
+import sys
+
+from hailo_platform import VDevice
+from hailo_platform.genai import LLM
+
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.core import resolve_hef_path
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.defines import (
+    SHARED_VDEVICE_GROUP_ID,
+    HAILO10H_ARCH,
+)
+
+logger = get_logger(__name__)
+
+APP_NAME = "my_llm_app"
+
+SYSTEM_PROMPT = "You are a helpful assistant."
+
+
+def format_prompt(system_prompt, user_text):
+    return [
+        {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
+        {"role": "user", "content": [{"type": "text", "text": user_text}]},
+    ]
+
+
+def main():
+    parser = get_standalone_parser()
+    parser.add_argument("--max-tokens", type=int, default=200, help="Max tokens to generate")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature")
+    parser.add_argument("--system-prompt", type=str, default=SYSTEM_PROMPT, help="System prompt")
+    args = parser.parse_args()
+
+    # Signal handling
+    running = True
+    def signal_handler(sig, frame):
+        nonlocal running
+        running = False
+        print("\nShutting down...")
+    signal.signal(signal.SIGINT, signal_handler)
+
+    # Device and model
+    params = VDevice.create_params()
+    params.group_id = SHARED_VDEVICE_GROUP_ID
+    vdevice = VDevice(params)
+
+    hef_path = resolve_hef_path(args.hef_path, APP_NAME, arch=HAILO10H_ARCH)
+    llm = LLM(vdevice, str(hef_path))
+
+    logger.info("LLM loaded: %s", hef_path)
+    print(f"Chat started. Type 'quit' to exit.\n")
+
+    try:
+        while running:
+            try:
+                user_input = input("You: ").strip()
+            except EOFError:
+                break
+            if not user_input or user_input.lower() in ("quit", "exit", "q"):
+                break
+
+            prompt = format_prompt(args.system_prompt, user_input)
+            response = llm.generate_all(
+                prompt=prompt,
+                temperature=args.temperature,
+                seed=42,
+                max_generated_tokens=args.max_tokens,
+            )
+            print(f"Assistant: {response}\n")
+            llm.clear_context()
+    finally:
+        llm.release()
+        vdevice.release()
+        logger.info("Cleanup complete")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Step 4: Validate
+
+```bash
+python3 .hailo/scripts/validate_app.py hailo_apps/python/gen_ai_apps/my_llm_app --smoke-test
+```
+
+## Critical Conventions
+
+1. **Hailo-10H only**: Use `HAILO10H_ARCH` — LLM is not available on Hailo-8/8L
+2. **VDevice sharing**: `params.group_id = SHARED_VDEVICE_GROUP_ID`
+3. **Prompt format**: `[{"role": "...", "content": [{"type": "text", "text": "..."}]}]`
+4. **Clear context**: Always `llm.clear_context()` after each generation
+5. **Cleanup order**: `llm.clear_context()` → `llm.release()` → `vdevice.release()` in `finally`
+6. **End token**: Filter `<|im_end|>` from streaming output
+7. **Token streaming**: `with llm.generate(...) as gen: for chunk in gen:` for real-time output
+8. **HEF resolution**: `resolve_hef_path(path, APP_NAME, arch=HAILO10H_ARCH)`
+
+## Streaming Pattern (Alternative)
+
+```python
+print("Assistant: ", end="", flush=True)
+with llm.generate(prompt=prompt, temperature=0.1, max_generated_tokens=200) as gen:
+    for chunk in gen:
+        if chunk != "<|im_end|>":
+            print(chunk, end="", flush=True)
+print()
+llm.clear_context()
+```
+

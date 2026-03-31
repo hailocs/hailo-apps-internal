@@ -1,0 +1,60 @@
+version: '1.0'
+
+# Gen AI application recipes — proven patterns from real deployments
+gen_ai_recipes:
+
+# GStreamer pipeline optimization recipes
+pipeline_recipes:
+
+# Bottleneck diagnosis patterns
+bottleneck_patterns:
+  - pattern: "hailonet highest proctime, downstream of hailocropper"
+    diagnosis: Batch stall — variable crop count causes partial batch waiting
+    fix: "Add scheduler-timeout-ms={1000/fps} to hailonet element"
+    confidence: 0.95
+
+  - pattern: "queue P50 low but P95 > 10x P50"
+    diagnosis: Downstream element periodically blocks (not a queue sizing issue)
+    fix: "Fix downstream bottleneck first, not the queue"
+    confidence: 0.85
+
+  - pattern: "videoconvert in top 3 proctime"
+    diagnosis: CPU-bound pixel format conversion
+    fix: "Increase n-threads to 3-4, consider NV12 format"
+    confidence: 0.8
+
+  - pattern: "all CPUs > 90%"
+    diagnosis: Overall CPU saturation
+    fix: "Reduce resolution or frame rate"
+    confidence: 0.9
+
+  - pattern: "bypass queue fill > 70%"
+    diagnosis: Inference slower than source, frames backing up
+    fix: "Increase bypass max_size_buffers, consider reducing source FPS"
+    confidence: 0.8
+
+# Insights — quick facts agents should know
+insights:
+  - text: "VLM expects RGB 336x336 with central crop, not letterbox padding"
+    tags: [vlm, preprocessing, image]
+
+  - text: "vlm.clear_context() MUST be called after each inference, or context accumulates and quality degrades"
+    tags: [vlm, context, critical]
+
+  - text: "Backend.close() must send None sentinel to worker process via request_queue to prevent orphaned processes"
+    tags: [backend, multiprocessing, cleanup]
+
+  - text: "QT_QPA_PLATFORM=xcb must be set BEFORE importing cv2 on headless Linux"
+    tags: [opencv, display, environment]
+
+  - text: "get_usb_video_devices() uses udevadm and filters virtual devices — returns device indices, not /dev paths"
+    tags: [camera, usb, discovery]
+
+  - text: "SHARED_VDEVICE_GROUP_ID enables multi-process device sharing. Without it, only one process can access the Hailo chip"
+    tags: [vdevice, multiprocessing, critical]
+
+  - text: "VLM token '<|im_end|>' must be filtered from streaming output"
+    tags: [vlm, streaming, tokens]
+
+  - text: "Camera release must happen in same thread as read() — cross-thread release can crash OpenCV"
+    tags: [camera, threading, critical]

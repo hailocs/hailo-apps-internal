@@ -123,7 +123,7 @@ source = SOURCE_PIPELINE(
 
 # RTSP stream
 source = SOURCE_PIPELINE(
-    video_source="rtsp://192.168.1.100:554/stream",
+    video_source="rtsp://<username>:<password>@<camera-ip>:554/stream",
     video_width=1920,
     video_height=1080
 )
@@ -459,7 +459,7 @@ Using x264enc with zerolatency tune. Hardware encoders (e.g., `omxh264enc`, `v4l
 ```python
 stream = VIDEO_STREAM_PIPELINE(
     port=5004,
-    host="192.168.1.100",
+    host="<target-ip>",
     bitrate=4000
 )
 ```

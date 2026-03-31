@@ -1,0 +1,39 @@
+---
+paths:
+  - "**/standalone_apps/**"
+---
+
+# Standalone Apps — Contextual Instructions
+
+You are working on a **standalone inference application** (HailoInfer + OpenCV, no GStreamer).
+
+## Required Context Files
+
+Read these files before making changes (paths relative to `.hailo/`):
+
+- `skills/hl-build-standalone-app/SKILL.md` — Standalone app patterns
+- `instructions/coding-standards.md` — Import rules, logging, HEF resolution
+- `toolsets/core-framework-api.md` — HailoInfer, camera_utils, parsers
+- `toolsets/hailort-api.md` — VDevice, HEF resolution, constants
+- `memory/hailo_platform_api.md` — VDevice creation, HEF resolution chain
+- `memory/common_pitfalls.md` — Known anti-patterns to avoid
+
+## Additional Context (load if relevant)
+
+- If camera input: `memory/camera_and_display.md`, `skills/hl-camera.md`
+- If adding models: `skills/hl-model-management.md`
+
+## Key Patterns for Standalone Apps
+
+- Use `HailoInfer` for inference (wraps VDevice + HEF loading)
+- Use `get_standalone_parser()` for CLI arguments
+- Use `SHARED_VDEVICE_GROUP_ID` for VDevice creation
+- Always resolve HEF paths with `resolve_hef_path(path, app_name, arch)`
+- OpenCV for frame capture and display — check `camera_and_display.md` for BGR/RGB gotchas
+- Register new apps in `hailo_apps/python/core/common/defines.py`
+
+## Reference Implementations
+
+- Object detection: `hailo_apps/python/standalone_apps/object_detection/`
+- Pose estimation: `hailo_apps/python/standalone_apps/pose_estimation/`
+- Instance segmentation: `hailo_apps/python/standalone_apps/instance_segmentation/`

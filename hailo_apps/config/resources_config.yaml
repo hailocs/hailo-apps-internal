@@ -189,6 +189,10 @@ images:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: room.png
+    source: s3
+    tag:
+      - easter_game
 
 # Shared JSON config files for all apps
 # Tags use app names only (no _p/_s suffixes)

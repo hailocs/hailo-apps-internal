@@ -12,6 +12,9 @@ High performance AI applications for Hailo accelerators, including GStreamer pip
 |---|---|
 | ![Raspberry Pi](https://img.shields.io/badge/Raspberry-Pi%205-red?logo=raspberrypi&logoColor=white) ![Ubuntu](https://img.shields.io/badge/Ubuntu-x86__64-E95420?logo=ubuntu&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-blue?logo=windows&logoColor=white) | ![Hailo-8](https://img.shields.io/badge/Hailo-8-00A4EF?logoColor=white) ![Hailo-8L](https://img.shields.io/badge/Hailo-8L-00A4EF?logoColor=white) ![Hailo-10H](https://img.shields.io/badge/Hailo-10H-00A4EF?logoColor=white) |
 
+## 🤖 AI-Powered Development (Beta)
+
+Build complete Hailo applications using natural language - describe what you want and AI coding agents generate production-ready code, validate conventions, and launch your app. Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
 
 ## Applications
 

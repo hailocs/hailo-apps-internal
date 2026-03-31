@@ -8,3 +8,4 @@ This guide is for end-users who want to run the pre-built applications and under
 *   **[Repository Structure](./repository_structure.md)**: An explanation of the project's directory structure.
 *   **[Configuration](./configuration.md)**: An explanation of the `config.yaml` file and how to customize system-wide settings.
 *   **[Running Parallel Applications](./running_parallel.md)**: Instructions for running multiple Hailo applications simultaneously, including vision and GenAI combinations.
+*   **[AI-Powered Development (Beta)](./agentic_development.md)**: Build Hailo apps using AI coding agents in GitHub Copilot, Claude Code, or Cursor.
