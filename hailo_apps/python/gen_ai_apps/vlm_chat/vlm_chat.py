@@ -8,6 +8,7 @@ import select
 import time
 import platform
 from typing import Optional, Callable, Any
+from pathlib import Path
 
 os.environ["QT_QPA_PLATFORM"] = 'xcb'
 
