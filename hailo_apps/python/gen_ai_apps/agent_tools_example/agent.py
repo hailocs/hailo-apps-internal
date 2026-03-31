@@ -821,7 +821,6 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--tool",
-        "-t",
         type=str,
         default=None,
         help="Tool to use (skips interactive selection). Use tool name (e.g., 'math', 'weather').",

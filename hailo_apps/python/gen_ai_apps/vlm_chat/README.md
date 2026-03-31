@@ -18,6 +18,26 @@ An interactive computer vision application using Hailo's Vision Language Model (
 - NumPy
 - Hailo Platform libraries
 
+## Installation
+
+### Linux
+Before running this example, ensure GenAI dependencies are installed:
+
+```bash
+# From the repository root directory
+pip install -e ".[gen-ai]"
+```
+### Windows
+Use a clean virtual environment before installing the dependencies:
+```bash
+py -m venv wind_venv
+.\wind_venv\Scripts\Activate.ps1
+pip install .\hailort-<version>-cp<python>-cp<python>-win_amd64.whl
+
+# From the repository root directory
+pip install -e ".[gen-ai]"
+```
+
 ## Files
 
 - `vlm_chat.py` - Main application with interactive video processing
