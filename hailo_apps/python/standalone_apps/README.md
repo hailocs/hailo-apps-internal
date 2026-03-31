@@ -10,4 +10,4 @@
 | `paddle_ocr`                    | Text detection and recognition with PaddleOCR                      |
 | `oriented_object_detection`     | Oriented object detection using YOLO11 OBB                         |
 | `speech_recognition`            | Speech recognition for Hailo-8/8L/10H                              |
-| `onnxrt_hailo_pipline`          | YOLO26 pose estimation/object detection with ONNX postprocessing   |
+| `yolo26`                        | YOLO26 pose estimation/object detection with ONNX postprocessing   |
