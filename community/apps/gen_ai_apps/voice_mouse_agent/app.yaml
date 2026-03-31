@@ -1,0 +1,15 @@
+name: voice_mouse_agent
+title: Voice Mouse Controller
+type: gen_ai
+hailo_arch: hailo10h
+description: >
+  Voice-controlled mouse agent. Uses Whisper STT on Hailo-10H to capture voice
+  commands and LLM on Hailo-10H to interpret them into mouse actions (move, click,
+  scroll, drag) executed via pyautogui.
+tags:
+  - agent
+  - voice
+  - mouse
+  - tool-calling
+  - whisper
+status: draft
