@@ -83,7 +83,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
                          self.recognition_batch_size, self.recognition_batch_size)
 
         # Set frame rate to 10FPS for better performance and reduced processing load
-        if self.frame_rate > 10:
+        if self.frame_rate is not None and self.frame_rate > 10:
             self.frame_rate = 10
             hailo_logger.info("OCR pipeline: Frame rate set to %d FPS", self.frame_rate)
 
