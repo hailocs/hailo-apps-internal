@@ -37,10 +37,10 @@ Verify all modules can be imported without errors.
 
 ```bash
 # Test each module independently
-python -c "from hailo_apps.python.gen_ai_apps.<app>.<module> import <Class>; print('OK')"
+python3 -c "from hailo_apps.python.gen_ai_apps.<app>.<module> import <Class>; print('OK')"
 
 # Test cross-module imports
-python -c "
+python3 -c "
 from hailo_apps.python.gen_ai_apps.<app>.module_a import ClassA
 from hailo_apps.python.gen_ai_apps.<app>.module_b import ClassB
 print('All imports OK')
@@ -62,15 +62,15 @@ Verify the app actually works.
 
 ```bash
 # CLI argument parsing
-python -m hailo_apps.python.gen_ai_apps.<app>.<main> --help
+python3 -m hailo_apps.python.gen_ai_apps.<app>.<main> --help
 # Expected: exit code 0, help text shows all expected arguments
 
 # Argument validation (should fail gracefully)
-python -m hailo_apps.python.gen_ai_apps.<app>.<main> --invalid-arg 2>&1
+python3 -m hailo_apps.python.gen_ai_apps.<app>.<main> --invalid-arg 2>&1
 # Expected: error message, not a traceback
 
 # Dry-run test (if supported)
-python -c "
+python3 -c "
 from hailo_apps.python.gen_ai_apps.<app>.<main> import <MainClass>
 # Instantiate without connecting to hardware
 # Verify the object can be created
@@ -142,12 +142,12 @@ runSubagent:
     1. STRUCTURAL: List all files in the directory, verify __init__.py exists
     
     2. IMPORTS: Run these commands in terminal:
-       python -c "from hailo_apps.python.gen_ai_apps.<app>.module_a import ClassA; print('OK')"
-       python -c "from hailo_apps.python.gen_ai_apps.<app>.module_b import ClassB; print('OK')"
-       python -c "from hailo_apps.python.gen_ai_apps.<app>.main import MainClass; print('OK')"
+       python3 -c "from hailo_apps.python.gen_ai_apps.<app>.module_a import ClassA; print('OK')"
+       python3 -c "from hailo_apps.python.gen_ai_apps.<app>.module_b import ClassB; print('OK')"
+       python3 -c "from hailo_apps.python.gen_ai_apps.<app>.main import MainClass; print('OK')"
     
     3. CLI: Run in terminal:
-       python -m hailo_apps.python.gen_ai_apps.<app>.main --help
+       python3 -m hailo_apps.python.gen_ai_apps.<app>.main --help
     
     4. CONVENTIONS: For each .py file, check:
        - No relative imports (grep "^from \." or "^import \.")

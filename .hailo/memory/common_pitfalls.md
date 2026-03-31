@@ -449,7 +449,7 @@ Always use `python3` in terminal commands, or first verify with `which python`.
 The `setup_env.sh` script activates the venv but does NOT alias `python` → `python3`.
 ```bash
 # ❌ Fails on fresh Ubuntu
-python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
 
 # ✅ Always works
 python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
@@ -512,3 +512,41 @@ assumptions (e.g., maybe the user wanted an interactive chat, not a monitor).
 **Rule**: Guided questions are MANDATORY unless the user uses trigger phrases
 ("just build it", "use defaults", "skip questions"). Inferring from context
 is not a valid reason to skip them.
+
+### Background Terminal Does Not Inherit Venv
+When using `isBackground=true` (or any mechanism that spawns a new shell),
+the virtual environment and `PYTHONPATH` from the foreground terminal are
+**not inherited**. The new shell starts fresh.
+```bash
+# ❌ Foreground terminal has venv active, but background terminal does not
+# Terminal 1 (foreground): source setup_env.sh  ← venv active here
+# Terminal 2 (background): python3 my_app.py    ← ModuleNotFoundError!
+
+# ✅ Always chain source + run in the same background command
+source setup_env.sh && python3 my_app.py --input usb
+```
+**Rule**: For any background terminal launch, always prepend
+`source setup_env.sh &&` before the Python command. Never assume the venv
+carries over from another terminal session.
+
+### Template Imports Left Behind After Subclassing
+When building an app that **subclasses** an existing pipeline class (e.g.,
+`GStreamerPoseEstimationApp`), the SKILL.md template includes imports for the
+base `GStreamerApp` pattern (`GStreamerApp`, `handle_list_models_flag`, etc.)
+that are no longer needed. Agents copy these imports, then subclass a
+domain-specific class instead — leaving the original template imports unused.
+```python
+# ❌ Template imports not needed when subclassing GStreamerPoseEstimationApp
+from hailo_apps.python.core.common.core import handle_list_models_flag  # unused
+from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp  # unused
+
+# ✅ Only import what you actually use
+from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
+from hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_pipeline import (
+    GStreamerPoseEstimationApp,
+)
+```
+**Rule**: After writing a subclassed app, review imports against which symbols
+are actually used. Remove anything from the base template that the subclass
+renders unnecessary. The validation script catches these (`No unused imports`
+check), but cleaning them before validation saves a round trip.

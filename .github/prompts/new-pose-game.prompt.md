@@ -44,7 +44,7 @@ You are building a **pose estimation game** — an interactive GStreamer pipelin
    g. Convert: `cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)` → `user_data.set_frame(frame)`
 4. **Add `app.yaml`** with `type: pipeline`
 5. **Add `run.sh`** wrapper
-6. **Validate** with `python .github/scripts/validate_app.py <dir> --smoke-test`
+6. **Validate** with `python3 .github/scripts/validate_app.py <dir> --smoke-test`
 
 ### Key Imports
 

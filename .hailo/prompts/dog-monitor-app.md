@@ -133,7 +133,7 @@ Keyword mapping for classify_response:
   default → IDLE
 
 After creating, validate:
-  python -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.event_tracker import EventTracker, EventType, Event; print('OK')"
+  python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.event_tracker import EventTracker, EventType, Event; print('OK')"
 ```
 
 #### Main agent: Build dog_monitor.py
@@ -170,8 +170,8 @@ What is the dog doing right now? Describe the current activity in one sentence.
 
 **PHASE 2 GATE** — run and verify:
 ```bash
-python -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
-python -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.event_tracker import EventTracker, EventType, Event; print('Phase 2 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor_orch.event_tracker import EventTracker, EventType, Event; print('Phase 2 PASS')"
 ```
 If either fails → read the error, check `.hailo/memory/common_pitfalls.md`, fix, re-run.
 
@@ -181,7 +181,7 @@ Run these checks sequentially. ALL must pass.
 
 **Check 1: CLI works**
 ```bash
-python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --help
 ```
 Expected: Shows --input, --interval, --save-events, --events-dir arguments. Exit code 0.
 
@@ -234,13 +234,13 @@ track dog activities. Built on the VLM Chat backend.
 
 ## Usage
 Basic:
-  python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb
+  python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb
 
 With event saving:
-  python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb --save-events --events-dir ./dog_events
+  python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb --save-events --events-dir ./dog_events
 
 Custom interval (every 5 seconds):
-  python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb --interval 5
+  python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb --interval 5
 
 ## Activity Categories
 DRINKING, EATING, SLEEPING, PLAYING, BARKING, AT_DOOR, IDLE, NO_DOG
@@ -262,14 +262,14 @@ If any new patterns or pitfalls were discovered during implementation, add them 
 test -f hailo_apps/python/gen_ai_apps/dog_monitor_orch/README.md && echo "PASS"
 
 # Final import validation
-python -c "
+python3 -c "
 from hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor import DogMonitorApp
 from hailo_apps.python.gen_ai_apps.dog_monitor_orch.event_tracker import EventTracker, EventType, Event
 print('ALL GATES PASSED — Dog Monitor app is ready')
 "
 
 # Final CLI validation
-python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --help
 ```
 
 Mark ALL todos complete. Report deliverables to the user.
@@ -308,7 +308,7 @@ Plus one-line addition to `defines.py`.
 
 Runnable immediately:
 ```bash
-python -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_orch.dog_monitor --input usb
 ```
 
 ## Session Stats (Agent MUST print at the end)

@@ -82,9 +82,9 @@ Parse the VLM response to classify events into categories using keyword matching
 - App description
 - Requirements (Hailo-10H, camera)
 - Usage examples:
-  - Basic: `python -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb`
-  - With event saving: `python -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb --save-events --events-dir ./dog_events`
-  - Custom interval: `python -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb --interval 5`
+  - Basic: `python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb`
+  - With event saving: `python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb --save-events --events-dir ./dog_events`
+  - Custom interval: `python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb --interval 5`
 - Sample output showing event log and summary
 
 ---
@@ -105,7 +105,7 @@ Plus a one-line addition to `defines.py`.
 
 The app should be immediately runnable with:
 ```bash
-python -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor_flat.dog_monitor --input usb
 ```
 
 ## Session Stats (Agent MUST print at the end)

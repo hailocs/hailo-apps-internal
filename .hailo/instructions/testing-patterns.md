@@ -6,7 +6,7 @@
 
 - **Framework**: pytest
 - **Config**: `tests/conftest.py` with custom markers and fixtures
-- **Runner**: `python -m pytest tests/` or `./run_tests.sh`
+- **Runner**: `python3 -m pytest tests/` or `./run_tests.sh`
 
 ## Test Markers
 
@@ -91,14 +91,14 @@ These are automatically handled by `conftest.py`.
 
 ```bash
 # All tests
-python -m pytest tests/
+python3 -m pytest tests/
 
 # Sanity only
-python -m pytest tests/ -m sanity
+python3 -m pytest tests/ -m sanity
 
 # Specific test file
-python -m pytest tests/test_sanity_check.py -v
+python3 -m pytest tests/test_sanity_check.py -v
 
 # Skip hardware-dependent tests
-python -m pytest tests/ -m "not requires_device"
+python3 -m pytest tests/ -m "not requires_device"
 ```

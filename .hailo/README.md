@@ -190,10 +190,10 @@ This directory is the source of truth. Platform-specific files are **generated**
 vim .hailo/skills/hl-build-vlm-app.md
 
 # Regenerate all platform configs
-python .hailo/scripts/generate_platforms.py --generate
+python3 .hailo/scripts/generate_platforms.py --generate
 
 # Verify nothing is stale
-python .hailo/scripts/generate_platforms.py --check
+python3 .hailo/scripts/generate_platforms.py --check
 
 # Commit both source and generated output
 git add .hailo/ .github/ .claude/ .cursor/ CLAUDE.md

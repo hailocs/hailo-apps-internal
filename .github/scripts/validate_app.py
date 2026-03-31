@@ -285,6 +285,26 @@ def check_unreachable_code(app_dir, result):
         lines = content.split("\n")
         issues = []
 
+        # Build a map of (enclosing_class, func_name) to detect true duplicates.
+        # Methods with the same name in DIFFERENT classes (e.g., __init__, draw)
+        # are NOT duplicates. Only same name in the same scope is a duplicate.
+        current_class = None
+        func_scope_map = {}  # (class_name_or_None, func_name) -> [line_numbers]
+        for li, l in enumerate(lines, 1):
+            s = l.strip()
+            ind = len(l) - len(l.lstrip())
+            if s.startswith("class ") and (":" in s):
+                current_class = s.split("(")[0].split(":")[0].replace("class ", "")
+            elif ind == 0 and s and not s.startswith(("@", "#", "def ")):
+                # Module-level non-class, non-def code resets class context
+                pass
+            if s.startswith("def "):
+                fn = s.split("(")[0].replace("def ", "")
+                # If indented, it's a method in current_class; if indent=0, module-level
+                scope = current_class if ind > 0 else None
+                key = (scope, fn)
+                func_scope_map.setdefault(key, []).append(li)
+
         for i, line in enumerate(lines, 1):
             stripped = line.strip()
             # Code after unconditional return/break/continue/sys.exit at same indent
@@ -305,13 +325,11 @@ def check_unreachable_code(app_dir, result):
                             issues.append(f"line {i}: code after '{stripped}' may be unreachable")
                         break
 
-            # Duplicate function definitions (agent rewrote a function but left the old one)
-            if stripped.startswith("def "):
-                func_name = stripped.split("(")[0].replace("def ", "")
-                # Count occurrences of this function definition
-                count = sum(1 for l in lines if l.strip().startswith(f"def {func_name}("))
-                if count > 1:
-                    issues.append(f"line {i}: duplicate function definition '{func_name}'")
+        # Check for duplicate functions within the same scope
+        for (scope, fn), line_nums in func_scope_map.items():
+            if len(line_nums) > 1:
+                for ln in line_nums:
+                    issues.append(f"line {ln}: duplicate function definition '{fn}'")
 
         # Deduplicate
         issues = list(dict.fromkeys(issues))

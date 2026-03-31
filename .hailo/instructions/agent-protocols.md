@@ -48,10 +48,10 @@ Each phase produces deliverables. Each deliverable has a validation command. Run
 |---|---|---|
 | Directory created | `ls <app_dir>/__init__.py` | File exists |
 | Constants registered | `grep "APP_NAME" hailo_apps/python/core/common/defines.py` | Constant found |
-| Module importable | `python -c "from hailo_apps.python... import X; print('OK')"` | `OK` |
-| CLI works | `python -m <module> --help` | Help text, exit 0 |
+| Module importable | `python3 -c "from hailo_apps.python... import X; print('OK')"` | `OK` |
+| CLI works | `python3 -m <module> --help` | Help text, exit 0 |
 | No lint errors | `get_errors` tool | Empty or acceptable |
-| Tests pass | `python -m pytest tests/ -k <test_name>` | All pass |
+| Tests pass | `python3 -m pytest tests/ -k <test_name>` | All pass |
 
 ### Gate Failure Protocol
 
@@ -318,7 +318,7 @@ ONLY read reference source code when:
 ### 10c: validate_app.py Is the Single Gate
 
 ```
-DO    run: python .github/scripts/validate_app.py <app_dir> --smoke-test
+DO    run: python3 .github/scripts/validate_app.py <app_dir> --smoke-test
 DON'T run: manual grep checks, individual import tests, manual lint
 
 The validation script checks 20+ things:

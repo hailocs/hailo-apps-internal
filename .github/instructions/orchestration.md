@@ -82,7 +82,7 @@ runSubagent: "Read these files and return a condensed context brief:
 - [ ] App registered: constant in `defines.py`
 - [ ] Directory created with `__init__.py`
 - [ ] All file stubs created with class/function signatures
-- [ ] Import paths validated (run `python -c "from hailo_apps.python... import ..."`)
+- [ ] Import paths validated (run `python3 -c "from hailo_apps.python... import ..."`)
 - [ ] Todo list reflects all remaining work
 
 ### Phase 2: Core Implementation
@@ -106,7 +106,7 @@ Sub-agent B: "Implement the main app class in dog_monitor.py following the VLM c
 - [ ] `get_logger(__name__)` used everywhere
 - [ ] Signal handling (SIGINT) implemented for graceful shutdown
 - [ ] No hardcoded paths or magic numbers
-- [ ] Run `python -c "from hailo_apps.python.gen_ai_apps.<app> import *"` SUCCESS
+- [ ] Run `python3 -c "from hailo_apps.python.gen_ai_apps.<app> import *"` SUCCESS
 
 ### Phase 3: Integration & Validation
 
@@ -114,13 +114,13 @@ Sub-agent B: "Implement the main app class in dog_monitor.py following the VLM c
 
 **Tasks**:
 1. Run lint/type checks on all new files
-2. Verify CLI argument parsing works: `python -m <module> --help`
+2. Verify CLI argument parsing works: `python3 -m <module> --help`
 3. Cross-reference with memory files for known pitfalls
 4. Check that error messages are user-friendly
 5. Verify resource cleanup (VDevice release, camera close, file handles)
 
 **Phase Gate** checklist:
-- [ ] `python -m hailo_apps.python.gen_ai_apps.<app>.<main> --help` works
+- [ ] `python3 -m hailo_apps.python.gen_ai_apps.<app>.<main> --help` works
 - [ ] No lint errors (`get_errors` tool returns clean)
 - [ ] Signal handler prints session summary
 - [ ] All resources cleaned up in `finally` blocks
@@ -234,7 +234,7 @@ runSubagent:
     Create the file using create_file tool. Return the file path and line count.
 
     ## Validation
-    After creating, run: python -c "from hailo_apps.python.gen_ai_apps.dog_monitor.event_tracker import EventTracker, EventType, Event; print('OK')"
+    After creating, run: python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.event_tracker import EventTracker, EventType, Event; print('OK')"
 ```
 
 ### Example: Validation Sub-Agent
@@ -247,8 +247,8 @@ runSubagent:
     Validate the dog_monitor application for correctness and convention compliance.
 
     ## Checks to Perform
-    1. Run: python -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp"
-    2. Run: python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+    1. Run: python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp"
+    2. Run: python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
     3. Use get_errors tool on all .py files in the dog_monitor directory
     4. Verify these conventions in each .py file:
        - All imports are absolute (from hailo_apps.python...)
@@ -304,11 +304,11 @@ Between each phase, run explicit validation:
 **For official apps** (in `hailo_apps/python/`):
 ```python
 # After Phase 1:
-python -c "from hailo_apps.python.gen_ai_apps.dog_monitor import __init__; print('Phase 1 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor import __init__; print('Phase 1 PASS')"
 # After Phase 2:
-python -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
 # After Phase 3:
-python -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
 ```
 
 ### Step 3: Recover from Failures

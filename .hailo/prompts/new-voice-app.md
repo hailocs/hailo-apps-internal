@@ -42,7 +42,7 @@ Create files in `hailo_apps/python/gen_ai_apps/<app_name>/`:
 
 Validate:
 ```bash
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --help
+python3 -m hailo_apps.python.gen_ai_apps.<app_name>.<app_name> --help
 grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/<app_name>/*.py
 # Optional: test audio system
-python -m hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot
+python3 -m hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot

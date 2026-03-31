@@ -124,7 +124,7 @@ This takes 30 seconds and prevents validation failures. The validation script ch
 ### Phase 5: Validate
 Run the validation script (static checks + runtime smoke tests):
 ```bash
-python .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
+python3 .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
 
 The validation script is the **single gate check** — it replaces all manual grep/import/lint checks:
@@ -141,10 +141,10 @@ Present the completed app with:
 **How to Run** — show the ACTUAL shell commands to run the app, not just file edits. Always include:
 ```bash
 # Basic usage (via run.sh)
-python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
+python3 hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
 
 # With custom interval
-python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb --interval 15
+python3 hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb --interval 15
 
 # Or directly with PYTHONPATH
 python3 -m hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
@@ -178,10 +178,10 @@ python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_ap
 **Step 2: Launch the app**
 ```bash
 cd <repo_root>
-python hailo_apps/python/<type>/<app_name>/<app_name>.py --input <video_file_path>
+source setup_env.sh && python3 hailo_apps/python/<type>/<app_name>/<app_name>.py --input <video_file_path>
 ```
 
-Run this in a background terminal so the user can see the video output. The app will display the camera feed with overlay. If the user provided `--interval`, pass it through.
+Run this in a background terminal so the user can see the video output. **CRITICAL**: Background terminals spawn a new shell without the venv — always chain `source setup_env.sh &&` before the python command. If the user provided `--interval`, pass it through.
 
 **IMPORTANT**: If any environment check fails, do NOT launch. Report the failure clearly and stop.
 

@@ -178,14 +178,14 @@ ls -la hailo_apps/python/gen_ai_apps/<app_name>/
 # Expect: __init__.py and any stub files
 
 # Phase 2 Gate: Code is importable
-python -c "
+python3 -c "
 from hailo_apps.python.gen_ai_apps.<app_name>.<main_module> import <MainClass>
 print('Import OK')
 "
 # Expect: "Import OK"
 
 # Phase 3 Gate: CLI works
-python -m hailo_apps.python.gen_ai_apps.<app_name>.<main_module> --help
+python3 -m hailo_apps.python.gen_ai_apps.<app_name>.<main_module> --help
 # Expect: Help text with all expected arguments
 
 # Phase 4 Gate: Everything is documented
@@ -223,10 +223,10 @@ Phase 1: Registration (main agent)
 Phase 2: Implementation
   ├── runSubagent: Build event_tracker.py (independent)
   ├── Main agent: Build dog_monitor.py (uses Backend + EventTracker)
-  └── GATE: python -c "from ...dog_monitor import DogMonitorApp" ✓
+  └── GATE: python3 -c "from ...dog_monitor import DogMonitorApp" ✓
 
 Phase 3: Validation
-  ├── Terminal: python -m ...dog_monitor --help
+  ├── Terminal: python3 -m ...dog_monitor --help
   ├── get_errors on all .py files
   ├── Convention checklist (imports, logger, paths)
   └── GATE: All checks pass ✓

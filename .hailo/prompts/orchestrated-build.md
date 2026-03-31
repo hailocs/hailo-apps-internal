@@ -92,13 +92,13 @@ For each independent module → delegate to a sub-agent:
 For dependent modules → implement in main agent using context brief.
 
 PHASE 2 GATE:
-  python -c "from hailo_apps.python.<app_category>.<app_name>.<module> import <Class>; print('OK')"
+  python3 -c "from hailo_apps.python.<app_category>.<app_name>.<module> import <Class>; print('OK')"
   (run for each module)
 
 ### PHASE 3: Integration & Validation
 
 Check 1 — CLI validation:
-  python -m hailo_apps.python.<app_category>.<app_name>.<main_module> --help
+  python3 -m hailo_apps.python.<app_category>.<app_name>.<main_module> --help
 
 Check 2 — Convention compliance:
   grep -rn "^from \.\|^import \." hailo_apps/python/<app_category>/<app_name>/*.py  → EMPTY
@@ -118,8 +118,8 @@ Main agent: Add recipe to .hailo/knowledge/knowledge_base.yaml if applicable.
 
 PHASE 4 GATE (FINAL):
   test -f <app_dir>/README.md && echo "PASS"
-  python -c "from hailo_apps.python.<app_category>.<app_name>.<main_module> import <MainClass>; print('FINAL PASS')"
-  python -m hailo_apps.python.<app_category>.<app_name>.<main_module> --help
+  python3 -c "from hailo_apps.python.<app_category>.<app_name>.<main_module> import <MainClass>; print('FINAL PASS')"
+  python3 -m hailo_apps.python.<app_category>.<app_name>.<main_module> --help
 
 Mark all todos complete. Report deliverables.
 ```
@@ -211,7 +211,7 @@ Build a "<APP_DISPLAY_NAME>" application that <description>.
 - hailo_apps/python/<category>/<app_name>/README.md
 
 ### Acceptance Criteria:
-- [ ] `python -m hailo_apps.python.<category>.<app_name>.<main_module> --help` exits 0
+- [ ] `python3 -m hailo_apps.python.<category>.<app_name>.<main_module> --help` exits 0
 - [ ] No relative imports
 - [ ] Uses get_logger(__name__)
 - [ ] Uses resolve_hef_path() for models

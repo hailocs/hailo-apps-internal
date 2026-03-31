@@ -137,7 +137,7 @@ if __name__ == "__main__":
 grep -rn "^from \.\|^import \." hailo_apps/python/standalone_apps/my_standalone_app/*.py
 
 # CLI works
-python -m hailo_apps.python.standalone_apps.my_standalone_app.my_standalone_app --help
+python3 -m hailo_apps.python.standalone_apps.my_standalone_app.my_standalone_app --help
 ```
 
 ## Critical Conventions

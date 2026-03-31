@@ -130,7 +130,7 @@ grep -rn "^from \.\|^import \." hailo_apps/python/pipeline_apps/my_pipeline_app/
 grep -rn "get_logger" hailo_apps/python/pipeline_apps/my_pipeline_app/*.py
 
 # CLI works
-python -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
+python3 -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
 ```
 
 ## Critical Conventions

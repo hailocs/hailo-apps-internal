@@ -140,7 +140,7 @@ if __name__ == "__main__":
 
 Run the automated validation script (includes static checks + runtime smoke tests):
 ```bash
-python .github/scripts/validate_app.py hailo_apps/python/gen_ai_apps/<app_name> --smoke-test
+python3 .github/scripts/validate_app.py hailo_apps/python/gen_ai_apps/<app_name> --smoke-test
 ```
 
 ### Step 5: Write README

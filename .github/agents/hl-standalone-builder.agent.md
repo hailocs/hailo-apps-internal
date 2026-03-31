@@ -170,7 +170,7 @@ This takes 30 seconds and prevents validation failures. The validation script ch
 
 Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
 ```bash
-python .github/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
+python3 .github/scripts/validate_app.py hailo_apps/python/<type>/<app_name> --smoke-test
 ```
 
 **Do NOT run manual grep checks** — the script catches everything (20+ checks in one command).

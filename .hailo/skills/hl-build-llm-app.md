@@ -126,7 +126,7 @@ if __name__ == "__main__":
 grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/my_llm_app/*.py
 
 # CLI works
-python -m hailo_apps.python.gen_ai_apps.my_llm_app.my_llm_app --help
+python3 -m hailo_apps.python.gen_ai_apps.my_llm_app.my_llm_app --help
 ```
 
 ## Critical Conventions

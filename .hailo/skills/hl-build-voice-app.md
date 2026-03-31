@@ -146,10 +146,10 @@ if __name__ == "__main__":
 grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/my_voice_app/*.py
 
 # CLI works
-python -m hailo_apps.python.gen_ai_apps.my_voice_app.my_voice_app --help
+python3 -m hailo_apps.python.gen_ai_apps.my_voice_app.my_voice_app --help
 
 # Audio system check
-python -m hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot
+python3 -m hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot
 ```
 
 ## Critical Conventions
