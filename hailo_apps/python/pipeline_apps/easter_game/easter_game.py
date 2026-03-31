@@ -190,6 +190,18 @@ class EasterGameCallback(app_callback_class):
         self.fh = 0
 
     # --- helpers ---
+    def set_frame(self, frame):
+        """Override to drain stale frames so display always shows the latest."""
+        while not self.frame_queue.empty():
+            try:
+                self.frame_queue.get_nowait()
+            except Exception:
+                break
+        try:
+            self.frame_queue.put_nowait(frame)
+        except Exception:
+            pass
+
     def _get_bg(self, w, h):
         """Return resized background (RGB) or black frame."""
         if self.fw != w or self.fh != h or self.background is None:
