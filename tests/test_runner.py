@@ -386,6 +386,9 @@ def _generate_cases_for_app(
 
         for model in model_list:
             for run_method in run_methods:
+                # Skip CLI tests for apps without a CLI entry point
+                if run_method == "cli" and not app_def.cli:
+                    continue
                 for test_suite in test_suites:
                     flags = resolve_test_suite_flags(
                         test_suite, app_name, architecture, model
