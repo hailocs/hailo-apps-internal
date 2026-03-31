@@ -50,6 +50,11 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
     pip install -r requirements.txt
     ```
 
+3. download artifacts:
+    ```powershell
+    download_resources.sh
+    ```
+
 3. Set required API key:
     ```shell script
     export OPENWEATHER_API_KEY="your_key_here"
@@ -93,13 +98,17 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
     ```powershell
     pip install -r requirements.txt
     ```
+3. download artifacts:
+    ```powershell
+    download_resources.ps1
+    ```
 
-3. Set required API key:
+4. Set required API key:
     ```powershell
     $env:OPENWEATHER_API_KEY="your_key_here"
     ```
 
-4. (Optional) Pre-download HEF resources:
+5. (Optional) Pre-download HEF resources:
     ```powershell
     python -m hailo_apps.installation.download_resources --group v2a_demo
     ```

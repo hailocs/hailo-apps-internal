@@ -1027,7 +1027,7 @@ v2a_demo:
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
         - name: all_minilm_l6_v2
-          source: mz
+          source: s3
 
 clip: &clip_app
   models:

@@ -54,6 +54,13 @@ class WakeWordListener:
         if not path.exists():
             raise FileNotFoundError(f"Wake word model not found: {wake_word_model}")
 
+        models_dir = Path(openwakeword.__file__).parent / "resources" / "models"
+        melspec = models_dir / "melspectrogram.onnx"
+        embed = models_dir / "embedding_model.onnx"
+
+        if not melspec.exists() or not embed.exists():
+            openwakeword.utils.download_models()
+
         self._wake_word_model = openwakeword.Model([wake_word_model])
         self._wake_word_name = path.stem
         self._vad = VoiceActivityDetector(sample_rate=SAMPLE_RATE, aggressiveness=VAD_AGGRESSIVENESS)

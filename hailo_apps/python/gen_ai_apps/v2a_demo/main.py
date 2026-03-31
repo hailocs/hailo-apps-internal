@@ -12,6 +12,14 @@ from pathlib import Path
 from pipeline import V2APipeline
 from listener import WakeWordListener
 
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
 RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
 
 

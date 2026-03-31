@@ -27,3 +27,6 @@ json-repair
 
 # Tokenizer for tool selector (sentence-transformer)
 transformers
+
+psutil
+setuptools<82

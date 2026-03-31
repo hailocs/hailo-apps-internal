@@ -7,6 +7,14 @@ import numpy as np
 from hailo_platform import VDevice
 from hailo_platform.genai import VLM
 
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
 from hailo_apps.python.core.common.core import handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.defines import VLM_CHAT_APP, SHARED_VDEVICE_GROUP_ID, HAILO10H_ARCH, REPO_ROOT
 from hailo_apps.python.core.common.hailo_logger import get_logger
