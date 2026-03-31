@@ -323,8 +323,8 @@ the target lines with `read_file` and copy the exact whitespace. Include 3-5
 context lines from the actual file output, not from memory.
 
 ### 8. Validation Script Is the Single Gate Check
-The `validate_app.py` script runs ~15 static checks (file existence, syntax, imports,
-conventions, README quality). With `--smoke-test`, it also runs CLI `--help` and module
+The `validate_app.py` script runs 11 static checks (file existence, syntax, imports,
+conventions, unused imports, unreachable code, README quality). With `--smoke-test`, it also runs 2 runtime checks: CLI `--help` and module
 import tests (gracefully skipping on non-Hailo systems). If all checks pass, the app is
 convention-compliant. Run it once at the end instead of manual grep checks — it catches everything.
 

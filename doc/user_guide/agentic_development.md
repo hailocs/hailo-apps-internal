@@ -49,11 +49,11 @@ The agent will:
 |-------|----------|----------|
 | **hl-app-builder** | Master router — describe any app, get routed to the right specialist | All |
 | **hl-vlm-builder** | Vision-Language Model apps (monitoring, scene analysis, visual Q&A) | Hailo-10H |
-| **hl-pipeline-builder** | GStreamer video pipelines (detection, pose, segmentation, tracking) | Hailo-8, 8L, 10H |
-| **hl-standalone-builder** | OpenCV + HailoInfer apps (batch processing, custom inference) | Hailo-8, 8L, 10H |
+| **hl-pipeline-builder** | GStreamer video pipelines (detection, pose, segmentation, tracking) | All |
+| **hl-standalone-builder** | OpenCV + HailoInfer apps (batch processing, custom inference) | All |
 | **hl-llm-builder** | LLM chat and text generation apps | Hailo-10H |
 | **hl-agent-builder** | Agents with LLM tool calling (smart assistants, API integrators) | Hailo-10H |
-| **hl-voice-builder** | Voice assistants with Whisper STT + Piper TTS | Hailo-10H |
+| **hl-voice-builder** | Voice assistants with Whisper STT + Piper TTS | All |
 
 ### When to Use the App Builder vs. a Specialist
 
@@ -72,8 +72,6 @@ Each agent follows a structured workflow:
 4. **Phase 4: Validate** — Checks conventions, imports, CLI, runs automated validation
 5. **Phase 5: Report** — Presents what was built, how to run it, what it does
 6. **Phase 6: Launch** — If you provide a video file or say "launch", runs the app automatically
-
-> **Tip:** If you want to skip the interactive questions, say "just build it" or "use defaults" and the agent will proceed with sensible defaults.
 
 ### What Gets Created
 
@@ -98,7 +96,7 @@ python hailo_apps/python/<type>/<app_name>/<app_name>.py --input usb
 Before submitting, run the automated validator:
 
 ```bash
-# Static checks only (~15 convention checks)
+# Static checks only (11 convention checks)
 python .hailo/scripts/validate_app.py hailo_apps/python/<type>/<app_name>
 
 # Static checks + runtime smoke tests (CLI --help, module import)
@@ -124,8 +122,8 @@ The agentic knowledge lives in `.hailo/` and is automatically adapted for each I
 
 | Script | Purpose |
 |--------|---------|
-| `validate_app.py` | Validate app conventions (15 static checks + `--smoke-test` runtime checks) |
-| `validate_framework.py` | Cross-reference integrity: routing table paths, file tree accuracy, `.hailo/` leak detection, agent handoffs |
+| `validate_app.py` | Validate app conventions (11 static checks + 2 `--smoke-test` runtime checks) |
+| `validate_framework.py` | Cross-reference integrity: routing table paths, file tree accuracy, `.hailo/` leak detection, agent handoffs, required sections, platform structural checks |
 | `generate_platforms.py` | Sync `.hailo/` → `.github/`, `.claude/`, `.cursor/` (includes cross-ref validation via `--check`) |
 
 All scripts live in `.hailo/scripts/` (source of truth) and are mirrored to `.github/scripts/`.

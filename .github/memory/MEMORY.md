@@ -30,7 +30,7 @@
 - **Guided questions**: VLM builder agent MUST ask guided questions (app style, input source) even when user's request seems specific — fast-path only on explicit "just build it"
 - **python3 not python**: Ubuntu has no `python` binary; always use `python3` in commands
 - **YAML edits**: Whitespace-exact matching required; re-read target lines if first edit fails
-- **Validation script**: `validate_app.py` runs ~15 static checks + optional runtime smoke tests (`--smoke-test`) — single gate replaces manual greps
+- **Validation script**: `validate_app.py` runs 11 static checks + 2 optional runtime smoke tests (`--smoke-test`) — single gate replaces manual greps
 - **Auto-approve**: Add `"chat.tools.autoApprove": true` to `.vscode/settings.json` for agentic builds
 - **VLM inference timing**: ~4.7s avg on Hailo-10H with Qwen2-VL-2B at MAX_TOKENS=300
 - **Short videos**: Use `--interval 5` for clips under 120s to get meaningful observation count

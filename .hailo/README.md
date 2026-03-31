@@ -206,8 +206,8 @@ Automation scripts for validation, curation, platform sync, and publishing.
 
 | Script | Who runs it | Description |
 |--------|-----------|-------------|
-| `validate_app.py` | Maintainer / agent | Static convention checks (~15 checks: files, syntax, imports, logger, SIGINT, README quality) |
+| `validate_app.py` | Maintainer / agent | Static convention checks (11 checks: files, syntax, imports, logger, SIGINT, unused imports, unreachable code, README quality) |
 | `validate_app.py --smoke-test` | Maintainer / agent | Adds runtime checks: CLI `--help` and module import (gracefully skips on non-Hailo systems) |
 | `generate_platforms.py --generate` | Maintainer | Syncs `.hailo/` → `.github/` + `.claude/` + `.cursor/` |
 | `generate_platforms.py --check` | CI / Maintainer | Verifies generated files are in sync with `.hailo/` + runs cross-reference validation |
-| `validate_framework.py` | CI / Maintainer | Cross-reference integrity: routing table paths, file tree accuracy, .hailo/ leak detection, agent handoffs, required sections |
+| `validate_framework.py` | CI / Maintainer | Cross-reference integrity: routing table paths, file tree accuracy, .hailo/ leak detection, agent handoffs, required sections, platform structural checks, source file integrity |
