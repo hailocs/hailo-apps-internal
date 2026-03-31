@@ -1,7 +1,6 @@
 ---
 name: HL Agent Builder
-description: Build agent applications with LLM tool calling for Hailo-10H. Create
-  AI agents that can execute tools, query APIs, and perform multi-step reasoning.
+description: Build agent applications with LLM tool calling for Hailo-10H. Create AI agents that can execute tools, query APIs, and perform multi-step reasoning.
 argument-hint: e.g., smart home controller agent
 tools:
 - agent/runSubagent
@@ -31,13 +30,12 @@ tools:
 - web/githubRepo
 handoffs:
 - label: Add Voice Input
-  agent: hl-voice-builder
+  agent: HL Voice Builder
   prompt: Add voice input/output to the agent app that was just built.
   send: false
 - label: Review & Test
   agent: agent
-  prompt: Review the agent app that was just built. Run validation checks and report
-    issues.
+  prompt: Review the agent app that was just built. Run validation checks and report issues.
   send: false
 ---
 # Hailo Agent App Builder

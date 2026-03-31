@@ -1,7 +1,6 @@
 ---
 name: HL Voice Builder
-description: Build voice assistant applications for Hailo-10H with speech-to-text
-  (Whisper on Hailo) and text-to-speech (Piper on CPU). Add voice to any Hailo app.
+description: Build voice assistant applications for Hailo-10H with speech-to-text (Whisper on Hailo) and text-to-speech (Piper on CPU). Add voice to any Hailo app.
 argument-hint: e.g., voice-controlled assistant
 tools:
 - agent/runSubagent
@@ -32,8 +31,7 @@ tools:
 handoffs:
 - label: Review & Test
   agent: agent
-  prompt: Review the voice app that was just built. Run validation checks and report
-    issues.
+  prompt: Review the voice app that was just built. Run validation checks and report issues.
   send: false
 ---
 # Hailo Voice App Builder

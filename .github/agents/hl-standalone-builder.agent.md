@@ -1,7 +1,6 @@
 ---
 name: HL Standalone Builder
-description: Build standalone inference applications using HailoInfer + OpenCV. Direct
-  model inference without GStreamer — best for custom processing pipelines.
+description: Build standalone inference applications using HailoInfer + OpenCV. Direct model inference without GStreamer — best for custom processing pipelines.
 argument-hint: e.g., YOLOv8 detection on video files
 tools:
 - agent/runSubagent
@@ -32,8 +31,7 @@ tools:
 handoffs:
 - label: Review & Test
   agent: agent
-  prompt: Review the standalone app that was just built. Run validation checks and
-    report issues.
+  prompt: Review the standalone app that was just built. Run validation checks and report issues.
   send: false
 ---
 # Hailo Standalone App Builder

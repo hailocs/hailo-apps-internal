@@ -1,7 +1,6 @@
 ---
 name: HL App Builder
-description: Build any Hailo AI application. I'll help you choose the right architecture,
-  plan the build, and route you to the specialist builder — or build it myself.
+description: Build any Hailo AI application. I'll help you choose the right architecture, plan the build, and route you to the specialist builder — or build it myself.
 argument-hint: e.g., person detection pipeline
 tools:
 - agent/runSubagent
@@ -31,30 +30,27 @@ tools:
 - web/githubRepo
 handoffs:
 - label: Build VLM App
-  agent: hl-vlm-builder
+  agent: HL VLM Builder
   prompt: Build a VLM application based on the plan we just agreed on.
   send: false
 - label: Build Pipeline App
-  agent: hl-pipeline-builder
-  prompt: Build a GStreamer pipeline application based on the plan we just agreed
-    on.
+  agent: HL Pipeline Builder
+  prompt: Build a GStreamer pipeline application based on the plan we just agreed on.
   send: false
 - label: Build Standalone App
-  agent: hl-standalone-builder
-  prompt: Build a standalone inference application based on the plan we just agreed
-    on.
+  agent: HL Standalone Builder
+  prompt: Build a standalone inference application based on the plan we just agreed on.
   send: false
 - label: Build LLM App
-  agent: hl-llm-builder
+  agent: HL LLM Builder
   prompt: Build an LLM chat application based on the plan we just agreed on.
   send: false
 - label: Build Agent App
-  agent: hl-agent-builder
-  prompt: Build an agent application with tool calling based on the plan we just agreed
-    on.
+  agent: HL Agent Builder
+  prompt: Build an agent application with tool calling based on the plan we just agreed on.
   send: false
 - label: Build Voice App
-  agent: hl-voice-builder
+  agent: HL Voice Builder
   prompt: Build a voice assistant application based on the plan we just agreed on.
   send: false
 ---
