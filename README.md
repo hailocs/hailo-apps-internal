@@ -6,15 +6,21 @@ High performance AI applications for Hailo accelerators, including GStreamer pip
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps)
 
-
 ## Supported Platforms and Devices
 | Platforms | Accelerators |
 |---|---|
 | ![Raspberry Pi](https://img.shields.io/badge/Raspberry-Pi%205-red?logo=raspberrypi&logoColor=white) ![Ubuntu](https://img.shields.io/badge/Ubuntu-x86__64-E95420?logo=ubuntu&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-blue?logo=windows&logoColor=white) | ![Hailo-8](https://img.shields.io/badge/Hailo-8-00A4EF?logoColor=white) ![Hailo-8L](https://img.shields.io/badge/Hailo-8L-00A4EF?logoColor=white) ![Hailo-10H](https://img.shields.io/badge/Hailo-10H-00A4EF?logoColor=white) |
 
-## 🤖 AI-Powered Development (Beta)
+## AI-Powered Development (Beta)
 
-Build complete Hailo applications using natural language - describe what you want and AI coding agents generate production-ready code, validate conventions, and launch your app. Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
+Use AI coding agents to quickly create Hailo applications. Just describe your idea and the agent builds, validates, and runs it for you.
+
+ Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
+
+🎮 Try out our [Easter Eggs game](hailo_apps/python/pipeline_apps/easter_game/), built autonomously by AI.
+
+<img src="doc/images/agentic_ai.gif" width="600"/>
+
 
 ## Applications
 
@@ -27,6 +33,10 @@ Build complete Hailo applications using natural language - describe what you wan
 | **Standalone Apps** | HailoRT learning and minimal per-app installs | `hailo_apps/python/standalone_apps/` + `hailo_apps/cpp/` |
 
 [All Applications](./doc/user_guide/running_applications.md)
+
+### New in v26.03.0
+Windows support, YOLO26 models, Voice2Action demo, AI-powered agentic development, and more.
+[Full changelog →](./changelog.md)
 
 ## Requirements
 | Package | Required For |
@@ -71,11 +81,6 @@ hailo-tiling                  # Tiling for high-res processing
 |-------|---------------|
 | **[User Guide](./doc/user_guide/README.md)** | Installation, running apps, configuration, repository structure |
 | **[Developer Guide](./doc/developer_guide/README.md)** | Build custom apps, write post-processing, model retraining |
-
-## Further Reading
-
-- [All Applications](./doc/user_guide/running_applications.md)
-- [Repository Structure](./doc/user_guide/repository_structure.md)
 
 ## Support
 

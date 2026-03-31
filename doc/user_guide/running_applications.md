@@ -45,6 +45,7 @@ The following applications are available as command-line tools. Each one is a se
 | `hailo-face-recon`    | [Face Recognition](../../hailo_apps/python/pipeline_apps/face_recognition/README.md)           | A face recognition application that identifies and verifies faces in real-time. This application is currently in BETA.                                            |
 | `hailo-ocr`           | [PaddleOCR](../../hailo_apps/python/pipeline_apps/paddle_ocr/README.md)                        | Text detection and recognition using PaddleOCR models.  This application is currently in BETA.                                                                    |
 | `hailo-reid`          | [REID Multisource](../../hailo_apps/python/pipeline_apps/reid_multisource/README.md)           | Track people (faces) across multiple cameras (or any other input method) in a pipeline with multiple streams. This application is currently in BETA.              |
+|                       | [Easter Game](../../hailo_apps/python/pipeline_apps/easter_game/README.md)                     | Interactive Easter Egg catching game using pose estimation. Created autonomously by AI.                                                                            |
 
 ### Python GenAI Applications
 
@@ -76,6 +77,8 @@ This repository also includes standalone Python applications for computer vision
 | [Pose Estimation](../../hailo_apps/python/standalone_apps/pose_estimation/README.md)             | Standalone pose estimation example with custom visualization.            |
 | [Super Resolution](../../hailo_apps/python/standalone_apps/super_resolution/README.md)           | Image super-resolution for enhancing image quality.                      |
 | [Speech Recognition](../../hailo_apps/python/standalone_apps/speech_recognition/README.md)        | Speech recognition for Hailo-8/8L/10H with live mic recording.          |
+| [YOLO26 Object Detection](../../hailo_apps/python/standalone_apps/yolo26/object_detection/README.MD) | YOLO26 object detection with split HEF + ONNX postprocessing pipeline.  |
+| [YOLO26 Pose Estimation](../../hailo_apps/python/standalone_apps/yolo26/pose_estimation/README.md)   | YOLO26 pose estimation with split HEF + ONNX postprocessing pipeline.   |
 
 These standalone applications typically require additional dependencies which can be installed using the `requirements.txt` file in each application's directory.
 
