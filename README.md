@@ -17,6 +17,8 @@ Use AI coding agents to quickly create Hailo applications. Just describe your id
 
  Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
 
+🎮 Try out our [Easter Eggs game](hailo_apps/python/pipeline_apps/easter_game/), built autonomously by AI.
+
 <img src="doc/images/agentic_ai.gif" width="600"/>
 
 
