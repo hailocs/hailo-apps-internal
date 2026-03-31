@@ -9,6 +9,9 @@ resources/*.so
 resources/*.hef
 resources/*.mp4
 
+# HEF model files (large binaries, never commit)
+*.hef
+
 # Piper TTS models (large files, must be downloaded locally)
 local_resources/piper_models/*.onnx
 local_resources/piper_models/*.onnx.json
