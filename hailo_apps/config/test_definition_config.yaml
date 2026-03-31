@@ -654,8 +654,8 @@ test_run_combinations:
       - paddle_ocr
       - clip
       - retrain
-      - lane_detection
-      - super_resolution
+      - lane_detection_standalone
+      - super_resolution_standalone
       - reid_multisource
     test_suite_mode: "all"  # None | default | extra | all
     model_selection: "all"  # default | extra | all
@@ -674,8 +674,8 @@ test_run_combinations:
       - paddle_ocr
       - clip
       - retrain
-      - lane_detection
-      - super_resolution
+      - lane_detection_standalone
+      - super_resolution_standalone
       - reid_multisource
     test_suite_mode: "default"  # None | default | extra | all
     model_selection: "default"  # default | extra | all
@@ -694,8 +694,8 @@ test_run_combinations:
       - paddle_ocr
       - clip
       - retrain
-      - lane_detection
-      - super_resolution
+      - lane_detection_standalone
+      - super_resolution_standalone
       - reid_multisource
     test_suite_mode: "extra"  # None | default | extra | all
     model_selection: "extra"  # default | extra | all
