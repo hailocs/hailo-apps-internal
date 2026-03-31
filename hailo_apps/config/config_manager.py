@@ -521,7 +521,12 @@ def get_default_model_name(app_name: str, arch: str, app_type: Optional[str] = N
     return models[0].name if models else None
 
 
-def get_model_info(app_name: str, arch: str, model_name: str) -> Optional[ModelEntry]:
+def get_model_info(
+    app_name: str,
+    arch: str,
+    model_name: str,
+    app_type: Optional[str] = None,
+) -> Optional[ModelEntry]:
     """Get full model info for a specific model.
     
     Args:
@@ -532,7 +537,7 @@ def get_model_info(app_name: str, arch: str, model_name: str) -> Optional[ModelE
     Returns:
         ModelEntry if found, None otherwise
     """
-    for model in get_all_models(app_name, arch):
+    for model in get_all_models(app_name, arch, app_type=app_type):
         if model.name == model_name:
             return model
     return None

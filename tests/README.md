@@ -4,13 +4,16 @@
 
 The Hailo Apps Infrastructure test framework is a comprehensive, configuration-driven testing system designed to validate the installation, environment, and pipeline applications across different architectures, models, and execution methods.
 
-The framework consists of three test categories:
+The framework consists of six test categories:
 
 | Test File | Purpose | Markers |
-|-----------|---------|---------|
+|-----------|---------|--------|
 | `test_sanity_check.py` | Environment & runtime validation | `@pytest.mark.sanity` |
+| `test_config_integrity.py` | Configuration cross-validation | `@pytest.mark.sanity` |
 | `test_installation.py` | Installation & resources validation | `@pytest.mark.installation`, `@pytest.mark.resources` |
-| `test_runner.py` | Pipeline functional tests | N/A |
+| `test_runner.py` | Pipeline functional tests | `@pytest.mark.pipeline`, `@pytest.mark.requires_device` |
+| `test_standalone_runner.py` | Standalone app smoke tests | `@pytest.mark.standalone`, `@pytest.mark.requires_device` |
+| `test_gen_ai.py` | GenAI app integration tests | `@pytest.mark.genai` |
 
 ## Table of Contents
 
@@ -42,6 +45,18 @@ The framework consists of three test categories:
 # Run only pipeline functional tests
 ./run_tests.sh --pipelines
 
+# Run only standalone app smoke tests
+./run_tests.sh --standalone
+
+# Run only GenAI tests
+./run_tests.sh --genai
+
+# Run specific apps only (pipeline + standalone)
+./run_tests.sh --apps detection,pose_estimation
+
+# Combine suites
+./run_tests.sh --pipelines --standalone
+
 # Skip resource download
 ./run_tests.sh --no-download
 ```
@@ -49,8 +64,8 @@ The framework consists of three test categories:
 ### Run with pytest Directly
 
 ```bash
-# Run sanity checks
-pytest tests/test_sanity_check.py -v
+# Run sanity checks + config integrity
+pytest tests/test_sanity_check.py tests/test_config_integrity.py -v
 
 # Run installation tests
 pytest tests/test_installation.py -v
@@ -58,10 +73,22 @@ pytest tests/test_installation.py -v
 # Run pipeline tests
 pytest tests/test_runner.py -v
 
+# Run standalone tests
+pytest tests/test_standalone_runner.py -v
+
+# Run GenAI tests
+pytest tests/test_gen_ai.py -v
+
 # Run tests with specific markers
 pytest -m sanity -v
-pytest -m installation -v
+pytest -m pipeline -v
+pytest -m standalone -v
+pytest -m genai -v
 pytest -m "not requires_device" -v
+
+# Run a specific app's tests
+pytest tests/test_runner.py -k "detection" -v
+pytest tests/test_standalone_runner.py -k "object_detection" -v
 ```
 
 ## Test Categories
@@ -86,7 +113,7 @@ Quick environment validation tests that verify the runtime is properly configure
 pytest tests/test_sanity_check.py -v -m sanity
 ```
 
-### 2. Installation Tests (`test_installation.py`)
+### Installation Tests (`test_installation.py`)
 
 Validates that `hailo-post-install` completed successfully and all resources are properly downloaded and configured.
 
@@ -112,9 +139,26 @@ Validates that `hailo-post-install` completed successfully and all resources are
 pytest tests/test_installation.py -v -m installation
 ```
 
+### 2. Config Integrity Tests (`test_config_integrity.py`)
+
+Automated cross-validation of the three configuration YAML files. Catches typos, missing app entries, and drift between configs **before** any pipeline runs.
+
+**Test Classes:**
+
+| Class | Tests |
+|-------|-------|
+| `TestConfigFilesExist` | Verifies all 3 YAML files exist on disk |
+| `TestConfigsLoadable` | Ensures every YAML file parses without errors |
+| `TestConfigCrossValidation` | Apps in `test_control.yaml` exist in `test_definition_config.yaml`; apps with `resources_config.yaml` entries have resources defined; every standalone app has a matching base entry |
+
+**Run:**
+```bash
+pytest tests/test_config_integrity.py -v
+```
+
 ### 3. Pipeline Tests (`test_runner.py`)
 
-Functional tests that run actual pipeline applications with different configurations.
+Functional tests that run actual GStreamer pipeline applications with different configurations.
 
 **Configuration Files:**
 - `test_control.yaml` - Controls what tests to run
@@ -123,7 +167,33 @@ Functional tests that run actual pipeline applications with different configurat
 
 **Run:**
 ```bash
+# All pipelines
 pytest tests/test_runner.py -v
+
+# Specific app
+pytest tests/test_runner.py -k "detection" -v
+```
+
+### 4. Standalone App Tests (`test_standalone_runner.py`)
+
+Smoke tests for standalone (non-GStreamer) Python applications. Each test launches the standalone script as a subprocess, waits for the configured run time, then checks the exit code.
+
+**Run:**
+```bash
+# All standalone tests
+pytest tests/test_standalone_runner.py -v
+
+# Specific standalone app
+pytest tests/test_standalone_runner.py -k "object_detection" -v
+```
+
+### 5. GenAI Tests (`test_gen_ai.py`)
+
+Integration tests for generative-AI applications: LLM text generation, VLM image understanding, Whisper speech-to-text, voice assistant, and the agent framework.
+
+**Run:**
+```bash
+pytest tests/test_gen_ai.py -v
 ```
 
 ## Running Tests
@@ -137,7 +207,7 @@ The `run_tests.sh` script is the recommended way to run tests. It:
 4. Runs tests in order: sanity → installation → pipelines
 
 ```bash
-# Run all tests
+# Run default suite (sanity + install + pipelines)
 ./run_tests.sh
 
 # Run only sanity checks
@@ -148,6 +218,18 @@ The `run_tests.sh` script is the recommended way to run tests. It:
 
 # Run only pipeline tests
 ./run_tests.sh --pipelines
+
+# Run standalone app tests
+./run_tests.sh --standalone
+
+# Run GenAI tests
+./run_tests.sh --genai
+
+# Combine suites (e.g., pipelines + standalone)
+./run_tests.sh --pipelines --standalone
+
+# Filter to specific apps (applies to pipelines + standalone)
+./run_tests.sh --apps detection,pose_estimation
 
 # Skip resource download
 ./run_tests.sh --no-download
@@ -161,8 +243,8 @@ python -m hailo_apps.installation.download_resources --arch hailo8l
 ### Using pytest Directly
 
 ```bash
-# Run all sanity tests
-pytest tests/test_sanity_check.py -v
+# Run all sanity tests (environment + config integrity)
+pytest tests/test_sanity_check.py tests/test_config_integrity.py -v
 
 # Run all installation tests
 pytest tests/test_installation.py -v
@@ -173,8 +255,14 @@ pytest tests/test_runner.py -v
 # Run standalone app smoke tests
 pytest tests/test_standalone_runner.py -v
 
+# Run GenAI tests
+pytest tests/test_gen_ai.py -v
+
 # Run tests with specific markers
 pytest -m sanity -v
+pytest -m pipeline -v
+pytest -m standalone -v
+pytest -m genai -v
 pytest -m installation -v
 pytest -m resources -v
 pytest -m "not requires_device" -v
@@ -197,7 +285,7 @@ pytest tests/test_sanity_check.py -x
 
 ### Test Markers
 
-The framework defines custom pytest markers:
+The framework defines custom pytest markers (registered in `pyproject.toml`):
 
 | Marker | Description |
 |--------|-------------|
@@ -206,6 +294,9 @@ The framework defines custom pytest markers:
 | `@pytest.mark.resources` | Resource file validation tests |
 | `@pytest.mark.requires_device` | Tests requiring a Hailo device |
 | `@pytest.mark.requires_gstreamer` | Tests requiring GStreamer |
+| `@pytest.mark.pipeline` | GStreamer pipeline functional tests |
+| `@pytest.mark.standalone` | Standalone app smoke tests |
+| `@pytest.mark.genai` | GenAI app tests |
 
 ## Configuration Files
 
@@ -213,19 +304,24 @@ The framework defines custom pytest markers:
 
 ```
 tests/
-├── conftest.py                # Shared fixtures and config parsing
-├── test_sanity_check.py       # Environment validation
-├── test_installation.py       # Installation/resource validation
-├── test_runner.py             # Pipeline functional tests
-├── test_control.yaml          # Test execution control
-├── all_tests.py               # Pipeline test functions
-├── test_utils.py              # Test utilities
-├── verify_configs.py          # Configuration verification
-└── README.md                  # This file
+├── conftest.py                  # Shared fixtures, markers, teardown hooks
+├── test_sanity_check.py         # Environment validation
+├── test_config_integrity.py     # Config cross-validation
+├── test_installation.py         # Installation/resource validation
+├── test_runner.py               # Pipeline functional tests
+├── test_standalone_runner.py    # Standalone app smoke tests
+├── test_gen_ai.py               # GenAI integration tests
+├── test_control.yaml            # Test execution control
+├── all_tests.py                 # Pipeline test functions
+├── test_utils.py                # Test utilities (subprocess helpers)
+├── verify_configs.py            # Legacy configuration verification
+├── voice_assistant_unit_tests.py # Voice assistant unit tests
+└── README.md                    # This file
 
 hailo_apps/config/
 ├── test_definition_config.yaml  # Test definitions
-└── resources_config.yaml        # Resources configuration
+├── resources_config.yaml        # Resources configuration
+└── config_manager.py            # Unified config access
 
 hailo_apps/postprocess/cpp/
 └── meson.build                  # SO file definitions (parsed for expected SO files)
@@ -238,10 +334,10 @@ Controls **what** to run:
 ```yaml
 # Control parameters
 control_parameters:
-  default_run_time: 24
-  term_timeout: 10
+  default_run_time: 40
+  term_timeout: 5
 
-# Test combinations
+# Test combinations (presets override per-app settings)
 test_combinations:
   ci_run:
     enabled: false
@@ -259,19 +355,38 @@ custom_tests:
       test_suite_mode: "default"
       model_selection: "default"
 
+# Per-app run-time overrides (seconds)
+run_time_overrides:
+  face_recognition: 60
+  paddle_ocr: 60
+
 # Run methods
 run_methods:
   pythonpath:
     enabled: true
   cli:
     enabled: false
-  module:
-    enabled: false
+
+# Standalone tests
+standalone_tests:
+  enabled: true
+  apps:
+    object_detection_standalone:
+      test_suite_mode: "default"
+
+# GenAI tests
+genai_tests:
+  enabled: false
+  apps:
+    llm:
+      enabled: true
+    vlm:
+      enabled: true
 
 # Special tests
 special_tests:
   h8l_on_h8:
-    enabled: true  # Test h8l models on h8 devices
+    enabled: true
   sanity_checks:
     enabled: true
 ```
@@ -328,29 +443,29 @@ shared_library('depth_postprocess', ...)
 
 ```
                     ┌─────────────────────────┐
-                    │   resources_config.yaml │
-                    │   (models, videos, etc) │
+                    │  resources_config.yaml  │
+                    │  (models, videos, etc)  │
                     └───────────┬─────────────┘
                                 │
-                    ┌───────────▼─────────────┐
-                    │      conftest.py        │
-                    │ (parse_resources_config)│
-                    │ (parse_meson_shared_   │
-                    │   libraries)            │
-                    └───────────┬─────────────┘
+                    ┌───────────▼──────────────┐
+                    │       conftest.py        │
+                    │ (parse_resources_config) │
+                    │ (parse_meson_shared_     │
+                    │   libraries)             │
+                    └───────────┬──────────────┘
                                 │
-        ┌───────────────────────┼───────────────────────┐
-        │                       │                       │
-        ▼                       ▼                       ▼
-┌───────────────┐    ┌───────────────────┐    ┌───────────────┐
-│test_sanity_   │    │test_installation. │    │test_runner.py │
-│check.py       │    │py                 │    │(pipelines)    │
-│               │    │                   │    │               │
-│• Environment  │    │• Directory struct │    │• Functional   │
-│• Packages     │    │• Models exist     │    │  tests        │
-│• GStreamer    │    │• Videos exist     │    │• All apps     │
-│• Hailo SDK    │    │• SO files valid   │    │               │
-└───────────────┘    └───────────────────┘    └───────────────┘
+   ┌────────────┬───────────────┼───────────────┬────────────────┬──────────────┐
+   │            │               │               │                │              │
+   ▼            ▼               ▼               ▼                ▼              ▼
+┌────────┐ ┌──────────┐ ┌────────────┐ ┌─────────────┐ ┌────────────┐ ┌────────┐
+│sanity  │ │config    │ │install-    │ │test_runner  │ │standalone  │ │gen_ai  │
+│check   │ │integrity │ │ation      │ │(pipelines)  │ │_runner     │ │        │
+│        │ │          │ │            │ │             │ │            │ │        │
+│•Env    │ │•YAML ok  │ │•Dir struct │ │•Functional  │ │•Smoke test │ │•LLM    │
+│•Pkgs   │ │•Cross-   │ │•Models    │ │ tests       │ │•Subprocess │ │•VLM    │
+│•GStr   │ │ validate │ │•Videos    │ │•All apps    │ │•Exit code  │ │•Whisper│
+│•SDK    │ │•Drift    │ │•SO files  │ │             │ │            │ │•Agent  │
+└────────┘ └──────────┘ └────────────┘ └─────────────┘ └────────────┘ └────────┘
 ```
 
 ### Shared Fixtures (conftest.py)
@@ -459,6 +574,17 @@ The test framework will automatically expect `libmy_postprocess.so`.
 2. Activate virtual environment: `source setup_env.sh`
 3. Run sanity checks: `pytest tests/test_sanity_check.py -v`
 
+### Config Drift
+
+**Problem:** A new app was added but tests skip or fail with "not found in config".
+
+**Solutions:**
+1. Run config integrity tests: `pytest tests/test_config_integrity.py -v`
+2. Ensure the app appears in all three YAML files:
+   - `test_control.yaml` (custom_tests.apps)
+   - `test_definition_config.yaml` (app test suites)
+   - `resources_config.yaml` (models/resources)
+
 ### Missing Resources
 
 **Problem:** Tests fail due to missing resources.
@@ -479,30 +605,25 @@ The test framework will automatically expect `libmy_postprocess.so`.
 
 ### Verification Script
 
-Run the verification script to check all configurations:
+The legacy `verify_configs.py` script is replaced by automated `test_config_integrity.py` tests. Run:
 
 ```bash
-python tests/verify_configs.py
+pytest tests/test_config_integrity.py -v
 ```
-
-This will validate:
-- All configuration files can be loaded
-- Test combinations match between files
-- All referenced test suites exist
-- All apps are properly defined
 
 ## Best Practices
 
-1. **Run sanity checks first:** Always run `test_sanity_check.py` before other tests
+1. **Run sanity checks first:** Always run `test_sanity_check.py` + `test_config_integrity.py` before other tests
 2. **Check installation:** Run `test_installation.py` to verify resources before pipeline tests
-3. **Use markers:** Use `-m` to run specific test categories
-4. **Review logs:** Check `tests/tests_logs/` for detailed output
-5. **Validate config:** Run `verify_configs.py` after config changes
+3. **Use markers:** Use `-m pipeline`, `-m standalone`, `-m genai` to run specific categories
+4. **Filter by app:** Use `--apps detection` in `run_tests.sh` or `-k detection` with pytest
+5. **Review logs:** Check `tests/tests_logs/` for detailed output
+6. **Validate config:** Run `pytest tests/test_config_integrity.py` after any config changes
 
 ## See Also
 
 - `test_control.yaml` - Test execution control configuration
 - `test_definition_config.yaml` - Test definitions and app configurations
 - `resources_config.yaml` - Resources and models configuration
-- `verify_configs.py` - Configuration verification script
+- `test_config_integrity.py` - Automated config cross-validation
 - `TEST_FRAMEWORK_DOCUMENTATION.md` - Additional detailed documentation

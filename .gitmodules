@@ -1,0 +1,6 @@
+[submodule "hailo_apps/cpp/external/yaml-cpp"]
+	path = hailo_apps/cpp/external/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp
+[submodule "hailo_apps/cpp/external/curl"]
+	path = hailo_apps/cpp/external/curl
+	url = https://github.com/curl/curl

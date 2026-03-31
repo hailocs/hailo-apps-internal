@@ -458,11 +458,15 @@ def _get_usb_video_devices_windows():
 
     try:
         from pygrabber.dshow_graph import FilterGraph
-    except ImportError:
-        hailo_logger.error(
-            "pygrabber is not installed. Please install it with: pip install pygrabber"
+    except ImportError as e:
+        msg = (
+            "Missing dependency 'pygrabber'.\n"
+            "Install it using:\n"
+            "    pip install pygrabber\n"
+            "Note: This dependency is required for Windows camera support."
         )
-        return []
+        hailo_logger.error(msg)
+        raise ImportError(msg) from e
 
     try:
         hailo_logger.debug("Enumerating DirectShow input devices...")

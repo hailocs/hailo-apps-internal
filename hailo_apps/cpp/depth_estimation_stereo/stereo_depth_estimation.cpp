@@ -10,6 +10,7 @@
 #include <mutex>
 #include <future>
 #include <filesystem>
+#include "resources_manager.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/core/matx.hpp>
@@ -62,6 +63,7 @@ struct StereoArgs {
     std::string left;
     std::string right;
     bool save_stream_output;
+    bool no_display;
     size_t batch_size;
     double framerate;
     std::string output_resolution;
@@ -69,6 +71,44 @@ struct StereoArgs {
     std::string camera_resolution;
 };
 
+
+void post_parse_args(const std::string &app, StereoArgs &args, int argc, char **argv)
+{
+
+    auto die = [&](const std::string &msg) {
+        std::cerr << "ERROR: " << msg << "\n"
+                  << "Required:\n"
+                  << "  -l/--left <left_input>\n"
+                  << "  -r/--right <right_input>\n";
+        std::exit(1);
+    };
+
+    // ---- validate mandatory stereo inputs ----
+    if (args.left.empty()) {
+        die("Missing required argument: --left / -l");
+    }
+
+    if (args.right.empty()) {
+        die("Missing required argument: --right / -r");
+    }
+
+    if (args.left == args.right) {
+        die("Left and right inputs must be different.");
+    }
+    
+    try {
+        hailo_apps::ResourcesManager rm;
+        if (has_flag(argc, argv, "--list-models")) {
+            rm.print_models(app);
+            std::exit(0);
+        }
+        args.net = rm.resolve_net_arg(app, args.net);
+    }
+    catch (const std::exception &e) {
+            std::cerr << "ResourcesManager ERROR: " << e.what() << std::endl;
+            std::exit(1);
+    }
+}
 
 static inline StereoArgs parse_stereo_args(int argc, char **argv) {
 
@@ -85,6 +125,7 @@ static inline StereoArgs parse_stereo_args(int argc, char **argv) {
         getCmdOptionWithShortFlag(argc, argv, "--left",  "-l"),
         getCmdOptionWithShortFlag(argc, argv, "--right", "-r"),
         has_flag(argc, argv, "-s") || has_flag(argc, argv, "--save-stream-output"),
+        has_flag(argc, argv, "--no-display"),
         batch_size,
         framerate,
         out_res_str,
@@ -95,93 +136,94 @@ static inline StereoArgs parse_stereo_args(int argc, char **argv) {
 
 int main(int argc, char** argv)
 {
-    const std::string APP_NAME = "depth_estimation_stereo";
-    std::chrono::duration<double> inference_time;
-    std::chrono::time_point<std::chrono::system_clock> t_start = std::chrono::high_resolution_clock::now();
-    double org_height, org_width;
-    cv::VideoCapture capture;
-    size_t frame_count;
-    InputType input_type;
+    try{
+        const std::string APP_NAME = "depth_estimation_stereo";
+        std::chrono::duration<double> inference_time;
+        auto t_start = Clock::now();
+        double org_height, org_width;
+        cv::VideoCapture capture;
+        size_t frame_count;
+        InputType input_type;
 
+        StereoArgs args = parse_stereo_args(argc, argv);
+        post_parse_args(APP_NAME, args, argc, argv);
 
-    StereoArgs args = parse_stereo_args(argc, argv);
+        HailoInfer model(args.net, args.batch_size);
+        input_type = determine_input_type(args.left,
+                                        std::ref(capture),
+                                        std::ref(org_height),
+                                        std::ref(org_width),
+                                        std::ref(frame_count),
+                                        std::ref(args.batch_size),
+                                        std::ref(args.camera_resolution));
 
-        if (hailo_utils::has_flag(argc, argv, "--list-nets")) {
-        hailo_utils::list_networks(APP_NAME);
-        return 0;
-    }
+        auto preprocess_thread_input1 = std::async(run_preprocess,
+                                            args.left,
+                                            std::ref(args.net),
+                                            std::ref(model),
+                                            std::ref(input_type),
+                                            std::ref(capture),
+                                            std::ref(args.batch_size),
+                                            std::ref(args.framerate),
+                                            preprocessed_batch_queue_left,
+                                            preprocess_frames);
 
-    args.net = hailo_utils::resolve_net_arg(APP_NAME, args.net);
-    HailoInfer model(args.net, args.batch_size);
-    input_type = determine_input_type(args.left,
-                                    std::ref(capture),
+        auto preprocess_thread_input2 = std::async(run_preprocess,
+                                            args.right,
+                                            std::ref(args.net),
+                                            std::ref(model),
+                                            std::ref(input_type),
+                                            std::ref(capture),
+                                            std::ref(args.batch_size),
+                                            std::ref(args.framerate),
+                                            preprocessed_batch_queue_right,
+                                            preprocess_frames);
+
+        ModelInputQueuesMap input_queues = {
+            { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue_left },
+            { model.get_infer_model()->get_input_names().at(1), preprocessed_batch_queue_right }
+        };
+
+        auto inference_thread = std::async(run_inference_async,
+                                        std::ref(model),
+                                        std::ref(inference_time),
+                                        std::ref(input_queues),
+                                        results_queue);
+
+        auto output_parser_thread = std::async(run_post_process,
+                                    std::ref(input_type),
                                     std::ref(org_height),
                                     std::ref(org_width),
                                     std::ref(frame_count),
+                                    std::ref(capture),
+                                    std::ref(args.framerate),
                                     std::ref(args.batch_size),
-                                    std::ref(args.camera_resolution));
+                                    std::ref(args.save_stream_output),
+                                    std::ref(args.no_display),
+                                    std::ref(args.output_dir),
+                                    std::ref(args.output_resolution),
+                                    results_queue,
+                                    postprocess_callback);
 
-    auto preprocess_thread_input1 = std::async(run_preprocess,
-                                        args.left,
-                                        std::ref(args.net),
-                                        std::ref(model),
-                                        std::ref(input_type),
-                                        std::ref(capture),
-                                        std::ref(args.batch_size),
-                                        std::ref(args.framerate),
-                                        preprocessed_batch_queue_left,
-                                        preprocess_frames);
+        hailo_status status = wait_and_check_threads(
+            preprocess_thread_input1, "Preprocess_left_input",
+            inference_thread,         "Inference",
+            output_parser_thread,     "Postprocess",
+            &preprocess_thread_input2, "Preprocess_right_input"
 
-    auto preprocess_thread_input2 = std::async(run_preprocess,
-                                        args.right,
-                                        std::ref(args.net),
-                                        std::ref(model),
-                                        std::ref(input_type),
-                                        std::ref(capture),
-                                        std::ref(args.batch_size),
-                                        std::ref(args.framerate),
-                                        preprocessed_batch_queue_right,
-                                        preprocess_frames);
+        );
 
-    ModelInputQueuesMap input_queues = {
-        { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue_left },
-        { model.get_infer_model()->get_input_names().at(1), preprocessed_batch_queue_right }
-    };
+        if (HAILO_SUCCESS != status) {
+            return status;
+        }
+        
+        auto t_end = Clock::now();
+        print_inference_statistics(inference_time, args.net, static_cast<double>(frame_count), t_end - t_start);
 
-    auto inference_thread = std::async(run_inference_async,
-                                    std::ref(model),
-                                    std::ref(inference_time),
-                                    std::ref(input_queues),
-                                    results_queue);
-
-    auto output_parser_thread = std::async(run_post_process,
-                                std::ref(input_type),
-                                std::ref(org_height),
-                                std::ref(org_width),
-                                std::ref(frame_count),
-                                std::ref(capture),
-                                std::ref(args.framerate),
-                                std::ref(args.batch_size),
-                                std::ref(args.save_stream_output),
-                                std::ref(args.output_dir),
-                                std::ref(args.output_resolution),
-                                results_queue,
-                                postprocess_callback);
-
-    hailo_status status = wait_and_check_threads(
-        preprocess_thread_input1, "Preprocess_left_input",
-        inference_thread,         "Inference",
-        output_parser_thread,     "Postprocess",
-        &preprocess_thread_input2, "Preprocess_right_input"
-
-    );
-
-    if (HAILO_SUCCESS != status) {
-        return status;
+        return HAILO_SUCCESS;
     }
-
-    std::chrono::time_point<std::chrono::system_clock> t_end = std::chrono::high_resolution_clock::now();
-    print_inference_statistics(inference_time, args.net, frame_count, t_end - t_start);
-
-    return HAILO_SUCCESS;
+    catch (const std::exception &e) {
+        std::cerr << "ERROR: " << e.what() << "\n";
+        return HAILO_INTERNAL_FAILURE;
+    }
 }

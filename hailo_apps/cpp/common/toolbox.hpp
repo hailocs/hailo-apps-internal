@@ -1,6 +1,11 @@
 #ifndef _HAILO_COMMON_TOOLBOX_HPP_
 #define _HAILO_COMMON_TOOLBOX_HPP_
 
+#include <unordered_map>
+#include <sstream>
+#include <iomanip>
+#include <cmath>
+#include <cctype>
 #include <string>
 #include <iostream>
 #include <vector>
@@ -31,19 +36,12 @@
 #define BOLDMAGENTA   "\033[1m\033[35m"
 
 extern std::vector<cv::Scalar> COLORS;
+using Clock = std::chrono::steady_clock;
 
 namespace hailo_utils {
 
     namespace fs = std::filesystem;
-    // Resolved paths (toolbox resolves automatically at startup)
-    extern const fs::path GET_HEF_BASH_SCRIPT_PATH;
-    extern const fs::path GET_INPUT_BASH_SCRIPT_PATH;
-
-    const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
-        {"sd",  {640, 480}},
-        {"hd",  {1280, 720}},
-        {"fhd", {1920, 1080}}
-    };
+    extern const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP;
 
     struct InferenceResult {
         cv::Mat org_frame;
@@ -65,6 +63,7 @@ namespace hailo_utils {
         std::string camera_resolution;
         std::string output_resolution;
         bool save_stream_output;
+        bool no_display;
         size_t batch_size;
         double framerate;
     };
@@ -108,50 +107,9 @@ namespace hailo_utils {
     void post_parse_args(const std::string &app, CommandLineArgs &args, int argc, char **argv);
     std::string parse_output_resolution_arg(int argc, char **argv);
 
-    // Resolve -n/--net into a concrete .hef path.
-    //
-    // Accepted values:
-    //   • Local HEF file:   path/to/model.hef
-    //   • Model name:       logical name from networks.json (e.g., “yolov8n”)
-    //                       → use --list-nets to see all available models.
-    //
-    // Behavior:
-    //   - If a local .hef is provided: use it directly (after architecture check).
-    //   - If a model name is provided:
-    //        * Reuse existing downloaded HEF (if present), or
-    //        * Download the correct HEF via get_hef.sh.
-    //   - Returns the resolved absolute .hef path.
-    std::string resolve_net_arg(const std::string &app,
-                                const std::string &net_arg,
-                                const std::string &dest_dir = ".");
-
-
-    // Resolve -i/--input into a concrete input source.
-    //
-    // Accepted values:
-    //   • Local file:      image.jpg, video.mp4
-    //   • Directory:       folder/ (all images inside)
-    //   • Camera:          "camera" or /dev/video*
-    //   • Resource name:   logical ID from inputs.json (e.g., “bus”, “street”)
-    //                      → use --list-inputs to see all available names.
-    //
-    // Behavior:
-    //   - Uses local paths directly.
-    //   - Downloads resource inputs via get_input.sh when needed.
-    //   - Returns the resolved full path or "camera".
-    std::string resolve_input_arg(const std::string &app,
-                                const std::string &input_arg);  
-                                
-    // Print supported networks for this app (delegates to get_hef.sh list --app <app>)
-    void list_networks(const std::string &app);
-
-    // Print predefined inputs for this app (delegates to get_input.sh list --app <app>)
-    void list_inputs(const std::string &app);
-    std::string get_network_meta_value(const std::string &app,
-                                    const std::string &model_name,
-                                    const std::string &key,
-                                    const std::string &sub_key = "");
-
+    std::string get_model_meta_value(const std::string &app,
+        const std::string &model_name,
+        const std::string &key);
 
     // ─────────────────────────────────────────────────────────────────────────────
     // DISPLAY & VIDEO
@@ -282,6 +240,7 @@ namespace hailo_utils {
         double &framerate,
         size_t &batch_size,
         const bool &save_stream_output,
+        const bool &no_display,
         const std::string &output_dir,
         const std::string &output_resolution,
         std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
@@ -306,13 +265,11 @@ namespace hailo_utils {
                                 PreprocessCallback preprocess_callback);
 
     // Resource management
-    void release_resources(cv::VideoCapture &capture,
-                            cv::VideoWriter &video,
-                            InputType &input_type,
-                            std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>,
-                            std::vector<cv::Mat>>>> preprocessed_batch_queue,
-                            std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue);
-
+    void release_resources(cv::VideoCapture &capture, cv::VideoWriter &video, InputType &input_type,
+                        bool no_display,
+                        std::shared_ptr<BoundedTSQueue<std::pair<std::vector<cv::Mat>,
+                        std::vector<cv::Mat>>>> preprocessed_batch_queue,
+                        std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue);
     // ─────────────────────────────────────────────────────────────────────────────
     // VISUALIZATION PARAMETERS
     // ─────────────────────────────────────────────────────────────────────────────
@@ -325,8 +282,10 @@ namespace hailo_utils {
         std::optional<float> mask_alpha;
     };
 
+    // Load visualization parameters from YAML config file
     VisualizationParams load_visualization_params(const std::string &path);
     enum class AppVisMode { object_detection, instance_seg };
+    // Validate parameters according to application mode
     void validate_visualization_params(const VisualizationParams &vis, AppVisMode mode);
 }
 

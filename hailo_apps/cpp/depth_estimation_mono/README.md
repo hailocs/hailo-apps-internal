@@ -34,10 +34,18 @@ Usage
     ``` 
 
 2. Compile the project on the development machine  
-    ```shell script
-    ./build.sh
-    ```
-    This creates the directory hierarchy build/x86_64 and compile an executable file called mono_depth_estimation
+
+    - **Linux**
+        ```shell script
+        ./build.sh
+        ```
+    - **Windows**
+        ```shell script
+        cmake -S. -Bbuild -DCMAKE_FIND_PACKAGE_RESOLVE_SYMLINKS=True
+        cmake --build build --config Release
+        ```
+
+    This creates the directory hierarchy build/Release and compile an executable file called depth_estimation_mono
 
 3. Run the example:
 

@@ -57,6 +57,7 @@ from hailo_apps.python.core.common.defines import (
     RESOURCE_TYPE_MODEL,
     RESOURCE_TYPE_IMAGE,
     RESOURCE_TYPE_VIDEO,
+    RESOURCE_TYPE_ONNX,
     RESOURCE_TYPES,
 )
 
@@ -565,6 +566,19 @@ class ResourceDownloader:
             name=name
         )
         self._tasks.add(task)
+
+    def _add_onnx_task(self, onnx_name: str):
+        """Add an ONNX sidecar download task by filename."""
+        s3_arch = map_arch_to_s3_path(self.hailo_arch)
+        url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{onnx_name}"
+        dest = self.resource_root / RESOURCES_MODELS_DIR_NAME / self.hailo_arch / onnx_name
+        task = DownloadTask(
+            url=url,
+            dest_path=dest,
+            resource_type="onnx",
+            name=onnx_name,
+        )
+        self._tasks.add(task)
     
     def _add_video_task(self, video_entry):
         """Add a video download task from a video entry."""
@@ -938,6 +952,9 @@ class ResourceDownloader:
             f"and architecture '{self.hailo_arch}'"
         )
 
+    def collect_specific_onnx_for_app(self, app_name: str, onnx_name: str):
+        """Collect a specific ONNX sidecar artifact for a specific app."""
+        self._add_onnx_task(onnx_name)
 
     def collect_specific_model(self, model_name: str):
         """Collect a specific model by name."""
@@ -1325,7 +1342,7 @@ def download_resources(
         group: Specific group/app name to download resources for
         all_models: If True, download all models (default + extra) for all apps
         resource_name: Specific resource name to download
-        resource_type: Type of the resource specified by `resource_name`, supported values: "model", "image", "video".
+        resource_type: Type of the resource specified by `resource_name`, supported values: "model", "image", "video", "onnx".
         dry_run: If True, only show what would be downloaded
         force: If True, force re-download even if files exist
         parallel: If True, download files in parallel
@@ -1378,6 +1395,10 @@ def download_resources(
         elif resource_type == RESOURCE_TYPE_MODEL:
             hailo_logger.info(f"Collecting specific model: {resource_name} (group={group})")
             downloader.collect_specific_model_for_app(group, resource_name)
+
+        elif resource_type == RESOURCE_TYPE_ONNX:
+            hailo_logger.info(f"Collecting specific onnx: {resource_name} (group={group})")
+            downloader.collect_specific_onnx_for_app(group, resource_name)
 
         downloader.execute(parallel=parallel)
         return
@@ -1607,7 +1628,7 @@ Examples:
         type=str,
         default=None,
         choices=sorted(RESOURCE_TYPES),
-        help="Type of the resource specified by --resource-name (model/image/video)"
+        help="Type of the resource specified by --resource-name (model/image/video/onnx)"
     )
     parser.add_argument(
         "--list-models",

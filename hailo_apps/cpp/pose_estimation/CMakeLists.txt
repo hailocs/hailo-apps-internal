@@ -1,63 +1,208 @@
-cmake_minimum_required(VERSION 3.11)
-project(pose_estimation)
+cmake_minimum_required(VERSION 3.16)
+project(pose_estimation LANGUAGES C CXX)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11")
+# ============================================================
+# Settings
+# ============================================================
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+option(HAILO_USE_SYSTEM_DEPS "Use system-installed yaml-cpp/libcurl instead of submodules" OFF)
+
+# <repo>/hailo_apps/cpp/pose_estimation
+# <repo>/hailo_apps/cpp/external/{yaml-cpp,curl}
+set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../external")
+
+# ============================================================
+# Core dependencies
+# ============================================================
+find_package(Threads REQUIRED)
+find_package(HailoRT REQUIRED)
+find_package(OpenCV REQUIRED)
+
+message(STATUS "Found OpenCV includes: ${OpenCV_INCLUDE_DIRS}")
+
+# ============================================================
+# yaml-cpp
+# ============================================================
+if(HAILO_USE_SYSTEM_DEPS)
+    find_package(yaml-cpp REQUIRED)
+else()
+    if(NOT EXISTS "${THIRD_PARTY_DIR}/yaml-cpp/CMakeLists.txt")
         message(FATAL_ERROR
-            "GCC 11+ required. Found version ${CMAKE_CXX_COMPILER_VERSION} at ${CMAKE_CXX_COMPILER}\n"
+            "Missing submodule: yaml-cpp\n"
+            "Expected path:\n"
+            "  ${THIRD_PARTY_DIR}/yaml-cpp\n\n"
             "Fix:\n"
-            "  • Install GCC 11+: sudo apt install gcc-11 g++-11\n"
-            "  • Reconfigure: cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 <src>\n"
-            "  • Delete your build directory and rerun cmake.")
+            "  git submodule update --init --recursive\n"
+            "Or clone with:\n"
+            "  git clone --recurse-submodules <repo>\n"
+        )
+    endif()
+
+    set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+
+    add_subdirectory(
+        "${THIRD_PARTY_DIR}/yaml-cpp"
+        "${CMAKE_BINARY_DIR}/_deps/yaml-cpp"
+    )
+endif()
+
+if(TARGET yaml-cpp::yaml-cpp)
+    set(YAMLCPP_TARGET yaml-cpp::yaml-cpp)
+elseif(TARGET yaml-cpp)
+    set(YAMLCPP_TARGET yaml-cpp)
+else()
+    message(FATAL_ERROR "yaml-cpp target was not created. Check yaml-cpp submodule/build.")
+endif()
+
+# ============================================================
+# libcurl
+# ============================================================
+if(HAILO_USE_SYSTEM_DEPS)
+    find_package(CURL REQUIRED)
+else()
+    if(NOT EXISTS "${THIRD_PARTY_DIR}/curl/CMakeLists.txt")
+        message(FATAL_ERROR
+            "Missing submodule: curl\n"
+            "Expected path:\n"
+            "  ${THIRD_PARTY_DIR}/curl\n\n"
+            "Fix:\n"
+            "  git submodule update --init --recursive\n"
+            "Or clone with:\n"
+            "  git clone --recurse-submodules <repo>\n"
+        )
+    endif()
+
+    set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_TESTS ON CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+    set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
+    set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
+    set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
+    set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_LDAP ON CACHE BOOL "" FORCE)
+    set(CURL_DISABLE_LDAPS ON CACHE BOOL "" FORCE)
+
+    # extra kill-switch (helps when vcpkg toolchain is active)
+    set(CMAKE_DISABLE_FIND_PACKAGE_Libpsl ON CACHE BOOL "" FORCE)
+
+    if(WIN32)
+        set(CURL_USE_SCHANNEL ON CACHE BOOL "" FORCE)
+        set(CURL_USE_OPENSSL OFF CACHE BOOL "" FORCE)
+    endif()
+
+    add_subdirectory(
+        "${THIRD_PARTY_DIR}/curl"
+        "${CMAKE_BINARY_DIR}/_deps/curl"
+    )
+
+    if(TARGET libcurl AND NOT TARGET CURL::libcurl)
+        add_library(CURL::libcurl ALIAS libcurl)
     endif()
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+if(NOT TARGET CURL::libcurl)
+    message(FATAL_ERROR "libcurl target missing (CURL::libcurl). Check curl submodule/build.")
+endif()
 
-set(COMPILE_OPTIONS -Werror -Wall -Wextra -Wconversion -O3 -Wno-reorder -Wno-ignored-qualifiers -Wno-extra -Wno-unused-local-typedefs -Wno-conversion -Wno-parentheses -Wno-unused-but-set-variable -Wno-array-bounds -Wno-unused-value)
-
-set(BASE_DIR /path/to/yolov8/example/folder)
-
-set(CMAKE_THREAD_LIBS_INIT "-lpthread")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-set(CMAKE_HAVE_THREADS_LIBRARY 1)
-set(CMAKE_USE_WIN32_THREADS_INIT 0)
-set(CMAKE_USE_PTHREADS_INIT 1)
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-
-find_package(Threads)
-
-find_package(HailoRT REQUIRED)
-
-find_package( OpenCV REQUIRED)
-message(STATUS "Found OpenCV: " ${OpenCV_INCLUDE_DIRS})
-
-file(GLOB SOURCES
-    ./*.cpp
-)
-list(APPEND SOURCES ../common/toolbox.cpp ../common/hailo_infer.cpp)
+# ============================================================
+# xtl / xtensor (KEEP AS BEFORE: ExternalProject)
+# ============================================================
 include(ExternalProject)
-set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
+set(EXTERNAL_INSTALL_LOCATION "${CMAKE_BINARY_DIR}/external")
 
-# External dependencies
-include(ExternalProject)
-ExternalProject_Add(xtl-test
+ExternalProject_Add(xtl_ep
     GIT_REPOSITORY https://github.com/xtensor-stack/xtl
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
-ExternalProject_Add(xtensor-test
+
+ExternalProject_Add(xtensor_ep
     GIT_REPOSITORY https://github.com/xtensor-stack/xtensor
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/external -Dxtl_DIR=${CMAKE_BINARY_DIR}/external/share/cmake/xtl/
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
+        -Dxtl_DIR=${EXTERNAL_INSTALL_LOCATION}/share/cmake/xtl
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    DEPENDS xtl_ep
 )
 
+# headers only (mostly), but we include the install include dir
+include_directories("${EXTERNAL_INSTALL_LOCATION}/include")
 
-include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
-link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
+# ============================================================
+# Sources
+# ============================================================
+file(GLOB SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
+)
 
-link_libraries(stdc++fs)
+list(APPEND SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/toolbox.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/hailo_infer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common/resources_manager.cpp
+)
+
 add_executable(${PROJECT_NAME} ${SOURCES})
-add_dependencies(${PROJECT_NAME} xtl-test xtensor-test)
-include_directories(${OpenCV_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../common)
-include_directories(${ONNXRUNTIME_INCLUDE_DIR})
-target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILE_OPTIONS} -fconcepts)
-target_link_libraries(${PROJECT_NAME} HailoRT::libhailort ${CMAKE_THREAD_LIBS_INIT} ${OpenCV_LIBS})
+add_dependencies(${PROJECT_NAME} xtl_ep xtensor_ep)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${OpenCV_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../common
+)
+
+# ============================================================
+# Compile options (Linux vs Windows)
+# ============================================================
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        /W4 /O2
+        /permissive-
+        /Zc:__cplusplus
+        /EHsc
+    )
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+else()
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        -Wall -Wextra -O3
+        -Wno-reorder -Wno-ignored-qualifiers -Wno-extra -Wno-conversion
+        -Wno-unused-but-set-variable -Wno-array-bounds -Wno-unused-value
+        -Wno-unused-local-typedefs
+    )
+endif()
+
+# ============================================================
+# Link
+# ============================================================
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    Threads::Threads
+    HailoRT::libhailort
+    ${OpenCV_LIBS}
+    ${YAMLCPP_TARGET}
+    CURL::libcurl
+)
+
+# ============================================================
+# Copy repo-level YAML next to the executable:
+# <exe_dir>/config/resources_config.yaml
+# ============================================================
+set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # pose_estimation -> cpp -> hailo_apps
+set(RESOURCES_YAML_SRC "${HAILO_APPS_ROOT}/config/resources_config.yaml")
+
+if(NOT EXISTS "${RESOURCES_YAML_SRC}")
+    message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")
+endif()
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${RESOURCES_YAML_SRC}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/resources_config.yaml"
+    COMMENT "Copy resources_config.yaml next to the executable"
+)

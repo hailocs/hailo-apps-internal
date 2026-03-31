@@ -10,12 +10,25 @@ Requirements
 
 - HailoRT  
   - For Hailo-8: `HailoRT==4.23.0`  
-  - For Hailo-10: `HailoRT==5.1.1`
+  - For Hailo-10: `HailoRT==5.2.0`
 
 - Make sure OpenCV and g++-9 are installed:
    ```shell
    sudo apt-get install -y libopencv-dev gcc-9 g++-9
    ```
+
+- **Linux Dependencies**
+    - CMake >= 3.16
+    - Gtk
+    - g++-9
+        ```shell script
+        sudo apt-get install gcc-9 g++-9
+        ```
+
+- **Windows Dependencies**
+    - CMake >= 3.16
+    - Visual Studio with MSVC C++ build tools
+
 
 Supported Models
 ----------------
@@ -37,17 +50,31 @@ Usage
     cd hailo-apps/hailo_apps/cpp/classification
     ``` 
 
-2. Compile the project on the development machine  
-    ```shell script
-    ./build.sh
-    ```
-    This creates the directory hierarchy build/x86_64 and compile an executable file called classifier
+2. Compile the project on the development machine
+
+    - **Linux**
+        ```shell script
+        ./build.sh
+        ```
+    - **Windows**
+        ```shell script
+        cmake -S. -Bbuild -DCMAKE_FIND_PACKAGE_RESOLVE_SYMLINKS=True
+        cmake --build build --config Release
+        ```
+
+    This creates the directory hierarchy build/Release and compile an executable file called classifier
+
 
 3. Run the example:
 
-    ```shell script
-    ./build/x86_64/classifier --net <hef_path> --input <image_or_video_or_camera_path>
-    ```
+    - **Linux**
+        ```shell script
+        ./build/Release/classifier --net <hef_path> --input <image_or_video_or_camera_path>
+        ```
+    - **Windows**
+        ```shell script
+        .\build\Release\classifier.exe --net <hef_path> --input <image_or_video_or_camera_path>
+        ```
 
 Arguments
 ---------
@@ -56,18 +83,22 @@ Arguments
     - A **model name** (e.g., `yolov8n`) → the script will automatically download and resolve the correct HEF for your device.
     - A **file path** to a local HEF → the script will use the specified network directly.
 - `-i, --input`:
-  - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `usb` to use the system camera.
+  - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `usb` to auto-select the first available USB camera.
+    - On Linux, you can also use /dev/vidoeX (e.g., `/dev/video0`) to select a specific camera.
+    - On Windows, you can also use a camera index (`0`, `1`, `2`, ...) to select a specific camera.
     - On Raspberry Pi, you can also use `rpi` to enable the Raspberry Pi camera.
-  - A **predefined input name** from `inputs.json` (e.g., `bus`, `street`).
+  - A **predefined input name** from `resources_config.yaml` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
+    - Use `--list-inputs` to display all available predefined inputs.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.
 - `-s, --save_stream_output`: [optional] Save the output of the inference from a stream.
+- `--no-display`: [optional] Run without opening a display window.
 - `-o, --output-dir`: [optional] Directory where output images/videos will be saved.
 - `-f, --framerate`: [optional][Camera only] Override the camera input framerate.
 - `--camera-resolution`: [optional][Camera only] Input resolution: `sd` (640x480), `hd` (1280x720), or `fhd` (1920x1080).
 - `--output-resolution`: [optional] Set output size using `sd|hd|fhd`, or pass custom width/height (e.g., `--output-resolution 1920 1080`).
-- `--list-nets`: [optional] Print all supported networks for this application (from `networks.json`) and exit.
-- `--list-inputs`: [optional] Print the available predefined input resources (images/videos) defined in `inputs.json` for this application, then exit.
+- `--list-models`: [optional] Print all supported networks for this application from the shared `resources_config.yaml`, then exit.
+- `--list-inputs`: [optional] Print the available predefined input resources (images/videos) from the shared `resources_config.yaml`, then exit.
 
 
 Example

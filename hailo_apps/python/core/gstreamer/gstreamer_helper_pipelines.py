@@ -193,7 +193,7 @@ def SOURCE_PIPELINE(
         )
 
     # Set up the fps caps.
-    # If sync is True, constrain the rate with the given frame_rate.
+    # If sync is True and frame_rate is specified, constrain the rate.
     # Otherwise, pass through (no framerate limitation).
     # Note: sync may be a string "true"/"false" from GStreamerApp, so normalize it.
     sync_enabled = sync if isinstance(sync, bool) else str(sync).lower() == "true"
