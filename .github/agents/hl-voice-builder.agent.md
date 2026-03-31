@@ -102,6 +102,7 @@ askQuestions:
     - label: "Interrupt support"
     - label: "Wake word detection"
     - label: "Text-only fallback (--no-tts)"
+  multiSelect: true
 ```
 
 **Anti-pattern (DO NOT DO THIS)**:

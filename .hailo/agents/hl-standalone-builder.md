@@ -42,6 +42,7 @@ You are an expert Hailo standalone application builder. You create OpenCV + Hail
      OPTIONS: USB camera (real-time) | Video file | Image directory (batch) | Single image -->
 
 <!-- INTERACTION: Output format? (select all that apply)
+     MULTISELECT: true
      OPTIONS: Display window (OpenCV) | Save annotated video | Save annotated images | JSON detection results | No display (headless) -->
 
 **Anti-pattern (DO NOT DO THIS)**:

@@ -143,17 +143,19 @@ def interaction_to_ask_questions(body: str) -> str:
         block = match.group(0)
         q_match = re.search(r"INTERACTION:\s*(.*?)(?:\n|-->)", block)
         opts_match = re.search(r"OPTIONS:\s*(.*?)-->", block, re.DOTALL)
+        multi_match = re.search(r"MULTISELECT:\s*(true|yes)", block, re.IGNORECASE)
         question = q_match.group(1).strip() if q_match else "Question"
         if opts_match:
             options = [o.strip() for o in opts_match.group(1).split("|") if o.strip()]
             opts_yaml = "\n".join(
                 f'    - label: "{opt}"' for opt in options
             )
+            multi_line = "\n  multiSelect: true" if multi_match else ""
             return (
                 f"```\naskQuestions:\n"
                 f'  header: "Choice"\n'
                 f'  question: "{question}"\n'
-                f"  options:\n{opts_yaml}\n```"
+                f"  options:\n{opts_yaml}{multi_line}\n```"
             )
         return f"**Ask the user:** {question}"
 
@@ -166,11 +168,13 @@ def interaction_to_natural_language(body: str) -> str:
         block = match.group(0)
         q_match = re.search(r"INTERACTION:\s*(.*?)(?:\n|-->)", block)
         opts_match = re.search(r"OPTIONS:\s*(.*?)-->", block, re.DOTALL)
+        multi_match = re.search(r"MULTISELECT:\s*(true|yes)", block, re.IGNORECASE)
         question = q_match.group(1).strip() if q_match else "Question"
         if opts_match:
             options = [o.strip() for o in opts_match.group(1).split("|") if o.strip()]
             opts_list = "\n".join(f"  - {opt}" for opt in options)
-            return f"**Ask the user:** {question}\n\nOptions:\n{opts_list}"
+            multi_hint = " (Multiple selections allowed)" if multi_match else ""
+            return f"**Ask the user:** {question}{multi_hint}\n\nOptions:\n{opts_list}"
         return f"**Ask the user:** {question}"
 
     return re.sub(r"<!-- INTERACTION:.*?-->", _convert, body, flags=re.DOTALL)
@@ -182,10 +186,12 @@ def interaction_to_inline(body: str) -> str:
         block = match.group(0)
         q_match = re.search(r"INTERACTION:\s*(.*?)(?:\n|-->)", block)
         opts_match = re.search(r"OPTIONS:\s*(.*?)-->", block, re.DOTALL)
+        multi_match = re.search(r"MULTISELECT:\s*(true|yes)", block, re.IGNORECASE)
         question = q_match.group(1).strip() if q_match else "Question"
         if opts_match:
             options = [o.strip() for o in opts_match.group(1).split("|") if o.strip()]
-            return f"Consider asking: {question} (options: {', '.join(options)})"
+            multi_tag = " [multi-select]" if multi_match else ""
+            return f"Consider asking: {question}{multi_tag} (options: {', '.join(options)})"
         return f"Consider asking: {question}"
 
     return re.sub(r"<!-- INTERACTION:.*?-->", _convert, body, flags=re.DOTALL)

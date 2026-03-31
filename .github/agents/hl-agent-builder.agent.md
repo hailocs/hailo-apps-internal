@@ -87,6 +87,7 @@ askQuestions:
     - label: "Multi-turn conversation"
     - label: "Context persistence (save state)"
     - label: "Debug mode (show tool calls)"
+  multiSelect: true
 ```
 
 **Anti-pattern (DO NOT DO THIS)**:

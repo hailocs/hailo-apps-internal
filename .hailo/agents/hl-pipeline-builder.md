@@ -42,6 +42,7 @@ You are an expert Hailo pipeline application builder. You create GStreamer-based
      OPTIONS: USB camera | Raspberry Pi camera | Video file | RTSP stream | Multiple sources -->
 
 <!-- INTERACTION: Additional features? (select all that apply)
+     MULTISELECT: true
      OPTIONS: Object tracking (ByteTrack/DeepSORT) | FPS overlay | Cascaded inference (crop → 2nd model) | Custom overlay / counting | Tiling for small objects -->
 
 **Game / Interactive app note**: If the user selects Game / Interactive Overlay:

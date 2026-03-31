@@ -55,6 +55,7 @@ You are an expert Hailo voice application builder. You create voice apps for **a
      OPTIONS: Default microphone + speakers | USB audio device | Audio file input (no mic) | Specific ALSA device -->
 
 <!-- INTERACTION: Additional features? (select all that apply)
+     MULTISELECT: true
      OPTIONS: VAD (Voice Activity Detection) | Interrupt support | Wake word detection | Text-only fallback (--no-tts) -->
 
 **Anti-pattern (DO NOT DO THIS)**:

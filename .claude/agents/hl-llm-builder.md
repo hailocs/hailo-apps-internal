@@ -45,7 +45,7 @@ Options:
   - Code reviewer
   - Document summarizer
 
-**Ask the user:** Additional features? (select all that apply)
+**Ask the user:** Additional features? (select all that apply) (Multiple selections allowed)
 
 Options:
   - Token streaming (print as generated)

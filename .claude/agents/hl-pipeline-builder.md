@@ -49,7 +49,7 @@ Options:
   - RTSP stream
   - Multiple sources
 
-**Ask the user:** Additional features? (select all that apply)
+**Ask the user:** Additional features? (select all that apply) (Multiple selections allowed)
 
 Options:
   - Object tracking (ByteTrack/DeepSORT)

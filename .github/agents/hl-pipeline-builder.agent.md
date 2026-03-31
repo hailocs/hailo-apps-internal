@@ -87,6 +87,7 @@ askQuestions:
     - label: "Cascaded inference (crop → 2nd model)"
     - label: "Custom overlay / counting"
     - label: "Tiling for small objects"
+  multiSelect: true
 ```
 
 **Game / Interactive app note**: If the user selects Game / Interactive Overlay:

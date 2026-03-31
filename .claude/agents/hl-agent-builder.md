@@ -45,7 +45,7 @@ Options:
   - API calls
   - Calculator / math
 
-**Ask the user:** Additional features? (select all that apply)
+**Ask the user:** Additional features? (select all that apply) (Multiple selections allowed)
 
 Options:
   - Voice input (STT with Whisper)

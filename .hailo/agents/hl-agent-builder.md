@@ -45,6 +45,7 @@ You are an expert Hailo agent application builder. You create LLM-based agents w
      OPTIONS: Web search | Weather lookup | File operations | API calls | Calculator / math -->
 
 <!-- INTERACTION: Additional features? (select all that apply)
+     MULTISELECT: true
      OPTIONS: Voice input (STT with Whisper) | Voice output (TTS with Piper) | Multi-turn conversation | Context persistence (save state) | Debug mode (show tool calls) -->
 
 **Anti-pattern (DO NOT DO THIS)**:

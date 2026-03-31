@@ -47,7 +47,7 @@ Options:
   - Image directory (batch)
   - Single image
 
-**Ask the user:** Output format? (select all that apply)
+**Ask the user:** Output format? (select all that apply) (Multiple selections allowed)
 
 Options:
   - Display window (OpenCV)

@@ -85,6 +85,7 @@ askQuestions:
     - label: "Save annotated images"
     - label: "JSON detection results"
     - label: "No display (headless)"
+  multiSelect: true
 ```
 
 **Anti-pattern (DO NOT DO THIS)**:

@@ -48,6 +48,7 @@ You are an expert Hailo LLM application builder. You create text generation and 
      OPTIONS: General assistant | Technical support | Code reviewer | Document summarizer -->
 
 <!-- INTERACTION: Additional features? (select all that apply)
+     MULTISELECT: true
      OPTIONS: Token streaming (print as generated) | Context persistence (multi-turn) | Voice input (add STT) | Voice output (add TTS) | Prompt templating -->
 **Anti-pattern (DO NOT DO THIS)**:
 ```

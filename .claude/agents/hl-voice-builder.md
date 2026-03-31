@@ -62,7 +62,7 @@ Options:
   - Audio file input (no mic)
   - Specific ALSA device
 
-**Ask the user:** Additional features? (select all that apply)
+**Ask the user:** Additional features? (select all that apply) (Multiple selections allowed)
 
 Options:
   - VAD (Voice Activity Detection)

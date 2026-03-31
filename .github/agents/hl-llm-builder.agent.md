@@ -91,6 +91,7 @@ askQuestions:
     - label: "Voice input (add STT)"
     - label: "Voice output (add TTS)"
     - label: "Prompt templating"
+  multiSelect: true
 ```
 **Anti-pattern (DO NOT DO THIS)**:
 ```
