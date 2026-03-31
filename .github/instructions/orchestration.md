@@ -60,7 +60,7 @@ MANDATORY READS (in this order):
 runSubagent: "Read these files and return a condensed context brief:
   - .github/memory/MEMORY.md
   - .github/memory/gen_ai_patterns.md
-  - .github/skills/hl-build-vlm-app.md
+  - .github/skills/hl-build-vlm-app/SKILL.md
   - .github/toolsets/vlm-backend-api.md
   - hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py
   - hailo_apps/python/gen_ai_apps/vlm_chat/backend.py
@@ -195,7 +195,7 @@ runSubagent:
     1. .github/memory/MEMORY.md
     2. .github/memory/gen_ai_patterns.md
     3. .github/memory/common_pitfalls.md
-    4. .github/skills/hl-build-vlm-app.md
+    4. .github/skills/hl-build-vlm-app/SKILL.md
     5. .github/toolsets/vlm-backend-api.md
     6. hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py (full source)
     7. hailo_apps/python/gen_ai_apps/vlm_chat/backend.py (full source)

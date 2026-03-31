@@ -118,6 +118,13 @@ def header(source_rel: str) -> str:
 
 def path_hailo_to_github(body: str) -> str:
     """Convert .hailo/ paths in body text to .github/ paths."""
+    # Build skill files: .hailo/skills/hl-build-X.md → .github/skills/hl-build-X/SKILL.md
+    # This must run BEFORE the generic skills/ prefix replacement
+    body = re.sub(
+        r"\.hailo/skills/(hl-build-[\w-]+)\.md",
+        r".github/skills/\1/SKILL.md",
+        body,
+    )
     body = body.replace(".hailo/skills/", ".github/skills/")
     body = body.replace(".hailo/instructions/", ".github/instructions/")
     body = body.replace(".hailo/toolsets/", ".github/toolsets/")

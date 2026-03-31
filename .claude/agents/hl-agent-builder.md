@@ -74,16 +74,26 @@ Options:
 
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
-Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is sufficient. Do NOT read reference source code** unless the task requires unusual customization.
+Read ONLY the files needed for this specific build — in parallel. **SKILL.md is the primary source. Do NOT read reference source code unless SKILL.md is insufficient for an unusual customization.**
 
+**Always read** (every agent build):
 - `.hailo/skills/hl-build-agent-app.md` — Agent app skill with complete code templates
+- `.hailo/memory/common_pitfalls.md` — Read sections: **UNIVERSAL** + **GEN-AI** only (skip PIPELINE, GAME)
+
+**Read if the task involves custom tool patterns / LLM streaming**:
 - `.hailo/toolsets/gen-ai-utilities.md` — LLM utils, tool framework
+
+**Read if the task involves VDevice / HEF details**:
 - `.hailo/toolsets/hailo-sdk.md` — VDevice, LLM, constants
+
+**Read if the task involves unusual LLM patterns**:
 - `.hailo/memory/gen_ai_patterns.md` — Gen AI architecture patterns
-- `.hailo/memory/common_pitfalls.md` — Known bugs to avoid
+
+**Reference code — read ONLY if SKILL.md template doesn't cover your exact use case**:
+- `hailo_apps/python/gen_ai_apps/agent_tools_example/agent.py` — Reference agent entry point
+- `hailo_apps/python/gen_ai_apps/agent_tools_example/tools/` — Reference tool implementations
 
 **Do NOT read** unless needed:
-- Reference app source (agent_tools_example/) — only if SKILL.md is insufficient
 - `hailo_apps/python/gen_ai_apps/gen_ai_utils/llm_utils/` — only for unusual tool patterns
 
 ### Phase 3: Scan Real Code (SKIP for standard builds)
@@ -115,6 +125,18 @@ Only scan real code when:
 8. **Write `README.md`**
 
 
+### Phase 4b: Code Cleanup (MANDATORY before validation)
+
+> **Anti-pattern**: When agents iterate on code (fixing errors, trying alternatives), they often leave behind imports from failed attempts, duplicate function definitions, or unreachable code after early returns. This is the #1 source of messy generated code.
+
+**Before running validation**, review every `.py` file you created and:
+1. **Remove unused imports** — delete any `import` or `from X import Y` where `Y` is never used in the file
+2. **Remove unreachable code** — delete code after unconditional `return`, `break`, `sys.exit()`
+3. **Remove duplicate functions** — if you rewrote a function, ensure only the final version remains
+4. **Remove commented-out code blocks** — dead code from previous attempts (single-line `#` comments explaining logic are fine)
+
+This takes 30 seconds and prevents validation failures. The validation script checks for these issues.
+
 ### Phase 5: Validate
 
 Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
@@ -130,15 +152,13 @@ Present completed app with files created, how to run, and tool descriptions.
 
 ## Critical Conventions
 
+Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
 1. **Hailo-10H only**: Agent apps require Hailo-10H
 2. **Tool interface**: Implement `BaseTool` with `name`, `description`, `schema`, `run()`
 3. **Tool discovery**: Auto-discovered from `tools/` directory via `tool_discovery`
-4. **Return type**: `ToolResult` dataclass
-5. **Config**: YAML per tool with persona and few-shot examples
-6. **LLM utils**: Use `streaming`, `tool_parsing`, `tool_execution` from `gen_ai_utils/llm_utils/`
-7. **Context**: `StateManager` for persistence, `context_manager` for conversation state
-8. **Logging**: `get_logger(__name__)`
-9. **Cleanup**: Release LLM and VDevice in finally block
+4. **LLM utils**: Use `streaming`, `tool_parsing`, `tool_execution` from `gen_ai_utils/llm_utils/`
+5. **Logging**: `get_logger(__name__)`
+6. **Cleanup**: Release LLM and VDevice in finally block
 
 ## Tool Implementation Pattern
 

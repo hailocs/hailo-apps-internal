@@ -8,7 +8,7 @@
 You are building a **pose estimation game** — an interactive GStreamer pipeline app that uses body keypoints for gameplay mechanics.
 
 ### Required Context (Read These First)
-1. `.github/skills/hl-build-pipeline-app.md` — Pipeline app skill (includes Frame Overlay, Detection Data Extraction, Reusing Pipeline Classes sections)
+1. `.github/skills/hl-build-pipeline-app/SKILL.md` — Pipeline app skill (includes Frame Overlay, Detection Data Extraction, Reusing Pipeline Classes sections)
 2. `.github/toolsets/pose-keypoints.md` — COCO keypoint indices, skeleton connections, coordinate transform
 3. `.github/toolsets/core-framework-api.md` — Framework API (buffer_utils, get_pipeline_parser)
 4. `.github/memory/common_pitfalls.md` — RGB→BGR for set_frame(), OpenCV patterns

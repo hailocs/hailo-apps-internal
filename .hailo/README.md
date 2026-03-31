@@ -50,16 +50,6 @@ Step-by-step workflow guides for agents. All use the `hl-` prefix.
 | `hl-build-llm-app.md` | Build LLM chat and text generation apps |
 | `hl-build-voice-app.md` | Build voice assistant apps (Whisper STT + Piper TTS) |
 
-### Detailed Instructions (per skill)
-| File | Description |
-|---|---|
-| `hl-build-vlm-app-instructions.md` | Detailed VLM app creation guide |
-| `hl-build-pipeline-app-instructions.md` | Detailed pipeline app creation guide |
-| `hl-build-standalone-app-instructions.md` | Detailed standalone app creation guide |
-| `hl-build-agent-app-instructions.md` | Detailed agent app creation guide |
-| `hl-build-llm-app-instructions.md` | Detailed LLM app creation guide |
-| `hl-add-voice-instructions.md` | Add speech-to-text / text-to-speech to any app |
-
 ### Pattern Skills (Reference)
 | File | Description |
 |---|---|

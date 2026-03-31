@@ -210,6 +210,122 @@ def check_no_hardcoded_paths(app_dir, result):
             result.add(f"No hardcoded paths: {py_file.name}", True)
 
 
+def check_unused_imports(app_dir, result):
+    """Check for unused imports — common when agents iterate and leave behind old attempts."""
+    for py_file in app_dir.glob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        content = py_file.read_text()
+        lines = content.split("\n")
+
+        # Collect all imported names
+        imported_names = []
+        for line in lines:
+            stripped = line.strip()
+            # Skip comments and strings
+            if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+                continue
+            # from X import Y, Z
+            m = re.match(r"from\s+\S+\s+import\s+(.+)", stripped)
+            if m:
+                names_part = m.group(1)
+                # Handle 'import X as Y' — track Y
+                for name in names_part.split(","):
+                    name = name.strip()
+                    if not name or name.startswith("#") or name.startswith("("):
+                        continue
+                    if " as " in name:
+                        name = name.split(" as ")[-1].strip()
+                    # Remove trailing comments
+                    name = name.split("#")[0].strip().rstrip(")")
+                    if name and name.isidentifier():
+                        imported_names.append(name)
+            # import X, import X as Y
+            elif stripped.startswith("import ") and "from" not in stripped:
+                names_part = stripped[7:]
+                for name in names_part.split(","):
+                    name = name.strip()
+                    if " as " in name:
+                        name = name.split(" as ")[-1].strip()
+                    # For 'import os.path', track 'os'
+                    name = name.split(".")[0].strip()
+                    name = name.split("#")[0].strip()
+                    if name and name.isidentifier():
+                        imported_names.append(name)
+
+        # Check usage — remove import lines from search space
+        non_import_content = "\n".join(
+            line for line in lines
+            if not line.strip().startswith("import ")
+            and not line.strip().startswith("from ")
+        )
+
+        unused = []
+        for name in imported_names:
+            # Check if name appears in non-import code (as word boundary)
+            if not re.search(r'\b' + re.escape(name) + r'\b', non_import_content):
+                unused.append(name)
+
+        if unused:
+            result.add(
+                f"No unused imports: {py_file.name}",
+                False,
+                f"Unused: {', '.join(unused)}",
+            )
+        else:
+            result.add(f"No unused imports: {py_file.name}", True)
+
+
+def check_unreachable_code(app_dir, result):
+    """Check for unreachable code patterns — dead code left from agent iteration."""
+    for py_file in app_dir.glob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        content = py_file.read_text()
+        lines = content.split("\n")
+        issues = []
+
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Code after unconditional return/break/continue/sys.exit at same indent
+            if i < len(lines):
+                if stripped in ("return", "break", "continue", "sys.exit(0)", "sys.exit(1)"):
+                    # Check next non-empty line at same or deeper indent
+                    indent = len(line) - len(line.lstrip())
+                    for j in range(i, min(i + 3, len(lines))):
+                        next_line = lines[j]
+                        if not next_line.strip():
+                            continue
+                        next_indent = len(next_line) - len(next_line.lstrip())
+                        next_stripped = next_line.strip()
+                        # Same indent, not a decorator/def/class/except/elif/else/finally
+                        if (next_indent == indent
+                                and next_stripped
+                                and not next_stripped.startswith(("def ", "class ", "@", "except", "elif", "else", "finally", "#"))):
+                            issues.append(f"line {i}: code after '{stripped}' may be unreachable")
+                        break
+
+            # Duplicate function definitions (agent rewrote a function but left the old one)
+            if stripped.startswith("def "):
+                func_name = stripped.split("(")[0].replace("def ", "")
+                # Count occurrences of this function definition
+                count = sum(1 for l in lines if l.strip().startswith(f"def {func_name}("))
+                if count > 1:
+                    issues.append(f"line {i}: duplicate function definition '{func_name}'")
+
+        # Deduplicate
+        issues = list(dict.fromkeys(issues))
+
+        if issues:
+            result.add(
+                f"No unreachable code: {py_file.name}",
+                False,
+                "; ".join(issues[:5]),  # Cap at 5 to avoid noise
+            )
+        else:
+            result.add(f"No unreachable code: {py_file.name}", True)
+
+
 def check_readme_standards(app_dir, result):
     """Check README.md for documentation standards."""
     readme = app_dir / "README.md"
@@ -367,6 +483,8 @@ def main():
     check_entry_point(app_dir, app_name, result)
     check_signal_handler(app_dir, app_name, result)
     check_no_hardcoded_paths(app_dir, result)
+    check_unused_imports(app_dir, result)
+    check_unreachable_code(app_dir, result)
     check_readme_standards(app_dir, result)
 
     # Runtime smoke tests (opt-in via --smoke-test)

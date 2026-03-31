@@ -80,16 +80,23 @@ Options:
 
 ### Phase 2: Load Context (AFTER approval)
 
-Read ONLY these files — in parallel. **SKILL.md + toolset + memory is sufficient. Do NOT read reference source code** (vlm_chat.py, backend.py) unless the task requires unusual customization not covered by SKILL.md.
+Read ONLY the files needed for this specific build — in parallel. **SKILL.md is the primary source. Do NOT read reference source code unless SKILL.md is insufficient for an unusual customization.**
 
+**Always read** (every VLM build):
 - `.hailo/skills/hl-build-vlm-app.md` — VLM skill with complete code templates, imports, and patterns
+- `.hailo/memory/common_pitfalls.md` — Read sections: **UNIVERSAL** + **GEN-AI** only (skip PIPELINE, GAME)
+
+**Read if the task involves monitoring / events**:
+- `.hailo/memory/gen_ai_patterns.md` — VLM multiprocessing backend, prompt format, token streaming
+
+**Read if the task involves custom Backend integration**:
 - `.hailo/toolsets/vlm-backend-api.md` — Backend class API (constructor, methods, thread safety)
-- `.hailo/memory/common_pitfalls.md` — Known bugs to avoid
-- `.hailo/memory/gen_ai_patterns.md` — VLM architecture patterns
+
+**Reference code — read ONLY if SKILL.md template doesn't cover your exact use case**:
+- `hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py` — Reference VLM app entry point
+- `hailo_apps/python/gen_ai_apps/vlm_chat/backend.py` — Backend implementation (only if extending Backend)
 
 **Do NOT read** unless needed for unusual customization:
-- `hailo_apps/python/gen_ai_apps/vlm_chat/vlm_chat.py` — only if SKILL.md is insufficient
-- `hailo_apps/python/gen_ai_apps/vlm_chat/backend.py` — only if extending Backend
 - `hailo_apps/python/core/common/defines.py` — only if registering (promoted apps only)
 
 **Kapa MCP**: Use only for undocumented SDK parameters or HEF compatibility questions.
@@ -111,6 +118,18 @@ Only scan real code when:
 5. **Build main app** — Following VLM Chat pattern: Backend reuse, camera loop, signal handling
 6. **Write README** — Usage, requirements, architecture
 
+
+### Phase 4b: Code Cleanup (MANDATORY before validation)
+
+> **Anti-pattern**: When agents iterate on code (fixing errors, trying alternatives), they often leave behind imports from failed attempts, duplicate function definitions, or unreachable code after early returns. This is the #1 source of messy generated code.
+
+**Before running validation**, review every `.py` file you created and:
+1. **Remove unused imports** — delete any `import` or `from X import Y` where `Y` is never used in the file
+2. **Remove unreachable code** — delete code after unconditional `return`, `break`, `sys.exit()`
+3. **Remove duplicate functions** — if you rewrote a function, ensure only the final version remains
+4. **Remove commented-out code blocks** — dead code from previous attempts (single-line `#` comments explaining logic are fine)
+
+This takes 30 seconds and prevents validation failures. The validation script checks for these issues.
 
 ### Phase 5: Validate
 Run the validation script (static checks + runtime smoke tests):
@@ -178,16 +197,13 @@ Run this in a background terminal so the user can see the video output. The app 
 
 ## Critical Conventions (MUST FOLLOW)
 
-1. **Imports are always absolute**: `from hailo_apps.python.core.common.xyz import ...`
-2. **HEF resolution**: Always use `resolve_hef_path(path, app_name, arch)` — never hardcode paths
-3. **Device sharing**: Always use `SHARED_VDEVICE_GROUP_ID` when creating VDevice
-4. **Logging**: Use `get_logger(__name__)` from `hailo_apps.python.core.common.hailo_logger`
-5. **CLI parsers**: Use `get_standalone_parser()` for VLM/gen-ai apps
-6. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag; never assume hardware
-7. **Entry points**: App must have a `main()` or `if __name__ == "__main__"` block
-8. **Backend reuse**: Import and reuse `Backend` from `hailo_apps.python.gen_ai_apps.vlm_chat.backend` — do NOT copy it
-9. **VAAPI workaround**: Not needed for standalone/gen-ai apps (only pipeline apps)
-10. **Signal handling**: Register SIGINT handler for graceful shutdown with summary
+Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
+1. **Absolute imports** always: `from hailo_apps.python.core.common.xyz import ...`
+2. **HEF resolution**: `resolve_hef_path(path, app_name, arch)` — never hardcode
+3. **Logging**: `get_logger(__name__)`, **CLI**: `get_standalone_parser()` for VLM apps
+4. **Backend reuse**: Import Backend from `hailo_apps.python.gen_ai_apps.vlm_chat.backend` — do NOT copy
+5. **Signal handling**: Set flag only in handler, clean up in main loop's `finally` block
+6. **Entry points**: App must have `main()` or `if __name__ == "__main__"` block
 
 ## VLM App Pattern
 

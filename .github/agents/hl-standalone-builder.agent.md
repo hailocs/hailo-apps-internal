@@ -111,12 +111,20 @@ askQuestions:
 
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
-Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is sufficient. Do NOT read reference source code** unless the task requires unusual customization.
+Read ONLY the files needed for this specific build — in parallel. **SKILL.md is the primary source. Do NOT read reference source code unless SKILL.md is insufficient for an unusual customization.**
 
-- `.github/skills/hl-build-standalone-app.md` — Standalone app skill with complete code templates
-- `.github/toolsets/core-framework-api.md` — HailoInfer, parsers, camera utils
+**Always read** (every standalone build):
+- `.github/skills/hl-build-standalone-app/SKILL.md` — Standalone app skill with complete code templates
+- `.github/memory/common_pitfalls.md` — Read sections: **UNIVERSAL** only (skip PIPELINE, GEN-AI, GAME)
+
+**Read if the task involves detection with class filtering**:
 - `.github/toolsets/yolo-coco-classes.md` — COCO class IDs for detection filtering
-- `.github/memory/common_pitfalls.md` — Known bugs to avoid
+
+**Read if the task involves custom preprocessing / postprocessing**:
+- `.github/toolsets/core-framework-api.md` — HailoInfer, parsers, camera utils
+
+**Reference code — read ONLY if SKILL.md template doesn't cover your exact use case**:
+- `hailo_apps/python/standalone_apps/object_detection/object_detection.py` — 3-thread detection reference
 
 **Do NOT read** unless needed:
 - Reference app source (object_detection/, pose_estimation/) — only if SKILL.md is insufficient
@@ -146,6 +154,18 @@ Only scan real code when:
 8. **Write `README.md`**
 
 
+### Phase 4b: Code Cleanup (MANDATORY before validation)
+
+> **Anti-pattern**: When agents iterate on code (fixing errors, trying alternatives), they often leave behind imports from failed attempts, duplicate function definitions, or unreachable code after early returns. This is the #1 source of messy generated code.
+
+**Before running validation**, review every `.py` file you created and:
+1. **Remove unused imports** — delete any `import` or `from X import Y` where `Y` is never used in the file
+2. **Remove unreachable code** — delete code after unconditional `return`, `break`, `sys.exit()`
+3. **Remove duplicate functions** — if you rewrote a function, ensure only the final version remains
+4. **Remove commented-out code blocks** — dead code from previous attempts (single-line `#` comments explaining logic are fine)
+
+This takes 30 seconds and prevents validation failures. The validation script checks for these issues.
+
 ### Phase 5: Validate
 
 Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
@@ -161,15 +181,13 @@ Present completed app with files created, how to run, and what it does.
 
 ## Critical Conventions
 
-1. **Imports**: Always absolute
+Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
+1. **Absolute imports** always
 2. **HEF**: `handle_and_resolve_args(args, APP_NAME)` for resolution + init
 3. **CLI**: `get_standalone_parser()` — `--input`, `--hef-path`, `--arch`, `--batch-size`, `--no-display`, `--save-output`
 4. **Threading**: 3-thread pattern with `queue.Queue`, `stop_event = threading.Event()`
-5. **Async inference**: `HailoInfer.run()` with `pending_jobs` deque, limit `MAX_ASYNC_INFER_JOBS`
-6. **Cleanup**: Always `hailo_inference.close()` in finally block
-7. **Queue sentinel**: `output_queue.put(None)` to signal thread termination
-8. **Logging**: `get_logger(__name__)`
-9. **Register**: Add constant in `defines.py`
+5. **Cleanup**: Always `hailo_inference.close()` in finally block
+6. **Logging**: `get_logger(__name__)`
 
 ## 3-Thread Architecture Pattern
 

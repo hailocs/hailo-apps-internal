@@ -1,6 +1,16 @@
 # Common Pitfalls — Memory
 
 > Bugs found, anti-patterns encountered, and lessons learned. Check before writing new code.
+>
+> **Domain sections**: Each section is tagged so agents load ONLY relevant pitfalls.
+> - **UNIVERSAL** — All agents MUST read (imports, signals, cleanup, logging, agent workflow)
+> - **PIPELINE** — GStreamer pipeline apps (queue, set_frame, VAAPI, pipeline strings)
+> - **GEN-AI** — VLM / LLM / Agent / Voice apps (multiprocessing, OpenCV, VLM tuning)
+> - **GAME** — Interactive / game apps (mechanics parsing, background rendering, keypoints)
+
+---
+
+# GAME — Game / Interactive App Pitfalls
 
 ## Game / Interactive App — Follow the User's Exact Description
 
@@ -23,6 +33,22 @@ The user described: one egg, stationary, placed randomly, catch-and-replace.
 words before building. If ambiguous, ask. Never substitute a genre assumption
 for what the user actually wrote. Re-read the prompt once more before coding
 the game loop.
+
+---
+
+# UNIVERSAL — All Agents Must Read
+
+## Agent Iteration Leftover Code (CRITICAL)
+
+When agents iterate on code (fixing errors, trying alternatives), they leave behind:
+- **Unused imports** from failed attempts (e.g., `import threading` that's no longer used)
+- **Duplicate function definitions** (agent rewrote `def process()` but left the old one)
+- **Unreachable code** after `return`/`break`/`sys.exit()` statements
+- **Commented-out code blocks** from previous approaches
+
+This is the **#1 source of messy agent-generated code**. The `validate_app.py` script
+now checks for unused imports and unreachable code. Always run Phase 4b (Code Cleanup)
+before Phase 5 (Validate).
 
 ## Import Errors
 
@@ -87,6 +113,10 @@ finally:
     app.stop()  # Sends None sentinel to worker
 ```
 
+---
+
+# GEN-AI — VLM / LLM / Agent / Voice Pitfalls
+
 ## OpenCV
 
 ### imshow Before waitKey
@@ -114,6 +144,10 @@ user_data.set_frame(frame)
 ```
 **Forgetting this conversion produces blue-tinted output.** The display pipeline
 expects BGR.
+
+---
+
+# PIPELINE — GStreamer Pipeline App Pitfalls
 
 ## use_frame Overwritten by GStreamerApp Constructor
 
@@ -218,6 +252,10 @@ python3 -c "from hailo_apps.python.core.common.defines import *; print('hailo_ap
 ls -la /path/to/video.mp4
 ```
 
+---
+
+# GAME (continued)
+
 ## Custom Background Apps — Don't Blend Camera Feed
 
 ### Wrong: Blending camera feed with background
@@ -241,7 +279,7 @@ output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 user_data.set_frame(output)
 ```
 
-## OpenCV Display
+## OpenCV Display (GEN-AI)
 
 ### Window too small with VLM crop
 `Backend.convert_resize_image()` returns 336×336 — too small for a display window.
@@ -270,6 +308,10 @@ app appear broken and drops most of the video content.
 `ThreadPoolExecutor.submit()`. Show the latest result in the overlay while live
 video continues. Freezing is ONLY for interactive capture-and-ask apps (like `vlm_chat`)
 where the user explicitly captures a frame.
+
+---
+
+# UNIVERSAL (continued)
 
 ## YAML Config Registration — Anchor Alias Placement
 
@@ -329,7 +371,7 @@ args = parser.parse_args()
 ```
 **Rule**: All `parser.add_argument()` calls must come **before** `handle_list_models_flag()`.
 
-## VLM MAX_TOKENS Tuning for Monitoring Apps
+## VLM MAX_TOKENS Tuning for Monitoring Apps (GEN-AI)
 
 Qwen2-VL with `MAX_TOKENS=300` produces verbose, **repetitive** output (the model
 loops the same sentences). For continuous monitoring apps that need concise answers:
@@ -338,7 +380,7 @@ loops the same sentences). For continuous monitoring apps that need concise answ
   `"Be concise — one or two sentences maximum."`
 - `MAX_TOKENS=200+` is only appropriate for interactive Q&A or detailed descriptions
 
-## Event Classification — Keyword Ordering Matters
+## Event Classification — Keyword Ordering Matters (GEN-AI)
 
 Keyword-based classification matches the **first** EventType whose keywords appear
 in the response. Generic words like "food" or "floor" can match the wrong category
@@ -353,7 +395,11 @@ physical-action keywords (sniffing, running, chewing) before state/posture keywo
 `"Classify the dog's activity as one of: sleeping, eating, drinking, playing, ..."` —
 this constrains the VLM output and makes keyword matching more reliable.
 
-## GStreamer Pipeline
+---
+
+# PIPELINE (continued)
+
+## GStreamer Pipeline — Queue and String Pitfalls
 
 ### Missing Queue Between Elements
 GStreamer needs explicit `queue` elements to create thread boundaries. Without them, everything runs in one thread and performance suffers.

@@ -62,16 +62,25 @@ You are an expert Hailo voice application builder. You create voice-enabled apps
 
 **Only proceed here after the user has reviewed and approved your plan from Phase 1.**
 
-Read ONLY these files — in parallel. **SKILL.md + toolsets + memory is sufficient. Do NOT read reference source code** unless the task requires unusual customization.
+Read ONLY the files needed for this specific build — in parallel. **SKILL.md is the primary source. Do NOT read reference source code unless SKILL.md is insufficient for an unusual customization.**
 
+**Always read** (every voice build):
 - `.hailo/skills/hl-build-voice-app.md` — Voice integration skill with complete code templates
+- `.hailo/memory/common_pitfalls.md` — Read sections: **UNIVERSAL** + **GEN-AI** only (skip PIPELINE, GAME)
+
+**Read if the task involves custom audio pipeline / VAD tuning**:
 - `.hailo/toolsets/gen-ai-utilities.md` — Voice processing reference
+
+**Read if the task involves VDevice / Speech2Text details**:
 - `.hailo/toolsets/hailo-sdk.md` — Speech2Text, VDevice
+
+**Read if the task involves unusual voice + LLM patterns**:
 - `.hailo/memory/gen_ai_patterns.md` — Gen AI architecture
-- `.hailo/memory/common_pitfalls.md` — Known bugs
+
+**Reference code — read ONLY if SKILL.md template doesn't cover your exact use case**:
+- `hailo_apps/python/gen_ai_apps/voice_assistant/voice_assistant.py` — Reference voice assistant entry point
 
 **Do NOT read** unless needed:
-- Reference app source (voice_assistant/, simple_whisper_chat/) — only if SKILL.md is insufficient
 - `hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/` — only for unusual patterns
 
 ### Phase 3: Scan Real Code (SKIP for standard builds)
@@ -101,6 +110,18 @@ Only scan real code when:
 6. **Write `README.md`**
 
 
+### Phase 4b: Code Cleanup (MANDATORY before validation)
+
+> **Anti-pattern**: When agents iterate on code (fixing errors, trying alternatives), they often leave behind imports from failed attempts, duplicate function definitions, or unreachable code after early returns. This is the #1 source of messy generated code.
+
+**Before running validation**, review every `.py` file you created and:
+1. **Remove unused imports** — delete any `import` or `from X import Y` where `Y` is never used in the file
+2. **Remove unreachable code** — delete code after unconditional `return`, `break`, `sys.exit()`
+3. **Remove duplicate functions** — if you rewrote a function, ensure only the final version remains
+4. **Remove commented-out code blocks** — dead code from previous attempts (single-line `#` comments explaining logic are fine)
+
+This takes 30 seconds and prevents validation failures. The validation script checks for these issues.
+
 ### Phase 5: Validate
 
 Run the validation script as the **single gate check** — it replaces all manual grep/import/lint checks:
@@ -116,16 +137,13 @@ Present completed app with files created, how to run, and audio setup notes.
 
 ## Critical Conventions
 
+Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
 1. **Hailo-10H only**: Voice apps require Hailo-10H for Whisper
 2. **STT on Hailo, TTS on CPU**: Whisper runs on accelerator, Piper runs on CPU
 3. **ALSA noise**: Wrap audio init with `redirect_stderr(StringIO())`
-4. **Abort event**: `threading.Event()` for interrupting generation/speech
-5. **VAD args**: Use `add_vad_args(parser)` for `--vad`, `--vad-aggressiveness`, `--vad-energy-threshold`
-6. **--no-tts flag**: Always support text-only output mode
-7. **Dependencies**: Requires `[gen-ai]` optional deps: PyAudio, piper-tts, sounddevice, webrtcvad-wheels
-8. **Init order**: VDevice → Speech2Text → LLM → TTS → VoiceInteractionManager
-9. **Cleanup**: Release all in reverse order in finally block
-10. **Logging**: `get_logger(__name__)`
+4. **VAD args**: Use `add_vad_args(parser)` for `--vad`, `--vad-aggressiveness`, `--vad-energy-threshold`
+5. **Init order**: VDevice → Speech2Text → LLM → TTS → VoiceInteractionManager
+6. **Logging**: `get_logger(__name__)`
 
 ## Voice App Pattern
 
