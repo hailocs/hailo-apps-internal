@@ -32,7 +32,7 @@ Use AI coding agents to quickly create Hailo applications. Just describe your id
 [All Applications](./doc/user_guide/running_applications.md)
 
 ### New in v26.03.0
-- **Windows support** across GenAI and standalone Python apps
+- **Windows support** across GenAI, standalone Python, and C++ apps
 - **YOLO26**: Object detection & pose estimation (with AI Gym), plus ONNX Runtime postprocess pipeline
 - **Voice2Action (V2A) Demo**: Voice-driven agentic pipeline with STT, LLM tool selection, and TTS
 - **Speech Recognition**: Standalone speech-to-text app, reintroduced
