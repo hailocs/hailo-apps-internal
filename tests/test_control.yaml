@@ -161,15 +161,15 @@ custom_tests:
       model_selection: "default"  # default | extra | all
       description: "CLIP Pipeline"
 
-    lane_detection:
+    lane_detection_standalone:
       test_suite_mode: "default"  # None | default | extra | all
       model_selection: "default"  # default | extra | all
-      description: "Lane Detection Pipeline"
+      description: "Lane Detection Standalone"
 
-    super_resolution:
+    super_resolution_standalone:
       test_suite_mode: "default"  # None | default | extra | all
       model_selection: "default"  # default | extra | all
-      description: "Super Resolution Pipeline"
+      description: "Super Resolution Standalone"
 
 # Per-app run-time overrides (seconds)
 # Use this to give slow-starting apps extra time beyond the default_run_time.
