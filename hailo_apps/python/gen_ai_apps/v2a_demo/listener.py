@@ -61,7 +61,10 @@ class WakeWordListener:
         if not melspec.exists() or not embed.exists():
             openwakeword.utils.download_models()
 
-        self._wake_word_model = openwakeword.Model([wake_word_model])
+        self._wake_word_model = openwakeword.Model(
+            wakeword_models=[wake_word_model],
+            inference_framework="onnx",
+        )
         self._wake_word_name = path.stem
         self._vad = VoiceActivityDetector(sample_rate=SAMPLE_RATE, aggressiveness=VAD_AGGRESSIVENESS)
         self._wake_timeout_s = wake_timeout_s

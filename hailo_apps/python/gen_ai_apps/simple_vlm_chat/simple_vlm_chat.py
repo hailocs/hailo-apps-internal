@@ -3,6 +3,7 @@ import sys
 
 import cv2
 import numpy as np
+from pathlib import Path
 
 from hailo_platform import VDevice
 from hailo_platform.genai import VLM
