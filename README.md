@@ -81,11 +81,6 @@ hailo-tiling                  # Tiling for high-res processing
 | **[User Guide](./doc/user_guide/README.md)** | Installation, running apps, configuration, repository structure |
 | **[Developer Guide](./doc/developer_guide/README.md)** | Build custom apps, write post-processing, model retraining |
 
-## Further Reading
-
-- [All Applications](./doc/user_guide/running_applications.md)
-- [Repository Structure](./doc/user_guide/repository_structure.md)
-
 ## Support
 
 💬 [Hailo Community Forum](https://community.hailo.ai/)
