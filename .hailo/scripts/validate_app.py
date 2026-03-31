@@ -10,9 +10,9 @@ With --smoke-test, also runs runtime checks (CLI --help, module import)
 that gracefully skip on non-Hailo systems.
 
 Usage:
-    python validate_app.py hailo_apps/python/gen_ai_apps/my_app
-    python validate_app.py hailo_apps/python/pipeline_apps/my_app --verbose
-    python validate_app.py hailo_apps/python/pipeline_apps/my_app --smoke-test
+    python3 validate_app.py hailo_apps/python/gen_ai_apps/my_app
+    python3 validate_app.py hailo_apps/python/pipeline_apps/my_app --verbose
+    python3 validate_app.py hailo_apps/python/pipeline_apps/my_app --smoke-test
 """
 import argparse
 import os

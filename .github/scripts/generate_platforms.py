@@ -7,8 +7,8 @@ configurations for GitHub Copilot (.github/), Claude Code (.claude/), and
 Cursor (.cursor/).
 
 Usage:
-    python .hailo/scripts/generate_platforms.py --generate [--platform copilot|claude|cursor|all]
-    python .hailo/scripts/generate_platforms.py --check [--platform copilot|claude|cursor|all]
+    python3 .hailo/scripts/generate_platforms.py --generate [--platform copilot|claude|cursor|all]
+    python3 .hailo/scripts/generate_platforms.py --check [--platform copilot|claude|cursor|all]
 
 The --check mode compares generated output against committed files and exits
 non-zero if they differ (for CI validation).
@@ -37,7 +37,7 @@ CURSOR_DIR = REPO_ROOT / ".cursor"
 GENERATED_HEADER = (
     "<!-- AUTO-GENERATED from .hailo/ — DO NOT EDIT DIRECTLY -->\n"
     "<!-- Source: {source} -->\n"
-    "<!-- Run: python .hailo/scripts/generate_platforms.py --generate -->\n\n"
+    "<!-- Run: python3 .hailo/scripts/generate_platforms.py --generate -->\n\n"
 )
 
 # Copilot tool IDs by capability
@@ -73,7 +73,6 @@ COPILOT_TOOLS = {
     "ask-user": ["vscode/askQuestions"],
     "web": ["web/fetch", "web/githubRepo"],
     "todo": ["todo"],
-    "hailo-docs": ["kapa/search_hailo_knowledge_sources"],
 }
 
 # Claude tool names by capability
@@ -86,7 +85,6 @@ CLAUDE_TOOLS = {
     "ask-user": ["AskUserQuestion"],
     "web": ["WebFetch"],
     "todo": [],
-    "hailo-docs": [],
 }
 
 # ---------------------------------------------------------------------------
@@ -193,9 +191,10 @@ def interaction_to_inline(body: str) -> str:
     return re.sub(r"<!-- INTERACTION:.*?-->", _convert, body, flags=re.DOTALL)
 
 
-def first_paragraph(content: str) -> str:
-    """Extract first non-heading, non-empty, non-frontmatter line as a short description."""
+def first_paragraph(content: str, prefer_heading: bool = False) -> str:
+    """Extract a clean description: first prose line, or heading if prefer_heading=True."""
     in_frontmatter = False
+    heading = None
     for line in content.split("\n"):
         stripped = line.strip()
         if stripped == "---":
@@ -203,9 +202,18 @@ def first_paragraph(content: str) -> str:
             continue
         if in_frontmatter:
             continue
-        if stripped and not stripped.startswith("#") and not stripped.startswith(">"):
+        # Capture the first heading as fallback description
+        if stripped.startswith("# ") and heading is None:
+            heading = stripped.lstrip("# ").strip()
+            if prefer_heading:
+                return heading[:200].replace('"', '\\"')
+            continue
+        if stripped and not stripped.startswith("#") and not stripped.startswith(">") and not stripped.startswith("`") and not stripped.startswith("|") and not stripped.startswith("- "):
             # Escape double quotes for safe YAML embedding
             return stripped[:200].replace('"', '\\"')
+    # Fall back to heading if no prose found
+    if heading:
+        return heading[:200].replace('"', '\\"')
     return "Hailo development reference"
 
 
@@ -225,7 +233,7 @@ Based on what the task involves, read **only** the matching rows:
 | **Game, interactive, pose game** | `{pfx}skills/hl-build-pipeline-app.md`, `{pfx}toolsets/pose-keypoints.md`, `{pfx}toolsets/core-framework-api.md`, `{pfx}memory/common_pitfalls.md` |
 | **Standalone, OpenCV, HailoInfer** | `{pfx}skills/hl-build-standalone-app.md`, `{pfx}toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `{pfx}skills/hl-camera.md`, `{pfx}memory/camera_and_display.md` |
-| **HEF, model, download, config** | `{pfx}skills/hl-model-management.md`, `{pfx}toolsets/hailo-sdk.md`, `{pfx}memory/hailo_platform_api.md` |
+| **HEF, model, download, config** | `{pfx}skills/hl-model-management.md`, `{pfx}toolsets/hailort-api.md`, `{pfx}memory/hailo_platform_api.md` |
 | **Monitoring, events, alerts** | `{pfx}skills/hl-monitoring.md`, `{pfx}skills/hl-event-detection.md` |
 | **Testing, validation, pytest** | `{pfx}skills/hl-validate.md`, `{pfx}instructions/testing-patterns.md` |
 | **ALWAYS read (every task)** | `{pfx}memory/common_pitfalls.md`, `{pfx}instructions/coding-standards.md` |
@@ -520,7 +528,7 @@ Persistent knowledge in `.hailo/memory/`. Read at task start, update when learni
             "hl-build-llm-app": {
                 "description": "Build an LLM chat application for Hailo-10H.",
                 "tools": "Bash(python *), Read, Write, Edit, Grep, Glob, Agent, AskUserQuestion",
-                "refs": [".hailo/toolsets/hailo-sdk.md"],
+                "refs": [".hailo/toolsets/hailort-api.md"],
             },
             "hl-build-voice-app": {
                 "description": "Build a voice assistant with Whisper STT and Piper TTS for Hailo-10H.",
@@ -762,7 +770,7 @@ def generate_cursor():
             src_file = skills_src / skill_name
             if src_file.exists():
                 content = read_file(src_file)
-                desc = first_paragraph(content)
+                desc = first_paragraph(content, prefer_heading=True)
                 body = interaction_to_inline(content)
                 out_content = (
                     f"---\n"
@@ -777,7 +785,10 @@ def generate_cursor():
     toolsets_src = HAILO_DIR / "toolsets"
     if toolsets_src.is_dir():
         for src_file in sorted(toolsets_src.glob("*.md")):
-            desc = first_paragraph(read_file(src_file))
+            desc = first_paragraph(read_file(src_file), prefer_heading=True)
+            # Strip redundant prefix if heading already starts with "Toolset:"
+            if desc.lower().startswith("toolset:"):
+                desc = desc[len("toolset:"):].strip()
             out_content = (
                 f"---\n"
                 f'description: "Toolset: {desc}"\n'
@@ -793,7 +804,12 @@ def generate_cursor():
     memory_src = HAILO_DIR / "memory"
     if memory_src.is_dir():
         for src_file in sorted(memory_src.glob("*.md")):
-            desc = first_paragraph(read_file(src_file))
+            desc = first_paragraph(read_file(src_file), prefer_heading=True)
+            # Strip redundant suffix/prefix patterns from memory headings
+
+            desc = re.sub(r'\s*—\s*Memory$', '', desc)
+            if desc.lower().startswith("memory:"):
+                desc = desc[len("memory:"):].strip()
             out_content = (
                 f"---\n"
                 f'description: "Memory: {desc}"\n'
@@ -809,7 +825,12 @@ def generate_cursor():
     instructions_src = HAILO_DIR / "instructions"
     if instructions_src.is_dir():
         for src_file in sorted(instructions_src.glob("*.md")):
-            desc = first_paragraph(read_file(src_file))
+            desc = first_paragraph(read_file(src_file), prefer_heading=True)
+            # Strip redundant prefix if heading already starts with category
+            for prefix in ("instruction:", "instructions:"):
+                if desc.lower().startswith(prefix):
+                    desc = desc[len(prefix):].strip()
+                    break
             out_content = (
                 f"---\n"
                 f'description: "Instruction: {desc}"\n'
@@ -825,7 +846,12 @@ def generate_cursor():
     prompts_src = HAILO_DIR / "prompts"
     if prompts_src.is_dir():
         for src_file in sorted(prompts_src.glob("*.md")):
-            desc = first_paragraph(read_file(src_file))
+            desc = first_paragraph(read_file(src_file), prefer_heading=True)
+            # Strip redundant prefix if heading already starts with category
+            for prefix in ("prompt:", "meta-prompt:"):
+                if desc.lower().startswith(prefix):
+                    desc = desc[len(prefix):].strip()
+                    break
             out_content = (
                 f"---\n"
                 f'description: "Prompt template: {desc}"\n'
@@ -882,7 +908,7 @@ def check(platforms: list) -> bool:
             print(f"  MISSING: {f}")
         for f in dirty:
             print(f"  CHANGED: {f}")
-        print("\nRun: python .hailo/scripts/generate_platforms.py --generate")
+        print("\nRun: python3 .hailo/scripts/generate_platforms.py --generate")
         return False
 
     print(f"Platform configs are up-to-date ({len(files)} files checked)")

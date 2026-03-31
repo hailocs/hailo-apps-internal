@@ -70,7 +70,7 @@ API references for frameworks and libraries used in Hailo apps.
 
 | File | Description |
 |---|---|
-| `hailo-sdk.md` | Hailo Platform SDK: VDevice, VLM, LLM, Speech2Text, GStreamer buffer API |
+| `hailort-api.md` | HailoRT API: VDevice, VLM, LLM, Speech2Text, GStreamer buffer API |
 | `gstreamer-elements.md` | GStreamer elements catalog: Hailo-specific and standard elements |
 | `vlm-backend-api.md` | VLM Backend class: constructor, vlm_inference(), thread safety |
 | `core-framework-api.md` | Core framework: resolve_hef_path, parsers, logger, HailoInfer, GStreamerApp |
@@ -143,8 +143,6 @@ Build prompt templates. Platform-neutral markdown — the generator wraps them f
 
 | File | Description |
 |---|---|
-| `dog-monitor-app.md` | Orchestrated dog monitoring VLM build |
-| `dog-monitor-flat.md` | Flat (single-prompt) dog monitoring build |
 | `new-vlm-variant.md` | Create a VLM app variant |
 | `new-pipeline-app.md` | Create a pipeline app |
 | `new-standalone-app.md` | Create a standalone app |

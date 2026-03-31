@@ -13,7 +13,6 @@ tools:
 - execute/getTerminalOutput
 - execute/killTerminal
 - execute/runInTerminal
-- kapa/search_hailo_knowledge_sources
 - read/problems
 - read/readFile
 - read/terminalLastCommand

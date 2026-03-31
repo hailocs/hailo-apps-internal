@@ -14,7 +14,7 @@
 ```
 REQUIRED SEQUENCE:
 1. Read the SKILL.md for the task type (FULL file, single read — never partial)
-2. Read .github/memory/common_pitfalls.md
+2. Read .hailo/memory/common_pitfalls.md
 3. THEN plan
 4. THEN implement
 ```
@@ -47,7 +47,7 @@ Each phase produces deliverables. Each deliverable has a validation command. Run
 | Phase | Gate Check Command | Expected Output |
 |---|---|---|
 | Directory created | `ls <app_dir>/__init__.py` | File exists |
-| Constants registered | `grep "APP_NAME" hailo_apps/python/core/common/defines.py` | Constant found |
+| Constants registered | `grep "APP_NAME" hailo_apps/python/core/common/defines.py` | Constant found (only if using resolve_hef_path) |
 | Module importable | `python3 -c "from hailo_apps.python... import X; print('OK')"` | `OK` |
 | CLI works | `python3 -m <module> --help` | Help text, exit 0 |
 | No lint errors | `get_errors` tool | Empty or acceptable |
@@ -58,7 +58,7 @@ Each phase produces deliverables. Each deliverable has a validation command. Run
 ```
 IF gate_check FAILS:
   1. Read the error message
-  2. Search .github/memory/common_pitfalls.md for the error
+  2. Search .hailo/memory/common_pitfalls.md for the error
   3. If found → apply documented fix
   4. If not found → diagnose, fix, then UPDATE common_pitfalls.md
   5. Re-run gate check
@@ -188,10 +188,10 @@ grep -n "def main\|__name__" <file> # Should find entry point
 
 | Discovery | Update File |
 |---|---|
-| New API pattern that works | `.github/memory/<domain>.md` |
-| Bug or gotcha found | `.github/memory/common_pitfalls.md` |
-| Performance optimization | `.github/memory/pipeline_optimization.md` |
-| New recipe/workflow | `.github/knowledge/knowledge_base.yaml` |
+| New API pattern that works | `.hailo/memory/<domain>.md` |
+| Bug or gotcha found | `.hailo/memory/common_pitfalls.md` |
+| Performance optimization | `.hailo/memory/pipeline_optimization.md` |
+| New recipe/workflow | `.hailo/knowledge/knowledge_base.yaml` |
 
 ### Memory Update Format
 
@@ -218,7 +218,7 @@ Error encountered →
   1. Read the full error message
   2. Search memory files for this error pattern
   3. Search codebase for similar code that works
-  4. Check .github/knowledge/knowledge_base.yaml for known patterns
+  4. Check .hailo/knowledge/knowledge_base.yaml for known patterns
   5. If all else fails:
      a. Create a minimal reproducer
      b. Document the issue in memory
@@ -239,7 +239,7 @@ When Copilot Coding Agent picks up an issue:
    - Task type (new app / bug fix / feature / docs)
    - App archetype (pipeline / standalone / gen-ai)
    - Specific requirements
-3. **Follow the orchestration phases** from `.github/instructions/orchestration.md`
+3. **Follow the orchestration phases** from `.hailo/instructions/orchestration.md`
 4. **Create a PR** with:
    - All code changes
    - Updated memory files (if applicable)
@@ -293,8 +293,8 @@ ONLY ask questions when:
    - User explicitly says "let's discuss options"
 ```
 
-**Example fast-path**: "Build a dog monitoring VLM app and launch with /path/to/dog.mp4"
-→ App type: VLM. Purpose: dog monitor. Input: file. Style: monitoring (continuous).
+**Example fast-path**: "Build a scene monitoring VLM app and launch with /path/to/video.mp4"
+→ App type: VLM. Purpose: scene monitor. Input: file. Style: monitoring (continuous).
 → No questions needed. Present plan inline and build.
 
 ### 10b: SKILL.md Is Sufficient — Don't Read Source Code
@@ -318,7 +318,7 @@ ONLY read reference source code when:
 ### 10c: validate_app.py Is the Single Gate
 
 ```
-DO    run: python3 .github/scripts/validate_app.py <app_dir> --smoke-test
+DO    run: python3 .hailo/scripts/validate_app.py <app_dir> --smoke-test
 DON'T run: manual grep checks, individual import tests, manual lint
 
 The validation script checks 20+ things:

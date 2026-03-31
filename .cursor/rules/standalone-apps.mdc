@@ -14,7 +14,7 @@ Read these files before making changes (paths relative to `.hailo/`):
 - `skills/hl-build-standalone-app/SKILL.md` — Standalone app patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution
 - `toolsets/core-framework-api.md` — HailoInfer, camera_utils, parsers
-- `toolsets/hailo-sdk.md` — VDevice, HEF resolution, constants
+- `toolsets/hailort-api.md` — VDevice, HEF resolution, constants
 - `memory/hailo_platform_api.md` — VDevice creation, HEF resolution chain
 - `memory/common_pitfalls.md` — Known anti-patterns to avoid
 

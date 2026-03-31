@@ -98,11 +98,11 @@ args = parser.parse_args()
 
 ```python
 # App name constant
-DOG_MONITOR_APP = "dog_monitor"
-DOG_MONITOR_APP_TITLE = "Dog Monitor"
+MY_VLM_APP = "my_vlm_app"
+MY_VLM_APP_TITLE = "My VLM App"
 
 # Default model (reuses VLM model)
-DOG_MONITOR_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
+MY_VLM_APP_MODEL_NAME_H10 = "Qwen2-VL-2B-Instruct"
 ```
 
 ## File Structure for New Apps

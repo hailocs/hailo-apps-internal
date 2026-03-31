@@ -65,7 +65,7 @@ Audio In → VAD → Whisper (STT) → LLM/VLM → Piper (TTS) → Audio Out
 
 ## Discovered Issues
 
-### Continuous Monitoring Pattern (Dog Monitor Variant)
+### Continuous Monitoring Pattern (VLM Monitor Variant)
 When building continuous monitoring apps that reuse the VLM Chat Backend:
 - **NEVER freeze video**: Keep playing live video at all times. VLM inference takes 10-30s; freezing makes the app feel broken and wastes video. Inference runs in a background thread.
 - **Timer-based capture**: Use `time.time()` delta check in the display loop, NOT `time.sleep(interval)` — sleep blocks the display.
@@ -86,8 +86,14 @@ New VLM apps must be registered in **two** files or `resolve_hef_path()` will fa
 Forgetting #2 causes `KeyError: 'my_app'` at runtime.
 
 ### Pre-Launch Environment Checks
-Before launching a VLM app, verify in this order:
-1. `hailortcli fw-control identify` — confirms device is accessible, shows architecture.
+Before launching a GenAI app, verify in this order:
+1. **Install gen-ai dependencies** — required before any gen-ai app runs:
+   ```bash
+   pip install -e ".[gen-ai]"
+   ```
+   Without this, apps fail with a confusing `piper` missing error even if they
+   don't use TTS. This installs `piper-tts`, `sounddevice`, and other GenAI deps.
+2. `hailortcli fw-control identify` — confirms device is accessible, shows architecture.
    **CRITICAL**: Check output content, not just exit code. `hailortcli` can return
    exit code 0 with empty output when no device is present. Verify the output
    contains `"Device Architecture"` or treat it as a failure.
@@ -97,11 +103,30 @@ Before launching a VLM app, verify in this order:
        echo "ERROR: No Hailo device detected"; exit 1
    fi
    ```
-2. `python3 -c "import hailo_platform"` — SDK installed
-3. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
-4. Input file exists (for file sources): `ls -la /path/to/video`
-5. For short videos: check duration and set `--interval` lower than video length
+3. `python3 -c "import hailo_platform"` — SDK installed
+4. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
+5. Input file exists (for file sources): `ls -la /path/to/video`
+6. For short videos: check duration and set `--interval` lower than video length
 Note: `lsmod | grep hailo_pci` is NOT reliable — some setups have built-in drivers.
+
+### HAILO_INVALID_HEF — Re-download HEF for Current HailoRT Version
+If `LLM()` or model loading fails with `HAILO_INVALID_HEF(26)`, the HEF file
+was likely compiled for a different HailoRT version than what's installed.
+```bash
+# ❌ Old HEF from a previous SDK version
+[HailoRT] [error] Failed to create LLM with status HAILO_INVALID_HEF(26)
+```
+**Fix**: Re-download the HEF to get the version matching the current HailoRT:
+```bash
+# Check current HailoRT version
+hailortcli fw-control identify  # Shows "Firmware Version: 5.2.0" etc.
+
+# Re-download the model for the correct version
+hailo-download-resources --group agent --arch hailo10h --force
+```
+**Rule**: When a HEF fails to load, always try re-downloading with `--force`
+before investigating other causes. HEF files are version-specific and must
+match the installed HailoRT.
 
 ### Queue Deadlock on Shutdown
 If the main process exits without sending the `None` sentinel to the worker, the worker blocks on `request_queue.get()` forever → orphaned process.
@@ -173,7 +198,7 @@ Measured on Hailo-10H with Qwen2-VL-2B-Instruct, `MAX_TOKENS=300`, `temperature=
 These timings include token generation overhead. Shorter `MAX_TOKENS` (100–150)
 can reduce inference time by ~30% since less tokens need to be generated.
 
-### Build Efficiency Metrics (Dog Monitor App Reference)
+### Build Efficiency Metrics (VLM Monitor App Reference)
 Full app build (3 files, 475 LOC, validated, tested, launched):
 | Metric | Value |
 |---|---|
@@ -183,23 +208,6 @@ Full app build (3 files, 475 LOC, validated, tested, launched):
 | Validation pass | 20/20 first try |
 | VLM events detected | 8 in 51s test run |
 
-### Context Efficiency — Local Docs vs External (Kapa MCP)
-The local `.hailo/` documentation (SKILL.md, memory files, toolset references,
-reference implementations) provided **100% of the context** needed to build a
-complete VLM app. Kapa MCP was not invoked.
-
-**When Kapa IS needed** (for future reference):
-- Undocumented `hailo_platform.genai` API parameters
-- HEF compatibility questions across SDK versions
-- HailoRT driver troubleshooting for non-standard setups
-- Model Zoo version-specific download URLs or naming changes
-
-**When local docs are sufficient** (Kapa NOT needed):
-- Building VLM apps following the existing pattern
-- Event tracking, display overlay, camera integration
-- CLI argument parsing, HEF resolution, signal handling
-- Any task where SKILL.md + memory files + reference implementation cover the pattern
-
 ### Short Video Strategy
 For video files under 120s, inference throughput matters. Each VLM call takes ~5s.
 - `--interval 15` (default) on a 60s video = only ~2 analyses
@@ -207,11 +215,11 @@ For video files under 120s, inference throughput matters. Each VLM call takes ~5
 - Always set `--interval` lower than `video_duration / 3` for meaningful monitoring
 
 
-### Dog Monitor — Continuous VLM Monitoring App
+### VLM Monitor — Continuous VLM Monitoring App
 *Contributed by AI Agent (auto-generated) on 2026-03-19. Tags: vlm, monitoring, camera, event-tracking, continuous.*
 
-**Summary**: Continuous camera monitoring with VLM-based dog activity classification on Hailo-10H.
-Watches a home camera, analyzes frames at configurable intervals, classifies responses
+**Summary**: Continuous camera monitoring with VLM-based activity classification on Hailo-10H.
+Watches a camera, analyzes frames at configurable intervals, classifies responses
 into 8 activity categories, and maintains a running session summary with event counts.
 
 **Finding**: Key patterns that emerged during the build:
@@ -223,7 +231,7 @@ into 8 activity categories, and maintains a running session summary with event c
 - **SIGINT handler** that sets running flag only — cleanup in `finally` block
 - **Display overlay** with semi-transparent bar showing last event and activity counts
 
-**Solution**: Four files: `dog_monitor.py` (~240 lines, main camera+VLM loop), `event_tracker.py`
+**Solution**: Four files: `my_vlm_app.py` (~240 lines, main camera+VLM loop), `event_tracker.py`
 (~120 lines, classification+stats), `README.md` (~100 lines), `__init__.py`.
 
 To adapt for a different monitoring use case, change 3 things:
@@ -232,7 +240,7 @@ To adapt for a different monitoring use case, change 3 things:
 3. **EventType enum + keyword map** — activity categories and detection keywords
 
 **Results**:
-Tested with 84-second dog video: 7 events detected (6 BARKING, 1 PLAYING). VLM responses
+Tested with 84-second video: 7 events detected (6 activity changes, 1 interaction). VLM responses
 classified accurately via keyword matching. Non-blocking inference kept display at ~25fps
 with no dropped frames during analysis.
 

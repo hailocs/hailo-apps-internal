@@ -73,13 +73,13 @@ runSubagent: "Read these files and return a condensed context brief:
 
 **Tasks**:
 1. Create the todo list with ALL phases and tasks
-2. Register app constant in `defines.py`
+2. Register app constant in `defines.py` (only if the app calls `resolve_hef_path()` with an app name)
 3. Define the module structure (which files, what each contains)
 4. Define all class/function signatures (interfaces only, no implementation)
 5. Identify all imports needed
 
 **Phase Gate** checklist:
-- [ ] App registered: constant in `defines.py`
+- [ ] App registered: constant in `defines.py` (only if using `resolve_hef_path()`)
 - [ ] Directory created with `__init__.py`
 - [ ] All file stubs created with class/function signatures
 - [ ] Import paths validated (run `python3 -c "from hailo_apps.python... import ..."`)
@@ -94,7 +94,7 @@ runSubagent: "Read these files and return a condensed context brief:
 Sub-agent A: "Implement event_tracker.py with EventType enum, Event dataclass,
              EventTracker class. Follow patterns from .github/skills/hl-event-detection.md"
 
-Sub-agent B: "Implement the main app class in dog_monitor.py following the VLM chat
+Sub-agent B: "Implement the main app class in my_vlm_app.py following the VLM chat
              pattern from vlm_chat.py. Reuse Backend from vlm_chat/backend.py"
 ```
 
@@ -217,15 +217,15 @@ runSubagent:
   description: "Build event tracker module"
   prompt: |
     ## Task
-    Create the file hailo_apps/python/gen_ai_apps/dog_monitor/event_tracker.py
+    Create the file hailo_apps/python/gen_ai_apps/my_vlm_app/event_tracker.py
 
     ## Context
     Read .github/skills/hl-event-detection.md for the pattern.
-    This module tracks dog activities detected by VLM analysis.
+    This module tracks activities detected by VLM analysis.
 
     ## Constraints
     - from hailo_apps.python.core.common.hailo_logger import get_logger
-    - EventType enum: DRINKING, EATING, SLEEPING, PLAYING, BARKING, AT_DOOR, IDLE, NO_DOG
+    - EventType enum: WALKING, STANDING, SITTING, RUNNING, INTERACTING, ALERT, IDLE, NONE
     - Event dataclass: timestamp, event_type, description, frame_path (optional)
     - EventTracker class: add_event(), get_summary(), get_counts(), classify_response(str) → EventType
     - classify_response uses keyword matching on VLM output
@@ -234,22 +234,22 @@ runSubagent:
     Create the file using create_file tool. Return the file path and line count.
 
     ## Validation
-    After creating, run: python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.event_tracker import EventTracker, EventType, Event; print('OK')"
+    After creating, run: python3 -c "from hailo_apps.python.gen_ai_apps.my_vlm_app.event_tracker import EventTracker, EventType, Event; print('OK')"
 ```
 
 ### Example: Validation Sub-Agent
 
 ```
 runSubagent:
-  description: "Validate dog monitor app"
+  description: "Validate my_vlm_app"
   prompt: |
     ## Task
-    Validate the dog_monitor application for correctness and convention compliance.
+    Validate the my_vlm_app application for correctness and convention compliance.
 
     ## Checks to Perform
-    1. Run: python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp"
-    2. Run: python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
-    3. Use get_errors tool on all .py files in the dog_monitor directory
+    1. Run: python3 -c "from hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app import MyVlmApp"
+    2. Run: python3 -m hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app --help
+    3. Use get_errors tool on all .py files in the my_vlm_app directory
     4. Verify these conventions in each .py file:
        - All imports are absolute (from hailo_apps.python...)
        - get_logger(__name__) is used
@@ -279,7 +279,7 @@ manage_todo_list:
     - Read reference implementation source
     - Compile context brief
   Phase 1: Planning & Registration
-    - Register app constant in defines.py
+    - Register app constant in defines.py (if using resolve_hef_path)
     - Create directory and __init__.py
     - Define all interfaces (signatures only)
   Phase 2: Core Implementation
@@ -304,11 +304,11 @@ Between each phase, run explicit validation:
 **For official apps** (in `hailo_apps/python/`):
 ```python
 # After Phase 1:
-python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor import __init__; print('Phase 1 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.my_vlm_app import __init__; print('Phase 1 PASS')"
 # After Phase 2:
-python3 -c "from hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor import DogMonitorApp; print('Phase 2 PASS')"
+python3 -c "from hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app import MyVlmApp; print('Phase 2 PASS')"
 # After Phase 3:
-python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app --help
 ```
 
 ### Step 3: Recover from Failures
@@ -327,21 +327,21 @@ If a phase gate fails:
 
 ### New VLM App Variant
 ```
-Phases: Context → Register → Backend adaptation → Main app → Events/tracking → Validate → Docs
+Phases: Context → Register (if using resolve_hef_path) → Backend adaptation → Main app → Events/tracking → Validate → Docs
 Sub-agents: Context loader, event module builder, validation checker
 Gate checks: Import validation, --help, lint
 ```
 
 ### New Pipeline App
 ```
-Phases: Context → Register → Pipeline string composition → Callback impl → Validate → Docs
+Phases: Context → Register (if using resolve_hef_path) → Pipeline string composition → Callback impl → Validate → Docs
 Sub-agents: Context loader, pipeline string builder (test with gst-launch-1.0)
 Gate checks: Import validation, pipeline parse test, --help
 ```
 
 ### New Agent Tool
 ```
-Phases: Context → Tool class impl → YAML config → Register → Validate → Docs
+Phases: Context → Tool class impl → YAML config → Register (if using resolve_hef_path) → Validate → Docs
 Sub-agents: Context loader, tool implementation, validation
 Gate checks: Tool instantiation, config loading, --help
 ```

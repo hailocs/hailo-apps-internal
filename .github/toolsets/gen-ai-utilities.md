@@ -80,19 +80,19 @@ from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils.terminal_ui import (
 
 ### speech_to_text.py
 ```python
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.speech_to_text import SpeechToText
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
 
-stt = SpeechToText(vdevice, whisper_hef_path)
+stt = SpeechToTextProcessor(vdevice, whisper_hef_path)
 text = stt.transcribe(audio_numpy_array)
 stt.release()
 ```
 
 ### text_to_speech.py
 ```python
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import TextToSpeech
+from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
 
-tts = TextToSpeech()
-tts.speak("Hello, the dog is sleeping peacefully.")
+tts = TextToSpeechProcessor()
+tts.speak("Hello, the scene is quiet and peaceful.")
 tts.stop()
 ```
 

@@ -13,7 +13,6 @@ tools:
 - execute/getTerminalOutput
 - execute/killTerminal
 - execute/runInTerminal
-- kapa/search_hailo_knowledge_sources
 - read/problems
 - read/readFile
 - read/terminalLastCommand
@@ -126,7 +125,7 @@ Read ONLY the files needed for this specific build — in parallel. **SKILL.md i
 - `.github/toolsets/gen-ai-utilities.md` — LLM streaming, token handling
 
 **Read if the task involves VDevice / HEF details**:
-- `.github/toolsets/hailo-sdk.md` — VDevice, LLM, constants
+- `.github/toolsets/hailort-api.md` — VDevice, LLM, constants
 
 **Read if the task involves unusual LLM patterns**:
 - `.github/memory/gen_ai_patterns.md` — Gen AI architecture patterns

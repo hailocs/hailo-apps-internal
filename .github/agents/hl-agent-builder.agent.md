@@ -13,7 +13,6 @@ tools:
 - execute/getTerminalOutput
 - execute/killTerminal
 - execute/runInTerminal
-- kapa/search_hailo_knowledge_sources
 - read/problems
 - read/readFile
 - read/terminalLastCommand
@@ -123,7 +122,7 @@ Read ONLY the files needed for this specific build — in parallel. **SKILL.md i
 - `.github/toolsets/gen-ai-utilities.md` — LLM utils, tool framework
 
 **Read if the task involves VDevice / HEF details**:
-- `.github/toolsets/hailo-sdk.md` — VDevice, LLM, constants
+- `.github/toolsets/hailort-api.md` — VDevice, LLM, constants
 
 **Read if the task involves unusual LLM patterns**:
 - `.github/memory/gen_ai_patterns.md` — Gen AI architecture patterns
@@ -202,7 +201,7 @@ Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
 ## Tool Implementation Pattern
 
 ```python
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils.tool_execution import BaseTool, ToolResult
+from hailo_apps.python.gen_ai_apps.agent_tools_example.tools.base import BaseTool, ToolResult
 
 class WeatherTool(BaseTool):
     @property

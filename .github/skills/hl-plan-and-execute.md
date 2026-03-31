@@ -100,12 +100,12 @@ Within each phase, find tasks that have NO dependencies on each other:
 ```
 Phase 2 dependency analysis:
   - event_tracker.py     → depends on nothing (pure logic)
-  - dog_monitor.py       → imports from event_tracker.py
-  - README.md            → describes dog_monitor.py
+  - my_vlm_app.py       → imports from event_tracker.py
+  - README.md            → describes my_vlm_app.py
 
   Therefore:
   - event_tracker.py can be a sub-agent (independent)
-  - dog_monitor.py must wait for event_tracker.py
+  - my_vlm_app.py must wait for event_tracker.py
   - README.md can be a sub-agent (after implementation done)
 ```
 
@@ -208,7 +208,7 @@ IF gate fails:
 
 ---
 
-## Complete Example: Building Dog Monitor
+## Complete Example: Building a VLM Monitor
 
 ```
 Phase 0: Context
@@ -216,17 +216,17 @@ Phase 0: Context
   └── Create todo list with all phases
 
 Phase 1: Registration (main agent)
-  ├── Add DOG_MONITOR_APP to defines.py
-  ├── Create dog_monitor/__init__.py
-  └── GATE: grep defines.py for DOG_MONITOR_APP ✓
+  ├── Add MY_VLM_APP to defines.py
+  ├── Create my_vlm_app/__init__.py
+  └── GATE: grep defines.py for MY_VLM_APP ✓
 
 Phase 2: Implementation
   ├── runSubagent: Build event_tracker.py (independent)
-  ├── Main agent: Build dog_monitor.py (uses Backend + EventTracker)
-  └── GATE: python3 -c "from ...dog_monitor import DogMonitorApp" ✓
+  ├── Main agent: Build my_vlm_app.py (uses Backend + EventTracker)
+  └── GATE: python3 -c "from ...my_vlm_app import MyVlmApp" ✓
 
 Phase 3: Validation
-  ├── Terminal: python3 -m ...dog_monitor --help
+  ├── Terminal: python3 -m ...my_vlm_app --help
   ├── get_errors on all .py files
   ├── Convention checklist (imports, logger, paths)
   └── GATE: All checks pass ✓

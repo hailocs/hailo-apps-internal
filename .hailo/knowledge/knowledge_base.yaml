@@ -2,52 +2,9 @@ version: '1.0'
 
 # Gen AI application recipes — proven patterns from real deployments
 gen_ai_recipes:
-  - id: recipe_001
-    timestamp: '2026-03-18'
-    app: vlm_chat
-    pattern: continuous_monitoring_variant
-    description: >
-      Build a continuous monitoring app by reusing vlm_chat Backend class with
-      a timer-based capture loop instead of interactive state machine.
-      Key changes: remove state machine, add interval timer, add event parsing,
-      add structured event log, add summary report.
-    reference_prompt: .hailo/prompts/dog-monitor-app.prompt.md
-    tags: [vlm, continuous-monitoring, event-detection, variant]
-
-  - id: recipe_002
-    timestamp: '2026-03-18'
-    app: vlm_chat
-    pattern: event_keyword_parsing
-    description: >
-      Parse VLM text responses into structured events using keyword matching.
-      Define EVENT_KEYWORDS dict mapping EventType → list of keywords.
-      Check response.lower() against each keyword list.
-      Combine with cooldown timer to avoid duplicate alerts.
-    tags: [vlm, event-detection, parsing, nlp]
-
-  - id: recipe_003
-    timestamp: '2026-03-18'
-    app: gen_ai_apps
-    pattern: backend_reuse
-    description: >
-      The vlm_chat Backend class is designed to be imported and reused.
-      Customize via constructor args: system_prompt, max_tokens, temperature.
-      Pass different user prompts per vlm_inference() call.
-      Import: from hailo_apps.python.gen_ai_apps.vlm_chat.backend import Backend
-    tags: [vlm, backend, reuse, architecture]
 
 # GStreamer pipeline optimization recipes
 pipeline_recipes:
-  - id: pipeline_001
-    timestamp: '2026-03-18'
-    pattern: scheduler_timeout_for_cropper_hailonet
-    description: >
-      When hailonet with batch-size > 1 is inside a hailocropper path,
-      it receives variable crop counts per frame. Without scheduler-timeout-ms,
-      the batch waits indefinitely for crops that may never arrive.
-      Fix: Set scheduler-timeout-ms to 1000/target_fps (e.g., 33 for 30fps).
-    impact: "Latency reduction: 64% (257ms → 93ms) in gesture_detection"
-    tags: [scheduler-timeout, hailonet, hailocropper, batch-size, latency]
 
 # Bottleneck diagnosis patterns
 bottleneck_patterns:

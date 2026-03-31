@@ -35,10 +35,7 @@ hailo_apps/python/<type>/<app_name>/
 Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.
 Do NOT register in `defines.py` or `resources_config.yaml`.
 
-### Step 2: Create Directory Structure
-
-
-### Step 3: Build Main App
+### Step 2: Build Main App
 
 ```python
 import signal
@@ -51,14 +48,13 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.common.defines import (
-    MY_LLM_APP,
     SHARED_VDEVICE_GROUP_ID,
     HAILO10H_ARCH,
 )
 
 logger = get_logger(__name__)
 
-APP_NAME = MY_LLM_APP
+APP_NAME = "my_llm_app"
 
 SYSTEM_PROMPT = "You are a helpful assistant."
 
@@ -127,11 +123,7 @@ if __name__ == "__main__":
 ### Step 4: Validate
 
 ```bash
-# No relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/my_llm_app/*.py
-
-# CLI works
-python3 -m hailo_apps.python.gen_ai_apps.my_llm_app.my_llm_app --help
+python3 .hailo/scripts/validate_app.py hailo_apps/python/gen_ai_apps/my_llm_app --smoke-test
 ```
 
 ## Critical Conventions

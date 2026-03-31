@@ -41,7 +41,7 @@ def vlm_inference(
 **Returns**:
 ```python
 {
-    "answer": "The dog is drinking water from a blue bowl.",  # Full text response
+    "answer": "A person is walking across the room carrying a bag.",  # Full text response
     "time": "2.34 seconds"                                     # Inference duration
 }
 ```
@@ -109,14 +109,14 @@ The Backend class is **designed to be reusable**. To create a variant app:
 3. **Different prompts per call**: Pass different `prompt` strings to `vlm_inference()`
 
 ```python
-# Example: Dog monitor using same backend
+# Example: Scene monitor using same backend
 backend = Backend(
     hef_path=str(hef_path),
     max_tokens=300,
     temperature=0.1,
-    system_prompt="You are a pet monitoring assistant. Describe what the dog is doing."
+    system_prompt="You are a scene monitoring assistant. Describe what is happening."
 )
-result = backend.vlm_inference(frame, "What is the dog doing right now?")
+result = backend.vlm_inference(frame, "What is happening in the scene right now?")
 ```
 
 ## Thread Safety

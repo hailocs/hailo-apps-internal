@@ -13,7 +13,7 @@ Read these files before making changes (paths relative to `.github/`):
 - `instructions/gen-ai-development.md` — VLM/LLM/Whisper development patterns
 - `instructions/coding-standards.md` — Import rules, logging, HEF resolution
 - `toolsets/gen-ai-utilities.md` — LLM streaming, voice processing, agent tools API
-- `toolsets/hailo-sdk.md` — VDevice, VLM, LLM, Speech2Text API
+- `toolsets/hailort-api.md` — VDevice, VLM, LLM, Speech2Text API
 - `memory/gen_ai_patterns.md` — Architecture patterns, multiprocessing gotchas
 - `memory/common_pitfalls.md` — Known anti-patterns to avoid
 

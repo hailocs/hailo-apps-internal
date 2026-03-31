@@ -4,7 +4,7 @@
 
 ## When to Use This Skill
 
-- User wants to **detect specific activities** (dog drinking, person entering, etc.)
+- User wants to **detect specific activities** (person entering, object appearing, etc.)
 - User needs **event counting** and statistics
 - User wants **alerts** when certain events occur
 - User needs **structured event logs** for reporting
@@ -92,13 +92,13 @@ def parse_events(vlm_response: str) -> list[EventType]:
 ### Smart Monitoring Prompt
 
 ```python
-MONITORING_SYSTEM_PROMPT = """You are a pet monitoring assistant watching a home camera.
-Your job is to describe what the dog is doing RIGHT NOW in one concise sentence.
-Focus on these activities: drinking water, eating food, sleeping/resting, playing,
-barking/being alert, waiting at the door.
-Be specific and factual. If the dog is not visible, say so."""
+MONITORING_SYSTEM_PROMPT = """You are a scene monitoring assistant watching a camera.
+Your job is to describe what is happening RIGHT NOW in one concise sentence.
+Focus on these activities: people entering/leaving, objects being moved, unusual activity,
+idle scene, alerts.
+Be specific and factual. If nothing notable is visible, say so."""
 
-MONITORING_USER_PROMPT = "What is the dog doing right now? Describe the current activity in one sentence."
+MONITORING_USER_PROMPT = "What is happening in the scene right now? Describe the current activity in one sentence."
 ```
 
 ### Alert System

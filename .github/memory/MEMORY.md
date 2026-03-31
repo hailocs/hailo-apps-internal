@@ -9,7 +9,7 @@
 | [gen_ai_patterns.md](gen_ai_patterns.md) | VLM/LLM app architecture, multiprocessing, token streaming | Building any Gen AI app |
 | [pipeline_optimization.md](pipeline_optimization.md) | GStreamer bottlenecks, queue tuning, scheduler-timeout | Profiling or optimizing pipelines |
 | [camera_and_display.md](camera_and_display.md) | Camera init, BGR/RGB conversion, OpenCV display patterns | Camera-related work |
-| [hailo_platform_api.md](hailo_platform_api.md) | VDevice, VLM.generate(), HEF resolution, device sharing | Any Hailo SDK interaction |
+| [hailo_platform_api.md](hailo_platform_api.md) | VDevice, VLM.generate(), HEF resolution, device sharing | Any HailoRT interaction |
 | [common_pitfalls.md](common_pitfalls.md) | Bugs found and fixed, anti-patterns to avoid | Any development task |
 
 ## Key Project Patterns
@@ -31,7 +31,6 @@
 - **python3 not python**: Ubuntu has no `python` binary; always use `python3` in commands
 - **YAML edits**: Whitespace-exact matching required; re-read target lines if first edit fails
 - **Validation script**: `validate_app.py` runs ~15 static checks + optional runtime smoke tests (`--smoke-test`) — single gate replaces manual greps
-- **Local docs vs Kapa**: `.hailo/` docs suffice for standard VLM builds; Kapa for edge cases only
 - **Auto-approve**: Add `"chat.tools.autoApprove": true` to `.vscode/settings.json` for agentic builds
 - **VLM inference timing**: ~4.7s avg on Hailo-10H with Qwen2-VL-2B at MAX_TOKENS=300
 - **Short videos**: Use `--interval 5` for clips under 120s to get meaningful observation count

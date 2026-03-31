@@ -1,5 +1,5 @@
 # Prompt: new-standalone-app
 
-Hailo development reference
+Prompt: Build Standalone Inference App
 
 Read `.hailo/prompts/new-standalone-app.md` for the complete prompt template.

@@ -7,7 +7,6 @@ capabilities:
 - ask-user
 - edit
 - execute
-- hailo-docs
 - read
 - search
 - sub-agent

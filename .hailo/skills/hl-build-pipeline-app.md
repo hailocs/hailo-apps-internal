@@ -35,10 +35,7 @@ hailo_apps/python/<type>/<app_name>/
 Create `app.yaml` with `type: pipeline` and `run.sh` wrapper.
 Do NOT register in `defines.py` or `resources_config.yaml`.
 
-### Step 2: Create Directory Structure
-
-
-### Step 3: Build Main App
+### Step 2: Build Main App
 
 ```python
 import gi
@@ -50,7 +47,9 @@ import hailo  # Required for detection/landmark extraction in callbacks
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.core import resolve_hef_path, handle_list_models_flag
 from hailo_apps.python.core.common.parser import get_pipeline_parser
-from hailo_apps.python.core.common.defines import MY_PIPELINE_APP
+# If your app uses resolve_hef_path with an app name, register it in defines.py.
+# Otherwise use a local string constant:
+# APP_NAME = "my_pipeline_app"
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     SOURCE_PIPELINE,
@@ -68,7 +67,7 @@ from hailo_apps.python.core.common.buffer_utils import (
 
 logger = get_logger(__name__)
 
-APP_NAME = MY_PIPELINE_APP
+APP_NAME = "my_pipeline_app"
 
 
 class UserAppCallback(app_callback_class):
@@ -123,14 +122,7 @@ if __name__ == "__main__":
 ### Step 4: Validate
 
 ```bash
-# No relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/pipeline_apps/my_pipeline_app/*.py
-
-# Logger used
-grep -rn "get_logger" hailo_apps/python/pipeline_apps/my_pipeline_app/*.py
-
-# CLI works
-python3 -m hailo_apps.python.pipeline_apps.my_pipeline_app.my_pipeline_app --help
+python3 .hailo/scripts/validate_app.py hailo_apps/python/pipeline_apps/my_pipeline_app --smoke-test
 ```
 
 ## Critical Conventions

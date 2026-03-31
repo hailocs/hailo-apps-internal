@@ -1,20 +1,36 @@
-# Skill: Build Voice Assistant Application
+# Skill: Build Voice Application
 
-Build a complete voice-enabled app with Whisper STT on Hailo + Piper TTS on CPU.
+Build voice apps for **all Hailo accelerators**: Whisper STT on Hailo-8/8L/10H + optional Piper TTS on CPU.
 
 ## When This Skill Is Loaded
 
 - User wants **speech input** or **speech output** in a Hailo app
 - User mentions: voice, speech, Whisper, TTS, microphone, STT, speak, listen
 - User wants to add voice to an existing LLM or VLM app
+- User wants speech recognition on Hailo-8 or Hailo-8L
+
+## Hardware Compatibility
+
+| Feature | Hailo-8/8L | Hailo-10H |
+|---|---|---|
+| STT (Whisper) | ✓ via `InferModel` (encoder+decoder HEFs) | ✓ via `Speech2Text` (genai API) |
+| LLM on device | ✘ | ✓ via `hailo_platform.genai.LLM` |
+| VLM on device | ✘ | ✓ via `Backend` (VLM chat) |
+| TTS (Piper) | ✓ CPU | ✓ CPU |
+| Full voice assistant | STT + CPU LLM + TTS | STT + on-device LLM + TTS |
 
 ## Reference Implementations
 
 Study these:
-- `hailo_apps/python/gen_ai_apps/voice_assistant/` — Full voice + LLM assistant
-- `hailo_apps/python/gen_ai_apps/simple_whisper_chat/` — Simple STT example
-- `hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/` — Voice utilities:
-  - `speech_to_text.py` — `SpeechToTextProcessor` (Whisper on Hailo)
+- `hailo_apps/python/gen_ai_apps/voice_assistant/` — Full voice + LLM assistant (Hailo-10H)
+- `hailo_apps/python/gen_ai_apps/simple_whisper_chat/` — Simple STT example (Hailo-10H)
+- `hailo_apps/python/standalone_apps/speech_recognition/` — STT for **all Hailo devices** (8/8L/10H) using InferModel API:
+  - `speech_recognition.py` — Main app: mic recording, audio preprocessing, transcription loop
+  - `whisper_pipeline.py` — `WhisperPipeline` class: encoder+decoder inference via `InferModel`
+  - `audio_utils.py` — Audio recording, mel spectrogram, file I/O
+  - `postprocessing.py` — Repetition penalty and token decoding
+- `hailo_apps/python/gen_ai_apps/gen_ai_utils/voice_processing/` — Voice utilities (Hailo-10H):
+  - `speech_to_text.py` — `SpeechToTextProcessor` (Whisper via genai API)
   - `text_to_speech.py` — `TextToSpeechProcessor` (Piper on CPU)
   - `audio_recorder.py` — `AudioRecorder` (microphone capture)
   - `vad.py` — Voice Activity Detection
@@ -38,10 +54,7 @@ hailo_apps/python/<type>/<app_name>/
 Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.
 Do NOT register in `defines.py` or `resources_config.yaml`.
 
-### Step 2: Create Directory Structure
-
-
-### Step 3: Build Main App
+### Step 2: Build Main App (Hailo-10H: Voice + LLM)
 
 ```python
 import signal
@@ -56,14 +69,18 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.parser import get_standalone_parser
 from hailo_apps.python.core.common.defines import (
-    MY_VOICE_APP,
     SHARED_VDEVICE_GROUP_ID,
     HAILO10H_ARCH,
 )
+
+logger = get_logger(__name__)
+
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.speech_to_text import SpeechToTextProcessor
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.interaction import VoiceInteractionManager
 from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.vad import add_vad_args
+
+APP_NAME = "my_voice_app"
 
 logger = get_logger(__name__)
 
@@ -139,29 +156,118 @@ if __name__ == "__main__":
     main()
 ```
 
-### Step 4: Validate
+### Step 3: Validate (Hailo-10H)
 
 ```bash
-# No relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/my_voice_app/*.py
+python3 .hailo/scripts/validate_app.py hailo_apps/python/gen_ai_apps/my_voice_app --smoke-test
+```
 
-# CLI works
-python3 -m hailo_apps.python.gen_ai_apps.my_voice_app.my_voice_app --help
+### Step 2b: Build Main App (Hailo-8/8L: Speech Recognition)
 
-# Audio system check
-python3 -m hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot
+For Hailo-8/8L, use the `InferModel` API with separate encoder + decoder HEFs:
+
+```python
+import signal
+import sys
+import time
+
+import numpy as np
+
+from hailo_apps.python.core.common.toolbox import resolve_arch
+from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.core import resolve_hef_paths
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.defines import (
+    WHISPER_H8_APP, RESOURCES_ROOT_PATH_DEFAULT, RESOURCES_NPY_DIR_NAME,
+)
+
+logger = get_logger(__name__)
+
+APP_NAME = "my_speech_app"
+
+
+def main():
+    parser = get_standalone_parser()
+    parser.add_argument("--audio", type=str, help="Audio file to transcribe (skip mic)")
+    parser.add_argument("--variant", default="base", choices=["base", "tiny", "tiny.en"],
+                        help="Whisper model variant")
+    parser.add_argument("--duration", type=int, default=10, help="Max recording seconds")
+    args = parser.parse_args()
+
+    arch = resolve_arch(args.arch)  # Auto-detect or --arch flag
+
+    # Resolve encoder + decoder HEFs (plural — Whisper uses two separate models)
+    hef_paths = resolve_hef_paths(None, WHISPER_H8_APP, arch=arch)
+    encoder_path = str(hef_paths["encoder"])
+    decoder_path = str(hef_paths["decoder"])
+
+    # Decoder assets directory
+    npy_dir = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / RESOURCES_NPY_DIR_NAME)
+
+    # WhisperPipeline — uses InferModel API, works on ALL Hailo devices
+    from .whisper_pipeline import WhisperPipeline
+    pipeline = WhisperPipeline(
+        encoder_path=encoder_path,
+        decoder_path=decoder_path,
+        variant=args.variant,
+        npy_dir=npy_dir,
+        add_embed=(arch != "hailo10h"),  # H8/8L need host-side Add operator
+    )
+
+    if args.audio:
+        # Single file transcription
+        mel = preprocess_audio_file(args.audio, pipeline.get_chunk_length())
+        pipeline.send_data(mel)
+        text = pipeline.get_transcription()
+        print(f"Transcription: {text}")
+    else:
+        # Interactive mic loop
+        logger.info("Ready. Press Enter to start recording, Enter to stop. 'q' to quit.")
+        while True:
+            cmd = input("Press Enter to record (q to quit): ").strip()
+            if cmd.lower() == "q":
+                break
+            audio = record_from_mic(duration=args.duration)
+            mel = audio_to_mel(audio, pipeline.get_chunk_length())
+            pipeline.send_data(mel)
+            text = pipeline.get_transcription()
+            print(f"Transcription: {text}")
+
+    pipeline.stop()
+    logger.info("Done")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+**Key differences from H10 pattern**:
+- Uses `resolve_hef_paths()` (plural) — returns dict with `encoder` and `decoder` keys
+- Uses `WhisperPipeline` with `InferModel` API — NOT `SpeechToTextProcessor`
+- `add_embed` flag: `True` for H8/8L (host-side Add operator), `False` for H10
+- No LLM/VLM on device — inference is CPU or external service
+- Dependencies: `pip install -e ".[speech-rec]"` (torch, transformers, sounddevice, scipy)
+
+### Step 3b: Validate (Hailo-8/8L)
+
+```bash
+python3 .hailo/scripts/validate_app.py hailo_apps/python/standalone_apps/my_speech_app --smoke-test
 ```
 
 ## Critical Conventions
 
 1. **STT on Hailo, TTS on CPU**: Never reverse this — Whisper needs the accelerator, Piper is CPU-only
-2. **ALSA noise**: Wrap audio init with `redirect_stderr(StringIO())`
-3. **Abort event**: `threading.Event()` for interrupting generation and speech
-4. **Init order**: VDevice → STT → LLM → TTS → VoiceInteractionManager
-5. **Cleanup order**: Reverse of init, in `finally` block
-6. **VAD args**: Always use `add_vad_args(parser)` for `--vad`, `--vad-aggressiveness`, `--vad-energy-threshold`
-7. **--no-tts**: Always support text-only mode as fallback
-8. **Dependencies**: Requires `[gen-ai]` extras: PyAudio, piper-tts, sounddevice, webrtcvad-wheels
+2. **Two STT APIs**: `SpeechToTextProcessor` (genai) for H10, `WhisperPipeline` (InferModel) for H8/8L/10H
+3. **Architecture detection**: Use `detect_hailo_arch()` or `--arch` flag — never hardcode
+4. **ALSA noise**: Wrap audio init with `redirect_stderr(StringIO())`
+5. **Abort event**: `threading.Event()` for interrupting generation and speech
+6. **Init order**: VDevice → STT → LLM (H10 only) → TTS → VoiceInteractionManager
+7. **Cleanup order**: Reverse of init, in `finally` block
+8. **VAD args**: Always use `add_vad_args(parser)` for `--vad`, `--vad-aggressiveness`, `--vad-energy-threshold`
+9. **--no-tts**: Always support text-only mode as fallback
+10. **H8/8L HEF resolution**: Use `resolve_hef_paths()` (plural) — Whisper needs encoder + decoder HEFs
+11. **H10 HEF resolution**: Use `resolve_hef_path()` (singular) — single HEF per model
+12. **Dependencies**: H10 voice requires `[gen-ai]` extras; H8/8L STT requires `[speech-rec]` extras
 
 ## Adding Voice to an Existing App
 

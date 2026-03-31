@@ -1,6 +1,6 @@
-# Toolset: Hailo SDK API Reference
+# Toolset: HailoRT API Reference
 
-> API reference for the Hailo Platform SDK used in hailo-apps applications.
+> API reference for the Hailo Platform SDK (HailoRT) used in hailo-apps applications.
 
 ## hailo_platform
 

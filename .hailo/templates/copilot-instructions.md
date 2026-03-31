@@ -47,7 +47,7 @@ Based on what the task involves, read **only** the matching rows:
 | **Game, interactive, pose game** | `skills/hl-build-pipeline-app/SKILL.md`, `toolsets/pose-keypoints.md`, `toolsets/core-framework-api.md`, `memory/common_pitfalls.md` |
 | **Standalone, OpenCV, HailoInfer** | `skills/hl-build-standalone-app/SKILL.md`, `toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `skills/hl-camera.md`, `memory/camera_and_display.md` |
-| **HEF, model, download, config** | `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`, `memory/hailo_platform_api.md` |
+| **HEF, model, download, config** | `skills/hl-model-management.md`, `toolsets/hailort-api.md`, `memory/hailo_platform_api.md` |
 | **Monitoring, events, alerts** | `skills/hl-monitoring.md`, `skills/hl-event-detection.md` |
 | **Testing, validation, pytest** | `skills/hl-validate.md`, `instructions/testing-patterns.md` |
 | **Complex multi-file app** | `instructions/orchestration.md`, `skills/hl-plan-and-execute.md`, `instructions/agent-protocols.md` |
@@ -133,7 +133,7 @@ PHASE 4: DOCUMENT  → Write README.md (required), update memory if needed
 
 ### Key Protocols
 
-1. **Route context** — Use the routing table to load only relevant files, not all 44
+1. **Route context** — Use the routing table to load only relevant files
 2. **Context first** — NEVER write code before reading routed context files
 3. **Phase gates** — NEVER advance to next phase until current gate passes
 4. **Sub-agents** — Delegate independent reads and module builds; keep sequential edits in main agent
@@ -209,8 +209,6 @@ PHASE 4: DOCUMENT  → Write README.md (required), update memory if needed
 │   ├── hl-plan-and-execute.md       ← Skill: Plan-and-execute loop pattern
 │   └── hl-validate.md               ← Skill: Validation at every phase gate
 ├── prompts/
-│   ├── dog-monitor-app.prompt.md    ← Demo: Orchestrated dog monitoring build
-│   ├── dog-monitor-flat.prompt.md   ← Demo: Flat (non-orchestrated) dog monitor
 │   ├── orchestrated-build.prompt.md ← Meta-template: Orchestrated build (any app)
 │   ├── new-vlm-variant.prompt.md    ← Template: Create VLM app variant
 │   ├── new-pipeline-app.prompt.md   ← Template: Create pipeline app
@@ -220,7 +218,7 @@ PHASE 4: DOCUMENT  → Write README.md (required), update memory if needed
 │   ├── new-pose-game.prompt.md      ← Template: Create pose estimation game
 │   └── new-agent-tool.prompt.md     ← Template: Create new agent tool
 ├── toolsets/
-│   ├── hailo-sdk.md                 ← Hailo SDK API reference
+│   ├── hailort-api.md                 ← HailoRT API reference
 │   ├── gstreamer-elements.md        ← Available GStreamer elements
 │   ├── vlm-backend-api.md           ← VLM Backend class API
 │   ├── core-framework-api.md        ← Core framework API reference

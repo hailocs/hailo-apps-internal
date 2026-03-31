@@ -10,4 +10,4 @@ allowed-tools: Bash(python *), Read, Write, Edit, Grep, Glob, Agent, AskUserQues
 Read and follow the complete skill documentation at `.hailo/skills/hl-build-llm-app.md`.
 
 Also consult:
-- `.hailo/toolsets/hailo-sdk.md`
+- `.hailo/toolsets/hailort-api.md`

@@ -47,7 +47,7 @@ Each phase produces deliverables. Each deliverable has a validation command. Run
 | Phase | Gate Check Command | Expected Output |
 |---|---|---|
 | Directory created | `ls <app_dir>/__init__.py` | File exists |
-| Constants registered | `grep "APP_NAME" hailo_apps/python/core/common/defines.py` | Constant found |
+| Constants registered | `grep "APP_NAME" hailo_apps/python/core/common/defines.py` | Constant found (only if using resolve_hef_path) |
 | Module importable | `python3 -c "from hailo_apps.python... import X; print('OK')"` | `OK` |
 | CLI works | `python3 -m <module> --help` | Help text, exit 0 |
 | No lint errors | `get_errors` tool | Empty or acceptable |
@@ -293,8 +293,8 @@ ONLY ask questions when:
    - User explicitly says "let's discuss options"
 ```
 
-**Example fast-path**: "Build a dog monitoring VLM app and launch with /path/to/dog.mp4"
-→ App type: VLM. Purpose: dog monitor. Input: file. Style: monitoring (continuous).
+**Example fast-path**: "Build a scene monitoring VLM app and launch with /path/to/video.mp4"
+→ App type: VLM. Purpose: scene monitor. Input: file. Style: monitoring (continuous).
 → No questions needed. Present plan inline and build.
 
 ### 10b: SKILL.md Is Sufficient — Don't Read Source Code

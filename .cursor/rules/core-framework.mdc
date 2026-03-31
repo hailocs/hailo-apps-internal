@@ -20,7 +20,7 @@ Read these files before making changes (paths relative to `.hailo/`):
 ## Additional Context (load if relevant)
 
 - If GStreamer: `instructions/gstreamer-pipelines.md`, `toolsets/gstreamer-elements.md`
-- If models/HEF: `skills/hl-model-management.md`, `toolsets/hailo-sdk.md`
+- If models/HEF: `skills/hl-model-management.md`, `toolsets/hailort-api.md`
 
 ## Critical Notes for Core Changes
 

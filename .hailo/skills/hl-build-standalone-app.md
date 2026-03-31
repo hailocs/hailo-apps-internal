@@ -34,10 +34,7 @@ hailo_apps/python/<type>/<app_name>/
 Create `app.yaml` with `type: standalone` and `run.sh` wrapper.
 Do NOT register in `defines.py` or `resources_config.yaml`.
 
-### Step 2: Create Directory Structure
-
-
-### Step 3: Build Main App (3-Thread Architecture)
+### Step 2: Build Main App (3-Thread Architecture)
 
 ```python
 import threading
@@ -49,12 +46,11 @@ import numpy as np
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.core import resolve_hef_path, handle_and_resolve_args
 from hailo_apps.python.core.common.parser import get_standalone_parser
-from hailo_apps.python.core.common.defines import MY_STANDALONE_APP
-from hailo_apps.python.core.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
 
 logger = get_logger(__name__)
 
-APP_NAME = MY_STANDALONE_APP
+APP_NAME = "my_standalone_app"
 MAX_INPUT_QUEUE_SIZE = 5
 MAX_OUTPUT_QUEUE_SIZE = 5
 MAX_ASYNC_INFER_JOBS = 3
@@ -133,11 +129,7 @@ if __name__ == "__main__":
 ### Step 4: Validate
 
 ```bash
-# No relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/standalone_apps/my_standalone_app/*.py
-
-# CLI works
-python3 -m hailo_apps.python.standalone_apps.my_standalone_app.my_standalone_app --help
+python3 .hailo/scripts/validate_app.py hailo_apps/python/standalone_apps/my_standalone_app --smoke-test
 ```
 
 ## Critical Conventions

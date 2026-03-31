@@ -76,16 +76,16 @@ cap = cv2.VideoCapture("rtsp://<username>:<password>@<camera-ip>:554/stream")
 The standard parser handles source selection:
 ```bash
 # USB camera
-python my_app.py --input usb
+python3 my_app.py --input usb
 
 # RPi camera
-python my_app.py --input rpi
+python3 my_app.py --input rpi
 
 # Video file
-python my_app.py --input /path/to/video.mp4
+python3 my_app.py --input /path/to/video.mp4
 
 # RTSP
-python my_app.py --input rtsp://camera_ip:554/stream
+python3 my_app.py --input rtsp://camera_ip:554/stream
 ```
 
 ## Camera Abstraction Pattern

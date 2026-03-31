@@ -200,30 +200,30 @@ from hailo_apps.python.gen_ai_apps.<app>.event_tracker import (
 class TestEventTracker:
     """Test the EventTracker class."""
     
-    def test_classify_response_drinking(self):
+    def test_classify_response_activity(self):
         tracker = EventTracker()
-        result = tracker.classify_response("The dog is drinking water from the bowl")
-        assert result == EventType.DRINKING
+        result = tracker.classify_response("A person is walking through the room")
+        assert result == EventType.WALKING
     
-    def test_classify_response_no_dog(self):
+    def test_classify_response_no_activity(self):
         tracker = EventTracker()
-        result = tracker.classify_response("No dog visible in the frame")
-        assert result == EventType.NO_DOG
+        result = tracker.classify_response("Nothing notable visible in the frame")
+        assert result == EventType.IDLE
     
     def test_add_event_increments_count(self):
         tracker = EventTracker()
-        tracker.add_event(EventType.DRINKING, "Dog drinking water")
-        tracker.add_event(EventType.DRINKING, "Dog still drinking")
+        tracker.add_event(EventType.WALKING, "Person walking through room")
+        tracker.add_event(EventType.WALKING, "Person still walking")
         counts = tracker.get_counts()
-        assert counts[EventType.DRINKING] == 2
+        assert counts[EventType.WALKING] == 2
     
     def test_get_summary_includes_all_events(self):
         tracker = EventTracker()
-        tracker.add_event(EventType.EATING, "Dog eating food")
-        tracker.add_event(EventType.SLEEPING, "Dog resting on couch")
+        tracker.add_event(EventType.WALKING, "Person walking")
+        tracker.add_event(EventType.ALERT, "Unusual activity detected")
         summary = tracker.get_summary()
-        assert "EATING" in summary
-        assert "SLEEPING" in summary
+        assert "WALKING" in summary
+        assert "ALERT" in summary
     
     def test_empty_tracker_returns_empty_summary(self):
         tracker = EventTracker()
@@ -231,15 +231,15 @@ class TestEventTracker:
         assert "No events" in summary or len(summary) > 0
 
 
-class TestDogMonitorApp:
-    """Test the DogMonitorApp class (mocked hardware)."""
+class TestMyVlmApp:
+    """Test the MyVlmApp class (mocked hardware)."""
     
-    @patch("hailo_apps.python.gen_ai_apps.<app>.dog_monitor.Backend")
+    @patch("hailo_apps.python.gen_ai_apps.<app>.my_vlm_app.Backend")
     def test_app_creation(self, mock_backend):
         """Test that the app can be instantiated."""
-        from hailo_apps.python.gen_ai_apps.<app>.dog_monitor import DogMonitorApp
+        from hailo_apps.python.gen_ai_apps.<app>.my_vlm_app import MyVlmApp
         # Just verify no crash on import + class exists
-        assert DogMonitorApp is not None
+        assert MyVlmApp is not None
 ```
 
 ### Integration Test Pattern
@@ -249,7 +249,7 @@ def test_cli_help():
     """Test that --help works and shows expected arguments."""
     import subprocess
     result = subprocess.run(
-        ["python", "-m", "hailo_apps.python.gen_ai_apps.<app>.dog_monitor", "--help"],
+        ["python3", "-m", "hailo_apps.python.gen_ai_apps.<app>.my_vlm_app", "--help"],
         capture_output=True, text=True, timeout=10
     )
     assert result.returncode == 0
@@ -278,7 +278,7 @@ Use this at the final gate:
 - [ ] Error handling with try/except and logging
 - [ ] README.md with description, requirements, usage
 - [ ] No lint errors from get_errors tool
-- [ ] App constant registered in defines.py
+- [ ] App constant registered in defines.py (only if using `resolve_hef_path()`)
 - [ ] Memory files updated (if new patterns discovered)
 ```
 

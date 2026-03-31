@@ -56,19 +56,7 @@ PYTHONPATH="$REPO_ROOT" python3 "$SCRIPT_DIR/<app_name>.py" "$@"
 **NOTE**: Do NOT register in `defines.py` or `resources_config.yaml`.
 Community apps are run via `run.sh`. Registration happens during promotion
 
-### Step 2: Create Contribution Recipe
-
-After building the app, create a contribution recipe documenting lessons learned:
-
-```
-```
-
-With YAML frontmatter: `title`, `contributor`, `date`, `category: gen-ai-recipes`,
-`hailo_arch`, `app`, `tags`, `reproducibility: verified`.
-
-Required sections: Summary, Context, Finding, Solution, Results, Applicability.
-
-### Step 3: Build the App
+### Step 2: Build the App
 
 The main app file follows this structure:
 ```python
@@ -86,12 +74,14 @@ from hailo_apps.python.core.common.core import (
     get_standalone_parser, resolve_hef_path, handle_list_models_flag
 )
 from hailo_apps.python.core.common.defines import (
-    MY_VLM_APP, HAILO10H_ARCH, USB_CAMERA
+    HAILO10H_ARCH, USB_CAMERA
 )
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices
 from hailo_apps.python.core.common.hailo_logger import get_logger
 
 logger = get_logger(__name__)
+
+APP_NAME = "my_vlm_app"
 
 SYSTEM_PROMPT = "Your system prompt here..."
 MONITOR_PROMPT = "Your per-frame VLM question here..."
@@ -122,9 +112,9 @@ def main():
     # IMPORTANT: Add ALL custom args BEFORE handle_list_models_flag
     # so they appear in --help output
     parser.add_argument("--interval", type=int, default=15, help="Seconds between analyses")
-    handle_list_models_flag(parser, MY_VLM_APP)
+    handle_list_models_flag(parser, APP_NAME)
     args = parser.parse_args()
-    hef_path = resolve_hef_path(args.hef_path, app_name=MY_VLM_APP, arch=HAILO10H_ARCH)
+    hef_path = resolve_hef_path(args.hef_path, app_name=APP_NAME, arch=HAILO10H_ARCH)
     # Camera setup, app.run()
 
 if __name__ == "__main__":
@@ -279,8 +269,8 @@ def classify_response(self, vlm_response: str) -> EventType:
 ## Registration Checklist
 
 Community apps do NOT need registration. These steps are only needed after promotion:
-1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `DOG_MONITOR_APP = "dog_monitor"`)
-2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `dog_monitor: *vlm_chat_app`)
+1. `hailo_apps/python/core/common/defines.py` — app name constant (e.g. `MY_VLM_APP = "my_vlm_app"`)
+2. `hailo_apps/config/resources_config.yaml` — model mapping (e.g. `my_vlm_app: *vlm_chat_app`)
 
 
 ## Lessons Learned (from real builds)
@@ -333,13 +323,7 @@ conventions, README quality). With `--smoke-test`, it also runs CLI `--help` and
 import tests (gracefully skipping on non-Hailo systems). If all checks pass, the app is
 convention-compliant. Run it once at the end instead of manual grep checks — it catches everything.
 
-### 9. Local Docs Are Sufficient — Kapa MCP Is for Edge Cases
-The `.hailo/` documentation (this SKILL.md, memory files, toolset refs, and the
-vlm_chat reference implementation) provides 100% of the context needed for standard
-VLM app builds. Kapa MCP is only needed for undocumented SDK parameters, HEF
-compatibility across versions, or HailoRT driver troubleshooting.
-
-### 10. Auto-Approve Eliminates 46+ Clicks Per Build
+### 9. Auto-Approve Eliminates 46+ Clicks Per Build
 Add `"chat.tools.autoApprove": true` to `.vscode/settings.json` for fully
 autonomous agentic workflows. Without it, every tool call requires manual approval.
 
@@ -347,7 +331,7 @@ autonomous agentic workflows. Without it, every tool call requires manual approv
 
 | Variant | System Prompt | User Prompt |
 |---|---|---|
-| Pet monitor | "Monitor pets. Report activities." | "What is the dog doing right now?" |
+| Scene monitor | "Monitor the scene. Report activities." | "What is happening in the scene right now?" |
 | Safety | "You are a safety inspector." | "List any safety hazards visible" |
 | Scene | "Describe what you see concisely." | "Describe the image" |
 | Counter | "Count objects precisely. Reply JSON." | "Count all {objects}" |

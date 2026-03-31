@@ -222,17 +222,17 @@ my_new_app: *vlm_chat_app
 `/dev/video0` is typically the **integrated webcam** (laptop built-in), not the USB camera.
 ```bash
 # ❌ /dev/video0 is usually the integrated webcam
-python my_app.py --input /dev/video0
+python3 my_app.py --input /dev/video0
 ```
 
 ### Right: Use --input usb for auto-detection
 ```bash
 # ✅ Auto-detects the correct USB camera device
-python my_app.py --input usb
+python3 my_app.py --input usb
 
 # ✅ Or identify first, then use specific device
 v4l2-ctl --list-devices  # Find the USB camera device path
-python my_app.py --input /dev/video4
+python3 my_app.py --input /dev/video4
 ```
 
 ## Environment / Driver Checks (Pre-Launch)
@@ -335,16 +335,16 @@ where the user explicitly captures a frame.
 ## YAML Config Registration — Anchor Alias Placement
 
 ### Wrong: Insert alias between a key and its value block
-When adding `dog_monitor: *vlm_chat_app` to `resources_config.yaml`, inserting it
+When adding `my_vlm_app: *vlm_chat_app` to `resources_config.yaml`, inserting it
 **between** an existing key (e.g. `agent: &agent_app`) and its `models:` block
 breaks YAML parsing — the parser sees `models:` as belonging to the new key.
 ```yaml
 # ❌ WRONG — splits `agent` from its `models:` block
 agent: &agent_app
 
-dog_monitor: *vlm_chat_app
+my_vlm_app: *vlm_chat_app
 
-  models:          # ← parser thinks this belongs to dog_monitor, not agent
+  models:          # ← parser thinks this belongs to my_vlm_app, not agent
     hailo10h: ...
 ```
 
@@ -360,7 +360,7 @@ agent: &agent_app
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
 
-dog_monitor: *vlm_chat_app      # ← safe: goes after the full agent block
+my_vlm_app: *vlm_chat_app      # ← safe: goes after the full agent block
 ```
 **Rule**: When inserting a YAML alias entry, always place it **after** the complete
 block of the preceding key, not between the key and its child mapping.
@@ -433,7 +433,7 @@ if checked before more specific ones.
 **Fix**: Order keyword categories from most-specific to least-specific. Put
 physical-action keywords (sniffing, running, chewing) before state/posture keywords
 (sitting, lying). Also add the activity you care about to the VLM prompt itself:
-`"Classify the dog's activity as one of: sleeping, eating, drinking, playing, ..."` —
+`"Classify the activity as one of: sleeping, eating, drinking, playing, ..."` —
 this constrains the VLM output and makes keyword matching more reliable.
 
 ---
@@ -490,10 +490,10 @@ Always use `python3` in terminal commands, or first verify with `which python`.
 The `setup_env.sh` script activates the venv but does NOT alias `python` → `python3`.
 ```bash
 # ❌ Fails on fresh Ubuntu
-python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+python -m hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app --help
 
 # ✅ Always works
-python3 -m hailo_apps.python.gen_ai_apps.dog_monitor.dog_monitor --help
+python3 -m hailo_apps.python.gen_ai_apps.my_vlm_app.my_vlm_app --help
 ```
 
 ### YAML File Edits — Whitespace Sensitivity
@@ -545,7 +545,7 @@ Video / RTSP) before presenting the build plan. Even when the user's request
 seems specific enough to infer all answers, the agent must still ask guided
 questions unless the user explicitly says "just build it" or "use defaults".
 
-**What went wrong**: Agent saw "dog monitoring" + "sample video: dog.mp4" and
+**What went wrong**: Agent saw "scene monitoring" + "sample video: video.mp4" and
 inferred all choices, skipping straight to the build plan confirmation. This
 bypasses the collaborative workflow and misses the chance to catch wrong
 assumptions (e.g., maybe the user wanted an interactive chat, not a monitor).

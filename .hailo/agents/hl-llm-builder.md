@@ -7,7 +7,6 @@ capabilities:
 - ask-user
 - edit
 - execute
-- hailo-docs
 - read
 - search
 - sub-agent
@@ -77,7 +76,7 @@ Read ONLY the files needed for this specific build — in parallel. **SKILL.md i
 - `.hailo/toolsets/gen-ai-utilities.md` — LLM streaming, token handling
 
 **Read if the task involves VDevice / HEF details**:
-- `.hailo/toolsets/hailo-sdk.md` — VDevice, LLM, constants
+- `.hailo/toolsets/hailort-api.md` — VDevice, LLM, constants
 
 **Read if the task involves unusual LLM patterns**:
 - `.hailo/memory/gen_ai_patterns.md` — Gen AI architecture patterns

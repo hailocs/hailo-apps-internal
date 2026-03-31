@@ -84,7 +84,7 @@ Read ONLY the files needed for this specific build — in parallel. **SKILL.md i
 - `.hailo/toolsets/gen-ai-utilities.md` — LLM utils, tool framework
 
 **Read if the task involves VDevice / HEF details**:
-- `.hailo/toolsets/hailo-sdk.md` — VDevice, LLM, constants
+- `.hailo/toolsets/hailort-api.md` — VDevice, LLM, constants
 
 **Read if the task involves unusual LLM patterns**:
 - `.hailo/memory/gen_ai_patterns.md` — Gen AI architecture patterns
@@ -163,7 +163,7 @@ Follow all conventions from `coding-standards.md` (auto-loaded). Key points:
 ## Tool Implementation Pattern
 
 ```python
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils.tool_execution import BaseTool, ToolResult
+from hailo_apps.python.gen_ai_apps.agent_tools_example.tools.base import BaseTool, ToolResult
 
 class WeatherTool(BaseTool):
     @property

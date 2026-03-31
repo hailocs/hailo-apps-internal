@@ -1,5 +1,5 @@
 # Prompt: new-voice-app
 
-Hailo development reference
+Prompt: Build Voice Assistant App
 
 Read `.hailo/prompts/new-voice-app.md` for the complete prompt template.

@@ -48,15 +48,12 @@ hailo_apps/python/<type>/<app_name>/
 Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.
 Do NOT register in `defines.py` or `resources_config.yaml`.
 
-### Step 2: Create Directory Structure
-
-
-### Step 3: Build a Tool
+### Step 2: Build a Tool
 
 Each tool implements the `BaseTool` interface:
 
 ```python
-from hailo_apps.python.gen_ai_apps.gen_ai_utils.llm_utils.tool_execution import BaseTool, ToolResult
+from hailo_apps.python.gen_ai_apps.agent_tools_example.tools.base import BaseTool, ToolResult
 
 class WeatherTool(BaseTool):
     @property
@@ -112,11 +109,9 @@ import signal
 import argparse
 
 from hailo_apps.python.core.common.hailo_logger import get_logger
-from hailo_apps.python.core.common.defines import MY_AGENT_APP
-
 logger = get_logger(__name__)
 
-APP_NAME = MY_AGENT_APP
+APP_NAME = "my_agent_app"
 
 
 def main():
@@ -141,11 +136,7 @@ if __name__ == "__main__":
 ### Step 6: Validate
 
 ```bash
-# No relative imports
-grep -rn "^from \.\|^import \." hailo_apps/python/gen_ai_apps/my_agent_app/*.py
-
-# CLI works
-python3 -m hailo_apps.python.gen_ai_apps.my_agent_app.my_agent_app --help
+python3 .hailo/scripts/validate_app.py hailo_apps/python/gen_ai_apps/my_agent_app --smoke-test
 ```
 
 ## Critical Conventions

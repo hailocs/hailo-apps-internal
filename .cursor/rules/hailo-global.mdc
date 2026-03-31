@@ -41,7 +41,7 @@ Based on what the task involves, read **only** the matching rows:
 | **Game, interactive, pose game** | `.hailo/skills/hl-build-pipeline-app.md`, `.hailo/toolsets/pose-keypoints.md`, `.hailo/toolsets/core-framework-api.md`, `.hailo/memory/common_pitfalls.md` |
 | **Standalone, OpenCV, HailoInfer** | `.hailo/skills/hl-build-standalone-app.md`, `.hailo/toolsets/core-framework-api.md` |
 | **Camera, USB, RPi, capture** | `.hailo/skills/hl-camera.md`, `.hailo/memory/camera_and_display.md` |
-| **HEF, model, download, config** | `.hailo/skills/hl-model-management.md`, `.hailo/toolsets/hailo-sdk.md`, `.hailo/memory/hailo_platform_api.md` |
+| **HEF, model, download, config** | `.hailo/skills/hl-model-management.md`, `.hailo/toolsets/hailort-api.md`, `.hailo/memory/hailo_platform_api.md` |
 | **Monitoring, events, alerts** | `.hailo/skills/hl-monitoring.md`, `.hailo/skills/hl-event-detection.md` |
 | **Testing, validation, pytest** | `.hailo/skills/hl-validate.md`, `.hailo/instructions/testing-patterns.md` |
 | **ALWAYS read (every task)** | `.hailo/memory/common_pitfalls.md`, `.hailo/instructions/coding-standards.md` |

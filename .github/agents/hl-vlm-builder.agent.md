@@ -2,7 +2,7 @@
 name: HL VLM Builder
 description: Build Vision-Language Model applications for Hailo-10H. Say what you
   want to build and I'll create a complete, production-ready VLM app.
-argument-hint: e.g., dog monitoring camera app
+argument-hint: e.g., scene monitoring camera app
 tools:
 - agent/runSubagent
 - edit/createDirectory
@@ -13,7 +13,6 @@ tools:
 - execute/getTerminalOutput
 - execute/killTerminal
 - execute/runInTerminal
-- kapa/search_hailo_knowledge_sources
 - read/problems
 - read/readFile
 - read/terminalLastCommand
@@ -134,7 +133,6 @@ Read ONLY the files needed for this specific build — in parallel. **SKILL.md i
 **Do NOT read** unless needed for unusual customization:
 - `hailo_apps/python/core/common/defines.py` — only if registering (promoted apps only)
 
-**Kapa MCP**: Use only for undocumented SDK parameters or HEF compatibility questions.
 
 ### Phase 3: Scan Real Code (SKIP for standard builds)
 
