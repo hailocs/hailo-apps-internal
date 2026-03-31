@@ -6,6 +6,10 @@ High performance AI applications for Hailo accelerators, including GStreamer pip
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/hailo-ai/hailo-apps)
 
+## Supported Platforms and Devices
+| Platforms | Accelerators |
+|---|---|
+| ![Raspberry Pi](https://img.shields.io/badge/Raspberry-Pi%205-red?logo=raspberrypi&logoColor=white) ![Ubuntu](https://img.shields.io/badge/Ubuntu-x86__64-E95420?logo=ubuntu&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-blue?logo=windows&logoColor=white) | ![Hailo-8](https://img.shields.io/badge/Hailo-8-00A4EF?logoColor=white) ![Hailo-8L](https://img.shields.io/badge/Hailo-8L-00A4EF?logoColor=white) ![Hailo-10H](https://img.shields.io/badge/Hailo-10H-00A4EF?logoColor=white) |
 
 ## AI-Powered Development (Beta)
 
@@ -14,11 +18,6 @@ Use AI coding agents to quickly create Hailo applications. Just describe your id
  Supports VLM, LLM, pipeline, and standalone app types across all Hailo accelerators. **[Get started →](./doc/user_guide/agentic_development.md)**
 
 <img src="doc/images/agentic_ai.gif" width="600"/>
-
-## Supported Platforms and Devices
-| Platforms | Accelerators |
-|---|---|
-| ![Raspberry Pi](https://img.shields.io/badge/Raspberry-Pi%205-red?logo=raspberrypi&logoColor=white) ![Ubuntu](https://img.shields.io/badge/Ubuntu-x86__64-E95420?logo=ubuntu&logoColor=white) ![Windows](https://img.shields.io/badge/Windows-blue?logo=windows&logoColor=white) | ![Hailo-8](https://img.shields.io/badge/Hailo-8-00A4EF?logoColor=white) ![Hailo-8L](https://img.shields.io/badge/Hailo-8L-00A4EF?logoColor=white) ![Hailo-10H](https://img.shields.io/badge/Hailo-10H-00A4EF?logoColor=white) |
 
 
 ## Applications
