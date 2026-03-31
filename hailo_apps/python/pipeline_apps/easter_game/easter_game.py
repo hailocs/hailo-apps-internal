@@ -15,6 +15,8 @@ from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
 )
+from hailo_apps.python.core.common.core import get_resource_path
+from hailo_apps.python.core.common.defines import RESOURCES_PHOTOS_DIR_NAME
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.common.parser import get_pipeline_parser
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
@@ -516,7 +518,19 @@ def main():
     )
 
     args, _ = parser.parse_known_args()
-    bg_path = args.background or ""
+
+    # Resolve background: CLI override > downloaded resource > empty (dark fallback)
+    bg_path = args.background
+    if not bg_path:
+        resource = get_resource_path(None, RESOURCES_PHOTOS_DIR_NAME, model="room.png")
+        if resource and resource.exists():
+            bg_path = str(resource)
+        else:
+            bg_path = ""
+            logger.warning(
+                "Default background 'room.png' not found in resources. "
+                "Run 'hailo-download-resources' or pass --background."
+            )
 
     user_data = EasterGameCallback(bg_path)
     app = EasterEggsGame(app_callback, user_data, parser)
