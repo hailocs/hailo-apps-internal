@@ -366,6 +366,28 @@ dog_monitor: *vlm_chat_app      # ← safe: goes after the full agent block
 block of the preceding key, not between the key and its child mapping.
 Always run `python3 -c "import yaml; yaml.safe_load(open('path'))"` after editing YAML.
 
+## Duplicate `--debug` Flag with get_standalone_parser()
+
+### Wrong: Adding --debug when using get_standalone_parser()
+`get_standalone_parser()` already defines `--debug`. Adding it again causes
+`argparse.ArgumentError: argument --debug: conflicting option string: --debug`
+at startup.
+```python
+# ❌ Crashes — --debug already exists in base parser
+parser = get_standalone_parser()
+parser.add_argument("--debug", action="store_true", help="Debug mode")
+```
+
+### Right: Use the existing --debug from the base parser
+```python
+# ✅ --debug is already available via get_standalone_parser()
+parser = get_standalone_parser()
+# Just use args.debug — no need to add it again
+```
+**Rule**: Before adding arguments to a parser from `get_standalone_parser()`,
+check what the base parser already provides. Common built-in flags: `--debug`,
+`--hef-path`, `--arch`, `--list-models`.
+
 ## CLI Argument Ordering with handle_list_models_flag
 
 ### Wrong: Add custom args AFTER handle_list_models_flag

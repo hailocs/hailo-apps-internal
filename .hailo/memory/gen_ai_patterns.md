@@ -86,8 +86,14 @@ New VLM apps must be registered in **two** files or `resolve_hef_path()` will fa
 Forgetting #2 causes `KeyError: 'my_app'` at runtime.
 
 ### Pre-Launch Environment Checks
-Before launching a VLM app, verify in this order:
-1. `hailortcli fw-control identify` — confirms device is accessible, shows architecture.
+Before launching a GenAI app, verify in this order:
+1. **Install gen-ai dependencies** — required before any gen-ai app runs:
+   ```bash
+   pip install -e ".[gen-ai]"
+   ```
+   Without this, apps fail with a confusing `piper` missing error even if they
+   don't use TTS. This installs `piper-tts`, `sounddevice`, and other GenAI deps.
+2. `hailortcli fw-control identify` — confirms device is accessible, shows architecture.
    **CRITICAL**: Check output content, not just exit code. `hailortcli` can return
    exit code 0 with empty output when no device is present. Verify the output
    contains `"Device Architecture"` or treat it as a failure.
@@ -97,11 +103,30 @@ Before launching a VLM app, verify in this order:
        echo "ERROR: No Hailo device detected"; exit 1
    fi
    ```
-2. `python3 -c "import hailo_platform"` — SDK installed
-3. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
-4. Input file exists (for file sources): `ls -la /path/to/video`
-5. For short videos: check duration and set `--interval` lower than video length
+3. `python3 -c "import hailo_platform"` — SDK installed
+4. `python3 -c "from hailo_apps.python.core.common.defines import *"` — framework importable
+5. Input file exists (for file sources): `ls -la /path/to/video`
+6. For short videos: check duration and set `--interval` lower than video length
 Note: `lsmod | grep hailo_pci` is NOT reliable — some setups have built-in drivers.
+
+### HAILO_INVALID_HEF — Re-download HEF for Current HailoRT Version
+If `LLM()` or model loading fails with `HAILO_INVALID_HEF(26)`, the HEF file
+was likely compiled for a different HailoRT version than what's installed.
+```bash
+# ❌ Old HEF from a previous SDK version
+[HailoRT] [error] Failed to create LLM with status HAILO_INVALID_HEF(26)
+```
+**Fix**: Re-download the HEF to get the version matching the current HailoRT:
+```bash
+# Check current HailoRT version
+hailortcli fw-control identify  # Shows "Firmware Version: 5.2.0" etc.
+
+# Re-download the model for the correct version
+hailo-download-resources --group agent --arch hailo10h --force
+```
+**Rule**: When a HEF fails to load, always try re-downloading with `--force`
+before investigating other causes. HEF files are version-specific and must
+match the installed HailoRT.
 
 ### Queue Deadlock on Shutdown
 If the main process exits without sending the `None` sentinel to the worker, the worker blocks on `request_queue.get()` forever → orphaned process.

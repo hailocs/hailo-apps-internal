@@ -9,7 +9,10 @@ from .audio_player import AudioPlayer
 from .audio_recorder import AudioRecorder
 from .interaction import VoiceInteractionManager
 from .speech_to_text import SpeechToTextProcessor
-from .text_to_speech import TextToSpeechProcessor
+
+# TextToSpeechProcessor is NOT imported here to avoid requiring piper for
+# STT-only apps. Import directly when needed:
+#   from hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.text_to_speech import TextToSpeechProcessor
 
 __all__ = [
     "AudioDiagnostics",
@@ -17,5 +20,4 @@ __all__ = [
     "AudioRecorder",
     "VoiceInteractionManager",
     "SpeechToTextProcessor",
-    "TextToSpeechProcessor",
 ]
