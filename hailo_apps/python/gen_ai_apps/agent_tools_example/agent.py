@@ -39,6 +39,15 @@ from typing import Any, Callable, Dict, Optional
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
 
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
+
 # Core imports
 from hailo_apps.python.core.common.core import (
     get_standalone_parser,
@@ -821,7 +830,6 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--tool",
-        "-t",
         type=str,
         default=None,
         help="Tool to use (skips interactive selection). Use tool name (e.g., 'math', 'weather').",

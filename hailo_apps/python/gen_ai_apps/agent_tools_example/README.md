@@ -16,6 +16,28 @@ The system follows a simple tool discovery and execution pattern:
 
 ## Quick Start
 
+
+## Installation
+
+### Linux
+Before running this example, ensure GenAI dependencies are installed:
+
+```bash
+# From the repository root directory
+pip install -e ".[gen-ai]"
+```
+### Windows
+Use a clean virtual environment before installing the dependencies:
+```bash
+py -m venv wind_venv
+.\wind_venv\Scripts\Activate.ps1
+pip install .\hailort-<version>-cp<python>-cp<python>-win_amd64.whl
+
+# From the repository root directory
+pip install -e ".[gen-ai]"
+```
+
+
 ### Basic Usage
 
 ```bash

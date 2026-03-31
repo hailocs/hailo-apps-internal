@@ -1018,6 +1018,21 @@ agent: &agent_app
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
 
+v2a_demo:
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        - name: Whisper-Base
+          source: gen-ai-mz
+        - name: Qwen2.5-Coder-1.5B-Instruct
+          source: gen-ai-mz
+        - name: all_minilm_l6_v2
+          source: s3
+
 clip: &clip_app
   models:
     hailo8:

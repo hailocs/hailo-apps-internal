@@ -10,6 +10,15 @@ import platform
 from typing import Optional, Callable, Any
 
 os.environ["QT_QPA_PLATFORM"] = 'xcb'
+
+repo_root = None
+for p in Path(__file__).resolve().parents:
+    if (p / "hailo_apps" / "config" / "config_manager.py").exists():
+        repo_root = p
+        break
+if repo_root is not None:
+    sys.path.insert(0, str(repo_root))
+
 from hailo_apps.python.gen_ai_apps.vlm_chat.backend import Backend
 from hailo_apps.python.core.common.core import get_standalone_parser, get_resource_path, get_logger, handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices

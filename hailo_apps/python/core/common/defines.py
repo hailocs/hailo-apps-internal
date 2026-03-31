@@ -312,6 +312,7 @@ VLM_CHAT_APP = "vlm_chat"
 LLM_CHAT_APP = "llm_chat"
 WHISPER_CHAT_APP = "whisper_chat"
 AGENT_APP = "agent"
+V2A_DEMO_APP = "v2a_demo"
 
 # Standalone app defaults
 WHISPER_H8_APP = "whisper_h8"
