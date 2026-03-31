@@ -55,12 +55,12 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
     download_resources.sh
     ```
 
-3. Set required API key:
+4. (Optional) Set API key for the weather tool:
     ```shell script
     export OPENWEATHER_API_KEY="your_key_here"
     ```
 
-4. (Optional) Pre-download HEF resources:
+5. (Optional) Pre-download HEF resources:
     ```shell script
     python -m hailo_apps.installation.download_resources --group v2a_demo
     ```
@@ -103,7 +103,7 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
     download_resources.ps1
     ```
 
-4. Set required API key:
+4. (Optional) Set API key for the weather tool:
     ```powershell
     $env:OPENWEATHER_API_KEY="your_key_here"
     ```
