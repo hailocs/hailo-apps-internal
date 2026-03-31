@@ -96,8 +96,9 @@ Creates a GStreamer pipeline string for the video source with frame rate control
 - `frame_rate` (int, optional): Target frame rate. Defaults to 30.
 - `sync` (bool, optional): Whether to synchronize frame rate. Defaults to True.
 - `video_format` (str, optional): The video format (e.g., 'RGB'). Defaults to 'RGB'.
-- `mirror_image` (bool, optional): Whether to horizontally mirror the image. Applies to all source types. Defaults to True. Set to False to disable mirroring.
+- `horizontal_mirror` (bool, optional): Whether to horizontally mirror the image. Applies to all source types. Defaults to False.
 - `vertical_mirror` (bool, optional): Whether to vertically mirror (flip) the image. Applies to all source types. Defaults to False.
+- `num_buffers` (int, optional): Number of frames to generate for image inputs (used by `imagefreeze`). Defaults to 30.
 
 **Returns:**
 - `str`: A string representing the GStreamer pipeline for the video source.
@@ -112,12 +113,12 @@ Creates a GStreamer pipeline string for the video source with frame rate control
 
 **Example:**
 ```python
-# USB camera with mirroring disabled
+# USB camera with horizontal mirroring
 source = SOURCE_PIPELINE(
     video_source="/dev/video0",
     video_width=1280,
     video_height=720,
-    mirror_image=False
+    horizontal_mirror=True
 )
 
 # RTSP stream
@@ -129,6 +130,33 @@ source = SOURCE_PIPELINE(
 
 # Video file
 source = SOURCE_PIPELINE(video_source="input.mp4")
+```
+
+> **Note for pipeline apps:** When building a pipeline app that inherits from `GStreamerApp`, prefer using `self.get_source_pipeline()` instead of calling `SOURCE_PIPELINE()` directly. This automatically passes common settings (including `--horizontal-mirror` and `--vertical-mirror` CLI flags) from the app instance. See [GStreamerApp.get_source_pipeline](#gstreamerappget_source_pipeline) below.
+
+### GStreamerApp.get_source_pipeline
+
+Convenience method on `GStreamerApp` that builds a `SOURCE_PIPELINE` with common settings automatically injected from the app instance.
+
+**Automatically injected parameters:**
+- `video_source`, `video_width`, `video_height`, `frame_rate`, `sync` — from app instance
+- `horizontal_mirror`, `vertical_mirror` — from `--horizontal-mirror` / `--vertical-mirror` CLI flags
+
+Any parameter can be overridden via keyword arguments.
+
+**Example usage in a pipeline app:**
+```python
+class MyPipelineApp(GStreamerApp):
+    def get_pipeline_string(self):
+        # Simple — all common settings injected automatically
+        source = self.get_source_pipeline()
+
+        # With overrides for app-specific needs
+        source = self.get_source_pipeline(no_webcam_compression=True)
+
+        # Multi-source with custom video_source and name
+        for i, src in enumerate(self.sources):
+            source = self.get_source_pipeline(video_source=src, name=f"source_{i}")
 ```
 
 ---
@@ -602,7 +630,7 @@ pipeline_string = (
 
 3. **Queue Sizing**: Adjust queue sizes (`max_size_buffers`) based on your use case. Larger queues can help with buffering but consume more memory.
 
-4. **Camera Mirroring**: For camera sources, consider whether mirroring is appropriate for your use case. Use `mirror_image=False` when you need the actual camera orientation.
+4. **Camera Mirroring**: Mirror/flip is controlled via the `--horizontal-mirror` and `--vertical-mirror` CLI flags (both off by default). Pipeline apps that use `self.get_source_pipeline()` get this support automatically.
 
 5. **Performance Tuning**: For embedded systems, consider using hardware encoders (e.g., `omxh264enc` for Raspberry Pi) instead of software encoders.
 

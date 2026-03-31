@@ -35,7 +35,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
-    SOURCE_PIPELINE,
     USER_CALLBACK_PIPELINE,
     CROPPER_PIPELINE,
     TRACKER_PIPELINE,
@@ -162,14 +161,7 @@ class GStreamerPaddleOCRApp(GStreamerApp):
         """Returns the OCR pipeline with detection and recognition."""
         # Full pipeline with detection and recognition
         # 1. Source pipeline
-        source_pipeline = SOURCE_PIPELINE(
-            video_source=self.video_source,
-            video_width=self.video_width,
-            video_height=self.video_height,
-            frame_rate=self.frame_rate,
-            sync=self.sync,
-            mirror_image=False,
-        )
+        source_pipeline = self.get_source_pipeline()
 
         # 2. OCR Detection pipeline - detects text regions (bounding boxes)
         ocr_det_pipeline = INFERENCE_PIPELINE(

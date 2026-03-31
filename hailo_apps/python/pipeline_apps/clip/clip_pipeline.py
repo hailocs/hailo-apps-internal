@@ -43,7 +43,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
     QUEUE,
-    SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
@@ -162,7 +161,7 @@ class GStreamerClipApp(GStreamerApp):
         return False
 
     def get_pipeline_string(self):
-        source_pipeline = SOURCE_PIPELINE(self.video_source, self.video_width, self.video_height, frame_rate=self.frame_rate, sync=self.sync)
+        source_pipeline = self.get_source_pipeline()
 
         multi_process_service_value = 'true' if getattr(self, 'arch', None) in [HAILO8_ARCH, HAILO8L_ARCH] else None
         detection_pipeline = INFERENCE_PIPELINE(

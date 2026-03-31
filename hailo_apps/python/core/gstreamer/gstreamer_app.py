@@ -61,6 +61,7 @@ from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging,
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     get_camera_resolution,
     get_source_type,
+    SOURCE_PIPELINE,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_common import (
     gstreamer_log_filter,
@@ -346,6 +347,10 @@ class GStreamerApp:
         )
         self.show_fps = self.options_menu.show_fps
 
+        # Mirror / flip options
+        self.horizontal_mirror = getattr(self.options_menu, 'horizontal_mirror', False)
+        self.vertical_mirror = getattr(self.options_menu, 'vertical_mirror', False)
+
         if self.options_menu.dump_dot:
             hailo_logger.debug("Dump DOT enabled")
             os.environ["GST_DEBUG_DUMP_DOT_DIR"] = os.getcwd()
@@ -441,6 +446,8 @@ class GStreamerApp:
         Gst.init(None)
         pipeline_string = self.get_pipeline_string()
         hailo_logger.debug(f"Pipeline string: {pipeline_string}")
+        if getattr(self.options_menu, 'print_pipeline', False):
+            print(f"\n--- GStreamer Pipeline ---\n{pipeline_string}\n-------------------------\n")
         try:
             self.pipeline = Gst.parse_launch(pipeline_string)
         except Exception as e:
@@ -655,6 +662,25 @@ class GStreamerApp:
             hailo_logger.debug(f"Updating capsfilter to: {new_caps_str}")
             capsfilter.set_property("caps", Gst.Caps.from_string(new_caps_str))
         self.frame_rate = new_fps
+
+    def get_source_pipeline(self, **kwargs):
+        """Build the SOURCE_PIPELINE with common settings from this app instance.
+
+        Automatically injects video_source, video_width, video_height,
+        frame_rate, sync, horizontal_mirror, and vertical_mirror from self.
+        Any of these can be overridden via kwargs.
+        """
+        defaults = dict(
+            video_source=self.video_source,
+            video_width=self.video_width,
+            video_height=self.video_height,
+            frame_rate=self.frame_rate,
+            sync=self.sync,
+            horizontal_mirror=self.horizontal_mirror,
+            vertical_mirror=self.vertical_mirror,
+        )
+        defaults.update(kwargs)
+        return SOURCE_PIPELINE(**defaults)
 
     def get_pipeline_string(self):
         hailo_logger.debug("get_pipeline_string() called (should be overridden)")

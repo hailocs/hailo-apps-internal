@@ -32,7 +32,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
-    SOURCE_PIPELINE,
     TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
@@ -144,13 +143,7 @@ class GStreamerInstanceSegmentationApp(GStreamerApp):
 
     def get_pipeline_string(self):
         hailo_logger.debug("Building pipeline string...")
-        source_pipeline = SOURCE_PIPELINE(
-            video_source=self.video_source,
-            video_width=self.video_width,
-            video_height=self.video_height,
-            frame_rate=self.frame_rate,
-            sync=self.sync,
-        )
+        source_pipeline = self.get_source_pipeline()
 
         infer_pipeline = INFERENCE_PIPELINE(
             hef_path=self.hef_path,
