@@ -22,7 +22,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import (
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
-    SOURCE_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
 
@@ -45,10 +44,10 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
             default=None,
             help="Path to costume labels JSON file",
         )
-        
+
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, SIMPLE_DETECTION_PIPELINE)
-        
+
         hailo_logger.info("Initializing GStreamer Detection Simple App...")
         super().__init__(parser, user_data)
         # Override width/height if not set via parser
@@ -112,12 +111,7 @@ class GStreamerDetectionSimpleApp(GStreamerApp):
         self.create_pipeline()
 
     def get_pipeline_string(self):
-        source_pipeline = SOURCE_PIPELINE(
-            video_source=self.video_source,
-            video_width=self.video_width,
-            video_height=self.video_height,
-            frame_rate=self.frame_rate,
-            sync=self.sync,
+        source_pipeline = self.get_source_pipeline(
             no_webcam_compression=True,
         )
 

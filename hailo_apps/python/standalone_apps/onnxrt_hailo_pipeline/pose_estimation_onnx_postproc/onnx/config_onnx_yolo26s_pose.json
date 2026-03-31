@@ -1,0 +1,18 @@
+{
+  "output_tensor_mapping": {
+    "yolo26s_pose/conv63": ["/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv_output_0", [4, 80, 80]],
+    "yolo26s_pose/conv82": ["/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv_output_0", [4, 40, 40]],
+    "yolo26s_pose/conv98": ["/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv_output_0", [4, 20, 20]],
+    "yolo26s_pose/conv64": ["/model.23/one2one_cv4_kpts.0/Conv_output_0", [51, 80, 80]],
+    "yolo26s_pose/conv83": ["/model.23/one2one_cv4_kpts.1/Conv_output_0", [51, 40, 40]],
+    "yolo26s_pose/conv100": ["/model.23/one2one_cv4_kpts.2/Conv_output_0", [51, 20, 20]],
+    "yolo26s_pose/conv67": ["/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv_output_0", [1, 80, 80]],
+    "yolo26s_pose/conv86": ["/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv_output_0", [1, 40, 40]],
+    "yolo26s_pose/conv103": ["/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv_output_0", [1, 20, 20]]
+  },
+  "output_format": "yolo26_pose",
+  "postprocess_params": {
+    "input_size": 640
+  },
+  "intermediate_tensors_to_add_sigmoid": []
+}

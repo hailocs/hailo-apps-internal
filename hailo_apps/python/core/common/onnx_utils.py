@@ -12,205 +12,12 @@ import sys
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
-
-from .defines import (
-    HAILO_ARCH_KEY,
-    HAILO_FILE_EXTENSION,
-    RESOURCE_TYPE_ONNX,
-    RESOURCES_MODELS_DIR_NAME,
-    RESOURCES_ROOT_PATH_DEFAULT,
-)
-from .installation_utils import detect_hailo_arch
-
-try:
-    from hailo_apps.config.config_manager import get_model_info, get_supported_architectures
-except ImportError:
-    config_dir = Path(__file__).resolve().parents[3] / "config"
-    sys.path.insert(0, str(config_dir))
-    from config_manager import get_model_info, get_supported_architectures
-
 try:
     from hailo_apps.python.core.common.hailo_logger import get_logger
 except ImportError:
     from common.hailo_logger import get_logger
 
-logger = get_logger(__name__)
-
-ONNX_STANDALONE_APPS = {"object_detection_onnx_postproc", "pose_estimation_onnx_postproc"}
-
-
-def _extract_model_name_from_hef_path(hef_path: str | Path) -> str:
-    candidate_name = Path(hef_path).name
-    if candidate_name.endswith(HAILO_FILE_EXTENSION):
-        return candidate_name[: -len(HAILO_FILE_EXTENSION)]
-    return candidate_name
-
-
-def _get_standalone_app_dir(app_name: str) -> Path:
-    return Path(__file__).resolve().parents[2] / "standalone_apps" / app_name
-
-
-def _resolve_hef_parent_dir(hef_path_value: str | Path, arch: str | None) -> Path:
-    candidate = Path(hef_path_value)
-    if candidate.exists():
-        return candidate.resolve().parent
-
-    if arch:
-        return (Path(RESOURCES_ROOT_PATH_DEFAULT) / RESOURCES_MODELS_DIR_NAME / arch).resolve()
-
-    return Path.cwd()
-
-
-def _infer_model_name_from_onnx_filename(path_value: str | None) -> str | None:
-    if not path_value:
-        return None
-
-    stem = Path(path_value).stem
-    suffixes = ("_postprocessing", "_neural_processing")
-    for suffix in suffixes:
-        if stem.endswith(suffix):
-            return stem[: -len(suffix)]
-
-    return None
-
-
-def _resolve_debug_onnx_config_path(args: Any, app_name: str) -> str:
-    explicit_config = getattr(args, "onnxconfig", None)
-    if explicit_config:
-        return str(Path(explicit_config))
-
-    app_onnx_dir = _get_standalone_app_dir(app_name) / "onnx"
-    model_candidates: list[str] = []
-
-    for candidate in (
-        _infer_model_name_from_onnx_filename(getattr(args, "onnx", None)),
-        _infer_model_name_from_onnx_filename(getattr(args, "neural_onnx_ref", None)),
-    ):
-        if candidate and candidate not in model_candidates:
-            model_candidates.append(candidate)
-
-    matched_configs: list[Path] = []
-    for model_name in model_candidates:
-        candidate_path = app_onnx_dir / f"config_onnx_{model_name}.json"
-        if candidate_path.exists():
-            matched_configs.append(candidate_path)
-
-    if not matched_configs:
-        all_configs = sorted(app_onnx_dir.glob("config_onnx_*.json"))
-        if len(all_configs) == 1:
-            return str(all_configs[0])
-
-        logger.error(
-            "Could not auto-resolve ONNX config in debug reference mode. "
-            "Provide --onnxconfig explicitly, or use ONNX filenames matching '<model>_postprocessing.onnx' / '<model>_neural_processing.onnx'."
-        )
-        sys.exit(1)
-
-    if len(matched_configs) > 1:
-        logger.error(
-            "Ambiguous ONNX config resolution in debug reference mode. Candidates: %s. "
-            "Provide --onnxconfig explicitly.",
-            [str(path) for path in matched_configs],
-        )
-        sys.exit(1)
-
-    return str(matched_configs[0])
-
-
-def _download_onnx_artifact_if_needed(
-    artifact_name: str,
-    destination: Path,
-    app_name: str,
-    arch: str | None,
-    download_resource_cb,
-) -> bool:
-    if destination.exists():
-        return True
-
-    if download_resource_cb(
-        resource_name=artifact_name,
-        resource_type=RESOURCE_TYPE_ONNX,
-        app_name=app_name,
-        arch=arch,
-    ):
-        return destination.exists()
-
-    return False
-
-
-def resolve_onnx_postproc_for_standalone(args: Any, app_name: str, download_resource_cb) -> None:
-    if app_name not in ONNX_STANDALONE_APPS:
-        return
-
-    debug_no_hef_mode = bool(getattr(args, "neural_onnx_ref", None)) and not getattr(args, "hef_path", None)
-    if debug_no_hef_mode:
-        # lightweight debug mode - no need for HEF (can test scaffold while compiling)
-        if not getattr(args, "onnx", None):
-            logger.error(
-                "When using --neural-onnx-ref, --onnx must be provided explicitly."
-            )
-            sys.exit(1)
-        args.onnxconfig = _resolve_debug_onnx_config_path(args, app_name)
-        args.onnx = str(Path(args.onnx))
-        return
-
-    model_name = _extract_model_name_from_hef_path(args.hef_path)
-    arch = os.getenv(HAILO_ARCH_KEY) or detect_hailo_arch()
-
-    model_info = None
-    if arch:
-        model_info = get_model_info(app_name, arch, model_name, app_type="standalone")
-
-    if model_info is None:
-        for candidate_arch in get_supported_architectures(app_name):
-            model_info = get_model_info(app_name, candidate_arch, model_name, app_type="standalone")
-            if model_info is not None:
-                break
-
-    onnx_postproc_name = model_info.onnx_postproc_name if model_info is not None else None
-    if not onnx_postproc_name:
-        logger.error(
-            "Model '%s' for app '%s' does not define required ONNX metadata 'onnx_postproc_name' in resources_config.yaml",
-            model_name,
-            app_name,
-        )
-        sys.exit(1)
-
-    app_dir = _get_standalone_app_dir(app_name)
-    config_path = app_dir / "onnx" / f"config_onnx_{model_name}.json"
-    if not config_path.exists():
-        logger.error(
-            "ONNX postprocessing is enabled for model '%s', but config file was not found at: %s\n"
-            "Expected naming convention: config_onnx_<model_name>.json in the app's onnx/ directory.",
-            model_name,
-            config_path,
-        )
-        sys.exit(1)
-    args.onnxconfig = str(config_path)
-
-    hef_parent_dir = _resolve_hef_parent_dir(args.hef_path, arch)
-
-    user_onnx_override = getattr(args, "onnx", None)
-    if user_onnx_override:
-        args.onnx = str(Path(user_onnx_override))
-
-    postprocessing_path = Path(getattr(args, "onnx", "")) if getattr(args, "onnx", None) else (hef_parent_dir / onnx_postproc_name)
-    if not _download_onnx_artifact_if_needed(
-        artifact_name=onnx_postproc_name,
-        destination=postprocessing_path,
-        app_name=app_name,
-        arch=arch,
-        download_resource_cb=download_resource_cb,
-    ):
-        logger.error(
-            "Missing ONNX postprocessing artifact: %s\n"
-            "Either place the file at this path, provide --onnx <path>, or ensure '%s' can be downloaded for app '%s'.",
-            postprocessing_path,
-            onnx_postproc_name,
-            app_name,
-        )
-        sys.exit(1)
-    args.onnx = str(postprocessing_path)
+hailo_logger = get_logger(__name__)
 
 
 def load_onnx_config(onnxconfig: str, caller_file: Optional[str] = None) -> Tuple[dict, Path]:
@@ -249,7 +56,7 @@ def load_onnx_config(onnxconfig: str, caller_file: Optional[str] = None) -> Tupl
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    logger.info(f"Loaded ONNX config from: {config_path}")
+    hailo_logger.info(f"Loaded ONNX config from: {config_path}")
     return config, config_path
 
 
@@ -318,7 +125,7 @@ def init_onnx_sessions(
             )
         intermediate_path = resolve_onnx_path(intermediate_path, config_path)
         result["debug_ref_onnx_intermediate_session"] = ort.InferenceSession(intermediate_path)
-        logger.info(f"Loaded debug neural ONNX reference model: {intermediate_path}")
+        hailo_logger.info(f"Loaded debug neural ONNX reference model: {intermediate_path}")
 
         # Postprocessing model
         postproc_path = postproc_onnx_path
@@ -326,7 +133,7 @@ def init_onnx_sessions(
             raise ValueError("postprocessing ONNX path is required")
         postproc_path = resolve_onnx_path(postproc_path, config_path)
         result["onnx_session"] = ort.InferenceSession(postproc_path)
-        logger.info(f"Loaded ONNX postprocessing model: {postproc_path}")
+        hailo_logger.info(f"Loaded ONNX postprocessing model: {postproc_path}")
     else:
         # Postprocessing only (used with HEF outputs)
         postproc_path = postproc_onnx_path
@@ -334,7 +141,7 @@ def init_onnx_sessions(
             raise ValueError("postprocessing ONNX path is required")
         postproc_path = resolve_onnx_path(postproc_path, config_path)
         result["onnx_session"] = ort.InferenceSession(postproc_path)
-        logger.info(f"Loaded ONNX postprocessing model: {postproc_path}")
+        hailo_logger.info(f"Loaded ONNX postprocessing model: {postproc_path}")
 
     return result
 
@@ -478,7 +285,7 @@ def infer_debug_ref_onnx(
                     if hef_name:
                         result[hef_name] = tensor
                     else:
-                        logger.warning(
+                        hailo_logger.warning(
                             f"ONNX intermediate output '{onnx_name}' not in tensor mapping"
                         )
 

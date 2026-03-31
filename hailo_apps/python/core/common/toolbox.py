@@ -248,6 +248,30 @@ def load_json_file(path: str) -> Dict[str, Any]:
     return data
 
 
+def resolve_onnx_config_from_hef(hef_path: str, caller_file: str) -> str:
+    """
+    Resolve ONNX config JSON path based on HEF filename.
+
+    Uses caller_file to locate the app directory.
+    """
+    if not hef_path:
+        raise ValueError("HEF path is required to resolve ONNX config.")
+
+    hef_name = Path(hef_path).stem
+    app_dir = Path(caller_file).resolve().parent
+
+    config_path = app_dir / "onnx" / f"config_onnx_{hef_name}.json"
+
+    if not config_path.exists():
+        raise ValueError(
+            f"Missing ONNX config for model '{hef_name}'.\n"
+            f"Expected: {config_path}\n"
+            "Place it under the app 'onnx/' directory or pass --onnxconfig."
+        )
+
+    return str(config_path)
+
+
 def load_images_opencv(images_path: str) -> List[np.ndarray]:
     """
     Load images from the specified path as RGB.

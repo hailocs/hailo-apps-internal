@@ -226,7 +226,7 @@ The process is straightforward:
 
 1.  **Create a Class Inheriting from `GStreamerApp`**: Your application will be a new class that extends `GStreamerApp`. In the constructor (`__init__`), you'll call the parent constructor and set up any application-specific parameters, such as HEF paths, video sources, or model thresholds.
 
-2.  **Override the `get_pipeline_string` Method**: This is where you define your GStreamer pipeline. You must implement this method in your class. Inside, you'll use the helper functions from `gstreamer_helper_pipelines.py` (like `SOURCE_PIPELINE`, `INFERENCE_PIPELINE`, etc.) to build the pipeline string piece by piece.
+2.  **Override the `get_pipeline_string` Method**: This is where you define your GStreamer pipeline. You must implement this method in your class. Inside, you'll use `self.get_source_pipeline()` for the source (which automatically handles common settings like mirror/flip flags) and helper functions from `gstreamer_helper_pipelines.py` (like `INFERENCE_PIPELINE`, `DISPLAY_PIPELINE`, etc.) for the rest of the pipeline.
 
 3.  **Run Your Application**: In your main execution block, you instantiate your new class and call its `run()` method, which handles the pipeline setup and execution.
 
@@ -238,7 +238,7 @@ Here is a simplified example based on `detection_simple_pipeline.py` that illust
 # Import necessary classes and pipeline helpers
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
+    INFERENCE_PIPELINE, DISPLAY_PIPELINE
 )
 
 # 1. Create a class that inherits from GStreamerApp
@@ -254,8 +254,9 @@ class MyCustomPipelineApp(GStreamerApp):
 
     # 2. Override this method to define your pipeline
     def get_pipeline_string(self):
-        # Use helper functions to build the pipeline components
-        source = SOURCE_PIPELINE(video_source=self.video_source, ...)
+        # Use self.get_source_pipeline() — automatically injects
+        # video_source, resolution, frame_rate, mirror/flip flags, etc.
+        source = self.get_source_pipeline()
         infer = INFERENCE_PIPELINE(hef_path=self.hef_path, ...)
         display = DISPLAY_PIPELINE(...)
 

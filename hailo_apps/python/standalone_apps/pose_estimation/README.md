@@ -93,7 +93,7 @@ To avoid compatibility issues, it's recommended to use a clean virtual environme
 1. Clone the repository:
     ```powershell
     git clone https://github.com/hailo-ai/hailo-apps.git
-    cd hailo-apps\hailo_apps\python\standalone_apps\object_detection
+    cd hailo-apps\hailo_apps\python\standalone_apps\pose_estimation
     ```
 
 2. Install dependencies:
