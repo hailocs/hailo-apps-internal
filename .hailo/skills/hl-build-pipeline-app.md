@@ -29,7 +29,7 @@ hailo_apps/python/<type>/<app_name>/
 ├── run.sh                # Launch wrapper
 ├── __init__.py
 ├── <app_name>.py         # Main app
-└── README.md
+└── README.md             # Usage documentation (REQUIRED — never skip)
 ```
 
 Create `app.yaml` with `type: pipeline` and `run.sh` wrapper.

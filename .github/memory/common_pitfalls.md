@@ -38,6 +38,25 @@ the game loop.
 
 # UNIVERSAL — All Agents Must Read
 
+## Phase 4 (Document) Skipped — README Not Created
+
+Agents commonly rush from Phase 3 (Validate) straight to launch, skipping Phase 4
+(Document). This leaves the app without a README.md.
+
+### Root causes
+1. **"Launch when done" tunnel vision** — The user's prompt ends with "launch it",
+   so the agent marks the task complete after launching, forgetting documentation.
+2. **README not in todo list** — The agent creates todo items for build + validate +
+   launch but never adds a "Write README" item.
+3. **Phase 4 gate not enforced** — The orchestration loop says "README, update memory"
+   but agents don't treat it as a hard gate.
+
+### Fix
+- **Always include "Write README.md" as an explicit todo item** — never omit it.
+- **"Launch" must be the LAST todo** — after README, after validation.
+- **README.md is a required deliverable** — listed in every SKILL.md directory tree.
+  If it doesn't exist when all other todos are done, the build is incomplete.
+
 ## Agent Iteration Leftover Code (CRITICAL)
 
 When agents iterate on code (fixing errors, trying alternatives), they leave behind:

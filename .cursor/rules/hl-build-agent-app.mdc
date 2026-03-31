@@ -42,7 +42,7 @@ hailo_apps/python/<type>/<app_name>/
 │   ├── config.yaml          # Tool metadata
 │   ├── my_tool_1.py         # Implements BaseTool
 │   └── my_tool_2.py         # Implements BaseTool
-└── README.md
+└── README.md             # Usage documentation (REQUIRED — never skip)
 ```
 
 Create `app.yaml` with `type: gen_ai` and `run.sh` wrapper.

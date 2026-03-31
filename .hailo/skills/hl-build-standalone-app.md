@@ -28,7 +28,7 @@ hailo_apps/python/<type>/<app_name>/
 ├── <app_name>.py         # Main app (3-thread architecture)
 ├── <app_name>_post_process.py  # Custom postprocessing
 ├── config.json           # Labels, thresholds (optional)
-└── README.md
+└── README.md             # Usage documentation (REQUIRED — never skip)
 ```
 
 Create `app.yaml` with `type: standalone` and `run.sh` wrapper.

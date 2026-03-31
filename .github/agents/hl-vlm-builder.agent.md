@@ -1,6 +1,7 @@
 ---
 name: HL VLM Builder
-description: Build Vision-Language Model applications for Hailo-10H. Say what you want to build and I'll create a complete, production-ready VLM app.
+description: Build Vision-Language Model applications for Hailo-10H. Say what you
+  want to build and I'll create a complete, production-ready VLM app.
 argument-hint: e.g., dog monitoring camera app
 tools:
 - agent/runSubagent
@@ -31,7 +32,8 @@ tools:
 handoffs:
 - label: Review & Test the App
   agent: agent
-  prompt: Review the VLM app that was just built. Check all files for convention compliance, run validation, and report any issues.
+  prompt: Review the VLM app that was just built. Check all files for convention compliance,
+    run validation, and report any issues.
   send: false
 ---
 # Hailo VLM App Builder

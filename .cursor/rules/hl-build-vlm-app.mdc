@@ -33,7 +33,7 @@ hailo_apps/python/<type>/<app_name>/
 ├── __init__.py           # Empty
 ├── <app_name>.py         # Main app class + entry point
 ├── event_tracker.py      # Optional: event classification (for monitoring apps)
-└── README.md             # Usage documentation
+└── README.md             # Usage documentation (REQUIRED — never skip)
 ```
 
 **app.yaml** — required manifest:

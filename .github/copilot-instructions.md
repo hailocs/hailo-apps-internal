@@ -127,8 +127,8 @@ PHASE 2: BUILD     → Sub-agents for independent modules, main agent for depend
          GATE      → Validate all imports resolve
 PHASE 3: VALIDATE  → Run validate_app.py --smoke-test (single gate check)
          GATE      → All checks pass (fix and re-run if not)
-PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
-         GATE      → Final validation, all todos complete
+PHASE 4: DOCUMENT  → Write README.md (required), update memory if needed
+         GATE      → README.md exists and is non-empty, final validation, all todos complete
 ```
 
 ### Key Protocols
@@ -151,7 +151,7 @@ PHASE 4: DOCUMENT  → Sub-agent writes README, update memory if needed
 4. **Execute phase-by-phase** using sub-agents where appropriate
 5. **Validate at every gate** — never skip
 6. **Follow conventions** exactly (see Critical Conventions above)
-7. **Document** with README.md and update memory
+7. **Document** — Write README.md (REQUIRED deliverable — never skip). Update memory if new patterns discovered
 
 ## File Reference Map
 

@@ -1,6 +1,7 @@
 ---
 name: HL LLM Builder
-description: Build LLM chat and text generation applications for Hailo-10H. Chatbots, Q&A systems, text processing — all running on-device.
+description: Build LLM chat and text generation applications for Hailo-10H. Chatbots,
+  Q&A systems, text processing — all running on-device.
 argument-hint: e.g., technical support chatbot
 tools:
 - agent/runSubagent
@@ -30,16 +31,17 @@ tools:
 - web/githubRepo
 handoffs:
 - label: Add Voice Input
-  agent: HL Voice Builder
+  agent: hl-voice-builder
   prompt: Add voice input/output (STT + TTS) to the LLM app that was just built.
   send: false
 - label: Add Tool Calling
-  agent: HL Agent Builder
+  agent: hl-agent-builder
   prompt: Convert the LLM app into an agent with tool calling capabilities.
   send: false
 - label: Review & Test
   agent: agent
-  prompt: Review the LLM app that was just built. Run validation checks and report issues.
+  prompt: Review the LLM app that was just built. Run validation checks and report
+    issues.
   send: false
 ---
 # Hailo LLM App Builder
