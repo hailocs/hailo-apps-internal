@@ -9,7 +9,7 @@ Requirements
 ------------
 - HailoRT  
   - For Hailo-8: `HailoRT==4.23.0`  
-  - For Hailo-10: `HailoRT==5.2.0`
+  - For Hailo-10: `HailoRT==5.3.0`
 
 - **Linux Dependencies**
     - OpenCV >= 4.5.4

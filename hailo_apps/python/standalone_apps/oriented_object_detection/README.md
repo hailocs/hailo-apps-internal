@@ -15,7 +15,7 @@ Requirements
 ------------
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.2.0 (for Hailo-10H devices)
+    - 5.3.0 (for Hailo-10H devices)
 - opencv-python<=4.10.0.84
 - numpy<2.0
 - scipy

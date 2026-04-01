@@ -12,7 +12,7 @@ Requirements
 ------------
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.2.0 (for Hailo-10H devices)
+    - 5.3.0 (for Hailo-10H devices)
 - tqdm
 - opencv-python
 
@@ -143,7 +143,7 @@ Additional Notes
 
 - The example was only tested with:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.2.0 (for Hailo-10H devices) 
+    - 5.3.0 (for Hailo-10H devices) 
 - The postprocessed video will be saved as **output_video.mp4**.  
 - The list of supported detection models is defined in `networks.json`.
 - For any issues, open a post on the [Hailo Community](https://community.hailo.ai)

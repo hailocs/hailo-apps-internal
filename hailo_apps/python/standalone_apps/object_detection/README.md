@@ -11,7 +11,7 @@ Requirements
 ------------
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.2.0 (for Hailo-10H devices)
+    - 5.3.0 (for Hailo-10H devices)
 - opencv-python
 - scipy
 - lap
@@ -242,7 +242,7 @@ Additional Notes
 
 - The example was tested with:
     - HailoRT v4.23.0 (for Hailo-8)
-    - HailoRT v5.1.1 (for Hailo-10H)
+    - HailoRT v5.3.0 (for Hailo-10H)
 - The example expects a HEF which contains the HailoRT Postprocess
 - Images are only supported in the following formats: .jpg, .jpeg, .png or .bmp
 - Number of input images should be divisible by batch_size
