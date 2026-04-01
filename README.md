@@ -40,11 +40,18 @@ Windows support, YOLO26 models, Voice2Action demo, AI-powered agentic developmen
 [Full changelog →](./changelog.md)
 
 ## Requirements
-| Package | Required For |
-|---|---|
-| HailoRT Driver  | All apps |
-| HailoRT Python Wheel  | Python apps |
-| TAPPAS Core | Full Hailo-Apps repository installation |
+
+All packages must be installed **before** running `install.sh`. Download from the [Hailo Developer Zone](https://hailo.ai/developer-zone/).
+
+| Package | Type | Required For |
+|---|---|---|
+| HailoRT PCIe Driver | .deb | All apps |
+| HailoRT | .deb | All apps |
+| TAPPAS Core | .deb | GStreamer pipeline apps |
+| HailoRT Python Binding | .whl | All Python apps |
+| TAPPAS Core Python Binding | .whl | GStreamer pipeline apps |
+
+> **Tip:** Standalone and gen-ai apps do **not** require TAPPAS packages. Use `--no-tappas-required` with `install.sh` to skip them.
 
 [Full installation Guide](./doc/user_guide/installation.md)
 
