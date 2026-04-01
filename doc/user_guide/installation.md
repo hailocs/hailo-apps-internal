@@ -2,7 +2,7 @@
 
 This guide provides instructions for installing the Hailo Application Infrastructure on both x86_64 Ubuntu systems and Raspberry Pi devices.
 
-> **Prerequisites:** Before installing hailo-apps, you must have the Hailo runtime packages installed on your system. If you haven't installed them yet, see the [Installing Hailo Packages](#installing-hailo-packages-prerequisites) section first.
+> **Prerequisites:** Before installing hailo-apps, you must have all Hailo runtime packages installed on your system. This includes the PCIe driver, HailoRT, and TAPPAS Core (both system packages and Python bindings). Download them from the [Hailo Developer Zone](https://hailo.ai/developer-zone/). See the [Installing Hailo Packages](#installing-hailo-packages-prerequisites) section for details.
 
 ## Table of Contents
 
@@ -30,6 +30,7 @@ This is the easiest and recommended way to get started on any supported platform
 This script supports both x86_64 Ubuntu and Raspberry Pi.
 On the Raspberry Pi, make sure you first install the HW and SW as described in the [Raspberry Pi Installation](#raspberry-pi-installation) section.
 
+> **Important:** All Hailo runtime packages (driver, HailoRT, TAPPAS Core, and their Python bindings) must be installed **before** running `install.sh`. The script will check for them and stop if any are missing. See [Installing Hailo Packages](#installing-hailo-packages-prerequisites) for details.
 
 ```bash
 # 1. Clone the repository
@@ -41,10 +42,11 @@ sudo ./install.sh
 ```
 
 The installation script will:
-1. Create a Python virtual environment (`venv_hailo_apps` by default).
-2. Install all required system and Python dependencies.
-3. Download necessary AI model files.
-4. Configure the environment.
+1. Verify all Hailo prerequisite packages are installed.
+2. Create a Python virtual environment (`venv_hailo_apps` by default).
+3. Install all required Python dependencies.
+4. Download necessary AI model files.
+5. Configure the environment.
 
 For more all options:
 ```bash
@@ -219,15 +221,19 @@ After installation completes, see [Post-Installation Verification](#post-install
 
 If you need full control over the process use the following instructions.
 
-The `hailo_installer.sh` script handles the installation of the HailoRT and Tappas Core libraries. The main `install.sh` script in the root directory will run this for you, but you can also run it manually for custom installations.
-
-1. **HailoRT and TAPPAS-CORE Installation:**
-```bash
-sudo ./scripts/hailo_installer.sh
-```
-This installs the default versions of HailoRT and TAPPAS-CORE.
-On the Raspberry Pi, use their apt server.
-For additional versions, please visit the [Hailo Developer Zone](https://hailo.ai/developer-zone/).
+1. **Install Hailo prerequisite packages**
+    Download and install all required packages from the [Hailo Developer Zone](https://hailo.ai/developer-zone/):
+    ```bash
+    # System packages (.deb)
+    sudo dpkg -i hailort-pcie-driver_<version>_all.deb
+    sudo dpkg -i hailort_<version>_<arch>.deb
+    sudo dpkg -i hailo-tappas-core_<version>_<arch>.deb
+    
+    # Python wheels (.whl) - install into your venv
+    pip install hailort-<version>-<pytag>-linux_<arch>.whl
+    pip install hailo_tappas_core_python_binding-<version>-py3-none-any.whl
+    ```
+    On the Raspberry Pi, use their apt server (`hailo-all` package).
 
 2.  **Create & activate a virtual environment**
     ```bash
@@ -239,21 +245,12 @@ On the Raspberry Pi, the hailoRT and TAPPAS-CORE python bindings are installed o
 On the x86_64 Ubuntu, the hailoRT and TAPPAS-CORE python bindings can be installed inside the virtual environment.
 Note that also on the x86_64 Ubuntu, the gi library is installed on the system (apt install python3-gi python3-gi-cairo gir1.2-gtk-4.0). You can try installing using pip but it is not recommended.
 
-3.  **Install Hailo Python packages**
-    This script will install the HailoRT and TAPPAS-CORE python bindings.
-    ```bash
-    ./scripts/hailo_installer_python.sh hailo8
-    ```
-    Or for Hailo10:
-    ```bash
-    ./scripts/hailo_installer_python.sh hailo10h
-    ```
-4.  **Install repository**
+3.  **Install repository**
     ```bash
     pip install --upgrade pip
     pip install -e .
     ```
-5.  **Run post-install setup**
+4.  **Run post-install setup**
     This downloads models and configures the environment.
     ```bash
     hailo-post-install
@@ -341,62 +338,24 @@ For Raspberry Pi 5 with a Hailo AI accelerator, use the official Raspberry Pi AI
 
 ## x86_64 Ubuntu Installation
 
-For x86_64 Ubuntu systems, you have two options to install the Hailo packages:
+For x86_64 Ubuntu systems, download all 5 packages from the [Hailo Developer Zone](https://hailo.ai/developer-zone/):
 
-### Option A: Automated Installer Script (Recommended)
-
-The `install.sh` script handles everything automatically, including downloading and installing Hailo packages:
+### Install System Packages (.deb)
 
 ```bash
-git clone https://github.com/hailo-ai/hailo-apps.git
-cd hailo-apps
-sudo ./install.sh
+sudo dpkg -i hailort-pcie-driver_<version>_all.deb
+sudo dpkg -i hailort_<version>_amd64.deb
+sudo dpkg -i hailo-tappas-core_<version>_amd64.deb
 ```
 
-Or use the lower-level installer script directly:
+### Install Python Wheels (.whl)
 
 ```bash
-# For Hailo-8/8L
-sudo ./scripts/hailo_installer.sh hailo8
-
-# For Hailo-10H
-sudo ./scripts/hailo_installer.sh hailo10h
+pip install hailort-<version>-cp<pyver>-cp<pyver>-linux_x86_64.whl
+pip install hailo_tappas_core_python_binding-<version>-py3-none-any.whl
 ```
 
-The script downloads and installs all 5 packages:
-- `hailort-pcie-driver` (.deb)
-- `hailort` (.deb)
-- `hailo-tappas-core` (.deb)
-- `hailort` Python wheel
-- `hailo_tappas_core_python_binding` Python wheel
-
-**Installer Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--hailort-version VER` | Override HailoRT version |
-| `--tappas-core-version VER` | Override TAPPAS Core version |
-| `--download-only` | Download packages without installing |
-| `--output-dir DIR` | Change download location (default: `/usr/local/hailo/resources/packages`) |
-
-### Option B: Manual Download from Hailo Developer Zone
-
-If you need specific versions or offline installation:
-
-1. **Download packages** from the [Hailo Developer Zone](https://hailo.ai/developer-zone/)
-
-2. **Install system packages (.deb):**
-   ```bash
-   sudo dpkg -i hailort-pcie-driver_<version>_amd64.deb
-   sudo dpkg -i hailort_<version>_amd64.deb
-   sudo dpkg -i hailo-tappas-core_<version>_amd64.deb
-   ```
-
-3. **Install Python wheels (.whl):**
-   ```bash
-   pip install hailort-<version>-cp<pyver>-linux_x86_64.whl
-   pip install hailo_tappas_core_python_binding-<version>-cp<pyver>-linux_x86_64.whl
-   ```
+> **Note:** For standalone/gen-ai apps only (no GStreamer pipelines), you can skip the TAPPAS packages and use `--no-tappas-required` when running `install.sh`.
 
 ### Verification
 

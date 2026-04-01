@@ -70,7 +70,6 @@ ENV_FILE=""
 # Detected values
 ORIGINAL_USER=""
 ORIGINAL_GROUP=""
-INSTALL_HAILORT=false
 HAILORT_VERSION=""
 HAILO_ARCH=""
 MODEL_ZOO_VER=""
@@ -602,10 +601,14 @@ ${BOLD}LOG FILES:${NC}
 
 ${BOLD}REQUIREMENTS:${NC}
     - Must be run with sudo (not as root directly)
-    - Hailo PCI driver must be installed
-    - HailoRT must be installed
+    - Hailo PCI driver must be installed (.deb)
+    - HailoRT must be installed (.deb)
+    - TAPPAS Core must be installed (.deb) — unless --no-tappas-required
+    - HailoRT Python binding must be installed (.whl)
+    - TAPPAS Core Python binding must be installed (.whl) — unless --no-tappas-required
 
-    Use 'sudo ./scripts/hailo_installer.sh' to install missing components.
+    Download all required packages from the Hailo Developer Zone:
+    https://hailo.ai/developer-zone/
 
 EOF
 }
@@ -749,6 +752,7 @@ check_prerequisites() {
     local hailort_version="-1"
     local pyhailort_version="-1"
     local tappas_version="-1"
+    local tappas_python_version="-1"
 
     # Parse key=value pairs
     for pair in $summary_line; do
@@ -760,6 +764,7 @@ check_prerequisites() {
             hailort) hailort_version="$value"; HAILORT_VERSION="$value" ;;
             pyhailort) pyhailort_version="$value" ;;
             tappas-core) tappas_version="$value" ;;
+            tappas-python) tappas_python_version="$value" ;;
         esac
     done
 
@@ -804,10 +809,19 @@ check_prerequisites() {
     local missing_components=()
 
     if [[ "$driver_version" == "-1" ]]; then
-        missing_components+=("Hailo PCI driver")
+        missing_components+=("Hailo PCI driver (.deb)")
     fi
     if [[ "$hailort_version" == "-1" ]]; then
-        missing_components+=("HailoRT")
+        missing_components+=("HailoRT (.deb)")
+    fi
+    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_version" == "-1" ]]; then
+        missing_components+=("TAPPAS Core (.deb)")
+    fi
+    if [[ "$pyhailort_version" == "-1" ]]; then
+        missing_components+=("HailoRT Python binding (.whl)")
+    fi
+    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" ]]; then
+        missing_components+=("TAPPAS Core Python binding (.whl)")
     fi
 
     if [[ ${#missing_components[@]} -gt 0 ]]; then
@@ -816,21 +830,18 @@ check_prerequisites() {
             log_error "  • ${component}"
         done
         echo ""
-        log_info "To install missing components, run:"
-        log_info "    sudo ./scripts/hailo_installer.sh"
+        log_info "Download and install missing packages from the Hailo Developer Zone:"
+        log_info "    https://hailo.ai/developer-zone/"
+        log_info ""
+        log_info "For system packages (.deb), install with: sudo dpkg -i <package>.deb"
+        log_info "For Python wheels (.whl), install with: pip install <package>.whl"
+        if [[ "${NO_TAPPAS_REQUIRED}" != true ]]; then
+            log_info ""
+            log_info "If you only need standalone/gen-ai apps (no GStreamer pipelines),"
+            log_info "you can skip TAPPAS requirements with: sudo $SCRIPT_NAME --no-tappas-required"
+        fi
         record_step_result "FAILED" "Missing: ${missing_components[*]}"
         return 1
-    fi
-
-    # Check Python bindings
-    if [[ "$pyhailort_version" == "-1" ]]; then
-        log_warning "Python HailoRT binding not installed - will be installed in virtualenv"
-        INSTALL_HAILORT=true
-    fi
-
-    if [[ "${NO_INSTALL}" == true ]]; then
-        log_info "Skipping Python package installation (--no-install flag)"
-        INSTALL_HAILORT=false
     fi
 
     log_success "Prerequisites check passed"
@@ -1025,7 +1036,6 @@ install_python_packages() {
             record_step_result "FAILED" "PyHailoRT install failed"
             return 1
         fi
-        INSTALL_HAILORT=false
     fi
 
     if [[ -n "$PYTAPPAS_PATH" ]]; then
@@ -1049,49 +1059,9 @@ install_python_packages() {
         fi
     fi
 
-    # Install Hailo Python packages if needed
-    if [[ "${INSTALL_HAILORT}" == true ]]; then
-        local install_script="${SCRIPT_DIR}/scripts/hailo_installer_python.sh"
-
-        if [[ -f "$install_script" ]]; then
-            log_info "Installing Hailo Python packages..."
-            local arch_arg=""
-            local flags=""
-
-            if [[ -z "${HAILO_ARCH:-}" || "${HAILO_ARCH}" == "unknown" ]]; then
-                log_error "HAILO_ARCH is required for Python package installation (hailo8 or hailo10h)."
-                record_step_result "FAILED" "Missing HAILO_ARCH for Python install"
-                return 1
-            fi
-
-            case "${HAILO_ARCH}" in
-                hailo8|hailo8l) arch_arg="hailo8" ;;
-                hailo10h) arch_arg="hailo10h" ;;
-                *)
-                    log_error "Unsupported HAILO_ARCH value: ${HAILO_ARCH}. Expected hailo8/hailo8l/hailo10h."
-                    record_step_result "FAILED" "Unsupported HAILO_ARCH"
-                    return 1
-                    ;;
-            esac
-
-            if [[ "${INSTALL_HAILORT}" == true && -n "${HAILORT_VERSION}" && "${HAILORT_VERSION}" != "-1" ]]; then
-                flags="${flags} --hailort-version ${HAILORT_VERSION}"
-                log_debug "Installing HailoRT version: ${HAILORT_VERSION}"
-            fi
-            if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-                flags="${flags} --no-tappas"
-            fi
-
-            log_debug "Running: ${install_script} ${arch_arg} ${flags}"
-            if ! run_as_user bash -c "source '${venv_activate}' && '${install_script}' ${arch_arg} ${flags}"; then
-                log_warning "Hailo Python package installation had issues"
-                log_info "Continuing with installation - packages may be available from system"
-            fi
-        else
-            log_warning "Hailo Python installation script not found: ${install_script}"
-            log_info "Skipping Hailo Python package installation"
-        fi
-    fi
+    # Install Hailo Python packages into venv (only from user-provided wheels)
+    # Note: If no --pyhailort/--pytappas provided, wheels must already be
+    # installed system-wide as prerequisites.
 
     # Upgrade pip/setuptools/wheel
     log_info "Upgrading pip, setuptools, and wheel..."
