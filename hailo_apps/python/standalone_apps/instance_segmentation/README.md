@@ -10,7 +10,7 @@ Requirements
 ------------
 - hailo_platform:
     - 4.23.0 (for Hailo-8 devices)
-    - 5.2.0 (for Hailo-10H devices)
+    - 5.3.0 (for Hailo-10H devices)
 - opencv-python
 - scipy
 - lap
@@ -248,7 +248,7 @@ Additional Notes
 
 - The example was tested with:
     - HailoRT v4.23.0 (for Hailo-8)
-    - HailoRT v5.1.1 (for Hailo-10H)
+    - HailoRT v5.3.0 (for Hailo-10H)
 - Images are only supported in the following formats: .jpg, .jpeg, .png or .bmp
 - Number of input images should be divisible by `batch_size`
 - Using the yolov-seg model for inference, this example performs instance segmentation, draws detection boxes and adds a label to each class. When using the FastSAM model, it only performs the instance segmentation.
