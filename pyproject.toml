@@ -81,7 +81,6 @@ hailo-post-install =        "hailo_apps.installation.post_install:main"
 hailo-compile-postprocess = "hailo_apps.installation.compile_cpp:main"
 hailo-set-env =             "hailo_apps.installation.set_env:main"
 hailo-download-resources =  "hailo_apps.installation.download_resources:main"
-hailo-install-python-bindings = "hailo_apps.installation.install_python_bindings:main"
 hailo-detect =              "hailo_apps.python.pipeline_apps.detection.detection:main"
 hailo-depth =               "hailo_apps.python.pipeline_apps.depth.depth:main"
 hailo-pose =                "hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation:main"
@@ -100,12 +99,6 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["hailo_apps*", "local_resources*"]
-
-[tool.setuptools.data-files]
-"share/hailo-apps/scripts" = [
-    "scripts/hailo_installer_python.sh",
-    "scripts/hailo_installer.sh",
-]
 
 [tool.setuptools.package-data]
 "hailo_apps.postprocess" = [

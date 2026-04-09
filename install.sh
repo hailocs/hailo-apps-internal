@@ -70,7 +70,6 @@ ENV_FILE=""
 # Detected values
 ORIGINAL_USER=""
 ORIGINAL_GROUP=""
-INSTALL_HAILORT=false
 HAILORT_VERSION=""
 HAILO_ARCH=""
 MODEL_ZOO_VER=""
@@ -634,10 +633,14 @@ ${BOLD}LOG FILES:${NC}
 
 ${BOLD}REQUIREMENTS:${NC}
     - Must be run with sudo (not as root directly)
-    - Hailo PCI driver must be installed
-    - HailoRT must be installed
+    - Hailo PCI driver must be installed (.deb)
+    - HailoRT must be installed (.deb)
+    - TAPPAS Core must be installed (.deb) — unless --no-tappas-required
+    - HailoRT Python binding must be installed (.whl)
+    - TAPPAS Core Python binding must be installed (.whl) — unless --no-tappas-required
 
-    Download missing components from: https://hailo.ai/developer-zone/
+    Download all required packages from the Hailo Developer Zone:
+    https://hailo.ai/developer-zone/
 
 EOF
 }
@@ -880,19 +883,6 @@ check_prerequisites() {
         return 1
     fi
 
-    # Warn if deb and wheel versions don't match
-    if [[ "$hailort_version" != "-1" && "$pyhailort_version" != "-1" \
-       && "$hailort_version" != "$pyhailort_version" ]]; then
-        log_warning "HailoRT deb ($hailort_version) and Python wheel ($pyhailort_version) versions differ"
-        log_warning "This may cause runtime issues. Please install matching versions."
-    fi
-    if [[ "${NO_TAPPAS_REQUIRED}" != true \
-       && "$tappas_version" != "-1" && "$tappas_python_version" != "-1" \
-       && "$tappas_version" != "$tappas_python_version" ]]; then
-        log_warning "TAPPAS deb ($tappas_version) and Python wheel ($tappas_python_version) versions differ"
-        log_warning "This may cause runtime issues. Please install matching versions."
-    fi
-
     log_success "Prerequisites check passed"
     record_step_result "SUCCESS" "All required components found"
     return 0
@@ -1085,7 +1075,6 @@ install_python_packages() {
             record_step_result "FAILED" "PyHailoRT install failed"
             return 1
         fi
-        INSTALL_HAILORT=false
     fi
 
     if [[ -n "$PYTAPPAS_PATH" ]]; then
@@ -1108,6 +1097,10 @@ install_python_packages() {
             return 1
         fi
     fi
+
+    # Install Hailo Python packages into venv (only from user-provided wheels)
+    # Note: If no --pyhailort/--pytappas provided, wheels must already be
+    # installed system-wide as prerequisites.
 
     # Upgrade pip/setuptools/wheel
     log_info "Upgrading pip, setuptools, and wheel..."
