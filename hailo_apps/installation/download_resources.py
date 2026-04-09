@@ -61,7 +61,7 @@ from hailo_apps.python.core.common.defines import (
     RESOURCE_TYPES,
 )
 
-from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+from hailo_apps.python.core.common.installation_utils import detect_hailo_arch, auto_detect_hailort_version
 
 
 # =============================================================================
@@ -195,15 +195,25 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY)
     
     if model_zoo_version is None:
-        # Derive from HailoRT version for H10
+        # Auto-select default model zoo version based on device architecture
         if hailo_arch == HAILO10H_ARCH:
-            hailort_version = os.getenv(HAILORT_VERSION_KEY, "5.1.1")
-            if hailort_version.startswith("5.2"):
-                model_zoo_version = "v5.2.0"
+            hailort_version = os.getenv(
+                HAILORT_VERSION_KEY,
+                auto_detect_hailort_version()
+            )
+            if not hailort_version:
+                raise RuntimeError(
+                    "Failed to determine HailoRT version for Hailo-10H. "
+                    f"Please set {MODEL_ZOO_VERSION_KEY} manually."
+                )
+            # Keep 5.1 pinned to v5.1.0 for backward compatibility
+            if hailort_version.startswith("5.1"):
+                model_zoo_version = "v5.1.0"
             else:
-                model_zoo_version = "v5.1.0"  # Default for 5.1.x
+                # For newer versions, use the exact HailoRT version
+                model_zoo_version = f"v{hailort_version}"
         else:
-            # H8/H8L always uses v2.17.0
+            # H8/H8L uses the fixed Model Zoo release
             model_zoo_version = "v2.17.0"
     
     # Validate the version
@@ -520,9 +530,8 @@ class ResourceDownloader:
                 .get("s3_endpoints", {})
                 .get("gen_ai_mz", "https://dev-public.hailo.ai")
             )
-            gen_ai_version = f"v{os.getenv(HAILORT_VERSION_KEY, '5.1.1')}"
-            
-            url = f"{gen_ai_base}/{gen_ai_version}/blob/{_ensure_hef_filename(name)}"
+
+            url = f"{gen_ai_base}/{self.model_zoo_version}/blob/{_ensure_hef_filename(name)}"
             test_url(url=url)  # Print URL validation info
             return url
         else:
