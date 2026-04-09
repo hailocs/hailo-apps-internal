@@ -113,7 +113,9 @@ def run_inference_pipeline(
     Initialize queues, inference instance, and run the pipeline.
     """
     labels = get_labels(labels)
-    config_data = load_json_file("config.json")
+    app_dir = Path(__file__).resolve().parent
+    config_path = app_dir / "config.json"
+    config_data = load_json_file(str(config_path))
 
     stop_event = threading.Event()
     fps_tracker = FrameRateTracker() if show_fps else None
