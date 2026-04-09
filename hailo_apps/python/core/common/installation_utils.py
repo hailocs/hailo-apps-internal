@@ -222,10 +222,16 @@ def get_hailort_package_name() -> str:
         str: Package name ('hailort' or 'h10-hailort' for RPI)
     """
     host_arch = detect_host_arch()
+
     if host_arch == RPI_NAME_I:
         if detect_hailo_arch() == HAILO10H_ARCH:
-            hailo_logger.debug(f"Using RPI-specific HailoRT package: {HAILORT_PACKAGE_NAME_RPI}")
-            return HAILORT_PACKAGE_NAME_RPI
+            # Old hailort version used h10-hailort
+            if detect_system_pkg_version(HAILORT_PACKAGE_NAME_RPI):
+                hailo_logger.debug(
+                    f"Using RPI-specific HailoRT package: {HAILORT_PACKAGE_NAME_RPI}"
+                )
+                return HAILORT_PACKAGE_NAME_RPI
+
     hailo_logger.debug(f"Using default HailoRT package: {HAILORT_PACKAGE_NAME}")
     return HAILORT_PACKAGE_NAME
 
