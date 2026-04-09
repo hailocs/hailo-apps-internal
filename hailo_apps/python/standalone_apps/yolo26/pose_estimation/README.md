@@ -219,7 +219,7 @@ Additional Notes
 
 - The example was tested with:
     - HailoRT v4.23.0 (for Hailo-8)
-    - HailoRT v5.1.1 (for Hailo-10H)
+    - HailoRT v5.3.0 (for Hailo-10H)
 - The example expects a HEF which contains the HailoRT Postprocess
 - The script assumes that the image is in one of the following formats: .jpg, .jpeg, .png or .bmp
 - The annotated files will be saved in the `output` folder. 

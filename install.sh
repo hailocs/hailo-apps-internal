@@ -314,6 +314,28 @@ validate_versions() {
         fi
     fi
 
+    # Validate HailoRT + TAPPAS combination for architecture
+    if [[ -n "$hailo_arch_val" && "$hailo_arch_val" != "unknown" \
+       && -n "$hailort_ver" && "$hailort_ver" != "-1" \
+       && -n "$tappas_ver" && "$tappas_ver" != "-1" \
+       && -n "${VALID_COMBINATIONS:-}" ]]; then
+        local combo="${hailort_ver}:${tappas_ver}"
+        local combo_found=false
+        for valid_combo in $VALID_COMBINATIONS; do
+            if [[ "$combo" == "$valid_combo" ]]; then
+                combo_found=true
+                break
+            fi
+        done
+        if [[ "$combo_found" != true ]]; then
+            log_warning "HailoRT $hailort_ver + TAPPAS $tappas_ver is not a valid combination for $hailo_arch_val"
+            log_warning "Valid combinations for $hailo_arch_val: $VALID_COMBINATIONS"
+            valid=false
+        else
+            log_debug "Version combination $combo is valid for $hailo_arch_val"
+        fi
+    fi
+
     if [[ "$valid" != true ]]; then
         log_error "Version validation failed - installation cannot continue"
         log_error "Please ensure all components match the supported versions listed in config.yaml"
@@ -338,9 +360,12 @@ get_model_zoo_version() {
             ;;
         hailo10h)
             # H10: Derive from HailoRT version
+            # HailoRT 5.3.x -> Model Zoo v5.3.0
             # HailoRT 5.2.x -> Model Zoo v5.2.0
             # HailoRT 5.1.x (default) -> Model Zoo v5.1.0
-            if [[ "$hailort_ver" == 5.2.* ]]; then
+            if [[ "$hailort_ver" == 5.3.* ]]; then
+                mz_version="v5.3.0"
+            elif [[ "$hailort_ver" == 5.2.* ]]; then
                 mz_version="v5.2.0"
             else
                 mz_version="v5.1.0"
@@ -545,6 +570,13 @@ load_config() {
     VALID_MZ_H8_VERSIONS=$(yaml_get_list "valid_model_zoo_versions.h8" "${CONFIG_FILE}")
     VALID_MZ_H10_VERSIONS=$(yaml_get_list "valid_model_zoo_versions.h10" "${CONFIG_FILE}")
 
+    # Extract valid version combinations per architecture (compact "hailort:tappas" format)
+    # For the detected arch, load the combo string (e.g. "5.2.0:5.2.0 5.3.0:5.3.0")
+    # This is loaded later in check_prerequisites once arch is known
+    VALID_COMBINATIONS_HAILO8=$(yaml_get "valid_combinations.hailo8" "${CONFIG_FILE}")
+    VALID_COMBINATIONS_HAILO8L=$(yaml_get "valid_combinations.hailo8l" "${CONFIG_FILE}")
+    VALID_COMBINATIONS_HAILO10H=$(yaml_get "valid_combinations.hailo10h" "${CONFIG_FILE}")
+
     log_success "Configuration loaded from config.yaml"
     log_debug "  VENV_NAME=${VENV_NAME}"
     log_debug "  USE_SYSTEM_SITE_PACKAGES=${USE_SYSTEM_SITE_PACKAGES}"
@@ -726,7 +758,7 @@ check_prerequisites() {
 
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "Running: ${check_script}"
-        log_info "Would check: Hailo driver, HailoRT installations"
+        log_info "Would check: Hailo driver, HailoRT, TAPPAS, Python bindings"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
@@ -771,6 +803,13 @@ check_prerequisites() {
     # Determine Model Zoo version based on architecture
     if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
         MODEL_ZOO_VER=$(get_model_zoo_version "${HAILO_ARCH}")
+        # Load valid combinations for detected architecture
+        case "${HAILO_ARCH}" in
+            hailo8)  VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8:-}" ;;
+            hailo8l) VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8L:-}" ;;
+            hailo10h) VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO10H:-}" ;;
+            *) VALID_COMBINATIONS="" ;;
+        esac
     fi
     local model_zoo_version="${MODEL_ZOO_VER}"
 
@@ -805,7 +844,7 @@ check_prerequisites() {
         validate_model_zoo_version "${HAILO_ARCH}" "$model_zoo_version" || true
     fi
 
-    # Check required components
+    # Check required components — all 5 packages must be pre-installed
     local missing_components=()
 
     if [[ "$driver_version" == "-1" ]]; then

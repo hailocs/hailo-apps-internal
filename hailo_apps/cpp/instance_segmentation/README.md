@@ -10,7 +10,7 @@ Requirements
 
 - HailoRT  
   - For Hailo-8: `HailoRT==4.23.0`  
-  - For Hailo-10: `HailoRT==5.1.1`
+  - For Hailo-10: `HailoRT==5.3.0`
 - OpenCV >= 4.5.4
     ```shell script
     sudo apt-get install -y libopencv-dev python3-opencv

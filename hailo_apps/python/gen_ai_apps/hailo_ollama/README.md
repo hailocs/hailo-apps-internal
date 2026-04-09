@@ -19,7 +19,7 @@ For full details on Hailo Model Zoo GenAI, see: https://github.com/hailo-ai/hail
 1. Visit: https://hailo.ai/developer-zone/
 2. Download the appropriate package for your architecture
 
-   **Important: The supported version is 5.1.1  & 5.2.0**
+   **Important: The supported version is 5.1.1, 5.2.0 & 5.3.0**
 
 3. Install the package:
    ```bash
