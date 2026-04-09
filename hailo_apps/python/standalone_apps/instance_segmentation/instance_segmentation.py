@@ -176,7 +176,9 @@ def run_inference_pipeline(
     """
     Initialize queues, HailoAsyncInference instance, and run the inference.
     """
-    config_data = load_json_file("config.json")
+    app_dir = Path(__file__).resolve().parent
+    config_path = app_dir / "config.json"
+    config_data = load_json_file(str(config_path))
     labels = get_labels(labels)
 
     stop_event = threading.Event()
