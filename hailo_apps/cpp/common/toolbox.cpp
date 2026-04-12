@@ -499,6 +499,7 @@ static bool is_digits_only(const std::string &s)
                                     [](unsigned char c){ return std::isdigit(c); });
 }
 
+
 InputType determine_input_type(const std::string& input_path,
                                cv::VideoCapture &capture,
                                double &org_height,
@@ -660,6 +661,15 @@ void init_video_writer(const std::string &output_path, cv::VideoWriter &video, d
     }
 }
 
+static bool has_gstreamer_element(const std::string &element_name)
+{
+    const std::string cmd =
+        "gst-inspect-1.0 " + element_name + " > /dev/null 2>&1";
+
+    const int ret = std::system(cmd.c_str());
+    return ret == 0;
+}
+
 cv::VideoCapture open_video_capture(const std::string &input_path,
     cv::VideoCapture &capture,
     double &org_height,
@@ -695,6 +705,13 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     }
 
     if (is_rpi_input) {
+        if (!has_gstreamer_element("libcamerasrc")) {
+            throw std::runtime_error(
+                "Missing required GStreamer element 'libcamerasrc'.\n"
+                "Install it with:\n"
+                "    sudo apt install gstreamer1.0-libcamera"
+            );
+        }
         org_width  = width  = 800;
         org_height = height = 600;
         std::string pipeline = make_rpi_gst_pipeline(width, height, fps);
