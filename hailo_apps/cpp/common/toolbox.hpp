@@ -25,6 +25,8 @@
 #include <functional>
 #include "hailo_infer.hpp"
 #include <optional>
+#include <vector>
+#include <variant>
 
 
 
@@ -37,6 +39,7 @@
 
 extern std::vector<cv::Scalar> COLORS;
 using Clock = std::chrono::steady_clock;
+using CameraDevice = std::variant<std::string, int>;
 
 namespace hailo_utils {
 
@@ -126,7 +129,7 @@ namespace hailo_utils {
                                     std::chrono::duration<double> total_time);
     void init_video_writer(const std::string &output_path, cv::VideoWriter &video,
         double framerate, int org_width, int org_height);
-
+    std::vector<CameraDevice> get_usb_video_devices();
     cv::VideoCapture open_video_capture(const std::string &input_path,
         cv::VideoCapture &capture,
         double &org_height,
