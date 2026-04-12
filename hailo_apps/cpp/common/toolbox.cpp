@@ -11,6 +11,21 @@
 #include <sstream>
 #include <unordered_set>
 #include <yaml-cpp/yaml.h>
+#include <vector>
+#include <cstdio>
+#include <array>
+#include <algorithm>
+
+#include <vector>
+#include <string>
+
+#ifdef _WIN32
+#include <opencv2/videoio.hpp>
+#else
+#include <filesystem>
+#include <cstdio>
+#include <array>
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -375,34 +390,107 @@ std::string get_model_meta_value(const std::string &app,
     }
 }
 
-static std::string find_usb_camera()
+#ifndef _WIN32
+static std::string run_command(const std::string &cmd)
 {
-    namespace fs = std::filesystem;
+    std::array<char, 256> buffer{};
+    std::string output;
 
-    const fs::path v4l_path("/sys/class/video4linux");
-
-    if (!fs::exists(v4l_path)) {
+    FILE *pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
         return "";
     }
 
-    for (const auto &entry : fs::directory_iterator(v4l_path)) {
-        const std::string video_name = entry.path().filename().string();
-        const fs::path dev_path = entry.path() / "device";
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        output += buffer.data();
+    }
 
-        if (!fs::exists(dev_path)) {
-            continue;
-        }
+    pclose(pipe);
+    return output;
+}
 
-        // Resolve symlink
-        fs::path resolved = fs::canonical(dev_path);
 
-        // USB devices contain "usb" in their sysfs path
-        if (resolved.string().find("usb") != std::string::npos) {
-            return "/dev/" + video_name;
+static std::vector<CameraDevice> get_usb_video_devices_linux()
+{
+    namespace fs = std::filesystem;
+
+    std::cout << "Scanning /dev for video devices..." << std::endl;
+
+    std::vector<CameraDevice> usb_video_devices;
+    std::vector<std::string> video_devices;
+
+    for (const auto &entry : fs::directory_iterator("/dev")) {
+        const std::string device_name = entry.path().filename().string();
+
+        if (device_name.rfind("video", 0) == 0) {
+            video_devices.push_back("/dev/" + device_name);
         }
     }
 
-    return ""; // none found
+    for (const auto &device : video_devices) {
+        try {
+
+            const std::string cmd =
+                "udevadm info --query=all --name=" + device + " 2>/dev/null";
+            const std::string output = run_command(cmd);
+
+            if (output.find("ID_BUS=usb") != std::string::npos &&
+                output.find(":capture:") != std::string::npos) {
+                std::cout << "USB camera detected: " << device << std::endl;
+                usb_video_devices.push_back(device);
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "Error checking device " << device << ": " << e.what() << std::endl;
+        }
+    }
+
+    std::cout << "USB video devices found on Linux:" << std::endl;
+    for (const auto &device : usb_video_devices) {
+        std::cout << "  " << std::get<std::string>(device) << std::endl;
+    }
+
+    return usb_video_devices;
+}
+#endif
+
+#ifdef _WIN32
+static std::vector<CameraDevice> get_usb_video_devices_windows()
+{
+    std::vector<CameraDevice> usb_video_devices;
+
+    try {
+        for (int index = 0; index < 10; ++index) {
+            cv::VideoCapture cap(index, cv::CAP_DSHOW);
+
+            if (cap.isOpened()) {
+                std::cout << "USB camera detected: index=" << index << std::endl;
+                usb_video_devices.push_back(index);
+                cap.release();
+            }
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "Failed to enumerate Windows video devices: " << e.what() << std::endl;
+        return {};
+    }
+
+    std::cout << "USB video devices found on Windows:" << std::endl;
+    for (const auto &device : usb_video_devices) {
+        std::cout << "  " << std::get<int>(device) << std::endl;
+    }
+
+    return usb_video_devices;
+}
+#endif
+
+std::vector<CameraDevice> get_usb_video_devices()
+{
+#ifdef _WIN32
+    std::cout << "Detecting USB video devices on Windows..." << std::endl;
+    return get_usb_video_devices_windows();
+#else
+    std::cout << "Detecting USB video devices on Linux..." << std::endl;
+    return get_usb_video_devices_linux();
+#endif
 }
 
 static bool is_digits_only(const std::string &s)
@@ -410,6 +498,7 @@ static bool is_digits_only(const std::string &s)
     return !s.empty() && std::all_of(s.begin(), s.end(),
                                     [](unsigned char c){ return std::isdigit(c); });
 }
+
 
 InputType determine_input_type(const std::string& input_path,
                                cv::VideoCapture &capture,
@@ -466,19 +555,18 @@ InputType determine_input_type(const std::string& input_path,
     } else if (input_path == "usb") {
         input_type.is_camera = true;
 
-    #ifdef _WIN32
-        const std::string camera_index = "0"; // default if user didn't pass "0"/"1"/...
-        std::cout << "Using USB camera: index " << camera_index << "\n";
-        capture = open_video_capture(camera_index, capture, org_height, org_width, frame_count,
-                                     true /*is_camera*/, camera_resolution);
-    #else
-        std::string video_device = "/dev/video0"; // default
-        if (is_raspberry_pi()) {
-            video_device = find_usb_camera();
-            if (video_device.empty()) {
-                throw std::runtime_error("No USB camera detected");
-            }
+        const auto usb_devices = get_usb_video_devices();
+        if (usb_devices.empty()) {
+            throw std::runtime_error("No USB camera detected");
         }
+
+    #ifdef _WIN32
+        const int camera_index = std::get<int>(usb_devices.front());
+        std::cout << "Using USB camera: index " << camera_index << "\n";
+        capture = open_video_capture(std::to_string(camera_index), capture, org_height, org_width,
+                                     frame_count, true /*is_camera*/, camera_resolution);
+    #else
+        const std::string video_device = std::get<std::string>(usb_devices.front());
         std::cout << "Using USB camera: " << video_device << "\n";
         capture = open_video_capture(video_device, capture, org_height, org_width, frame_count,
                                      true /*is_camera*/, camera_resolution);
@@ -573,6 +661,15 @@ void init_video_writer(const std::string &output_path, cv::VideoWriter &video, d
     }
 }
 
+static bool has_gstreamer_element(const std::string &element_name)
+{
+    const std::string cmd =
+        "gst-inspect-1.0 " + element_name + " > /dev/null 2>&1";
+
+    const int ret = std::system(cmd.c_str());
+    return ret == 0;
+}
+
 cv::VideoCapture open_video_capture(const std::string &input_path,
     cv::VideoCapture &capture,
     double &org_height,
@@ -608,6 +705,13 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     }
 
     if (is_rpi_input) {
+        if (!has_gstreamer_element("libcamerasrc")) {
+            throw std::runtime_error(
+                "Missing required GStreamer element 'libcamerasrc'.\n"
+                "Install it with:\n"
+                "    sudo apt install gstreamer1.0-libcamera"
+            );
+        }
         org_width  = width  = 800;
         org_height = height = 600;
         std::string pipeline = make_rpi_gst_pipeline(width, height, fps);
