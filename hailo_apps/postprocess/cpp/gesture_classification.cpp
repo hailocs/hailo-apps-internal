@@ -124,7 +124,12 @@ void gesture_classification_filter(HailoROIPtr roi)
             }
 
             if (!hand_lm)
+            {
+                // No landmarks — this is a raw crop region from palm_to_hand_crop,
+                // not a real hand detection. Remove it so hailooverlay doesn't render it.
+                to_remove.push_back(obj);
                 continue;
+            }
 
             auto pts = hand_lm->get_points();
             if (pts.size() < 21)

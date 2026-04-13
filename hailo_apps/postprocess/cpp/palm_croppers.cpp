@@ -23,7 +23,7 @@
 #define DSCALE 2.6f
 #define DY (-0.5f)
 
-#define MAX_HANDS 4
+#define MAX_HANDS 2
 #define PALM_CLASS_ID 100  // Must match palm_detection_postprocess.cpp
 
 static inline float clamp01(float v)
@@ -44,7 +44,11 @@ std::vector<HailoROIPtr> palm_to_hand_crop(std::shared_ptr<HailoMat> image, Hail
     // 2. Nested inside person_palm_crop sub-detections (person-crop mode)
     //    In case 2, palm coords are parent-bbox-relative and must be promoted
     //    to frame-absolute so the hand crop geometry works correctly.
+    //
+    // Promoted palms are collected first, then NMS'd to remove duplicates from
+    // overlapping person crops before adding survivors to the ROI.
     std::vector<HailoDetectionPtr> palms;
+    std::vector<HailoDetectionPtr> promoted_palms;  // from person_palm_crop, not yet on ROI
     auto detections = hailo_common::get_hailo_detections(roi);
 
     for (auto &det : detections)
@@ -78,8 +82,48 @@ std::vector<HailoROIPtr> palm_to_hand_crop(std::shared_ptr<HailoMat> image, Hail
                 for (auto &lm_obj : child->get_objects_typed(HAILO_LANDMARKS))
                     promoted->add_object(lm_obj);
 
-                roi->add_object(promoted);
-                palms.push_back(promoted);
+                promoted_palms.push_back(promoted);
+            }
+        }
+    }
+
+    // Frame-level NMS on promoted palms: deduplicate detections from overlapping
+    // person crops before adding to the ROI. Without this, the same physical palm
+    // detected in two overlapping person crops produces two tracked IDs.
+    std::sort(promoted_palms.begin(), promoted_palms.end(),
+              [](const HailoDetectionPtr &a, const HailoDetectionPtr &b) {
+                  return a->get_confidence() > b->get_confidence();
+              });
+    {
+        std::vector<bool> suppressed(promoted_palms.size(), false);
+        for (size_t i = 0; i < promoted_palms.size(); i++)
+        {
+            if (suppressed[i]) continue;
+            HailoBBox bi = promoted_palms[i]->get_bbox();
+            float ci_x = bi.xmin() + bi.width() / 2.0f;
+            float ci_y = bi.ymin() + bi.height() / 2.0f;
+            for (size_t j = i + 1; j < promoted_palms.size(); j++)
+            {
+                if (suppressed[j]) continue;
+                HailoBBox bj = promoted_palms[j]->get_bbox();
+                float cj_x = bj.xmin() + bj.width() / 2.0f;
+                float cj_y = bj.ymin() + bj.height() / 2.0f;
+                // Suppress if centers are close (within 1.5x palm width)
+                float dx = ci_x - cj_x, dy = ci_y - cj_y;
+                float dist = std::sqrt(dx * dx + dy * dy);
+                float radius = std::max(bi.width(), bi.height()) * 1.5f;
+                if (dist < radius)
+                    suppressed[j] = true;
+            }
+        }
+        int added = 0;
+        for (size_t i = 0; i < promoted_palms.size() && added < MAX_HANDS; i++)
+        {
+            if (!suppressed[i])
+            {
+                roi->add_object(promoted_palms[i]);
+                palms.push_back(promoted_palms[i]);
+                added++;
             }
         }
     }
