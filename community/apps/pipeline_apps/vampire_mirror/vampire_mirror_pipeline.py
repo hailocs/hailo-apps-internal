@@ -28,8 +28,8 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
         parser.add_argument(
             "--mirror-ratio",
             type=str,
-            default="9:16",
-            help="Portrait mirror aspect ratio as W:H (default: 9:16).",
+            default="3:4",
+            help="Portrait mirror aspect ratio as W:H (default: 3:4).",
         )
 
         # Background
