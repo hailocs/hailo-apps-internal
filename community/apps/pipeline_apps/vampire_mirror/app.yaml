@@ -1,18 +1,19 @@
 name: vampire_mirror
 title: "Vampire Mirror"
 description: >
-  A real-time mirror where vampires are invisible. Uses instance segmentation
-  with ByteTrack tracking to detect people. The first person detected is human
-  (visible), all others are vampires whose pixels are replaced with the saved
-  background image, making them disappear from the mirror.
+  A real-time mirror where enrolled "vampires" are invisible. Uses instance
+  segmentation with ByteTrack tracking for pixel-accurate person masks.
+  Features dynamic background updates, portrait center-crop display with
+  a buffer zone for smooth entry handling. Face recognition integration
+  planned for vampire identification.
 type: pipeline
 hailo_arch:
-  - hailo10h
   - hailo8
   - hailo8l
+  - hailo10h
 tags:
   - instance-segmentation
   - tracking
   - creative
   - interactive
-status: draft
+status: ready

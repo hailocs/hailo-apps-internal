@@ -1,14 +1,16 @@
 # Vampire Mirror
 
-A real-time "mirror" where vampires are invisible. The app uses instance segmentation with ByteTrack tracking to detect and track people. The first person detected is treated as human (visible in the mirror), while all subsequent people are treated as vampires -- their pixels are replaced with the saved background image, making them disappear.
+A real-time "mirror" where vampires are invisible. Uses instance segmentation with ByteTrack tracking for pixel-accurate person masks. Features a dynamic background that adapts to lighting changes, a portrait center-crop display from a wider landscape capture, and a buffer zone that prevents people from suddenly appearing or disappearing.
 
 ## How It Works
 
-1. **Background capture**: During the first 30 frames, the app captures and averages the scene (with no people) to build a clean background image.
-2. **Instance segmentation**: Each frame is processed by a YOLO segmentation model running on the Hailo accelerator, producing per-person pixel masks.
-3. **Tracking**: ByteTrack assigns persistent track IDs to each detected person across frames.
-4. **Vampire logic**: The first tracked person is automatically assigned as "human" (visible). All other tracked people are "vampires" -- their segmentation mask pixels are replaced with the corresponding background pixels.
-5. **Output**: The result looks like a normal camera feed, except vampires simply do not appear.
+1. **Background capture**: During the first 30 frames, the app averages the scene to build a clean background. No people should be in the frame during this phase.
+2. **Dynamic background**: After capture, the background continuously updates via EMA (exponential moving average) for all pixels not covered by a vampire. This handles lighting changes and moving objects.
+3. **Instance segmentation**: Each frame is processed by a YOLO segmentation model on the Hailo accelerator, producing per-person pixel masks.
+4. **Tracking**: ByteTrack assigns persistent track IDs to each detected person across frames.
+5. **Vampire logic**: The VampireEngine decides who is a vampire based on face recognition (when available). Vampires have their pixels replaced with the background.
+6. **Portrait display**: The camera captures in landscape mode. Only a portrait center crop is displayed as the "mirror view". The extra width on each side is a buffer zone.
+7. **Safe entry**: If a person enters the mirror view before being identified as a vampire, they are permanently marked as human to prevent sudden disappearance.
 
 ## Requirements
 
@@ -19,17 +21,21 @@ A real-time "mirror" where vampires are invisible. The app uses instance segment
 ## Usage
 
 ```bash
-# Basic usage with USB camera
-./run.sh --input usb --show-fps
+# Basic usage — landscape capture with portrait mirror display
+python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
+    --input usb --width 1280 --height 720
 
-# Or via Python module
-python3 -m hailo_apps.python.pipeline_apps.vampire_mirror.vampire_mirror --input usb --show-fps
+# Custom mirror aspect ratio (3:4 instead of 9:16)
+python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
+    --input usb --mirror-ratio 3:4
 
-# Pre-configure specific track IDs as human
-python3 -m hailo_apps.python.pipeline_apps.vampire_mirror.vampire_mirror --input usb --human-ids 1,3
+# Faster background adaptation
+python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
+    --input usb --bg-alpha 0.1
 
 # Use a video file
-python3 -m hailo_apps.python.pipeline_apps.vampire_mirror.vampire_mirror --input /path/to/video.mp4
+python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
+    --input /path/to/video.mp4
 ```
 
 ## CLI Arguments
@@ -38,20 +44,32 @@ All standard pipeline arguments are supported (`--input`, `--arch`, `--show-fps`
 
 | Argument | Default | Description |
 |---|---|---|
-| `--human-ids` | `""` | Comma-separated track IDs to treat as human (visible). If empty, the first detected person is automatically assigned as human. |
+| `--mirror-ratio` | `9:16` | Portrait mirror aspect ratio as W:H |
+| `--bg-alpha` | `0.05` | Background EMA blending factor. Higher = faster adaptation |
+| `--bg-capture-frames` | `30` | Number of initial frames for background capture |
+| `--no-face-recognition` | off | Disable face recognition (everyone visible) |
 
 ## Tips
 
-- **Background capture**: Make sure no people are in the frame during the first ~1 second (30 frames) when the app starts. This is when the background image is captured.
-- **Lighting**: The background replacement works best when lighting is consistent. Avoid sudden changes in lighting after the background is captured.
-- **Multiple humans**: Use `--human-ids 1,2,3` to pre-assign specific track IDs as human if you want multiple visible people.
+- **Background capture**: Make sure no people are in the frame during the first ~1 second when the app starts.
+- **Wider capture = better buffer**: Use `--width 1280 --height 720` (or wider) to give the model more time to identify people before they enter the mirror view.
+- **Lighting changes**: The dynamic background handles gradual lighting changes. Increase `--bg-alpha` for faster adaptation.
 
 ## Architecture
 
 ```
-USB Camera --> SOURCE_PIPELINE --> INFERENCE_PIPELINE (yolov5m_seg) -->
-  TRACKER_PIPELINE (ByteTrack) --> USER_CALLBACK_PIPELINE (vampire logic) -->
-  DISPLAY_PIPELINE (with use_frame overlay)
+USB Camera (landscape) --> SOURCE_PIPELINE --> INFERENCE_PIPELINE (yolov5m_seg)
+  --> TRACKER_PIPELINE (ByteTrack) --> USER_CALLBACK_PIPELINE:
+      [VampireEngine decides] --> [mask replacement with dynamic background]
+      --> [center crop to portrait] --> DISPLAY_PIPELINE
 ```
 
-The app subclasses `GStreamerInstanceSegmentationApp` to reuse the full instance segmentation pipeline, and adds a custom callback that implements the vampire replacement logic.
+### Module Structure
+
+| File | Purpose |
+|------|---------|
+| `vampire_mirror.py` | Entry point, callback, main() |
+| `vampire_mirror_pipeline.py` | GStreamerApp subclass with CLI args |
+| `frame_geometry.py` | Center crop and buffer zone math |
+| `background_manager.py` | Dynamic background with EMA |
+| `vampire_engine.py` | Vampire/human decision engine |
