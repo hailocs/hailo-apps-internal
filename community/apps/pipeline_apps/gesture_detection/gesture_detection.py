@@ -61,12 +61,22 @@ HAND_FLAG_THRESHOLD = 0.5
 
 
 class GestureAppCallback(app_callback_class):
-    """Callback class holding the blaze models (shared VDevice)."""
+    """Callback class holding the blaze models (shared VDevice).
+
+    Model loading is deferred until setup() to allow --help without hardware.
+    """
 
     def __init__(self, arch=None):
         super().__init__()
+        self._arch = arch
+        self.vdevice = None
+        self.palm_detector = None
+        self.hand_landmark = None
+        self.config = blaze_base.PALM_MODEL_CONFIG
 
-        # Resolve architecture and ensure models are available
+    def setup(self):
+        """Load models and open VDevice. Called before pipeline starts."""
+        arch = self._arch
         if arch is None:
             from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
             arch = os.getenv("hailo_arch") or detect_hailo_arch()
@@ -86,7 +96,6 @@ class GestureAppCallback(app_callback_class):
         self.vdevice = VDevice()
         self.palm_detector = BlazePalmDetector(palm_model, vdevice=self.vdevice)
         self.hand_landmark = BlazeHandLandmark(hand_model, vdevice=self.vdevice)
-        self.config = blaze_base.PALM_MODEL_CONFIG
 
         hailo_logger.info("Blaze models loaded successfully.")
 
@@ -272,6 +281,7 @@ def main():
     hailo_logger.info("Starting GStreamer Gesture Detection App.")
     user_data = GestureAppCallback()
     app = GStreamerGestureApp(app_callback, user_data)
+    user_data.setup()
     app.run()
 
 
