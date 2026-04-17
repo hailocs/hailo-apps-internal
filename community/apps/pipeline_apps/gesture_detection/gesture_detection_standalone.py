@@ -27,10 +27,10 @@ import numpy as np
 import psutil
 from hailo_platform import VDevice
 
-from . import blaze_base
-from .blaze_palm_detector import BlazePalmDetector
-from .blaze_hand_landmark import BlazeHandLandmark
-from .gesture_recognition import classify_hand_gesture, count_fingers
+from community.apps.pipeline_apps.gesture_detection import blaze_base
+from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
+from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
 
 
 # Hand skeleton connections for drawing (MediaPipe topology)
@@ -51,7 +51,7 @@ COLOR_GESTURE = (255, 255, 255)
 HAND_FLAG_THRESHOLD = 0.5
 
 # Default model paths
-from .download_models import ensure_models
+from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
 # Defaults resolved at arg-parse time based on detected arch (see _get_default_models())
 DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")

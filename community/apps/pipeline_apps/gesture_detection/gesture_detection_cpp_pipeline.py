@@ -41,7 +41,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 
 hailo_logger = get_logger(__name__)
 
-from .download_models import ensure_models
+from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
 # Resolve .so paths: prefer local build, fall back to system install
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -50,7 +50,7 @@ from hailo_apps.python.core.common.defines import (
 hailo_logger = get_logger(__name__)
 # endregion imports
 
-from .download_models import ensure_models
+from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
 # Gesture-specific postprocess .so resolution
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
