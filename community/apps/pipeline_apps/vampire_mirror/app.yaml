@@ -1,0 +1,18 @@
+name: vampire_mirror
+title: "Vampire Mirror"
+description: >
+  A real-time mirror where vampires are invisible. Uses instance segmentation
+  with ByteTrack tracking to detect people. The first person detected is human
+  (visible), all others are vampires whose pixels are replaced with the saved
+  background image, making them disappear from the mirror.
+type: pipeline
+hailo_arch:
+  - hailo10h
+  - hailo8
+  - hailo8l
+tags:
+  - instance-segmentation
+  - tracking
+  - creative
+  - interactive
+status: draft
