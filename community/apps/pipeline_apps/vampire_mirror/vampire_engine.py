@@ -16,10 +16,18 @@ class TrackState(Enum):
 
 
 class VampireEngine:
-    """Manages per-track vampire/human/pending state with safe-entry logic."""
+    """Manages per-track vampire/human/pending state with safe-entry logic.
 
-    def __init__(self):
+    When ``auto_alternate=True`` (default), new tracks are assigned
+    alternating HUMAN / VAMPIRE in arrival order.  This is the fallback
+    when face recognition is not available.  Set to ``False`` to rely
+    solely on ``face_match`` / ``face_detected`` signals.
+    """
+
+    def __init__(self, auto_alternate: bool = True):
         self._states: dict[int, TrackState] = {}
+        self._auto_alternate = auto_alternate
+        self._arrival_count: int = 0  # counts new tracks for alternation
 
     def decide(
         self,
@@ -34,8 +42,9 @@ class VampireEngine:
         1. If already finalized (VAMPIRE or HUMAN) → return cached state.
         2. If face_match is not None → VAMPIRE (confirmed vampire face).
         3. If face_detected but no match → HUMAN (known non-vampire face).
-        4. If in_mirror while still PENDING → HUMAN (safe-entry rule).
-        5. Otherwise → remain PENDING.
+        4. If auto_alternate and this is a brand-new track → alternate HUMAN/VAMPIRE.
+        5. If in_mirror while still PENDING → HUMAN (safe-entry rule).
+        6. Otherwise → remain PENDING.
         """
         current = self._states.get(track_id, TrackState.PENDING)
 
@@ -53,12 +62,19 @@ class VampireEngine:
             self._states[track_id] = TrackState.HUMAN
             return TrackState.HUMAN
 
-        # Rule 4: safe-entry — entered mirror without being flagged as vampire
+        # Rule 4: auto-alternate for new tracks (fallback without face recognition)
+        if self._auto_alternate and track_id not in self._states:
+            state = TrackState.HUMAN if self._arrival_count % 2 == 0 else TrackState.VAMPIRE
+            self._arrival_count += 1
+            self._states[track_id] = state
+            return state
+
+        # Rule 5: safe-entry — entered mirror without being flagged as vampire
         if in_mirror:
             self._states[track_id] = TrackState.HUMAN
             return TrackState.HUMAN
 
-        # Rule 5: not enough information yet
+        # Rule 6: not enough information yet
         self._states[track_id] = TrackState.PENDING
         return TrackState.PENDING
 
