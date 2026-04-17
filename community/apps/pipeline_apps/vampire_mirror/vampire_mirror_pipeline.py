@@ -79,3 +79,22 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
         # Force use_frame so the callback can access and modify frames
         self.options_menu.use_frame = True
         user_data.use_frame = True
+
+    def get_pipeline_string(self):
+        """Build the pipeline with full camera resolution.
+
+        The parent GStreamerInstanceSegmentationApp forces 640x640 source,
+        but we want the widest camera resolution for maximum FOV and buffer
+        zones.  The INFERENCE_PIPELINE_WRAPPER handles resizing to the
+        model's 640x640 input internally, so a non-square source is fine.
+        """
+        # Restore user-requested resolution (or camera default)
+        width = getattr(self.options_menu, "width", None)
+        height = getattr(self.options_menu, "height", None)
+        self.video_width = width if width is not None else 1280
+        self.video_height = height if height is not None else 720
+        logger.info(
+            "Source resolution: %dx%d (overriding instance-seg 640x640 default)",
+            self.video_width, self.video_height,
+        )
+        return super().get_pipeline_string()
