@@ -37,7 +37,7 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 from community.apps.pipeline_apps.vampire_mirror.vampire_mirror_pipeline import VampireMirrorPipeline
-from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry
+from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry, detect_vertical_padding
 from community.apps.pipeline_apps.vampire_mirror.background_manager import BackgroundManager
 from community.apps.pipeline_apps.vampire_mirror.vampire_engine import VampireEngine, TrackState
 
@@ -97,12 +97,21 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
     if geometry is None:
         ratio_parts = user_data.mirror_ratio_str.split(":")
         mirror_ratio = (int(ratio_parts[0]), int(ratio_parts[1]))
-        geometry = FrameGeometry(width, height, mirror_ratio=mirror_ratio)
+        vertical_pad = detect_vertical_padding(frame)
+        geometry = FrameGeometry(
+            width, height,
+            mirror_ratio=mirror_ratio,
+            vertical_pad=vertical_pad,
+            vertical_margin=5,
+        )
         user_data.frame_geometry = geometry
         logger.info(
-            "FrameGeometry: frame=%dx%d, mirror=%dx%d, crop_x=%d..%d",
-            width, height, geometry.mirror_width, geometry.mirror_height,
+            "FrameGeometry: frame=%dx%d, pad=%d, mirror=%dx%d, "
+            "crop_x=%d..%d, crop_y=%d..%d",
+            width, height, vertical_pad,
+            geometry.mirror_width, geometry.mirror_height,
             geometry.crop_x1, geometry.crop_x2,
+            geometry.crop_y1, geometry.crop_y2,
         )
 
     # --- Phase 1: Background capture ---
