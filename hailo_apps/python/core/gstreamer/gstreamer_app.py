@@ -716,7 +716,7 @@ class GStreamerApp:
             hailo_logger.debug("Starting picamera_thread")
             picam_thread = threading.Thread(
                 target=picamera_thread,
-                args=(self.pipeline, self.video_width, self.video_height, self.video_format),
+                args=(self.pipeline, self.video_width, self.video_height, self.video_format, self.frame_rate),
             )
             self.threads.append(picam_thread)
             picam_thread.start()
@@ -756,7 +756,7 @@ class GStreamerApp:
                 sys.exit(0)
 
 
-def picamera_thread(pipeline, video_width, video_height, video_format, picamera_config=None):
+def picamera_thread(pipeline, video_width, video_height, video_format, frame_rate=30, picamera_config=None):
     hailo_logger.debug("picamera_thread started")
     appsrc = pipeline.get_by_name("app_source")
     appsrc.set_property("is-live", True)
@@ -769,7 +769,7 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
             # get_camera_resolution returns the nearest standard resolution >= requested.
             main_width, main_height = get_camera_resolution(video_width, video_height)
             main = {"size": (main_width, main_height), "format": "RGB888"}
-            controls = {"FrameRate": 30}
+            controls = {"FrameRate": frame_rate}
 
             # If the main and requested sizes match, Picamera2 requires lores < main,
             # so we skip lores and capture directly from the main stream.
@@ -795,7 +795,7 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
         appsrc.set_property(
             "caps",
             Gst.Caps.from_string(
-                f"video/x-raw, format={format_str}, width={width}, height={height}, framerate=30/1, pixel-aspect-ratio=1/1"
+                f"video/x-raw, format={format_str}, width={width}, height={height}, framerate={frame_rate}/1, pixel-aspect-ratio=1/1"
             ),
         )
         picam2.start()
@@ -810,7 +810,7 @@ def picamera_thread(pipeline, video_width, video_height, video_format, picamera_
 
             frame = cv2.cvtColor(frame_data, cv2.COLOR_BGR2RGB)
             buffer = Gst.Buffer.new_wrapped(frame.tobytes())
-            buffer_duration = Gst.util_uint64_scale_int(1, Gst.SECOND, 30)
+            buffer_duration = Gst.util_uint64_scale_int(1, Gst.SECOND, frame_rate)
             buffer.pts = frame_count * buffer_duration
             buffer.duration = buffer_duration
             ret = appsrc.emit("push-buffer", buffer)
