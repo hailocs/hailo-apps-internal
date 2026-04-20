@@ -85,7 +85,7 @@ python3 -m hailo_apps.python.standalone_apps.low_power_poc.low_power_poc \
  VALIDATION           | Result
 ------------------------------------------------------------
  FPS delta            | 2.8% -> PASS (<5.0%)
- Power reduction      | 61.4% (sleep vs active)
+ Power reduction      | 27.6% (sleep vs idle)
  Device alive         | YES
 ============================================================
 ```

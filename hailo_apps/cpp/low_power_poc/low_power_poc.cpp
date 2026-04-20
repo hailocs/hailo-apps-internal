@@ -190,6 +190,17 @@ static std::string arch_to_string(hailo_device_architecture_t arch) {
     }
 }
 
+static std::string arch_to_cli_flag(hailo_device_architecture_t arch) {
+    switch (arch) {
+        case HAILO_ARCH_HAILO8:    return "hailo8";
+        case HAILO_ARCH_HAILO8L:   return "hailo8l";
+        case HAILO_ARCH_HAILO10H:  return "hailo10h";
+        case HAILO_ARCH_HAILO15H:  return "hailo15h";
+        case HAILO_ARCH_HAILO8_A0: return "hailo8";
+        default:                   return "";
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Power measurement helpers
 // ---------------------------------------------------------------------------
@@ -590,7 +601,7 @@ static void print_report(const Report& r, double fps_threshold) {
     if (r.power_reduction_pct > 0) {
         std::cout << std::left << std::setw(22) << " Power reduction"
                   << "| " << std::setprecision(1) << r.power_reduction_pct
-                  << "% (sleep vs active)\n";
+                  << "% (sleep vs idle)\n";
     } else {
         std::cout << std::left << std::setw(22) << " Power reduction"
                   << "| N/A\n";
@@ -679,6 +690,12 @@ int main(int argc, char** argv) {
     report.device_id = device->get_dev_id();
     report.inference_duration_s = args.inference_duration;
     report.sleep_duration_s = args.sleep_duration;
+
+    // Inject --arch flag into inference command to override env var
+    auto cli_arch = arch_to_cli_flag(id.device_architecture);
+    if (!cli_arch.empty()) {
+        args.inference_cmd += " --arch " + cli_arch;
+    }
 
     poc_log("  Device: " + report.device_id + ", Arch: " + report.device_arch
             + ", FW: " + report.fw_version);
@@ -803,8 +820,8 @@ int main(int argc, char** argv) {
         report.fps_pass = report.fps_delta_pct < args.fps_threshold;
     }
 
-    if (report.baseline.power.avg > 0 && report.sleep_power.avg > 0) {
-        report.power_reduction_pct = (1.0 - report.sleep_power.avg / report.baseline.power.avg) * 100.0;
+    if (report.idle_power_w > 0 && report.sleep_power.avg > 0) {
+        report.power_reduction_pct = (1.0 - report.sleep_power.avg / report.idle_power_w) * 100.0;
     }
 
     print_report(report, args.fps_threshold);

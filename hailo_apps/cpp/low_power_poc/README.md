@@ -18,7 +18,7 @@ transition times, and FPS recovery across three states:
 | **4. Sleep power** | 3s stabilization, then 1-second periodic power samples for remaining duration | Power (avg/min/max W), sample count |
 | **5. Wake exit** | `device->set_sleep_state(HAILO_SLEEP_STATE_AWAKE)` with `steady_clock` timing | Exit latency (ms) |
 | **6. Post-wake inference** | Same as Phase 2 — validate device recovers to baseline FPS | FPS, power |
-| **7. Report** | `device->identify()` to verify device alive, compute FPS delta, power reduction | PASS/FAIL verdict |
+| **7. Report** | `device->identify()` to verify device alive, compute FPS delta, power reduction (sleep vs idle) | PASS/FAIL verdict |
 
 ### Pass Criteria
 
@@ -121,7 +121,7 @@ cd /path/to/hailo-apps-internal
  VALIDATION           | Result
 ------------------------------------------------------------
  FPS delta            | 0.2% -> PASS (<5.0%)
- Power reduction      | 62.0% (sleep vs active)
+ Power reduction      | 27.6% (sleep vs idle)
  Device alive         | YES
 ============================================================
 ```

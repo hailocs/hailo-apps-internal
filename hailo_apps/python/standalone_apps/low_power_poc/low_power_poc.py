@@ -530,8 +530,8 @@ def main():
         report.fps_delta_pct = -1
         report.fps_pass = False
 
-    if report.baseline.power.avg > 0 and report.sleep_power.avg > 0:
-        report.power_reduction_pct = (1 - report.sleep_power.avg / report.baseline.power.avg) * 100
+    if report.idle_power_w > 0 and report.sleep_power.avg > 0:
+        report.power_reduction_pct = (1 - report.sleep_power.avg / report.idle_power_w) * 100
 
     # Release device
     device.release()
@@ -584,7 +584,7 @@ def print_report(r, fps_threshold):
         print(f" {'FPS delta':<20} | N/A (missing FPS data)")
 
     if r.power_reduction_pct > 0:
-        print(f" {'Power reduction':<20} | {r.power_reduction_pct:.1f}% (sleep vs active)")
+        print(f" {'Power reduction':<20} | {r.power_reduction_pct:.1f}% (sleep vs idle)")
     else:
         print(f" {'Power reduction':<20} | N/A")
 
