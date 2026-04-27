@@ -22,18 +22,19 @@ echo "  PX4 SITL Simulation Setup"
 echo "========================================="
 echo ""
 
-# Step 1: Init submodule and checkout correct version
-echo -e "${GREEN}[1/3] Initialising PX4-Autopilot submodule ($PX4_VERSION)...${NC}"
-cd "$PROJECT_ROOT"
-git submodule update --init sim/PX4-Autopilot
+# Step 1: Clone and setup PX4-Autopilot at the pinned version
+echo -e "${GREEN}[1/3] Setting up PX4-Autopilot ($PX4_VERSION)...${NC}"
+PX4_URL="https://github.com/PX4/PX4-Autopilot.git"
 
-if [ ! -d "$PX4_DIR" ]; then
-    echo -e "${RED}Error: PX4-Autopilot not found at $PX4_DIR after submodule init.${NC}"
-    exit 1
+if [ ! -d "$PX4_DIR/.git" ]; then
+    echo -e "  Cloning PX4-Autopilot into $PX4_DIR..."
+    git clone "$PX4_URL" "$PX4_DIR"
 fi
 
-# Ensure we're on the correct version
 cd "$PX4_DIR"
+git fetch --tags origin
+
+# Ensure we're on the pinned version
 CURRENT=$(git describe --tags 2>/dev/null || echo "unknown")
 if [ "$CURRENT" != "$PX4_VERSION" ]; then
     echo -e "${YELLOW}  Checking out $PX4_VERSION (currently on $CURRENT)...${NC}"
