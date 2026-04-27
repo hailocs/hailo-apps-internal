@@ -20,6 +20,14 @@ OpenHD/
 OpenHD-SysUtils/
 qopenHD/
 
+# PX4-Autopilot is a runtime clone after the port (see sim/setup_sim.sh) — was
+# a git submodule in the source repo, but submodule metadata anchors at the
+# parent .gitmodules which is outside this app dir.
+sim/PX4-Autopilot/
+
+# Defensive: in case anyone ever runs the parent installer from this dir.
+venv_hailo_apps/
+
 # Saved controller config — user tuning, not source (see PARAMETERS.md)
 df_config.json
 
