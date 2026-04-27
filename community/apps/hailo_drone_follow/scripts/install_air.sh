@@ -301,10 +301,20 @@ normalize_wb_frequency
 # (31 = IMX219) OpenHD acquires the CSI camera itself at startup, which
 # starves drone-follow's Picamera2 with "Device or resource busy". In Mode A
 # drone-follow owns the camera and pushes RTP to OpenHD via --openhd-stream
-# (the layout scripts/start_air.sh uses). Idempotent: only writes if the
-# value differs. See CLAUDE.md "OpenHD Camera Modes" for context.
+# (the layout scripts/start_air.sh uses). Idempotent: writes a minimal
+# config on a fresh install (OpenHD fills in other defaults on first start)
+# and updates an existing config in place. See CLAUDE.md "OpenHD Camera
+# Modes" for context.
 CAM_CONFIG="/usr/local/share/openhd/video/air_camera_generic.json"
-if [ -f "$CAM_CONFIG" ]; then
+mkdir -p "$(dirname "$CAM_CONFIG")"
+if [ ! -f "$CAM_CONFIG" ]; then
+    cat > "$CAM_CONFIG" <<'JSON'
+{
+    "primary_camera_type": 5
+}
+JSON
+    echo "  $CAM_CONFIG: pre-seeded primary_camera_type=5 (Mode A / HAILO_AI)"
+else
     python3 - "$CAM_CONFIG" <<'PY'
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -312,12 +322,10 @@ data = json.loads(path.read_text())
 if data.get("primary_camera_type") != 5:
     data["primary_camera_type"] = 5
     path.write_text(json.dumps(data, indent=4) + "\n")
-    print(f"Set primary_camera_type=5 (Mode A / HAILO_AI) in {path}")
+    print(f"  {path}: set primary_camera_type=5 (Mode A / HAILO_AI)")
 else:
-    print(f"primary_camera_type already 5 in {path}")
+    print(f"  {path}: primary_camera_type already 5")
 PY
-else
-    echo "WARNING: $CAM_CONFIG not found — set camera type 5 manually after the first OpenHD start."
 fi
 
 # txrx.key must be IDENTICAL on air and ground for the WFB radio link to work.
@@ -359,7 +367,7 @@ echo "Platform:  $PLATFORM"
 echo "Binaries:"
 echo "  OpenHD:        /usr/local/bin/openhd"
 echo "  SysUtils:      /usr/local/bin/openhd_sys_utils"
-echo "  drone-follow:  ${APP_ROOT}/venv/bin/drone-follow"
+echo "  drone-follow:  ${APPS_INFRA_ROOT}/venv_hailo_apps/bin/drone-follow"
 echo ""
 echo "Run:"
 echo "  ${APP_ROOT}/scripts/start_air.sh"
