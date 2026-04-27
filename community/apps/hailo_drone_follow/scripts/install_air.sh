@@ -26,6 +26,13 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Suppress apt/dpkg interactive prompts. install_build_dep.sh inside OpenHD
+# runs `apt-get upgrade` which can hang on debconf prompts from unrelated
+# pending packages (e.g. code-insiders postinst). Force noninteractive so
+# the install never blocks for human input.
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUN_AS_USER="${SUDO_USER:-$USER}"
