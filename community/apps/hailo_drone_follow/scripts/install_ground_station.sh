@@ -94,13 +94,14 @@ fi
 
 echo "Platform: $PLATFORM"
 
-# Pin the OpenHD branch so the build matches the protocol drone-follow expects
-# (HailoFollowBridge + df_params.json sync live on feature/hailo-apps-integration).
-# Override with OPENHD_BRANCH=<name> to build a different branch.
-OPENHD_BRANCH="${OPENHD_BRANCH:-feature/hailo-apps-integration}"
-# Pin the QOpenHD branch for the same reason — protocol fields (e.g. DF_TGT_ALT)
-# live on the Hailo fork. Override with QOPENHD_BRANCH=<name>.
-QOPENHD_BRANCH="${QOPENHD_BRANCH:-fix/rpi4-hw-decode}"
+# Pin the OpenHD / QOpenHD / SysUtils release branches. The "*-hailo" branches
+# are the canonical release branches for the drone-follow integration. They
+# are based on upstream release tags (2.6.4-hailo on upstream OpenHD 2.6.4,
+# v2.6.0-hailo on upstream QOpenHD v2.6.0; SysUtils has no upstream tag, so
+# main-hailo is based on upstream main). Override via the env vars below.
+OPENHD_BRANCH="${OPENHD_BRANCH:-2.6.4-hailo}"
+OPENHD_SYSUTILS_BRANCH="${OPENHD_SYSUTILS_BRANCH:-main-hailo}"
+QOPENHD_BRANCH="${QOPENHD_BRANCH:-v2.6.0-hailo}"
 
 # Restore ownership of a path tree to RUN_AS_USER.
 # build_native.sh and qmake/make run as root (this script is sudo'd) and may
@@ -206,6 +207,7 @@ echo ""
 echo "=========================================="
 echo " Step 1/7: Install system prerequisites"
 echo "=========================================="
+apt-get update
 apt-get install -y dkms iw git
 
 echo ""
@@ -218,9 +220,9 @@ echo ""
 echo "=========================================="
 echo " Step 3/7: Clone / update OpenHD repos"
 echo "=========================================="
-clone_or_pin "$OPENHD_DIR"          "$OPENHD_GIT"          "$OPENHD_BRANCH"  recurse
-clone_or_pin "$OPENHD_SYSUTILS_DIR" "$OPENHD_SYSUTILS_GIT" "main"
-clone_or_pin "$QOPENHD_DIR"         "$QOPENHD_GIT"         "$QOPENHD_BRANCH" recurse
+clone_or_pin "$OPENHD_DIR"          "$OPENHD_GIT"          "$OPENHD_BRANCH"          recurse
+clone_or_pin "$OPENHD_SYSUTILS_DIR" "$OPENHD_SYSUTILS_GIT" "$OPENHD_SYSUTILS_BRANCH"
+clone_or_pin "$QOPENHD_DIR"         "$QOPENHD_GIT"         "$QOPENHD_BRANCH"         recurse
 
 echo ""
 echo "=========================================="

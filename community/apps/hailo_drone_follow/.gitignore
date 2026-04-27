@@ -15,10 +15,12 @@ drone_follow/ui/node_modules/
 drone_follow/ui/build/
 hailo-apps/
 
-# OpenHD repos cloned into the repo root by scripts/install_ground_station.sh
-OpenHD/
-OpenHD-SysUtils/
-qopenHD/
+# OpenHD repos cloned into the repo root by scripts/install_ground_station.sh.
+# No trailing slash — that way the patterns match both real directories AND
+# symlinks-to-directories (a real-dir-only pattern leaves symlinks untracked).
+OpenHD
+OpenHD-SysUtils
+qopenHD
 
 # PX4-Autopilot is a runtime clone after the port (see sim/setup_sim.sh) — was
 # a git submodule in the source repo, but submodule metadata anchors at the

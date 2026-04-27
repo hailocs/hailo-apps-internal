@@ -68,14 +68,54 @@ source setup_env.sh              # exports HAILO_APPS_PATH, activates venv
 drone-follow --help
 ```
 
-### Air unit / ground station extras
-
-For the air unit (Raspberry Pi with Cube Orange+ + Hailo-8L), the OpenHD radio link + boot service install is `scripts/install_air.sh`. For the ground station (laptop with Hailo-8 PCIe), the QOpenHD GUI install is `scripts/install_ground_station.sh`. Both run AFTER Steps 2-3 above; they don't replace them.
+To run the test suite (optional, dev-only — `pytest` is not in the default venv):
 
 ```bash
-sudo ./scripts/install_air.sh           # Pi only
-./scripts/install_ground_station.sh     # laptop only
+pip install pytest
+pytest community/apps/hailo_drone_follow/drone_follow/tests/
 ```
+
+### Step 5: OpenHD radio link (air + ground)
+
+For the air unit (Raspberry Pi with Cube Orange+ + Hailo-8L), the OpenHD radio link install is `scripts/install_air.sh`. For the ground station (laptop or RPi with Hailo-8 PCIe), the QOpenHD GUI install is `scripts/install_ground_station.sh`. Both **must be run as root**, both **must be run AFTER** Steps 2-3, and they share an encryption key (see below).
+
+These installers clone the OpenHD release branches we maintain — `2.6.4-hailo` (OpenHD), `main-hailo` (OpenHD-SysUtils), `v2.6.0-hailo` (QOpenHD), and `master-hailo` (rtl88x2bu WiFi driver), all under `https://github.com/giladnah/`. The `*-hailo` suffix denotes "based on upstream release tag X plus our drone-follow protocol additions".
+
+```bash
+# Pi (air unit):
+cd <hailo-apps-infra>/community/apps/hailo_drone_follow
+sudo ./scripts/install_air.sh --generate-key      # FIRST machine — creates txrx.key
+
+# Laptop (ground station):
+cd <hailo-apps-infra>/community/apps/hailo_drone_follow
+sudo ./scripts/install_ground_station.sh          # SECOND machine — no --generate-key
+sudo scp <pi-host>:/usr/local/share/openhd/txrx.key /tmp/txrx.key
+sudo install -m 644 /tmp/txrx.key /usr/local/share/openhd/txrx.key
+```
+
+**txrx.key:** The radio link requires the *same* encryption key on both ends. Pass `--generate-key` to ONE machine (the air unit is a good default) and `scp` it to the other afterwards. The installers print clear instructions if the key is missing.
+
+### Step 6 (Pi only, optional): auto-start at boot
+
+```bash
+cd <hailo-apps-infra>/community/apps/hailo_drone_follow
+sudo ./scripts/boot/install.sh
+```
+
+This installs a systemd unit (`drone-follow-boot.service`) that auto-launches the air unit on every boot, and creates `~/Desktop/drone-follow.conf` with `ENABLED=false`. To opt in, edit the file and set `ENABLED=true`. The unit reads this file at boot — no `systemctl reload` needed when toggling.
+
+To remove the boot service: `sudo ./scripts/boot/uninstall.sh`.
+
+### Uninstall
+
+To wipe OpenHD/QOpenHD/QOpenHD/driver artefacts (without removing hailo-apps-infra or drone-follow itself):
+
+```bash
+sudo ./scripts/uninstall_air.sh             # Pi only
+sudo ./scripts/uninstall_ground_station.sh  # laptop only
+```
+
+These remove `/usr/local/bin/openhd`, `/usr/local/bin/openhd_sys_utils`, `/usr/local/share/openhd/`, the `88x2bu_ohd` driver module, the regdomain configs, and the cloned `OpenHD/`, `OpenHD-SysUtils/`, `qopenHD/` directories under the app root. They do NOT touch HailoRT, hailo-all, the parent venv, or the drone-follow Python install — re-running the install steps above gets you back to a working state.
 
 ## Quick Start
 

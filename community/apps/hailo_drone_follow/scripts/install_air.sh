@@ -93,10 +93,13 @@ fi
 
 echo "Platform: $PLATFORM"
 
-# Pin the OpenHD branch so the build matches the protocol drone-follow expects
-# (HailoFollowBridge + df_params.json sync live on feature/hailo-apps-integration).
-# Override with OPENHD_BRANCH=<name> to build a different branch.
-OPENHD_BRANCH="${OPENHD_BRANCH:-feature/hailo-apps-integration}"
+# Pin the OpenHD release branches. The "*-hailo" branches are the canonical
+# release branches for the drone-follow integration; they are based on the
+# upstream release tags noted alongside (e.g. 2.6.4-hailo is based on
+# upstream tag 2.6.4 plus the HailoFollowBridge + df_params.json protocol
+# changes). Override via OPENHD_BRANCH / OPENHD_SYSUTILS_BRANCH if needed.
+OPENHD_BRANCH="${OPENHD_BRANCH:-2.6.4-hailo}"
+OPENHD_SYSUTILS_BRANCH="${OPENHD_SYSUTILS_BRANCH:-main-hailo}"
 
 # Restore ownership of a path tree to RUN_AS_USER. The build steps run as root
 # (this script is sudo'd) and may leave root-owned files in user-owned clones;
@@ -230,8 +233,8 @@ echo ""
 echo "=========================================="
 echo " Step 3/7: Clone / update OpenHD repos"
 echo "=========================================="
-clone_or_pin "$OPENHD_DIR"          "$OPENHD_GIT"          "$OPENHD_BRANCH"  recurse
-clone_or_pin "$OPENHD_SYSUTILS_DIR" "$OPENHD_SYSUTILS_GIT" "main"
+clone_or_pin "$OPENHD_DIR"          "$OPENHD_GIT"          "$OPENHD_BRANCH"          recurse
+clone_or_pin "$OPENHD_SYSUTILS_DIR" "$OPENHD_SYSUTILS_GIT" "$OPENHD_SYSUTILS_BRANCH"
 
 echo ""
 echo "=========================================="
