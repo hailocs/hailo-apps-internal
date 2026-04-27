@@ -1,0 +1,9 @@
+{
+  "yaw_only": true,
+  "target_altitude": 5.0,
+  "kp_yaw": 5.0,
+  "smooth_yaw": true,
+  "yaw_alpha": 0.3,
+  "search_timeout_s": 60.0,
+  "log_verbosity": "normal"
+}

@@ -1,0 +1,36 @@
+diff --git a/src/modules/simulation/gz_bridge/CMakeLists.txt b/src/modules/simulation/gz_bridge/CMakeLists.txt
+index 8462dec6d3..dbe2c97c65 100644
+--- a/src/modules/simulation/gz_bridge/CMakeLists.txt
++++ b/src/modules/simulation/gz_bridge/CMakeLists.txt
+@@ -36,6 +36,7 @@ find_package(gz-transport
+ 	#REQUIRED COMPONENTS core
+ 	NAMES
+ 		#ignition-transport11 # IGN (Fortress and earlier) no longer supported
++		gz-transport13
+ 		gz-transport12
+ 	#QUIET
+ )
+diff --git a/src/modules/simulation/gz_bridge/GZMixingInterfaceESC.hpp b/src/modules/simulation/gz_bridge/GZMixingInterfaceESC.hpp
+index e8e3c5a244..80d2667ae9 100644
+--- a/src/modules/simulation/gz_bridge/GZMixingInterfaceESC.hpp
++++ b/src/modules/simulation/gz_bridge/GZMixingInterfaceESC.hpp
+@@ -36,6 +36,7 @@
+ #include <lib/mixer_module/mixer_module.hpp>
+
+ #include <gz/transport.hh>
++#include <gz/msgs/actuators.pb.h>
+
+ #include <uORB/PublicationMulti.hpp>
+ #include <uORB/topics/esc_status.h>
+diff --git a/src/modules/simulation/gz_bridge/GZMixingInterfaceServo.hpp b/src/modules/simulation/gz_bridge/GZMixingInterfaceServo.hpp
+index 63345b3aed..2aabcf4d91 100644
+--- a/src/modules/simulation/gz_bridge/GZMixingInterfaceServo.hpp
++++ b/src/modules/simulation/gz_bridge/GZMixingInterfaceServo.hpp
+@@ -36,6 +36,7 @@
+ #include <lib/mixer_module/mixer_module.hpp>
+
+ #include <gz/transport.hh>
++#include <gz/msgs/double.pb.h>
+
+ // GZBridge mixing class for Servos.
+ // It is separate from GZBridge to have separate WorkItems and therefore allowing independent scheduling

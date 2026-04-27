@@ -1,0 +1,13 @@
+[Unit]
+Description=Drone Follow + OpenHD Air (boot launcher)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/drone-follow-boot.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

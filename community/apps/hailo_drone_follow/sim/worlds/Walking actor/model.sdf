@@ -1,0 +1,58 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <actor name="actor">
+     <skin>
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+     </skin>
+     <pose>0 0 0 0 0 0</pose>
+     <animation name="walking">
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.000000</scale>
+        <interpolate_x>true</interpolate_x>
+     </animation>
+     <script>
+        <loop>true</loop>
+        <delay_start>0.000000</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+           <waypoint>
+              <time>0.000000</time>
+              <pose>0.000000 0.000000 0.000000 0.000000 0.000000 0.000000</pose>
+           </waypoint>
+           <waypoint>
+              <time>15.000000</time>
+              <pose>20.000000 0.000000 0.000000 0.000000 0.000000 0.000000</pose>
+           </waypoint>
+           <waypoint>
+              <time>15.500000</time>
+              <pose>20.000000 0.000000 0.000000 0.000000 0.000000 1.570000</pose>
+           </waypoint>
+           <waypoint>
+              <time>30.500000</time>
+              <pose>20.000000 20.000000 0.000000 0.000000 0.000000 1.570000</pose>
+           </waypoint>
+           <waypoint>
+              <time>31.000000</time>
+              <pose>20.000000 20.000000 0.000000 0.000000 0.000000 3.141590</pose>
+           </waypoint>
+           <waypoint>
+              <time>46.000000</time>
+              <pose>0.000000 20.000000 0.000000 0.000000 0.000000 3.141590</pose>
+           </waypoint>
+           <waypoint>
+              <time>46.500000</time>
+              <pose>0.000000 20.000000 0.000000 0.000000 0.000000 -1.570000</pose>
+           </waypoint>
+           <waypoint>
+              <time>61.500000</time>
+              <pose>0.000000 0.000000 0.000000 0.000000 0.000000 -1.570000</pose>
+           </waypoint>
+           <waypoint>
+              <time>62.000000</time>
+              <pose>0.000000 0.000000 0.000000 0.000000 0.000000 0.000000</pose>
+           </waypoint>
+        </trajectory>
+     </script>
+  </actor>
+</sdf>

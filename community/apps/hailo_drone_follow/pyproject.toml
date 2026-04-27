@@ -1,0 +1,27 @@
+[project]
+name = "drone-follow"
+version = "0.1.0"
+description = "Autonomous drone-follow using Hailo AI tiling detection"
+requires-python = ">=3.9"
+dependencies = [
+    "mavsdk",
+    "matplotlib",
+    "numpy",
+    "scipy>=1.11",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["drone_follow", "drone_follow.*"]
+exclude = ["configs", "configs.*"]
+
+[project.optional-dependencies]
+hailo = [
+    "hailo-apps @ git+https://github.com/hailocs/hailo-apps-internal.git@dev",
+]
+
+[project.scripts]
+drone-follow = "drone_follow.drone_follow_app:main"

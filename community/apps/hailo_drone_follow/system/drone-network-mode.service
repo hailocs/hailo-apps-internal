@@ -1,0 +1,12 @@
+[Unit]
+Description=Drone Network Mode Selector (Home/Field)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/drone-network-mode.sh
+
+[Install]
+WantedBy=multi-user.target

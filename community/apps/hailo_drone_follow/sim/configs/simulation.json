@@ -1,0 +1,12 @@
+{
+  "yaw_only": true,
+  "target_altitude": 3.0,
+  "target_bbox_height": 0.3,
+  "kp_yaw": 5.0,
+  "kp_forward": 0.0,
+  "kp_backward": 0.0,
+  "smooth_yaw": true,
+  "yaw_alpha": 0.3,
+  "search_timeout_s": 120.0,
+  "log_verbosity": "debug"
+}

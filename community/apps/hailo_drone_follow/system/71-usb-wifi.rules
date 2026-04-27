@@ -1,0 +1,2 @@
+# Pin TP-Link USB WiFi to wlan1
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="bc:07:1d:c5:54:1e", NAME="wlan1"

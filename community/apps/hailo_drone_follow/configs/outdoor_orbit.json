@@ -1,0 +1,19 @@
+{
+  "yaw_only": false,
+  "target_altitude": 5.0,
+  "target_bbox_height": 0.2,
+  "kp_yaw": 5.0,
+  "kp_forward": 2.0,
+  "kp_backward": 5.0,
+  "max_forward": 1.5,
+  "max_backward": 3.0,
+  "smooth_yaw": true,
+  "yaw_alpha": 0.25,
+  "smooth_forward": true,
+  "forward_alpha": 0.15,
+  "follow_mode": "orbit",
+  "orbit_speed_m_s": 1.5,
+  "orbit_direction": 1,
+  "search_timeout_s": 60.0,
+  "log_verbosity": "normal"
+}
