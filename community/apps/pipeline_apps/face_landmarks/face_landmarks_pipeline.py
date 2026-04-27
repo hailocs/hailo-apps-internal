@@ -60,6 +60,11 @@ _POSTPROCESS_BUILD = os.path.join(
 )
 _POSTPROCESS_SYSTEM = "/usr/local/hailo/resources/so/libface_landmarks_postprocess.so"
 
+_MESH_ALIGN_BUILD = os.path.join(
+    os.path.dirname(__file__), "postprocess", "build", "libface_mesh_align.so",
+)
+_MESH_ALIGN_SYSTEM = "/usr/local/hailo/resources/so/libface_mesh_align.so"
+
 
 def _find_landmarks_postprocess_so() -> str:
     """Find the face_landmarks_postprocess SO (local build first, then system)."""
@@ -71,6 +76,15 @@ def _find_landmarks_postprocess_so() -> str:
         "libface_landmarks_postprocess.so not found. "
         "Build it: cd postprocess && ./build.sh"
     )
+
+
+def _find_mesh_align_so() -> str | None:
+    """Find the face_mesh_align SO (local build first, then system). None if missing."""
+    if os.path.isfile(_MESH_ALIGN_BUILD):
+        return _MESH_ALIGN_BUILD
+    if os.path.isfile(_MESH_ALIGN_SYSTEM):
+        return _MESH_ALIGN_SYSTEM
+    return None
 
 
 def _find_landmarks_hef(arch: str) -> str:
@@ -202,7 +216,7 @@ class GStreamerFaceLandmarksApp(GStreamerApp):
         )
 
         if self.pipeline_mode == "gstreamer":
-            # Full cascade: SCRFD → tracker → cropper(face_landmarks_lite + postprocess) → callback
+            # Full cascade: SCRFD → tracker → cropper(face_mesh_align → face_landmarks_lite → postprocess) → callback
             landmarks_postprocess_so = _find_landmarks_postprocess_so()
             landmarks_inference = INFERENCE_PIPELINE(
                 hef_path=self.hef_path_landmarks,
@@ -211,8 +225,28 @@ class GStreamerFaceLandmarksApp(GStreamerApp):
                 batch_size=1,
                 name="face_landmarks_inference",
             )
+
+            # face_mesh_align: rotation-aware warp using SCRFD eye keypoints.
+            # Runs inside the cropper inner pipeline before the landmark hailonet.
+            # If the SO is missing, fall back to unaligned (slightly off-tilt landmarks).
+            mesh_align_so = _find_mesh_align_so()
+            if mesh_align_so:
+                inner_pipeline = (
+                    f"hailofilter so-path={mesh_align_so} "
+                    f"name=face_mesh_align_hailofilter use-gst-buffer=true qos=false ! "
+                    f"{QUEUE(name='face_mesh_align_output_q')} ! "
+                    f"{landmarks_inference}"
+                )
+                logger.info("Cascade: using rotation-aligned crop via face_mesh_align")
+            else:
+                inner_pipeline = landmarks_inference
+                logger.warning(
+                    "libface_mesh_align.so not found — cascade will use unaligned crops. "
+                    "Build it: cd postprocess && ./build.sh"
+                )
+
             cropper_pipeline = CROPPER_PIPELINE(
-                inner_pipeline=landmarks_inference,
+                inner_pipeline=inner_pipeline,
                 so_path=self.post_process_so_cropper,
                 function_name="face_recognition",
                 internal_offset=True,
