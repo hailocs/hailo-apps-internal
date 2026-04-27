@@ -8,11 +8,13 @@ For complete setup and deployment instructions with OpenHD, see [SETUP_GUIDE.md]
 
 ## Installation
 
+This app lives inside the [hailo-apps-infra](../../..) monorepo and reuses its venv. Installation is a two-step process: install hailo-apps-infra first, then drone-follow.
+
 ### Prerequisites
 
 - **Ubuntu 22.04+** with Python 3.10+
 - **Hailo device** (Hailo-8, Hailo-8L, or Hailo-10H) — PCIe card or M.2 module
-- **HailoRT driver** — must be installed before running the installer
+- **HailoRT driver** installed (see Step 1 below)
 - **Node.js / npm** (optional, for the web UI)
 - For **simulation**: Gazebo Garden, `python3-gz-transport13`, `python3-gz-msgs10`
 - For **real drone**: PX4-compatible flight controller (e.g. Cube Orange+)
@@ -27,48 +29,58 @@ sudo reboot
 hailortcli fw-control identify   # verify device detected
 ```
 
-You should see your device identified (e.g. "Hailo-8" or "Hailo-8L"). If `hailortcli` is not found or the device is not detected, the driver is not installed correctly.
+### Step 2: Install hailo-apps-infra (one-time per machine)
 
-### Step 2: One-time Hailo system setup (manual)
-
-The hailo-apps system installer compiles the C++ postprocess modules, populates `/usr/local/hailo/resources/`, and downloads HEF models. Run it **once per machine**:
+The parent installer creates `venv_hailo_apps/` (with `--system-site-packages`), compiles the C++ postprocess modules, populates `/usr/local/hailo/resources/`, downloads default HEF models, and writes `/usr/local/hailo/resources/.env` (which carries `HAILO_APPS_PATH=` — the absolute path of the hailo-apps-infra checkout).
 
 ```bash
-# Clones hailo-apps if missing, then runs the system installer:
-git clone -b dev https://github.com/hailocs/hailo-apps-internal.git hailo-apps
-sudo hailo-apps/install.sh
+cd <hailo-apps-infra>            # the repo root, anywhere on disk
+sudo ./install.sh
 ```
 
-This step is **not** repeated on subsequent updates — only `./install.sh` (Step 3) is.
+**This step is the prerequisite for drone-follow installation.** drone-follow's installer assumes it has already run.
 
-### Step 3: Run the drone-follow Installer
-
-The installer creates a repo-owned Python venv at `./venv/` (with `--system-site-packages` so apt-installed Hailo bindings are visible), installs `hailo-apps` and `drone-follow` as editable packages, and builds the UI:
-
+### Step 3: Install drone-follow
 
 ```bash
+cd <hailo-apps-infra>/community/apps/hailo_drone_follow
 ./install.sh
 ```
 
-Auto-detects your Hailo device type (hailo8 / hailo8l). Options:
+`install.sh` resolves the parent location via `HAILO_APPS_PATH` (env var, falling back to `/usr/local/hailo/resources/.env`), activates the parent venv, then `pip install -e`s drone-follow into it, downloads the ReID HEFs, and builds the React UI.
+
+The app directory is **relocatable**: as long as the parent installer wrote `HAILO_APPS_PATH` into the .env, you can move `community/apps/hailo_drone_follow/` anywhere on disk and the install/runtime scripts continue to work.
+
+Flags:
 
 | Flag | Description |
 |---|---|
-| `--hailo-apps-dir DIR` | Use an existing hailo-apps checkout (default: `./hailo-apps`) |
-| `--skip-hailo-apps` | Skip hailo-apps clone and system deps |
-| `--skip-ui` | Skip UI npm install and build |
-| `--skip-python` | Skip Python dependency installation |
+| `--apps-infra DIR` | Override `HAILO_APPS_PATH` (highest priority) |
+| `--skip-ui` | Skip npm install + UI build |
+| `--skip-hefs` | Skip ReID HEF download |
+| `--skip-python` | Skip `pip install -e .` |
 
 ### Step 4: Verify
 
 ```bash
-source setup_env.sh
+cd <hailo-apps-infra>
+source setup_env.sh              # exports HAILO_APPS_PATH, activates venv
 drone-follow --help
+```
+
+### Air unit / ground station extras
+
+For the air unit (Raspberry Pi with Cube Orange+ + Hailo-8L), the OpenHD radio link + boot service install is `scripts/install_air.sh`. For the ground station (laptop with Hailo-8 PCIe), the QOpenHD GUI install is `scripts/install_ground_station.sh`. Both run AFTER Steps 2-3 above; they don't replace them.
+
+```bash
+sudo ./scripts/install_air.sh           # Pi only
+./scripts/install_ground_station.sh     # laptop only
 ```
 
 ## Quick Start
 
 ```bash
+cd <hailo-apps-infra>
 source setup_env.sh
 
 # Dev machine with USB camera + flight controller over serial:
@@ -81,7 +93,7 @@ drone-follow --input rpi --serial --ui
 drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 
 # Real drone with OpenHD (starts OpenHD air + drone-follow):
-scripts/start_air.sh
+./scripts/start_air.sh
 ```
 
 ## How It Works
