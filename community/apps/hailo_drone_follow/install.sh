@@ -1,209 +1,153 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Install drone-follow into an already-prepared hailo-apps-infra venv.
+#
+# Prerequisite: the hailo-apps-infra installer must have run successfully,
+# creating its venv and /usr/local/hailo/resources/.env. This script
+# does NOT call sudo and does NOT depend on its own location relative to
+# the parent repo — it locates the parent via HAILO_APPS_PATH.
+#
+# Resolution order for HAILO_APPS_PATH:
+#   1. $HAILO_APPS_PATH from the environment (e.g. set by `source <parent>/setup_env.sh`)
+#   2. HAILO_APPS_PATH= line in /usr/local/hailo/resources/.env (case-insensitive)
+#   3. error
+#
+# Flags:
+#   --apps-infra <path>  override HAILO_APPS_PATH (highest priority)
+#   --skip-ui            skip npm install + UI build
+#   --skip-hefs          skip ReID HEF download
+#   --skip-python        skip pip install -e .
 
-# Install script for drone-follow
-# Installs: drone-follow Python package (editable) with hailo-apps pulled from
-# GitHub, plus the web UI.
-#
-# Prerequisites (one-time system setup, NOT done by this script):
-#   - HailoRT and TAPPAS .deb + .whl packages installed (Hailo Developer Zone)
-#   - /usr/local/hailo/resources/ populated with HEF models and C++ postprocess
-#     modules (install via hailo-apps system installer or TAPPAS deb)
-#
-# Usage: ./install.sh [OPTIONS]
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+ENV_FILE="/usr/local/hailo/resources/.env"
+RESOURCES_HEF_DIR="/usr/local/hailo/resources/models/hailo8"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# Defaults
+OVERRIDE_APPS_INFRA=""
 SKIP_UI=false
+SKIP_HEFS=false
 SKIP_PYTHON=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --apps-infra)  OVERRIDE_APPS_INFRA="$2"; shift 2 ;;
+    --skip-ui)     SKIP_UI=true; shift ;;
+    --skip-hefs)   SKIP_HEFS=true; shift ;;
+    --skip-python) SKIP_PYTHON=true; shift ;;
+    -h|--help)
+      sed -n '2,20p' "$0"
+      exit 0
+      ;;
+    *) echo "Unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
 
-usage() {
-    echo "Usage: $0 [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  --skip-ui              Skip UI npm install and build"
-    echo "  --skip-python          Skip Python venv + dependency installation"
-    echo "  --help, -h             Show this help message"
+# --- Resolve apps-infra root --------------------------------------------------
+resolve_apps_infra_root() {
+  if [[ -n "${OVERRIDE_APPS_INFRA}" ]]; then
+    echo "${OVERRIDE_APPS_INFRA}"
+    return
+  fi
+  if [[ -n "${HAILO_APPS_PATH:-}" ]]; then
+    echo "${HAILO_APPS_PATH}"
+    return
+  fi
+  if [[ -f "${ENV_FILE}" ]]; then
+    local from_env
+    from_env=$(grep -iE '^HAILO_APPS_PATH=' "${ENV_FILE}" | tail -1 | cut -d= -f2- | tr -d '"')
+    if [[ -n "${from_env}" ]]; then
+      echo "${from_env}"
+      return
+    fi
+  fi
+  echo "" # unresolved
 }
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --skip-ui)          SKIP_UI=true; shift ;;
-        --skip-python)      SKIP_PYTHON=true; shift ;;
-        --help|-h)          usage; exit 0 ;;
-        *)                  echo -e "${RED}Unknown argument: $1${NC}"; usage; exit 1 ;;
-    esac
-done
+APPS_INFRA_ROOT="$(resolve_apps_infra_root)"
+if [[ -z "${APPS_INFRA_ROOT}" ]]; then
+  cat <<EOF >&2
+ERROR: Could not resolve hailo-apps-infra root. Provide one of:
+  - export HAILO_APPS_PATH=/path/to/hailo-apps-infra (e.g. via parent setup_env.sh)
+  - run the parent installer first so ${ENV_FILE} contains HAILO_APPS_PATH=
+  - pass --apps-infra /path/to/hailo-apps-infra
+EOF
+  exit 1
+fi
 
-echo "========================================="
-echo "  drone-follow installer"
-echo "========================================="
-echo ""
+VENV="${APPS_INFRA_ROOT}/venv_hailo_apps"
 
-# ─── Step 1: Build repo-owned venv and install Python deps ───────────
-REPO_VENV_DIR="$SCRIPT_DIR/venv"
+echo "==> drone-follow installer"
+echo "    apps-infra root: ${APPS_INFRA_ROOT}"
+echo "    venv:            ${VENV}"
 
-# ─── Download ReID HEF models ──────────────────────────────────────
-REID_MODELS_DIR="/usr/local/hailo/resources/models/hailo8"
-REID_HEFS=(
-    "repvgg_a0_person_reid_512.hef"
-    "osnet_x1_0.hef"
-)
-REID_BASE_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.18.0/hailo8"
+# --- Verify parent installer ran ----------------------------------------------
+if [[ ! -d "${APPS_INFRA_ROOT}" ]]; then
+  echo "ERROR: HAILO_APPS_PATH=${APPS_INFRA_ROOT} does not exist." >&2
+  exit 1
+fi
+if [[ ! -d "${VENV}" ]]; then
+  echo "ERROR: ${VENV} not found. Run ${APPS_INFRA_ROOT}/install.sh first." >&2
+  exit 1
+fi
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "ERROR: ${ENV_FILE} not found. Run hailo-post-install (the parent installer does this)." >&2
+  exit 1
+fi
 
-MISSING_HEFS=()
-for hef in "${REID_HEFS[@]}"; do
-    if [ ! -f "$REID_MODELS_DIR/$hef" ]; then
-        MISSING_HEFS+=("$hef")
+# --- Activate venv ------------------------------------------------------------
+# shellcheck disable=SC1091
+source "${VENV}/bin/activate"
+python -c "import hailo_apps" >/dev/null 2>&1 || {
+  echo "ERROR: hailo_apps not importable inside ${VENV}." >&2
+  exit 1
+}
+
+# --- Install drone-follow editable --------------------------------------------
+if ! ${SKIP_PYTHON}; then
+  echo "==> pip install -e ${SCRIPT_DIR}"
+  pip install --upgrade pip
+  pip install -e "${SCRIPT_DIR}"
+fi
+
+# --- Download ReID HEFs (idempotent) ------------------------------------------
+if ! ${SKIP_HEFS}; then
+  REID_BASE_URL="https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.18.0/hailo8"
+  declare -A HEFS=(
+    [repvgg_a0_person_reid_512.hef]="${REID_BASE_URL}/repvgg_a0_person_reid_512.hef"
+    [osnet_x1_0.hef]="${REID_BASE_URL}/osnet_x1_0.hef"
+  )
+  if [[ ! -d "${RESOURCES_HEF_DIR}" ]]; then
+    sudo mkdir -p "${RESOURCES_HEF_DIR}"
+    sudo chown -R "${USER}:${USER}" "$(dirname "$(dirname "${RESOURCES_HEF_DIR}")")"
+  fi
+  for hef in "${!HEFS[@]}"; do
+    target="${RESOURCES_HEF_DIR}/${hef}"
+    if [[ -f "${target}" ]]; then
+      echo "==> ${hef} already present, skip"
+      continue
     fi
-done
-
-if [ ${#MISSING_HEFS[@]} -gt 0 ]; then
-    echo -e "${GREEN}Downloading ReID HEF models...${NC}"
-    sudo mkdir -p "$REID_MODELS_DIR"
-    for hef in "${MISSING_HEFS[@]}"; do
-        echo -e "  Downloading ${CYAN}$hef${NC}..."
-        if sudo wget -q --show-progress -O "$REID_MODELS_DIR/$hef" "$REID_BASE_URL/$hef"; then
-            echo -e "  ${GREEN}Saved to $REID_MODELS_DIR/$hef${NC}"
-        else
-            echo -e "${YELLOW}  Failed to download $hef. Download manually from:${NC}"
-            echo -e "  https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/public_models/HAILO8/HAILO8_person_re_id.rst"
-            echo -e "  Place in: $REID_MODELS_DIR/"
-        fi
-    done
-else
-    echo -e "${GREEN}ReID HEF models already present in $REID_MODELS_DIR${NC}"
+    echo "==> downloading ${hef}"
+    wget -q --show-progress -O "${target}" "${HEFS[$hef]}"
+  done
 fi
 
-# hailo-all / TAPPAS deb ships /usr/local/hailo/resources/ as root:root, and
-# the sudo wget above (when it runs) writes root-owned HEFs into it. But
-# hailo-apps downloads additional HEFs and writes its .env into that tree at
-# runtime as the invoking user, so leaving it root-owned causes EACCES on
-# first run of hailo-tiling et al. Hand the tree to the target user.
-# SUDO_USER is set when this script is invoked under sudo (e.g. by
-# scripts/install_air.sh); fall back to the current user otherwise.
-TARGET_USER="${SUDO_USER:-$USER}"
-if [ -d /usr/local/hailo/resources ]; then
-    sudo chown -R "$TARGET_USER":"$TARGET_USER" /usr/local/hailo/resources
-fi
-
-if ! $SKIP_PYTHON; then
-    echo -e "${GREEN}[1/2] Setting up repo Python venv at ${CYAN}$REPO_VENV_DIR${NC}..."
-
-    if [ ! -d "$REPO_VENV_DIR" ]; then
-        python3 -m venv --system-site-packages "$REPO_VENV_DIR"
-        echo -e "  Created venv (--system-site-packages so apt-installed Hailo bindings are visible)."
+# --- Build the React UI (idempotent) -----------------------------------------
+if ! ${SKIP_UI}; then
+  if command -v npm >/dev/null 2>&1; then
+    pushd "${SCRIPT_DIR}/drone_follow/ui" >/dev/null
+    if [[ ! -f build/index.html ]] || [[ src/App.jsx -nt build/index.html ]]; then
+      npm install
+      npm run build
     else
-        echo -e "  Reusing existing venv."
+      echo "==> UI build is up-to-date, skip"
     fi
-
-    # shellcheck disable=SC1091
-    source "$REPO_VENV_DIR/bin/activate"
-
-    pip install --upgrade pip setuptools wheel
-
-    echo -e "  Installing drone-follow + hailo-apps from GitHub..."
-    pip install -e ".[hailo]"
-
-    echo -e "${GREEN}  drone-follow + hailo-apps installed into $REPO_VENV_DIR.${NC}"
-
-    # `pip install hailo-apps` does NOT compile the C++ postprocess libraries
-    # or write /usr/local/hailo/resources/.env — that's done by the upstream
-    # `hailo-post-install` CLI. Without it, the pipeline crashes at runtime
-    # with "cannot open shared object file: libyolo_hailortpp_postprocess.so".
-    # Skip the (slow) re-run if the postprocess libs are already in place.
-    if [ ! -f /usr/local/hailo/resources/so/libyolo_hailortpp_postprocess.so ]; then
-        echo -e "${GREEN}  Running hailo-post-install (compiles postprocess libs, writes .env, downloads default models)...${NC}"
-        hailo-post-install
-    else
-        echo -e "${GREEN}  hailo-apps post-install artifacts already present, skipping.${NC}"
-    fi
-else
-    echo -e "${YELLOW}[1/2] Skipping Python dependencies (--skip-python)${NC}"
+    popd >/dev/null
+  else
+    echo "WARN: npm not found — skipping UI build. Install Node 18+ and rerun with no flags."
+  fi
 fi
 
-# ─── Step 2: Install and build UI ────────────────────────────────────
-if ! $SKIP_UI; then
-    echo -e "${GREEN}[2/2] Installing and building UI...${NC}"
-
-    UI_DIR="$SCRIPT_DIR/drone_follow/ui"
-    if [ ! -f "$UI_DIR/package.json" ]; then
-        echo -e "${YELLOW}  No package.json found, skipping UI.${NC}"
-    else
-        if ! command -v npm &> /dev/null; then
-            echo -e "${RED}  Error: npm is not installed. Install Node.js first:${NC}"
-            echo -e "    sudo apt install nodejs npm"
-            exit 1
-        fi
-
-        echo -e "  Running npm install..."
-        (cd "$UI_DIR" && npm install)
-
-        echo -e "  Building UI..."
-        (cd "$UI_DIR" && npm run build)
-
-        echo -e "${GREEN}  UI built successfully.${NC}"
-    fi
-else
-    echo -e "${YELLOW}[2/2] Skipping UI installation (--skip-ui)${NC}"
-fi
-
-# ─── Regenerate setup_env.sh ─────────────────────────────────────────
-cat > "$SCRIPT_DIR/setup_env.sh" << 'SETUP_EOF'
-#!/bin/bash
-# Auto-generated by install.sh. Activates the repo-owned venv, sets PYTHONPATH,
-# runs the RPi kernel-compatibility check, and loads /usr/local/hailo/resources/.env.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/venv"
-
-# RPi kernel-version check (mirrors hailo-apps/setup_env.sh)
-if uname -a | grep -q "Linux raspberrypi"; then
-    INVALID_KERNELS=("6.12.21" "6.12.22" "6.12.23" "6.12.24" "6.12.25")
-    CURRENT_VERSION=$(uname -r | cut -d '+' -f 1)
-    for k in "${INVALID_KERNELS[@]}"; do
-        if [ "$k" = "$CURRENT_VERSION" ]; then
-            echo "Error: Kernel $CURRENT_VERSION is incompatible." >&2
-            echo "See https://community.hailo.ai/t/raspberry-pi-kernel-compatibility-issue-temporary-fix/15322" >&2
-            return 1
-        fi
-    done
-fi
-
-export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-
-if [ -d "$VENV_DIR" ]; then
-    # shellcheck disable=SC1091
-    source "$VENV_DIR/bin/activate"
-    echo "Activated venv at $VENV_DIR"
-else
-    echo "Error: venv not found at $VENV_DIR. Run ./install.sh first." >&2
-    return 1
-fi
-
-ENV_FILE="/usr/local/hailo/resources/.env"
-if [ -f "$ENV_FILE" ]; then
-    while IFS='=' read -r key value; do
-        [[ -z "$key" || "$key" =~ ^# ]] && continue
-        export "$key=$value"
-        upper_key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
-        export "$upper_key=$value"
-    done < "$ENV_FILE"
-fi
-SETUP_EOF
-chmod +x "$SCRIPT_DIR/setup_env.sh"
-
-echo ""
-echo -e "${GREEN}Installation complete!${NC}"
-echo ""
-echo "Next steps:"
-echo "  source setup_env.sh"
-echo "  drone-follow --input rpi --ui"
+echo
+echo "==> drone-follow install done."
+echo "    To run, from anywhere:"
+echo "      source ${APPS_INFRA_ROOT}/setup_env.sh   # activates venv + exports HAILO_APPS_PATH"
+echo "      drone-follow --help"
