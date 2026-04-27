@@ -2,10 +2,10 @@
 # Runs OpenHD ground station and QOpenHD GUI on the ground station laptop
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
+APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 OPENHD_BIN="/usr/local/bin/openhd"
-QOPENHD_BIN="$REPO_DIR/qopenHD/build/release/release/QOpenHD"
+QOPENHD_BIN="${APP_ROOT}/qopenHD/build/release/release/QOpenHD"
 OPENHD_LOG="/tmp/openhd.log"
 QOPENHD_LOG="/tmp/qopenhd.log"
 

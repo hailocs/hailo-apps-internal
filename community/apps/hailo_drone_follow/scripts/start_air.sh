@@ -2,8 +2,20 @@
 # Runs OpenHD air and drone-follow side by side on the drone (RPi)
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
+APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OPENHD_BIN="/usr/local/bin/openhd"
+
+# Resolve apps-infra root without relative traversal.
+ENV_FILE="/usr/local/hailo/resources/.env"
+if [[ -z "${HAILO_APPS_PATH:-}" && -f "${ENV_FILE}" ]]; then
+  HAILO_APPS_PATH=$(grep -iE '^HAILO_APPS_PATH=' "${ENV_FILE}" | tail -1 | cut -d= -f2- | tr -d '"')
+  export HAILO_APPS_PATH
+fi
+if [[ -z "${HAILO_APPS_PATH:-}" || ! -d "${HAILO_APPS_PATH}" ]]; then
+  echo "ERROR: HAILO_APPS_PATH not resolvable. Run hailo-apps-infra/install.sh first." >&2
+  exit 1
+fi
+APPS_INFRA_ROOT="${HAILO_APPS_PATH}"
 
 if [ ! -f "$OPENHD_BIN" ]; then
     echo "Error: openhd not found at $OPENHD_BIN"
@@ -16,14 +28,14 @@ OPENHD_PID=$!
 sleep 3
 
 # Set up drone-follow environment and run
-cd "$REPO_DIR"
-source "$REPO_DIR/setup_env.sh"
+cd "${APPS_INFRA_ROOT}"
+source "${APPS_INFRA_ROOT}/setup_env.sh"
 export DISPLAY=:0
 
 # Auto-load saved controller tuning if present (see PARAMETERS.md).
 # The file is gitignored and created via the web UI / QOpenHD "Save Config"
-# button or `drone-follow --save-config $REPO_DIR/df_config.json`.
-CONFIG_FILE="$REPO_DIR/df_config.json"
+# button or `drone-follow --save-config ${APP_ROOT}/df_config.json`.
+CONFIG_FILE="${APP_ROOT}/df_config.json"
 CONFIG_ARG=()
 if [ -f "$CONFIG_FILE" ]; then
     CONFIG_ARG=(--config "$CONFIG_FILE")

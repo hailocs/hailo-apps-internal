@@ -27,8 +27,20 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
+APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUN_AS_USER="${SUDO_USER:-$USER}"
+
+# Resolve apps-infra root without relative traversal.
+ENV_FILE="/usr/local/hailo/resources/.env"
+if [[ -z "${HAILO_APPS_PATH:-}" && -f "${ENV_FILE}" ]]; then
+  HAILO_APPS_PATH=$(grep -iE '^HAILO_APPS_PATH=' "${ENV_FILE}" | tail -1 | cut -d= -f2- | tr -d '"')
+  export HAILO_APPS_PATH
+fi
+if [[ -z "${HAILO_APPS_PATH:-}" || ! -d "${HAILO_APPS_PATH}" ]]; then
+  echo "ERROR: HAILO_APPS_PATH not resolvable. Run hailo-apps-infra/install.sh first." >&2
+  exit 1
+fi
+APPS_INFRA_ROOT="${HAILO_APPS_PATH}"
 # Look up the user's actual primary group — don't assume username == group name.
 RUN_AS_GROUP="$(id -gn "$RUN_AS_USER")"
 
@@ -36,8 +48,8 @@ RUN_AS_GROUP="$(id -gn "$RUN_AS_USER")"
 OPENHD_GIT="https://github.com/giladnah/OpenHD.git"
 OPENHD_SYSUTILS_GIT="https://github.com/giladnah/OpenHD-SysUtils.git"
 
-OPENHD_DIR="$REPO_DIR/OpenHD"
-OPENHD_SYSUTILS_DIR="$REPO_DIR/OpenHD-SysUtils"
+OPENHD_DIR="${APP_ROOT}/OpenHD"
+OPENHD_SYSUTILS_DIR="${APP_ROOT}/OpenHD-SysUtils"
 
 # Parse args
 PLATFORM=""
@@ -245,16 +257,16 @@ echo "=========================================="
 # install.sh uses sudo internally for the HEF model download dirs, so it has to
 # run with root rights. We're already root → call it directly. Afterwards we
 # chown the artifacts back so the user can `pip install`/`npm` again later.
-"$REPO_DIR/install.sh"
+"${APPS_INFRA_ROOT}/install.sh"
 
 # Targeted chown for what install.sh creates as root-owned. We deliberately
-# don't chown the whole $REPO_DIR — git-tracked files were already user-owned
+# don't chown the whole APP_ROOT — git-tracked files were already user-owned
 # and we don't want to touch any unrelated files the user has staged.
-chown_back "$REPO_DIR/venv"
-chown_back "$REPO_DIR/drone_follow/ui/node_modules"
-chown_back "$REPO_DIR/drone_follow/ui/build"
-chown_back "$REPO_DIR/setup_env.sh"
-for egg in "$REPO_DIR"/*.egg-info; do
+chown_back "${APP_ROOT}/venv"
+chown_back "${APP_ROOT}/drone_follow/ui/node_modules"
+chown_back "${APP_ROOT}/drone_follow/ui/build"
+chown_back "${APPS_INFRA_ROOT}/setup_env.sh"
+for egg in "${APP_ROOT}"/*.egg-info; do
     [ -e "$egg" ] && chown_back "$egg"
 done
 # install.sh runs hailo-post-install, which (under sudo) drops root-owned
@@ -267,11 +279,11 @@ echo "=========================================="
 echo " Step 7/7: Deploy config files"
 echo "=========================================="
 mkdir -p /usr/local/share/openhd
-if [ -f "$REPO_DIR/df_params.json" ]; then
-    cp "$REPO_DIR/df_params.json" /usr/local/share/openhd/df_params.json
+if [ -f "${APP_ROOT}/df_params.json" ]; then
+    cp "${APP_ROOT}/df_params.json" /usr/local/share/openhd/df_params.json
     echo "df_params.json deployed."
 else
-    echo "WARNING: $REPO_DIR/df_params.json not found, skipping."
+    echo "WARNING: ${APP_ROOT}/df_params.json not found, skipping."
 fi
 
 normalize_wb_frequency
@@ -338,10 +350,10 @@ echo "Platform:  $PLATFORM"
 echo "Binaries:"
 echo "  OpenHD:        /usr/local/bin/openhd"
 echo "  SysUtils:      /usr/local/bin/openhd_sys_utils"
-echo "  drone-follow:  $REPO_DIR/venv/bin/drone-follow"
+echo "  drone-follow:  ${APP_ROOT}/venv/bin/drone-follow"
 echo ""
 echo "Run:"
-echo "  $REPO_DIR/scripts/start_air.sh"
+echo "  ${APP_ROOT}/scripts/start_air.sh"
 echo ""
 echo "Optional — auto-start at boot:"
-echo "  sudo $REPO_DIR/scripts/boot/install.sh"
+echo "  sudo ${APP_ROOT}/scripts/boot/install.sh"
