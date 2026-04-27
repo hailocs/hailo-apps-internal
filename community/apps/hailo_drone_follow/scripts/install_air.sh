@@ -252,26 +252,32 @@ chown_back "$OPENHD_SYSUTILS_DIR"
 
 echo ""
 echo "=========================================="
-echo " Step 6/7: Install drone-follow (venv + UI)"
+echo " Step 6/7: Verify drone-follow is installed"
 echo "=========================================="
-# install.sh uses sudo internally for the HEF model download dirs, so it has to
-# run with root rights. We're already root → call it directly. Afterwards we
-# chown the artifacts back so the user can `pip install`/`npm` again later.
-"${APPS_INFRA_ROOT}/install.sh"
+# install_air.sh runs AFTER the parent hailo-apps-infra installer
+# (creates venv_hailo_apps + writes /usr/local/hailo/resources/.env) and
+# AFTER the per-app install.sh (installs drone-follow into that venv,
+# downloads ReID HEFs, builds the UI). Verify both have happened; we
+# don't re-run them here. Run the per-app install.sh manually first if
+# this assertion fails.
+if [ ! -x "${APPS_INFRA_ROOT}/venv_hailo_apps/bin/drone-follow" ]; then
+    echo "ERROR: ${APPS_INFRA_ROOT}/venv_hailo_apps/bin/drone-follow missing." >&2
+    echo "       Run ${APPS_INFRA_ROOT}/install.sh, then ${APP_ROOT}/install.sh, then re-run this script." >&2
+    exit 1
+fi
 
-# Targeted chown for what install.sh creates as root-owned. We deliberately
-# don't chown the whole APP_ROOT — git-tracked files were already user-owned
-# and we don't want to touch any unrelated files the user has staged.
-chown_back "${APP_ROOT}/venv"
+# Targeted chown for files our prior steps (apt, OpenHD build) may have
+# left root-owned. We deliberately don't chown the whole APP_ROOT —
+# git-tracked files were already user-owned and we don't want to touch
+# unrelated files the user has staged.
 chown_back "${APP_ROOT}/drone_follow/ui/node_modules"
 chown_back "${APP_ROOT}/drone_follow/ui/build"
-chown_back "${APPS_INFRA_ROOT}/setup_env.sh"
 for egg in "${APP_ROOT}"/*.egg-info; do
     [ -e "$egg" ] && chown_back "$egg"
 done
-# install.sh runs hailo-post-install, which (under sudo) drops root-owned
-# HEFs / .env / postprocess .so files into /usr/local/hailo/resources. Hand
-# the tree back to the user so subsequent runtime downloads don't EACCES.
+# hailo-post-install (run by the parent installer) drops files into
+# /usr/local/hailo/resources/. Belt-and-braces: ensure the tree is user-
+# owned so subsequent runtime model downloads don't EACCES.
 chown_back /usr/local/hailo/resources
 
 echo ""
