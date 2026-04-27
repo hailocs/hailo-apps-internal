@@ -314,13 +314,23 @@ normalize_wb_frequency
 # Modes" for context.
 CAM_CONFIG="/usr/local/share/openhd/video/air_camera_generic.json"
 mkdir -p "$(dirname "$CAM_CONFIG")"
+# OpenHD overwrites this file on first start with its full default schema
+# (and primary_camera_type=31 = IMX219). To make Mode A stick across
+# install→first boot, we must pre-seed all the keys OpenHD expects, not
+# just primary_camera_type. The schema below mirrors what OpenHD 2.6.4-
+# hailo writes; if a future OpenHD adds keys, they'll be filled in on
+# first start (only existing keys are preserved verbatim).
 if [ ! -f "$CAM_CONFIG" ]; then
     cat > "$CAM_CONFIG" <<'JSON'
 {
-    "primary_camera_type": 5
+    "dualcam_primary_video_allocated_bandwidth_perc": 60,
+    "enable_audio": 1,
+    "primary_camera_type": 5,
+    "secondary_camera_type": 255,
+    "switch_primary_and_secondary": false
 }
 JSON
-    echo "  $CAM_CONFIG: pre-seeded primary_camera_type=5 (Mode A / HAILO_AI)"
+    echo "  $CAM_CONFIG: pre-seeded full schema, primary_camera_type=5 (Mode A / HAILO_AI)"
 else
     python3 - "$CAM_CONFIG" <<'PY'
 import json, pathlib, sys
