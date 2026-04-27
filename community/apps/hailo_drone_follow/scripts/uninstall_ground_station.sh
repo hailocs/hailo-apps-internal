@@ -73,7 +73,7 @@ if command -v dkms >/dev/null 2>&1; then
     dkms remove -m rtl88x2bu -v 5.13.1 --all 2>/dev/null && echo "  dkms: removed rtl88x2bu 5.13.1" || true
 fi
 remove_path /usr/src/rtl88x2bu-5.13.1
-find /lib/modules -maxdepth 4 -name '88x2bu_ohd.ko*' -print -delete 2>/dev/null || true
+find /lib/modules -name '88x2bu_ohd.ko*' -print -delete 2>/dev/null || true
 remove_path /etc/modprobe.d/rtw8822bu.conf
 depmod -a
 
