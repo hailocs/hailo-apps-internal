@@ -59,3 +59,23 @@ resources
 .cursor/
 .vscode/
 docs/superpowers/
+
+# Office/document working files
+*.pptx
+.~lock.*#
+
+# Runtime logs
+access_log.csv
+
+# Model binaries kept locally per app (do not commit)
+**/models/*.hef
+**/models/*.task
+
+# Face recognition user data (databases, samples, training images)
+**/face_recognition/database/
+**/face_recognition/samples/
+**/face_recognition/train/
+
+# Gesture detection runtime artifacts
+**/gesture_detection/models/
+**/gesture_detection/*.log
