@@ -11,6 +11,5 @@
   "smooth_forward": true,
   "forward_alpha": 0.07,
   "search_timeout_s": 60.0,
-  "follow_mode": "follow",
   "log_verbosity": "normal"
 }

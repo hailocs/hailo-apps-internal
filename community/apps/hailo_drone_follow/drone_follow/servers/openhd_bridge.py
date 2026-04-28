@@ -58,12 +58,8 @@ _CONFIG_PARAMS = {
     "auto_select":              ("DF_AUTO_SEL",  bool),
     "smooth_yaw":               ("DF_SMTH_YAW",   bool),
     "smooth_forward":           ("DF_SMTH_FWD",   bool),
-    "right_alpha":              ("DF_RT_ALPHA",   float),
-    "smooth_right":             ("DF_SMTH_RT",    bool),
     "down_alpha":               ("DF_DN_ALPHA",   float),
     "smooth_down":              ("DF_SMTH_DN",    bool),
-    "orbit_speed_m_s":          ("DF_ORBIT_SPD",  float),
-    "orbit_direction":          ("DF_ORBIT_DIR",  int),
 }
 
 # Fields where value 0 maps to Python None

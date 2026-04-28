@@ -27,11 +27,6 @@
       "order": 6
     },
     {
-      "id": "lat",
-      "label": "LATERAL",
-      "order": 3
-    },
-    {
       "id": "track",
       "label": "TRACKING",
       "order": 7
@@ -199,31 +194,6 @@
       "read_only": false
     },
     {
-      "id": "right_alpha",
-      "mavlink_id": "DF_RT_ALPHA",
-      "type": "float",
-      "default": 0.3,
-      "min": 0.01,
-      "max": 1.0,
-      "step": 0.01,
-      "group": "lat",
-      "order": 1,
-      "label": "Lateral smoothing (\u03b1)",
-      "description": "Low-pass filter coefficient for lateral (orbit) commands \u2014 lower = smoother, higher = more responsive",
-      "read_only": false
-    },
-    {
-      "id": "smooth_right",
-      "mavlink_id": "DF_SMTH_RT",
-      "type": "bool",
-      "default": true,
-      "group": "lat",
-      "order": 2,
-      "label": "Smooth lateral",
-      "description": "Enable exponential smoothing on lateral commands",
-      "read_only": false
-    },
-    {
       "id": "down_alpha",
       "mavlink_id": "DF_DN_ALPHA",
       "type": "float",
@@ -246,34 +216,6 @@
       "order": 8,
       "label": "Smooth altitude",
       "description": "Enable exponential smoothing on altitude hold commands",
-      "read_only": false
-    },
-    {
-      "id": "orbit_speed_m_s",
-      "mavlink_id": "DF_ORBIT_SPD",
-      "type": "float",
-      "default": 1.0,
-      "min": 0.0,
-      "max": 3.0,
-      "step": 0.1,
-      "group": "lat",
-      "order": 5,
-      "label": "Orbit speed (m/s)",
-      "description": "Lateral velocity used when orbit mode is active.",
-      "read_only": false
-    },
-    {
-      "id": "orbit_direction",
-      "mavlink_id": "DF_ORBIT_DIR",
-      "type": "int",
-      "default": 1,
-      "min": -1,
-      "max": 1,
-      "step": 2,
-      "group": "lat",
-      "order": 6,
-      "label": "Orbit direction",
-      "description": "+1 = clockwise, -1 = counter-clockwise. Only active in orbit mode.",
       "read_only": false
     },
     {

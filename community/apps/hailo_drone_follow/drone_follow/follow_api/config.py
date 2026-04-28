@@ -64,10 +64,6 @@ class ControllerConfig:
     # --- Modes ---
     yaw_only: bool = True
     auto_select: bool = True          # when False: clear/loss → IDLE (hold position); no autonomous re-acquisition
-    follow_mode: str = "follow"       # "follow" or "orbit"
-    orbit_speed_m_s: float = 1.0      # lateral velocity for orbit (m/s)
-    orbit_direction: int = 1          # +1 = clockwise, -1 = counter-clockwise
-    max_orbit_speed: float = 3.0      # max lateral speed limit
     # --- Search ---
     detection_timeout_s: float = 0.5
     search_enter_delay_s: float = 2.0
@@ -79,8 +75,6 @@ class ControllerConfig:
     yaw_alpha: float = 0.3              # 0=very smooth, 1=no smoothing
     smooth_forward: bool = True
     forward_alpha: float = 0.15         # moderate smoothing on forward velocity
-    smooth_right: bool = True           # smooth lateral axis (orbit transitions)
-    right_alpha: float = 0.3            # moderate smoothing for orbit transitions
     smooth_down: bool = True            # smooth bbox_height-driven altitude output
     down_alpha: float = 0.2             # moderate smoothing to reduce alt jitter
     # --- Takeoff/misc ---
@@ -210,10 +204,6 @@ class ControllerConfig:
                            help=f"Enable/disable forward velocity smoothing (default: {defaults.smooth_forward})")
         group.add_argument("--forward-alpha", type=float, default=defaults.forward_alpha,
                            help=f"EMA smoothing factor for forward velocity (0=sluggish, 1=no smoothing, default: {defaults.forward_alpha})")
-        group.add_argument("--smooth-right", action=argparse.BooleanOptionalAction, default=defaults.smooth_right,
-                           help=f"Enable/disable lateral velocity smoothing (default: {defaults.smooth_right})")
-        group.add_argument("--right-alpha", type=float, default=defaults.right_alpha,
-                           help=f"EMA smoothing factor for lateral velocity (0=sluggish, 1=no smoothing, default: {defaults.right_alpha})")
         group.add_argument("--smooth-down", action=argparse.BooleanOptionalAction, default=defaults.smooth_down,
                            help=f"Enable/disable vertical velocity smoothing (default: {defaults.smooth_down})")
         group.add_argument("--down-alpha", type=float, default=defaults.down_alpha,
@@ -235,14 +225,6 @@ class ControllerConfig:
         group.add_argument("--bottom-margin-safety", type=float, default=defaults.bottom_margin_safety,
                            help=f"Frame-bottom safety: bbox bottom closer than this fraction of frame "
                                 f"(0-1) → force max backward. 0 disables (default: {defaults.bottom_margin_safety}).")
-
-        # Orbit mode
-        group.add_argument("--follow-mode", choices=["follow", "orbit"], default=defaults.follow_mode,
-                           help="Follow mode: 'follow' (default) or 'orbit' (circle around target)")
-        group.add_argument("--orbit-speed", type=float, default=defaults.orbit_speed_m_s,
-                           help=f"Lateral velocity for orbit mode in m/s (default: {defaults.orbit_speed_m_s})")
-        group.add_argument("--orbit-direction", type=int, choices=[1, -1], default=defaults.orbit_direction,
-                           help="Orbit direction: 1=clockwise (default), -1=counter-clockwise")
 
         # Logging
         group.add_argument("--log-verbosity", choices=["quiet", "normal", "debug"], default=defaults.log_verbosity,
@@ -296,14 +278,8 @@ class ControllerConfig:
             yaw_alpha=_arg("yaw_alpha", default=defaults.yaw_alpha),
             smooth_forward=_arg("smooth_forward", default=defaults.smooth_forward),
             forward_alpha=_arg("forward_alpha", default=defaults.forward_alpha),
-            smooth_right=_arg("smooth_right", default=defaults.smooth_right),
-            right_alpha=_arg("right_alpha", default=defaults.right_alpha),
             smooth_down=_arg("smooth_down", default=defaults.smooth_down),
             down_alpha=_arg("down_alpha", default=defaults.down_alpha),
-            follow_mode=_arg("follow_mode", default=defaults.follow_mode),
-            orbit_speed_m_s=_arg("orbit_speed", "orbit_speed_m_s", default=defaults.orbit_speed_m_s),
-            orbit_direction=_arg("orbit_direction", default=defaults.orbit_direction),
-            max_orbit_speed=_arg("max_orbit_speed", default=defaults.max_orbit_speed),
             target_altitude=_arg("target_altitude", default=defaults.target_altitude),
             kp_alt_hold=_arg("kp_alt_hold", default=defaults.kp_alt_hold),
             log_verbosity=_arg("log_verbosity", default=defaults.log_verbosity),

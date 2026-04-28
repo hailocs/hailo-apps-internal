@@ -150,9 +150,8 @@ def compute_velocity_command(
         else:
             yawspeed = math.copysign(config.kp_yaw * math.sqrt(abs(error_x_deg)), error_x_deg)
         yawspeed = max(-config.max_yawspeed, min(config.max_yawspeed, yawspeed))
-        right = config.orbit_speed_m_s * config.orbit_direction if config.follow_mode == "orbit" else 0.0
         # Altitude held by PX4 in live_control_loop — don't override down here.
-        return VelocityCommand(-config.max_backward, right, 0.0, yawspeed)
+        return VelocityCommand(-config.max_backward, 0.0, 0.0, yawspeed)
 
     # --- Tracking mode ---
     # Yaw: signed square-root response (horizontal centering)
@@ -169,6 +168,4 @@ def compute_velocity_command(
     # frame edges as the bbox creeps into the margin (combined with natural cmd).
     forward = _apply_frame_edge_safety(forward, detection, config)
 
-    # Lateral: orbit mode only
-    right = config.orbit_speed_m_s * config.orbit_direction if config.follow_mode == "orbit" else 0.0
-    return VelocityCommand(forward, right, 0.0, yawspeed)
+    return VelocityCommand(forward, 0.0, 0.0, yawspeed)

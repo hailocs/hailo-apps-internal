@@ -279,14 +279,9 @@ class _WebHandler(BaseHTTPRequestHandler):
         "yaw_alpha": float,
         "smooth_forward": bool,
         "forward_alpha": float,
-        "smooth_right": bool,
-        "right_alpha": float,
         "smooth_down": bool,
         "down_alpha": float,
         "target_altitude": float,
-        "follow_mode": str,
-        "orbit_speed_m_s": float,
-        "orbit_direction": int,
     }
 
     def _handle_get_config(self):

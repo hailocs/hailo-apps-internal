@@ -94,12 +94,11 @@ class TestYaw:
         assert abs(ratio - (2.0 ** 0.5)) < 0.01
 
 
-# ---- Right axis (only orbit mode produces lateral) ----
+# ---- Right axis (always zero — orbit was removed) ----
 
 class TestRightAxis:
-    def test_right_always_zero_in_follow_mode(self, config):
-        """right_m_s should always be zero in follow mode (no lateral movement)."""
-        config.follow_mode = "follow"
+    def test_right_always_zero(self, config):
+        """right_m_s should always be zero (orbit feature removed)."""
         for cx in [0.1, 0.5, 0.9]:
             for cy in [0.1, 0.5, 0.9]:
                 for bh in [0.1, 0.3, 0.6]:
@@ -209,7 +208,7 @@ class TestForwardLowPass:
         import asyncio
         cfg = ControllerConfig(
             forward_alpha=0.07, max_forward=5.0, max_backward=5.0,
-            smooth_forward=True, smooth_yaw=False, smooth_right=False, smooth_down=False,
+            smooth_forward=True, smooth_yaw=False, smooth_down=False,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
         from drone_follow.follow_api import VelocityCommand
@@ -226,7 +225,7 @@ class TestForwardLowPass:
         import asyncio
         cfg = ControllerConfig(
             forward_alpha=0.2, max_forward=5.0, max_backward=5.0,
-            smooth_forward=True, smooth_yaw=False, smooth_right=False, smooth_down=False,
+            smooth_forward=True, smooth_yaw=False, smooth_down=False,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
         from drone_follow.follow_api import VelocityCommand
@@ -479,37 +478,3 @@ class TestFrameEdgeSafety:
         assert cmd.forward_m_s == pytest.approx(cfg.max_forward, abs=1e-6)
 
 
-class TestOrbitMode:
-    def test_orbit_adds_lateral_velocity(self):
-        """In orbit mode, tracking a target should produce lateral velocity."""
-        cfg = ControllerConfig(follow_mode="orbit", orbit_speed_m_s=1.5, orbit_direction=1, yaw_only=False)
-        cmd = compute_velocity_command(_det(cx=0.5, cy=0.5, bh=0.3), cfg)
-        assert cmd.right_m_s == 1.5
-
-    def test_orbit_ccw_negative_lateral(self):
-        """Counter-clockwise orbit should produce negative lateral velocity."""
-        cfg = ControllerConfig(follow_mode="orbit", orbit_speed_m_s=1.0, orbit_direction=-1, yaw_only=False)
-        cmd = compute_velocity_command(_det(cx=0.5, cy=0.5, bh=0.3), cfg)
-        assert cmd.right_m_s == -1.0
-
-    def test_follow_mode_no_lateral(self):
-        """In follow mode, there should be no lateral velocity."""
-        cfg = ControllerConfig(follow_mode="follow", orbit_speed_m_s=2.0)
-        cmd = compute_velocity_command(_det(cx=0.5, cy=0.5, bh=0.3), cfg)
-        assert cmd.right_m_s == 0.0
-
-    def test_search_mode_no_lateral_in_orbit(self):
-        """In orbit mode, search (no detection) should have no lateral velocity."""
-        cfg = ControllerConfig(follow_mode="orbit", orbit_speed_m_s=1.5)
-        cmd = compute_velocity_command(None, cfg)
-        assert cmd.right_m_s == 0.0
-
-    def test_orbit_preserves_yaw_and_forward(self):
-        """Orbit mode should still compute yaw and forward normally."""
-        cfg = ControllerConfig(follow_mode="orbit", orbit_speed_m_s=1.0,
-                               dead_zone_deg=0.0, yaw_only=False)
-        # bh=0.15 is well below target (0.3) → distance-mode forward > 0
-        cmd = compute_velocity_command(_det(cx=0.7, cy=0.5, bh=0.15), cfg)
-        assert cmd.yawspeed_deg_s > 0.0  # target right of center
-        assert cmd.forward_m_s > 0.0     # bbox too small -> approach
-        assert cmd.right_m_s == 1.0      # lateral orbit velocity

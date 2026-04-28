@@ -6,7 +6,7 @@
 
 | File | Tests | Module Covered |
 |------|-------|----------------|
-| `test_controller.py` | 54 | `follow_api.controller` — yaw, forward, altitude, safety, orbit, search |
+| `test_controller.py` | 54 | `follow_api.controller` — yaw, distance forward, frame-edge safety, search |
 | `test_velocity_api_and_smoother.py` | 17 | `drone_api.VelocityCommandAPI` — clamping, EMA, slew-rate |
 | `test_follow_target_state.py` | 14 | `follow_api.state.FollowTargetState` — set/get/clear, concurrency |
 | `test_shared_state.py` | 13 | `follow_api.state.SharedDetectionState` — update, snapshot, concurrency |
@@ -15,7 +15,7 @@
 
 ### What's well covered
 
-- **Controller logic** — comprehensive: dead zones, saturation, FOV scaling, emergency safety, orbit, search direction. This is the most safety-critical pure logic and it's solid.
+- **Controller logic** — comprehensive: dead zones, saturation, FOV scaling, emergency safety, frame-edge safety, search direction. This is the most safety-critical pure logic and it's solid.
 - **State management** — thread safety verified with concurrent read/write tests.
 - **Velocity smoothing** — EMA convergence, per-axis alpha, slew-rate limiting, filter reset.
 - **Config persistence** — save/load roundtrip, rollback on invalid mutation, unknown-key tolerance.

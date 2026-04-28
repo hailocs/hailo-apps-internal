@@ -322,10 +322,7 @@ export default function App() {
         {velocity && (
           <span className="velocity-text">
             {velocity.mode} | Fwd {velocity.forward_m_s.toFixed(2)} m/s
-            {velocity.right_m_s != null && velocity.right_m_s !== 0
-              ? ` | Lat ${velocity.right_m_s.toFixed(2)} m/s`
-              : ""}{" "}
-            | Down {velocity.down_m_s.toFixed(2)} m/s | Yaw{" "}
+            {" "}| Down {velocity.down_m_s.toFixed(2)} m/s | Yaw{" "}
             {velocity.yawspeed_deg_s.toFixed(1)} deg/s
           </span>
         )}
@@ -444,72 +441,6 @@ export default function App() {
                     </button>
                   </div>
                 </label>
-                <label className="control-row">
-                  <span className="control-label">Mode</span>
-                  <div className="toggle-wrapper">
-                    <button
-                      className={`toggle-btn ${config.follow_mode === "follow" ? "toggle-on" : ""}`}
-                      onClick={() => {
-                        const updated = { ...config, follow_mode: "follow" };
-                        setConfig(updated);
-                        postConfig({ follow_mode: "follow" });
-                      }}
-                    >
-                      FOLLOW
-                    </button>
-                    <button
-                      className={`toggle-btn ${config.follow_mode === "orbit" ? "toggle-on" : ""}`}
-                      onClick={() => {
-                        const updated = { ...config, follow_mode: "orbit" };
-                        setConfig(updated);
-                        postConfig({ follow_mode: "orbit" });
-                      }}
-                    >
-                      ORBIT
-                    </button>
-                  </div>
-                </label>
-                {config.follow_mode === "orbit" && (
-                  <>
-                    <label className="control-row">
-                      <span className="control-label">Orbit Speed</span>
-                      <input
-                        type="range"
-                        min="0.2"
-                        max="3.0"
-                        step="0.1"
-                        value={config.orbit_speed_m_s}
-                        onChange={(e) => onSlider("orbit_speed_m_s", e.target.value)}
-                      />
-                      <span className="control-value">{config.orbit_speed_m_s.toFixed(1)} m/s</span>
-                    </label>
-                    <label className="control-row">
-                      <span className="control-label">Direction</span>
-                      <div className="toggle-wrapper">
-                        <button
-                          className={`toggle-btn ${config.orbit_direction === 1 ? "toggle-on" : ""}`}
-                          onClick={() => {
-                            const updated = { ...config, orbit_direction: 1 };
-                            setConfig(updated);
-                            postConfig({ orbit_direction: 1 });
-                          }}
-                        >
-                          CW
-                        </button>
-                        <button
-                          className={`toggle-btn ${config.orbit_direction === -1 ? "toggle-on" : ""}`}
-                          onClick={() => {
-                            const updated = { ...config, orbit_direction: -1 };
-                            setConfig(updated);
-                            postConfig({ orbit_direction: -1 });
-                          }}
-                        >
-                          CCW
-                        </button>
-                      </div>
-                    </label>
-                  </>
-                )}
                 {/* --- Tuning parameters --- */}
                 <label className="control-row">
                   <span className="control-label">KP Yaw</span>
@@ -620,31 +551,6 @@ export default function App() {
                     onChange={(e) => onSlider("forward_alpha", e.target.value)}
                   />
                   <span className="control-value">{config.forward_alpha.toFixed(2)}</span>
-                </label>
-                <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
-                  <span className="control-label">Right Smooth</span>
-                  <div className="toggle-wrapper">
-                    <button
-                      className={`toggle-btn ${config.smooth_right ? "toggle-on" : ""}`}
-                      disabled={config.yaw_only}
-                      onClick={() => onToggle("smooth_right")}
-                    >
-                      {config.smooth_right ? "ON" : "OFF"}
-                    </button>
-                  </div>
-                </label>
-                <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
-                  <span className="control-label">Right Alpha</span>
-                  <input
-                    type="range"
-                    min="0.01"
-                    max="1.0"
-                    step="0.01"
-                    value={config.right_alpha}
-                    disabled={config.yaw_only}
-                    onChange={(e) => onSlider("right_alpha", e.target.value)}
-                  />
-                  <span className="control-value">{config.right_alpha.toFixed(2)}</span>
                 </label>
                 <label className="control-row">
                   <span className="control-label">Down Smooth</span>

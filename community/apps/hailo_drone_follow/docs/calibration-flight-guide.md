@@ -104,8 +104,6 @@ All values are current defaults from `df_params.json`. "Raise" and "Lower" descr
 - **Max bbox height safety** (hidden / not in UI slider list by default) —
   emergency-retreat trigger. Do not touch.
 - **Target altitude (m)** — takeoff height, not a tuning knob.
-- **Orbit speed / Orbit direction** — orbit mode only. Not in scope here.
-- **Lateral smoothing (α)** — only relevant in orbit mode.
 
 ---
 

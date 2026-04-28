@@ -142,17 +142,13 @@ zero at `min_altitude` (no further descent) and `max_altitude` (no further
 climb). `target_altitude` doubles as the takeoff height when
 `--takeoff-landing` is set, and is adjustable mid-flight via the UI.
 
-### 3.4 Lateral (`right_m_s`) ← orbit mode
+### 3.4 Lateral (`right_m_s`)
 
-Only non-zero when `follow_mode == "orbit"`:
-
-```python
-right = orbit_speed_m_s * orbit_direction   # direction = ±1
-```
-
-Constant lateral velocity while yaw keeps the person centred → drone orbits the subject. Standard cinematographic follow pattern.
-
-In default `follow` mode, `right_m_s = 0`.
+Always 0. The orbit feature was removed; lateral motion is no longer
+commanded by the controller. The `right_m_s` field stays on
+`VelocityCommand` because MAVSDK's body-frame velocity setpoint is a
+4-tuple (forward / right / down / yawspeed) — we just always send 0 on
+the right axis.
 
 ---
 
@@ -162,11 +158,10 @@ The control loop itself has no explicit FSM — it computes a command based on (
 
 | Mode | Entered when | Behaviour |
 |---|---|---|
-| **TRACK** | valid detection <0.5s old | full 4-axis command as above |
+| **TRACK** | valid detection <0.5s old | yaw + distance forward; alt held by PX4 |
 | **SEARCH-WAIT** | no detection for <2s | hold last command (`hold_velocity = _prev_cmd`) |
 | **SEARCH** | no detection for ≥2s | slow yaw spin toward last-seen side at `search_yawspeed_slow = 10°/s`, dampened forward |
 | **IDLE** | operator pressed pause in UI | `shared_state.update(None)` + the loop treats it as "no detection, no search" → hovers |
-| **ORBIT** | `follow_mode = "orbit"` | same as TRACK but with constant lateral velocity |
 | **Landing** | search timeout (60s) exceeded | shutdown + `action.land()` |
 
 TRACK ↔ SEARCH transitions are naturally hysteretic because `detection_timeout_s = 0.5` and `search_enter_delay_s = 2.0` — different thresholds for "lost" vs "start spinning".
@@ -219,12 +214,6 @@ The following table gives a field-tuner's view of what to change when. Every val
 | `search_yawspeed_slow` | 10 °/s | Spin too fast/slow |
 | `search_timeout_s` | 60 s | Give up and land |
 | `search_vel_damp` | 0.3 | Dampen forward during search |
-
-### Orbit
-| Param | Default | Tune if |
-|---|---|---|
-| `orbit_speed_m_s` | 1.0 | Orbit radius / speed |
-| `orbit_direction` | +1 | CW / CCW |
 
 ### Safety / flight envelope
 | Param | Default | Notes |

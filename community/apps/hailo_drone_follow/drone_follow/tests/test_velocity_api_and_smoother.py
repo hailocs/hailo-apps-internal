@@ -34,9 +34,8 @@ class TestVelocityCommandAPIClamping:
             max_forward=2.0, max_backward=3.0,
             max_down_speed=1.5,
             max_yawspeed=90.0,
-            max_orbit_speed=1.0,
             smooth_yaw=False, smooth_forward=False,
-            smooth_right=False, smooth_down=False,
+            smooth_down=False,
             max_forward_accel=0,  # disable slew limiter to isolate clamp behavior
         )
         return VelocityCommandAPI(drone=None, config=cfg)
@@ -61,15 +60,10 @@ class TestVelocityCommandAPIClamping:
         result = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 200.0)))
         assert result.yawspeed_deg_s == pytest.approx(90.0)
 
-    def test_right_clamped_to_1(self, api):
-        result = asyncio.run(api.send(VelocityCommand(0.0, 5.0, 0.0, 0.0)))
-        assert result.right_m_s == pytest.approx(1.0)
-
     def test_within_limits_passes_through(self, api):
-        cmd = VelocityCommand(1.0, 0.5, -0.5, 30.0)
+        cmd = VelocityCommand(1.0, 0.0, -0.5, 30.0)
         result = asyncio.run(api.send(cmd))
         assert result.forward_m_s == pytest.approx(1.0)
-        assert result.right_m_s == pytest.approx(0.5)
         assert result.down_m_s == pytest.approx(-0.5)
         assert result.yawspeed_deg_s == pytest.approx(30.0)
 
@@ -159,7 +153,7 @@ class TestForwardSmoothing:
     def _make_api(self, **overrides):
         defaults = dict(
             smooth_forward=True, forward_alpha=0.5,
-            smooth_yaw=False, smooth_right=False, smooth_down=False,
+            smooth_yaw=False, smooth_down=False,
             max_forward=5.0, max_backward=5.0,
             max_forward_accel=0,  # disable slew limiter to isolate EMA behavior
         )
@@ -196,7 +190,7 @@ class TestForwardSlewLimiter:
 
     def _make_api(self, **overrides):
         defaults = dict(
-            smooth_forward=False, smooth_yaw=False, smooth_right=False, smooth_down=False,
+            smooth_forward=False, smooth_yaw=False, smooth_down=False,
             max_forward=5.0, max_backward=5.0,
             max_forward_accel=1.0, control_loop_hz=10.0,  # → 0.1 m/s per tick
         )
@@ -232,38 +226,13 @@ class TestForwardSlewLimiter:
         assert api._prev_forward == 0.0
 
 
-class TestRightSmoothing:
-    """Right-axis EMA smoothing in VelocityCommandAPI."""
-
-    def test_smoothed_when_enabled(self):
-        cfg = ControllerConfig(
-            smooth_right=True, right_alpha=0.3,
-            smooth_yaw=False, smooth_forward=False, smooth_down=False,
-            max_orbit_speed=5.0,
-        )
-        api = VelocityCommandAPI(drone=None, config=cfg)
-        r = asyncio.run(api.send(VelocityCommand(0.0, 2.0, 0.0, 0.0)))
-        # First tick: 0.3 * 2.0 + 0.7 * 0.0 = 0.6
-        assert r.right_m_s == pytest.approx(0.6)
-
-    def test_disabled_passes_through(self):
-        cfg = ControllerConfig(
-            smooth_right=False,
-            smooth_yaw=False, smooth_forward=False, smooth_down=False,
-            max_orbit_speed=5.0,
-        )
-        api = VelocityCommandAPI(drone=None, config=cfg)
-        r = asyncio.run(api.send(VelocityCommand(0.0, 2.0, 0.0, 0.0)))
-        assert r.right_m_s == pytest.approx(2.0)
-
-
 class TestDownSmoothing:
     """Down-axis EMA smoothing in VelocityCommandAPI."""
 
     def test_smoothed_when_enabled(self):
         cfg = ControllerConfig(
             smooth_down=True, down_alpha=0.2,
-            smooth_yaw=False, smooth_forward=False, smooth_right=False,
+            smooth_yaw=False, smooth_forward=False,
             max_down_speed=5.0,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
@@ -274,7 +243,7 @@ class TestDownSmoothing:
     def test_disabled_passes_through(self):
         cfg = ControllerConfig(
             smooth_down=False,
-            smooth_yaw=False, smooth_forward=False, smooth_right=False,
+            smooth_yaw=False, smooth_forward=False,
             max_down_speed=5.0,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)

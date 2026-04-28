@@ -508,20 +508,15 @@ stateDiagram-v2
     TRACK --> IDLE: operator pauses or lock lost
     IDLE --> TRACK: operator resumes
 
-    TRACK --> ORBIT: follow_mode=orbit
-    ORBIT --> TRACK: follow_mode=follow
-    ORBIT --> SEARCH_WAIT: detection lost
-
     LANDING --> [*]
 ```
 
 | Mode | Behaviour |
 |------|-----------|
-| **TRACK** | Full 4-axis control: yaw (center_x) + forward (center_y) + altitude (bbox_height) + optional orbit |
+| **TRACK** | yaw (center_x → yawspeed) + forward (bbox_height → distance), altitude held by PX4 |
 | **SEARCH_WAIT** | Hold last velocity command (< 2s buffer) |
 | **SEARCH** | Slow yaw spin (10 deg/s) toward last-seen side, dampened forward |
 | **IDLE** | Zero velocity — hover in place |
-| **ORBIT** | TRACK + constant lateral velocity (drone circles subject) |
 | **LANDING** | Shutdown then `action.land()` |
 
 For the control math behind each mode, see
