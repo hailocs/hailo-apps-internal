@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Scenario: single person walks across the drone's frame of view (left-to-right
+  in the camera image), then turns and walks straight toward the drone.
+  Purpose: exercise the follow controller's backward-motion response when the
+  target's bbox grows due to approach.
+
+  Drone spawns at (0, 0, 0) facing +X, takes off to ~3 m.
+  Camera FOV ~100°, so at X=8 the visible Y range is roughly ±9.5 m.
+
+  NOTE: no outer <pose> on the actor — in gz-sim8 (Harmonic) the outer pose
+  is added to trajectory waypoints, which would double position and yaw.
+  Matches the upstream /usr/share/gz/gz-sim8/worlds/actor.sdf convention.
+
+  A stationary "hold" waypoint at t=0..20 keeps the actor at (8,-6) while the
+  drone arms and takes off, so the follow loop engages before motion begins.
+
+  Phase 0 (0..20):   stationary at (8, -6), drone arms + takes off
+  Phase 1 (20..32):  walk across frame at X=8 from Y=-6 to Y=+6
+  Phase 2 (33..39):  return to centerline, now at (8, 0)
+  Phase 3 (40..53):  turn and walk straight toward drone, X=8 -> X=-5
+                     — backward-motion test. Person passes through the
+                     drone's origin; if the drone fails to retreat, the
+                     person overlaps the camera.
+  Phase 4 (54..75):  walk back to start and loop
+-->
+<sdf version="1.9">
+  <world name="walk_across_then_approach">
+    <actor name="person">
+      <skin>
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>0</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <!-- Phase 0: hold at (8,-6) for 20 s (drone arms + takes off) -->
+          <waypoint>
+            <time>0</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>20</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 1: walk across frame, -Y to +Y at X=8 (~1 m/s) -->
+          <waypoint>
+            <time>32</time>
+            <pose>8 6 1.0 0 0 1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 2: turn around and walk back to centerline -->
+          <waypoint>
+            <time>33</time>
+            <pose>8 6 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>39</time>
+            <pose>8 0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 3: turn to face drone, walk straight toward it.
+               13 m over 13 s (~1 m/s); passes through drone origin to
+               force sustained backward motion. -->
+          <waypoint>
+            <time>40</time>
+            <pose>8 0 1.0 0 0 3.14159</pose>
+          </waypoint>
+          <waypoint>
+            <time>53</time>
+            <pose>-5 0 1.0 0 0 3.14159</pose>
+          </waypoint>
+
+          <!-- Phase 4: return to start (off-camera) and loop -->
+          <waypoint>
+            <time>54</time>
+            <pose>-5 0 1.0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>67</time>
+            <pose>8 0 1.0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>68</time>
+            <pose>8 0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>74</time>
+            <pose>8 -6 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>75</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <plugin name='gz::sim::systems::Physics' filename='gz-sim-physics-system'/>
+    <plugin name='gz::sim::systems::UserCommands' filename='gz-sim-user-commands-system'/>
+    <plugin name='gz::sim::systems::SceneBroadcaster' filename='gz-sim-scene-broadcaster-system'/>
+    <plugin name='gz::sim::systems::Contact' filename='gz-sim-contact-system'/>
+    <plugin name='gz::sim::systems::Imu' filename='gz-sim-imu-system'/>
+    <plugin name='gz::sim::systems::AirPressure' filename='gz-sim-air-pressure-system'/>
+    <plugin name='gz::sim::systems::Sensors' filename='gz-sim-sensors-system'>
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+    <scene>
+      <grid>false</grid>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction><ode/></friction>
+            <bounce/>
+            <contact/>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+        <pose>0 0 0 0 0 0</pose>
+        <inertial>
+          <pose>0 0 0 0 0 0</pose>
+          <mass>1</mass>
+          <inertia><ixx>1</ixx><ixy>0</ixy><ixz>0</ixz><iyy>1</iyy><iyz>0</iyz><izz>1</izz></inertia>
+        </inertial>
+        <enable_wind>false</enable_wind>
+      </link>
+      <pose>0 0 0 0 0 0</pose>
+      <self_collide>false</self_collide>
+    </model>
+    <light name="sunUTC" type="directional">
+      <pose>0 0 500 0 0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.001 0.625 -0.78</direction>
+      <diffuse>0.904 0.904 0.904 1</diffuse>
+      <specular>0.271 0.271 0.271 1</specular>
+      <attenuation>
+        <range>2000</range>
+        <linear>0</linear>
+        <constant>1</constant>
+        <quadratic>0</quadratic>
+      </attenuation>
+      <spot>
+        <inner_angle>0</inner_angle>
+        <outer_angle>0</outer_angle>
+        <falloff>0</falloff>
+      </spot>
+    </light>
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+  </world>
+</sdf>

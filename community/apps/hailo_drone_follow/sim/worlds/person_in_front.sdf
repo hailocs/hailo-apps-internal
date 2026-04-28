@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sdf version="1.9">
-  <world name="2_person_world">
-    <!-- Inline actors with a 20 s hold so the drone can arm and take off
-         before any motion begins. Trajectory mirrors the built-in square
-         walk of model://Walking actor, but offset into world coordinates. -->
-    <actor name="Actor_walk">
+  <world name="person_in_front">
+    <!-- A single stationary person standing 5 m in front of the drone spawn,
+         facing the drone. Use with --yaw-only (and without --takeoff-landing
+         if you want the drone to stay on the ground). -->
+    <actor name="Actor_stand">
       <skin>
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
@@ -19,44 +19,8 @@
         <delay_start>0</delay_start>
         <auto_start>true</auto_start>
         <trajectory id="0" type="walking">
-          <waypoint><time>0</time>  <pose>3 0 1 0 0 0</pose></waypoint>
-          <waypoint><time>20</time> <pose>3 0 1 0 0 0</pose></waypoint>
-          <waypoint><time>35</time> <pose>25 0 1 0 0 0</pose></waypoint>
-          <waypoint><time>35.5</time> <pose>25 0 1 0 0 1.57</pose></waypoint>
-          <waypoint><time>50.5</time> <pose>25 20 1 0 0 1.57</pose></waypoint>
-          <waypoint><time>51</time>   <pose>25 20 1 0 0 3.14159</pose></waypoint>
-          <waypoint><time>66</time>   <pose>3 20 1 0 0 3.14159</pose></waypoint>
-          <waypoint><time>66.5</time> <pose>3 20 1 0 0 -1.57</pose></waypoint>
-          <waypoint><time>81.5</time> <pose>3 0 1 0 0 -1.57</pose></waypoint>
-          <waypoint><time>82</time>   <pose>3 0 1 0 0 0</pose></waypoint>
-        </trajectory>
-      </script>
-    </actor>
-    <actor name="Actor_walk_2">
-      <skin>
-        <filename>model://Walking actor/meshes/walk.dae</filename>
-        <scale>1.0</scale>
-      </skin>
-      <animation name="walking">
-        <filename>model://Walking actor/meshes/walk.dae</filename>
-        <scale>1.0</scale>
-        <interpolate_x>true</interpolate_x>
-      </animation>
-      <script>
-        <loop>true</loop>
-        <delay_start>0</delay_start>
-        <auto_start>true</auto_start>
-        <trajectory id="0" type="walking">
-          <waypoint><time>0</time>  <pose>3 3 1 0 0 0</pose></waypoint>
-          <waypoint><time>20</time> <pose>3 3 1 0 0 0</pose></waypoint>
-          <waypoint><time>35</time> <pose>25 3 1 0 0 0</pose></waypoint>
-          <waypoint><time>35.5</time> <pose>25 3 1 0 0 1.57</pose></waypoint>
-          <waypoint><time>50.5</time> <pose>25 23 1 0 0 1.57</pose></waypoint>
-          <waypoint><time>51</time>   <pose>25 23 1 0 0 3.14159</pose></waypoint>
-          <waypoint><time>66</time>   <pose>3 23 1 0 0 3.14159</pose></waypoint>
-          <waypoint><time>66.5</time> <pose>3 23 1 0 0 -1.57</pose></waypoint>
-          <waypoint><time>81.5</time> <pose>3 3 1 0 0 -1.57</pose></waypoint>
-          <waypoint><time>82</time>   <pose>3 3 1 0 0 0</pose></waypoint>
+          <waypoint><time>0</time>     <pose>5 0 1 0 0 3.14159</pose></waypoint>
+          <waypoint><time>10000</time> <pose>5 0 1 0 0 3.14159</pose></waypoint>
         </trajectory>
       </script>
     </actor>

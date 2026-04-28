@@ -1,0 +1,123 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="circle_around">
+    <!-- A single person walks counter-clockwise in a 5 m radius circle
+         around the drone's spawn point (origin). Useful for stress-testing
+         yaw tracking: the drone (typically run with --yaw-only) must rotate
+         to keep the target in view as it orbits. -->
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
+    </physics>
+    <plugin name='gz::sim::systems::Physics' filename='gz-sim-physics-system'/>
+    <plugin name='gz::sim::systems::UserCommands' filename='gz-sim-user-commands-system'/>
+    <plugin name='gz::sim::systems::SceneBroadcaster' filename='gz-sim-scene-broadcaster-system'/>
+    <plugin name='gz::sim::systems::Contact' filename='gz-sim-contact-system'/>
+    <plugin name='gz::sim::systems::Imu' filename='gz-sim-imu-system'/>
+    <plugin name='gz::sim::systems::AirPressure' filename='gz-sim-air-pressure-system'/>
+    <plugin name='gz::sim::systems::Sensors' filename='gz-sim-sensors-system'>
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+    <scene>
+      <grid>false</grid>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode/>
+            </friction>
+            <bounce/>
+            <contact/>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <light name="sunUTC" type="directional">
+      <pose>0 0 250 0 -0 0</pose>
+      <cast_shadows>true</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0.001 0.625 -0.78</direction>
+      <diffuse>0.904 0.904 0.904 1</diffuse>
+      <specular>0.271 0.271 0.271 1</specular>
+    </light>
+
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg> 8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <!-- Person walking in a 5 m radius circle (counter-clockwise) around (0,0).
+         16 waypoints per loop, ~2 s per segment ≈ 0.98 m/s walking speed.
+         Yaw monotonically increases over the loop so the actor stays tangent
+         to the circle (no interpolation jumps). loop=true repeats forever. -->
+    <actor name="actor">
+      <skin>
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.0</scale>
+      </skin>
+      <animation name="walking">
+        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <scale>1.000000</scale>
+        <interpolate_x>true</interpolate_x>
+      </animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>20.000000</delay_start>
+        <auto_start>true</auto_start>
+        <trajectory id="0" type="walking">
+          <waypoint><time>0.000000</time>  <pose>5.000000 0.000000 0.900000 0 0 1.570796</pose></waypoint>
+          <waypoint><time>2.000000</time>  <pose>4.619398 1.913417 0.900000 0 0 1.963495</pose></waypoint>
+          <waypoint><time>4.000000</time>  <pose>3.535534 3.535534 0.900000 0 0 2.356194</pose></waypoint>
+          <waypoint><time>6.000000</time>  <pose>1.913417 4.619398 0.900000 0 0 2.748894</pose></waypoint>
+          <waypoint><time>8.000000</time>  <pose>0.000000 5.000000 0.900000 0 0 3.141593</pose></waypoint>
+          <waypoint><time>10.000000</time> <pose>-1.913417 4.619398 0.900000 0 0 3.534292</pose></waypoint>
+          <waypoint><time>12.000000</time> <pose>-3.535534 3.535534 0.900000 0 0 3.926991</pose></waypoint>
+          <waypoint><time>14.000000</time> <pose>-4.619398 1.913417 0.900000 0 0 4.319690</pose></waypoint>
+          <waypoint><time>16.000000</time> <pose>-5.000000 0.000000 0.900000 0 0 4.712389</pose></waypoint>
+          <waypoint><time>18.000000</time> <pose>-4.619398 -1.913417 0.900000 0 0 5.105088</pose></waypoint>
+          <waypoint><time>20.000000</time> <pose>-3.535534 -3.535534 0.900000 0 0 5.497787</pose></waypoint>
+          <waypoint><time>22.000000</time> <pose>-1.913417 -4.619398 0.900000 0 0 5.890486</pose></waypoint>
+          <waypoint><time>24.000000</time> <pose>0.000000 -5.000000 0.900000 0 0 6.283185</pose></waypoint>
+          <waypoint><time>26.000000</time> <pose>1.913417 -4.619398 0.900000 0 0 6.675884</pose></waypoint>
+          <waypoint><time>28.000000</time> <pose>3.535534 -3.535534 0.900000 0 0 7.068583</pose></waypoint>
+          <waypoint><time>30.000000</time> <pose>4.619398 -1.913417 0.900000 0 0 7.461283</pose></waypoint>
+          <waypoint><time>32.000000</time> <pose>5.000000 0.000000 0.900000 0 0 7.853982</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+  </world>
+</sdf>
