@@ -98,7 +98,7 @@ def _parse_device_utilization(data: bytes) -> float:
 class PerfTracker:
     """Lightweight performance tracker for pipeline callbacks."""
 
-    def __init__(self):
+    def __init__(self, *, log_perf=False, tracker_metrics=None):
         self._frame_times = deque(maxlen=60)
         self._latencies = deque(maxlen=60)
         # CPU sampling state
@@ -113,6 +113,10 @@ class PerfTracker:
         self._hailo_utilization = 0.0
         self._memory_mb = 0.0
         self._last_system_sample = 0.0
+        # Periodic logging
+        self._log_perf = log_perf
+        self._tracker_metrics = tracker_metrics
+        self._last_log_time = 0.0
 
     def frame_start(self):
         return time.monotonic()
@@ -131,6 +135,21 @@ class PerfTracker:
         # Push to UI every frame (values are cached between system samples)
         if ui_state is not None:
             ui_state.update_perf(self.get_stats())
+        # Periodic logging (~5 seconds)
+        if self._log_perf and now - self._last_log_time >= 5.0:
+            self._last_log_time = now
+            stats = self.get_stats()
+            parts = [f"fps={stats['fps']}", f"latency={stats['latency_ms']}ms",
+                     f"cpu={stats['cpu_percent']}%", f"mem={stats['memory_mb']}MB",
+                     f"hailo_temp={stats['hailo_temp_c']}C",
+                     f"hailo_util={stats['hailo_util_percent']}%"]
+            if self._tracker_metrics is not None:
+                tm = self._tracker_metrics.snapshot()
+                parts.extend([f"tracker_fps={tm['fps']}",
+                              f"tracker_update={tm['update_ms']}ms",
+                              f"tracks={tm['active_tracks']}",
+                              f"id_sw={tm['id_switches']}"])
+            LOGGER.info("[PERF] %s", " | ".join(parts))
 
     def get_stats(self):
         ft = self._frame_times
