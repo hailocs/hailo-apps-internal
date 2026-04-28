@@ -21,6 +21,9 @@ if [[ -z "${HAILO_APPS_PATH:-}" || ! -d "${HAILO_APPS_PATH}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
+_HAF_ORIG_PWD=$(pwd)
 cd "${HAILO_APPS_PATH}" || { echo "ERROR: cannot cd to ${HAILO_APPS_PATH}" >&2; return 1 2>/dev/null || exit 1; }
 # shellcheck disable=SC1091
 source "${HAILO_APPS_PATH}/setup_env.sh"
+cd "${_HAF_ORIG_PWD}"
+unset _HAF_ORIG_PWD
