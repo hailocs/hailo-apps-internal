@@ -268,6 +268,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         "auto_select": bool,
         "target_bbox_height": float,
         "kp_distance": float,
+        "kp_distance_back": float,
         "dead_zone_bbox_percent": float,
         "max_climb_speed": float,
         "min_altitude": float,

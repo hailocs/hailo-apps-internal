@@ -44,6 +44,7 @@ _CONFIG_PARAMS = {
     "max_forward_accel":        ("DF_MAX_ACC",   float),
     "dead_zone_deg":            ("DF_DZ_YAW",    float),
     "kp_distance":              ("DF_KP_DIST",   float),
+    "kp_distance_back":         ("DF_KP_DIST_B", float),
     "target_bbox_height":       ("DF_TGT_BH",    float),
     "dead_zone_bbox_percent":   ("DF_DZ_BH_PCT", float),
     "max_climb_speed":          ("DF_MAX_CLM",   float),

@@ -367,7 +367,7 @@ export default function App() {
                   <input
                     type="range"
                     min="1"
-                    max="20"
+                    max="8"
                     step="0.5"
                     value={config.target_altitude}
                     onChange={(e) => onSlider("target_altitude", e.target.value)}
@@ -379,7 +379,7 @@ export default function App() {
                   <input
                     type="range"
                     min="0"
-                    max="10"
+                    max="3"
                     step="0.1"
                     value={config.kp_distance}
                     onChange={(e) => onSlider("kp_distance", e.target.value)}
@@ -387,11 +387,23 @@ export default function App() {
                   <span className="control-value">{config.kp_distance.toFixed(1)}</span>
                 </label>
                 <label className="control-row">
+                  <span className="control-label">KP Dist Back</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={config.kp_distance_back}
+                    onChange={(e) => onSlider("kp_distance_back", e.target.value)}
+                  />
+                  <span className="control-value">{config.kp_distance_back.toFixed(1)}</span>
+                </label>
+                <label className="control-row">
                   <span className="control-label">Min Altitude</span>
                   <input
                     type="range"
                     min="1"
-                    max="10"
+                    max="5"
                     step="0.5"
                     value={config.min_altitude}
                     onChange={(e) => onSlider("min_altitude", e.target.value)}
@@ -402,8 +414,8 @@ export default function App() {
                   <span className="control-label">Max Altitude</span>
                   <input
                     type="range"
-                    min="5"
-                    max="50"
+                    min="3"
+                    max="10"
                     step="1"
                     value={config.max_altitude}
                     onChange={(e) => onSlider("max_altitude", e.target.value)}
@@ -504,7 +516,7 @@ export default function App() {
                   <input
                     type="range"
                     min="0"
-                    max="20"
+                    max="10"
                     step="0.1"
                     value={config.kp_yaw}
                     onChange={(e) => onSlider("kp_yaw", e.target.value)}
@@ -516,7 +528,7 @@ export default function App() {
                   <input
                     type="range"
                     min="10"
-                    max="360"
+                    max="180"
                     step="5"
                     value={config.max_yawspeed}
                     onChange={(e) => onSlider("max_yawspeed", e.target.value)}
@@ -528,7 +540,7 @@ export default function App() {
                   <input
                     type="range"
                     min="0"
-                    max="15"
+                    max="8"
                     step="0.5"
                     value={config.dead_zone_deg}
                     onChange={(e) => onSlider("dead_zone_deg", e.target.value)}
@@ -540,7 +552,7 @@ export default function App() {
                   <input
                     type="range"
                     min="0.1"
-                    max="10"
+                    max="5"
                     step="0.1"
                     value={config.max_forward_accel}
                     disabled={config.yaw_only}
@@ -553,7 +565,7 @@ export default function App() {
                   <input
                     type="range"
                     min="0"
-                    max="50"
+                    max="25"
                     step="1"
                     value={config.dead_zone_bbox_percent}
                     disabled={config.yaw_only}

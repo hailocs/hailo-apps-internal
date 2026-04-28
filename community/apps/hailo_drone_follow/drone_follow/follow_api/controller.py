@@ -34,7 +34,7 @@ def _calculate_distance_speed(
     ``dead_zone_bbox_percent`` is interpreted as the factor threshold in
     percent (10 → |factor| < 0.1, i.e. ±10% relative bbox error from target).
     """
-    if config.yaw_only or config.kp_distance == 0:
+    if config.yaw_only:
         return 0.0
 
     if detection.bbox_height <= 0:
@@ -45,7 +45,13 @@ def _calculate_distance_speed(
     if abs(factor) < dead_zone:
         return 0.0
 
-    raw = config.kp_distance * factor
+    # Asymmetric: retreat (factor<0, person too close) uses kp_distance_back so
+    # it saturates max_backward before bbox reaches max_bbox_height_safety, the
+    # binary "panic" threshold. Approach (factor>0) uses the gentler kp_distance.
+    gain = config.kp_distance_back if factor < 0 else config.kp_distance
+    if gain == 0:
+        return 0.0
+    raw = gain * factor
     return max(-config.max_backward, min(config.max_forward, raw))
 
 

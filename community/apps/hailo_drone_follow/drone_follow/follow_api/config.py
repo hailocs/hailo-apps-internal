@@ -24,13 +24,19 @@ class ControllerConfig:
     dead_zone_deg: float = 2.0
     max_yawspeed: float = 90.0
     # --- Forward (distance via bbox): bbox_height → forward_m_s ---
-    max_forward: float = 2.0
-    max_backward: float = 3.0
+    max_forward: float = 1.5
+    max_backward: float = 1.5
     max_forward_accel: float = 1.5      # slew-rate cap on forward (m/s²); tilt-transient safety
     # Distance-error P. Operates on (target/bbox - 1), the relative distance
     # error (bbox ∝ 1/distance). Scale-invariant: factor=1 means person is 2×
     # target distance regardless of absolute bbox size.
-    kp_distance: float = 1.0            # gain for distance error → forward
+    # Asymmetric: kp_distance_back > kp_distance so retreat (person too close)
+    # ramps to max_backward before bbox reaches the panic threshold — avoids
+    # the abrupt max-retreat step from max_bbox_height_safety. With
+    # kp_distance_back=2.5 and max_backward=1.5, retreat saturates at
+    # |factor|=0.6 → bbox≈1.6×target, well below the 0.8 panic line.
+    kp_distance: float = 0.6            # approach gain (factor > 0, person too far)
+    kp_distance_back: float = 2.5       # retreat gain (factor < 0, person too close)
     target_bbox_height: float = 0.25    # desired person size in frame (0-0.25)
     dead_zone_bbox_percent: float = 10.0  # dead zone: |factor| as fraction (10 → ±10% of target)
     max_climb_speed: float = 1.0        # max altitude change rate (m/s)
@@ -164,9 +170,14 @@ class ControllerConfig:
 
         # Distance control (bbox_height → forward)
         group.add_argument("--distance-gain", dest="kp_distance", type=float, default=defaults.kp_distance,
-                           help=f"Gain for (target/bbox - 1) → forward. "
-                                f"Default {defaults.kp_distance} saturates max_forward at factor=1 "
-                                f"(person at 2× target distance).")
+                           help=f"Approach gain on (target/bbox - 1) when factor > 0 "
+                                f"(person too far). Default: {defaults.kp_distance}.")
+        group.add_argument("--distance-gain-back", dest="kp_distance_back", type=float,
+                           default=defaults.kp_distance_back,
+                           help=f"Retreat gain on (target/bbox - 1) when factor < 0 "
+                                f"(person too close). Higher than --distance-gain so retreat "
+                                f"ramps to max_backward before the bbox-safety panic threshold "
+                                f"(default: {defaults.kp_distance_back}).")
         group.add_argument("--dead-zone-bbox-percent", type=float, default=defaults.dead_zone_bbox_percent,
                            help=f"Distance dead zone as %% of target bbox height (default: {defaults.dead_zone_bbox_percent})")
         group.add_argument("--max-climb-speed", type=float, default=defaults.max_climb_speed,
@@ -264,6 +275,7 @@ class ControllerConfig:
             kp_yaw=_arg("kp_yaw", "yaw_gain", default=defaults.kp_yaw),
             target_bbox_height=_arg("target_bbox_height", default=defaults.target_bbox_height),
             kp_distance=_arg("kp_distance", "distance_gain", default=defaults.kp_distance),
+            kp_distance_back=_arg("kp_distance_back", "distance_gain_back", default=defaults.kp_distance_back),
             dead_zone_bbox_percent=_arg("dead_zone_bbox_percent", default=defaults.dead_zone_bbox_percent),
             max_climb_speed=_arg("max_climb_speed", default=defaults.max_climb_speed),
             min_altitude=_arg("min_altitude", default=defaults.min_altitude),

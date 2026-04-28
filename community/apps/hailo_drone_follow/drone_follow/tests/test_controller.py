@@ -315,6 +315,27 @@ class TestDistanceForward:
         )
         assert cmd.forward_m_s == 0.0
 
+    def test_asymmetric_retreat_uses_kp_distance_back(self):
+        """Retreat (factor<0) uses kp_distance_back; approach uses kp_distance.
+
+        With kp_distance=1.0, kp_distance_back=3.0 and target=0.3:
+          bh=0.6 → factor=0.3/0.6-1 = -0.5 → raw = 3.0 * -0.5 = -1.5 (retreat)
+          bh=0.2 → factor=0.3/0.2-1 = +0.5 → raw = 1.0 * +0.5 = +0.5 (approach)
+        Same |factor|, different magnitudes thanks to the asymmetry.
+        """
+        cfg = ControllerConfig(
+            yaw_only=False, target_bbox_height=0.3,
+            kp_distance=1.0, kp_distance_back=3.0,
+            max_forward=5.0, max_backward=5.0, dead_zone_bbox_percent=0.0,
+            top_margin_safety=0.0, bottom_margin_safety=0.0,
+        )
+        retreat = compute_velocity_command(_det(bh=0.6), cfg)
+        approach = compute_velocity_command(_det(bh=0.2), cfg)
+        assert retreat.forward_m_s == pytest.approx(-1.5, abs=1e-6)
+        assert approach.forward_m_s == pytest.approx(0.5, abs=1e-6)
+        # Retreat is 3× as aggressive as approach for the same |factor|.
+        assert abs(retreat.forward_m_s) == pytest.approx(3.0 * approach.forward_m_s, abs=1e-6)
+
 
 class TestFrameEdgeSafety:
     """Top/bottom frame margins apply a gradient backward/forward bias as the
@@ -326,9 +347,13 @@ class TestFrameEdgeSafety:
         # target_bbox_height pinned to 0.3 so the per-test bbox math
         # (factor = 0.3/bh - 1) below stays valid regardless of the package
         # default for target_bbox_height.
+        # kp_distance_back mirrors kp_distance unless explicitly overridden,
+        # so the retreat-direction math in these tests stays symmetric to the
+        # approach side (these tests pre-date asymmetric retreat).
         defaults = dict(yaw_only=False, target_bbox_height=0.3,
                         top_margin_safety=0.05, bottom_margin_safety=0.05)
         defaults.update(overrides)
+        defaults.setdefault("kp_distance_back", defaults.get("kp_distance", 1.0))
         return ControllerConfig(**defaults)
 
     def test_bottom_edge_full_breach_max_backward(self):
