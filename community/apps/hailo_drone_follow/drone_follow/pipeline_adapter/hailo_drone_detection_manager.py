@@ -150,7 +150,7 @@ def _run_sot(persons, last_bbox):
 
 # Clamp matches the UI Target Size slider min/max
 _TGT_BH_MIN = 0.10
-_TGT_BH_MAX = 0.20
+_TGT_BH_MAX = 0.25
 
 
 def capture_bbox_setpoint_from_height(config, height: float, source: str = "lock") -> Optional[float]:
