@@ -40,6 +40,18 @@ body {
   gap: 8px;
 }
 
+.action-panel {
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.action-panel button {
+  width: 100%;
+}
+
 .side-card {
   margin-bottom: 0;
 }
@@ -273,6 +285,17 @@ body {
 
   .side-panel {
     width: 100%;
+  }
+
+  .action-panel {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .action-panel button {
+    width: auto;
+    flex: 1 1 auto;
   }
 
   .status-bar {

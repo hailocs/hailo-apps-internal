@@ -338,22 +338,6 @@ export default function App() {
             {perf.hailo_temp_c > 0 ? ` | ${perf.hailo_temp_c}\u00b0C` : ""}
           </span>
         )}
-        <button
-          className={`record-btn ${recording ? "recording" : ""}`}
-          onClick={handleRecord}
-        >
-          {recording ? "Stop Rec" : "Record"}
-        </button>
-        <button className="clear-btn" onClick={handleClear}>
-          Clear Target
-        </button>
-        <button className="clear-btn" onClick={handleConfigSave} title="Save current config to df_config.json on the air unit">
-          Save Config
-        </button>
-        <button className="clear-btn" onClick={handleConfigLoad} title="Live-reload config from df_config.json on the air unit">
-          Load Config
-        </button>
-        {configStatus && <span className="config-status">{configStatus}</span>}
       </div>
 
       <div className="main-layout">
@@ -750,6 +734,25 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="action-panel">
+          <button
+            className={`record-btn ${recording ? "recording" : ""}`}
+            onClick={handleRecord}
+          >
+            {recording ? "Stop Rec" : "Record"}
+          </button>
+          <button className="clear-btn" onClick={handleClear}>
+            Clear Target
+          </button>
+          <button className="clear-btn" onClick={handleConfigSave} title="Save current config to df_config.json on the air unit">
+            Save Config
+          </button>
+          <button className="clear-btn" onClick={handleConfigLoad} title="Live-reload config from df_config.json on the air unit">
+            Load Config
+          </button>
+          {configStatus && <span className="config-status">{configStatus}</span>}
         </div>
       </div>
     </div>
