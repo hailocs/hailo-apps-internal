@@ -479,12 +479,16 @@ async def live_control_loop(drone, shared_state, config, shutdown, altitude_cach
                 hold_velocity=_prev_cmd,
             )
 
-            # Altitude limits: clamp bbox_height-driven altitude commands to
-            # [min_altitude, max_altitude].  compute_velocity_command() now
-            # produces the altitude command; we just enforce the floor/ceiling.
+            # Altitude hold: drive the down axis from a P-loop on
+            # (current_alt - target_altitude) so the drone holds the operator's
+            # commanded altitude. Then clamp to [min_altitude, max_altitude].
             current_alt = altitude_cache.get("m")
             if current_alt is not None:
                 down = cmd.down_m_s
+                if not config.yaw_only:
+                    alt_err = current_alt - config.target_altitude  # +ve = too high
+                    down = config.kp_alt_hold * alt_err
+                    down = max(-config.max_climb_speed, min(config.max_down_speed, down))
                 if current_alt <= config.min_altitude and down > 0:
                     down = 0.0  # at floor — don't descend further
                 elif current_alt >= config.max_altitude and down < 0:

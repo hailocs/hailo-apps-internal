@@ -25,8 +25,9 @@ Audience: someone who wants to understand or tune the control loop, not someone 
                                                                     ▼                                                                      
                                                    compute_velocity_command(...)  ◄── ControllerConfig                                     
                                                    (follow_api/controller.py)                                                              
-                                                   center_x → yaw, center_y → forward,                                                    
-                                                   bbox_height → down (altitude)                                                           
+                                                   center_x → yaw,                                                                       
+                                                   bbox_height → forward (distance);                                                       
+                                                   down=0 (PX4 alt-hold downstream)                                                        
                                                                     │                                                                      
                                                                     ▼                                                                      
                                             altitude floor/ceiling clamp    (min_altitude..max_altitude)                                   
@@ -103,64 +104,43 @@ yawspeed = clamp(yawspeed, ±max_yawspeed)
 - **Dead zone** (`dead_zone_deg = 2°`) suppresses jitter from noisy detections.
 - **EMA low-pass** (`yaw_alpha = 0.3`) in `VelocityCommandAPI.send()` — filters the commanded yawspeed before it hits MAVSDK. All four axes have per-axis EMA in `send()`: yaw (α=0.3), forward (α=0.15), right (α=0.3), down (α=0.2).
 
-### 3.2 Altitude (`down_m_s`) ← `bbox_height`
+### 3.2 Forward / backward (`forward_m_s`) ← `bbox_height`
 
-Plain P on bbox_height error. Person too small → descend (positive `down_m_s`).
-Person too big → climb (negative `down_m_s`). Safety: `bbox_height > max_bbox_height_safety` (0.8) triggers emergency max climb + full reverse (see safety in `compute_velocity_command`).
+Distance-error P on `(target_bbox_height / bbox_height) - 1`. Since
+`bbox ∝ 1/distance`, this factor *is* the relative distance error: a person
+at 2× the target distance gives factor=1 regardless of absolute bbox size.
+The response is therefore scale-invariant.
 
 ```python
-# Safety: bbox too large → emergency climb
+# Safety: bbox too large → emergency reverse (and yaw still tracks)
 if bbox_height > max_bbox_height_safety:     # default 0.8
-    return -max_climb_speed
+    return -max_backward
 
-height_delta = target_bbox_height - bbox_height
-dead_zone = (dead_zone_bbox_percent / 100) * target_bbox_height   # default 15%
-if abs(height_delta) < dead_zone:
+factor = (target_bbox_height / bbox_height) - 1.0   # +ve = too far, -ve = too close
+dead_zone = dead_zone_bbox_percent / 100             # default 0.10 → ±10% of target
+if abs(factor) < dead_zone:
     return 0.0
 
-# height_delta > 0: person too small → descend → positive down_m_s
-# height_delta < 0: person too big  → climb   → negative down_m_s
-raw = kp_altitude * height_delta
-down = clamp(raw, -max_climb_speed, max_climb_speed)
-
-# Per-axis EMA in VelocityCommandAPI: down_alpha = 0.2
-smoothed = alpha * down + (1 - alpha) * prev_smoothed
-```
-
-Altitude is constrained to `[min_altitude, max_altitude]` (default 2--20 m) by
-`live_control_loop`, which clamps `down_m_s` to zero when the drone is at the
-floor (preventing further descent) or ceiling (preventing further climb).
-`target_altitude` now serves only as the takeoff height and the UI's soft
-reference indicator -- it is **not** used in a fixed alt-hold loop.
-
-### 3.3 Forward / backward (`forward_m_s`) ← `center_y`
-
-Signed square-root P on center_y error, symmetric to the yaw controller
-(section 3.1). Maps vertical position in the frame to forward/backward
-velocity. The square-root response softens near zero error, same as yaw.
-
-```python
-error_y_deg = (center_y - target_center_y) * vfov   # signed angular offset
-
-if abs(error_y_deg) < dead_zone_y_deg:               # default 2°
-    return 0.0
-
-# Person below centre (center_y > target) → too close → back up (negative)
-# Person above centre (center_y < target) → too far  → approach (positive)
-gain = kp_backward if error_y_deg > 0 else kp_forward
-raw = -sign(error_y_deg) * gain * sqrt(abs(error_y_deg))
+raw = kp_distance * factor
 forward = clamp(raw, -max_backward, max_forward)
 
 # Per-axis EMA in VelocityCommandAPI: forward_alpha = 0.15
 smoothed = alpha * forward + (1 - alpha) * prev_smoothed
 ```
 
-**Note on pitch coupling:** `center_y` has **stronger** pitch coupling than
-`bbox_height` -- when the drone pitches forward to accelerate, the camera
-tilts down and the person moves up in the frame, which looks like "too far
-away" and commands more forward. However this coupling is transient only
-(during acceleration); in steady state the drone is level and there is no
-coupling. The EMA filter (`forward_alpha = 0.15`) dampens the transient.
+Frame-edge safety (`top_margin_safety`, `bottom_margin_safety`) overrides the
+natural command when the bbox top/bottom enters a margin band — see
+`_apply_frame_edge_safety` in `controller.py`.
+
+### 3.3 Altitude (`down_m_s`) — held by PX4
+
+The controller emits `down_m_s = 0`. Altitude is held by an alt-hold P-loop
+in `live_control_loop` (`mavsdk_drone.py`) on `(current_alt - target_altitude)`
+with gain `kp_alt_hold` (default 0.5), clamped to
+`[-max_climb_speed, max_down_speed]`. The down command is also clamped to
+zero at `min_altitude` (no further descent) and `max_altitude` (no further
+climb). `target_altitude` doubles as the takeoff height when
+`--takeoff-landing` is set, and is adjustable mid-flight via the UI.
 
 ### 3.4 Lateral (`right_m_s`) ← orbit mode
 
@@ -201,8 +181,7 @@ The following table gives a field-tuner's view of what to change when. Every val
 | Param | Default | Tune if |
 |---|---|---|
 | `hfov` / `vfov` | 66 / 41 ° | Camera FOV changed |
-| `target_bbox_height` | 0.3 | Want subject bigger/smaller in frame (drives altitude) |
-| `target_center_y` | 0.5 | Want person higher/lower in frame (drives forward/back) |
+| `target_bbox_height` | 0.3 | Want subject bigger/smaller in frame (drives forward/back distance) |
 
 ### Yaw
 | Param | Default | Tune if |
@@ -212,26 +191,26 @@ The following table gives a field-tuner's view of what to change when. Every val
 | `max_yawspeed` | 90 °/s | Too aggressive on fast cuts |
 | `yaw_alpha` (EMA) | 0.3 | 0 = never responds, 1 = no smoothing |
 
-### Altitude (bbox_height → down_m_s)
+### Forward / backward (bbox_height → forward_m_s)
 | Param | Default | Tune if |
 |---|---|---|
-| `kp_altitude` | 3.0 | Altitude correction too slow/aggressive |
-| `dead_zone_bbox_percent` | 15 % | Oscillating → widen; unresponsive → narrow |
+| `kp_distance` | 1.0 | Approach/retreat too slow; raise cautiously |
+| `dead_zone_bbox_percent` | 10 % | Oscillating → widen; unresponsive → narrow |
+| `max_forward` / `max_backward` | 2.0 / 3.0 m/s | Hard cap on speeds |
+| `max_forward_accel` | 1.5 m/s² | Slew-rate cap (tilt-transient safety) |
+| `forward_alpha` (EMA) | 0.15 | Lower = more pitch-oscillation attenuation, more phase lag |
+| `max_bbox_height_safety` | 0.8 | Hard emergency reverse threshold |
+| `top_margin_safety` / `bottom_margin_safety` | 0.10 / 0.10 | Frame-edge safety bands (0 disables) |
+
+### Altitude (held by PX4 alt-hold)
+| Param | Default | Tune if |
+|---|---|---|
+| `target_altitude` | 3.0 m | Takeoff height (with `--takeoff-landing`); also UI-adjustable mid-flight |
+| `kp_alt_hold` | 0.5 | Alt-hold P gain in live_control_loop |
 | `max_climb_speed` | 1.0 m/s | Max altitude change rate |
 | `max_down_speed` | 1.5 m/s | Safety clamp on the down axis |
-| `min_altitude` / `max_altitude` | 2 / 20 m | Hard floor/ceiling enforced by live_control_loop |
-| `target_altitude` | 3.0 m | Takeoff height (with `--takeoff-landing`); UI soft reference |
+| `min_altitude` / `max_altitude` | 2 / 4 m | Hard floor/ceiling enforced by live_control_loop |
 | `down_alpha` (EMA) | 0.2 | 0 = very smooth, 1 = no smoothing |
-
-### Forward / backward (center_y → forward_m_s)
-| Param | Default | Tune if |
-|---|---|---|
-| `kp_forward` / `kp_backward` | 1.5 / 2.5 | Approach/retreat too slow; raise cautiously |
-| `target_center_y` | 0.5 | Desired vertical position in frame |
-| `dead_zone_y_deg` | 2 ° | Vertical dead zone (degrees) |
-| `max_forward` / `max_backward` | 1.0 / 1.5 m/s | Hard cap on speeds |
-| `forward_alpha` (EMA) | 0.15 | Lower = more pitch-oscillation attenuation, more phase lag |
-| `max_bbox_height_safety` | 0.8 | Hard emergency climb + reverse threshold |
 
 ### Search behaviour
 | Param | Default | Tune if |
@@ -310,16 +289,17 @@ Target ID persistence is provided by **ByteTracker** (standard MOT algorithm, `p
 | `drone.action.arm/takeoff/land` via MAVSDK | ✅ Standard MAVSDK | |
 | Dual-path (app-managed vs pilot-managed) lifecycle | ✅ Common pattern | Safer for real flight |
 | ByteTracker for ID persistence | ✅ Standard MOT | Widely used in vision + follow apps |
-| P controllers per axis | ✅ Standard | Yaw (sqrt P), forward (sqrt P), altitude (plain P) |
+| P controllers per axis | ✅ Standard | Yaw (sqrt P), forward (distance P), alt-hold (plain P in live_control_loop) |
 | Per-axis EMA low-pass in VelocityCommandAPI | ✅ Standard first-order filter | yaw α=0.3, forward α=0.15, right α=0.3, down α=0.2 — all applied in `send()` |
 | Dead zones around zero error | ✅ Standard | Suppresses sensor noise |
 | Clamps / max-speed saturation | ✅ Standard | |
-| Image-based visual servoing (center_x → yaw, center_y → forward, bbox_height → altitude) | ✅ Textbook IBVS | Classic Chaumette/Hutchinson formulation; all three image features drive separate axes |
-| **Signed square-root response** (yaw + forward) | ⚠️ Common in robotics, not classical PID | Softens step near zero; widely used in ArduPilot / UAV loops |
-| **Bbox-height safety → emergency climb + reverse** | ❌ Custom | Vision-specific emergency response when person bbox > 0.8 |
+| Image-based visual servoing (center_x → yaw, bbox_height → forward distance) | ✅ Textbook IBVS | Two image features drive separate axes; altitude is held by PX4 |
+| **Signed square-root response** (yaw) | ⚠️ Common in robotics, not classical PID | Softens step near zero; widely used in ArduPilot / UAV loops |
+| **Scale-invariant distance error** (`target/bbox - 1`) | ⚠️ Common in vision-servo | Saturates correctly at far distances |
+| **Bbox-height safety → emergency reverse** | ❌ Custom | Vision-specific emergency response when person bbox > 0.8 |
 | **IDLE ↔ auto-target fallback** on explicit-lock loss | ❌ Custom | UX choice, not a control-theory one |
 
-Summary: the control architecture is textbook IBVS — offboard body-velocity commands, P per axis (signed-sqrt for yaw and forward, plain P for altitude), dead zones, saturation, EMA smoothing. The only non-standard element is the vision-specific emergency safety bypass (bbox > 0.8 → climb + reverse) and the signed-sqrt response curves.
+Summary: the control architecture is textbook IBVS — offboard body-velocity commands, P per axis (signed-sqrt yaw, scale-invariant distance forward, alt-hold downstream), dead zones, saturation, EMA smoothing. The only non-standard elements are the vision-specific emergency safety bypass (bbox > 0.8 → reverse) and the signed-sqrt yaw response.
 
 ---
 

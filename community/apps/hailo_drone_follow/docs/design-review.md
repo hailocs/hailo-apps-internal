@@ -211,9 +211,9 @@ sequenceDiagram
         SDS-->>CL: Detection + frame_count
         Note over CL: Check staleness (0.5s),<br/>search timeout (60s),<br/>IDLE mode
         CL->>CTRL: detection, config
-        Note over CTRL: center_x → yaw (sqrt P)<br/>center_y → forward (sqrt P)<br/>bbox_height → down (plain P)
-        CTRL-->>CL: VelocityCommand(fwd, right, down, yaw)
-        Note over CL: Altitude floor/ceiling clamp<br/>(min_altitude..max_altitude)
+        Note over CTRL: center_x → yaw (sqrt P)<br/>bbox_height → forward (distance P)<br/>down=0 (PX4 alt-hold)
+        CTRL-->>CL: VelocityCommand(fwd, right, 0, yaw)
+        Note over CL: PX4 alt-hold P-loop on (current_alt − target_altitude)<br/>Altitude floor/ceiling clamp<br/>(min_altitude..max_altitude)
         CL->>VAPI: send(cmd)
         Note over VAPI: Clamp all axes<br/>Per-axis EMA in VelocityCommandAPI
         VAPI->>PX4: set_velocity_body(fwd, right, down, yaw)

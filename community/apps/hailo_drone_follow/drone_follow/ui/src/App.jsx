@@ -58,15 +58,20 @@ export default function App() {
     return () => { active = false; };
   }, []);
 
-  // Fetch config on mount
+  // Fetch config on mount, and refresh on every lock/unlock so the
+  // Target Size slider tracks the bbox setpoint that the server captures
+  // at lock time (manual click *and* AUTO acquisition both rewrite
+  // controller_config.target_bbox_height under the hood).
   useEffect(() => {
+    let aborted = false;
     fetch("/api/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setConfig(data);
+        if (data && !aborted) setConfig(data);
       })
       .catch(() => {});
-  }, []);
+    return () => { aborted = true; };
+  }, [followingId]);
 
   // Poll logs
   useEffect(() => {
@@ -296,26 +301,8 @@ export default function App() {
     postConfig({ [key]: parseFloat(value) });
   };
 
-  const savedForwardGainRef = useRef(null);
-
   const onToggle = (key) => {
     const newVal = !config[key];
-    if (key === "yaw_only") {
-      if (newVal) {
-        // Turning yaw_only ON: save current forward gain, set to 0
-        savedForwardGainRef.current = config.kp_forward;
-        const updated = { ...config, yaw_only: true, kp_forward: 0 };
-        setConfig(updated);
-        postConfig({ yaw_only: true, kp_forward: 0 });
-      } else {
-        // Turning yaw_only OFF: restore saved forward gain
-        const restored = savedForwardGainRef.current ?? 3.0;
-        const updated = { ...config, yaw_only: false, kp_forward: restored };
-        setConfig(updated);
-        postConfig({ yaw_only: false, kp_forward: restored });
-      }
-      return;
-    }
     const updated = { ...config, [key]: newVal };
     setConfig(updated);
     postConfig({ [key]: newVal });
@@ -380,8 +367,8 @@ export default function App() {
                   <span className="control-label">Target Size</span>
                   <input
                     type="range"
-                    min="0.05"
-                    max="0.9"
+                    min="0.10"
+                    max="0.25"
                     step="0.01"
                     value={config.target_bbox_height}
                     disabled={config.yaw_only}
@@ -404,28 +391,16 @@ export default function App() {
                   <span className="control-value">{config.target_altitude.toFixed(1)}m</span>
                 </label>
                 <label className="control-row">
-                  <span className="control-label">Target Center Y</span>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="0.9"
-                    step="0.05"
-                    value={config.target_center_y}
-                    onChange={(e) => onSlider("target_center_y", e.target.value)}
-                  />
-                  <span className="control-value">{config.target_center_y.toFixed(2)}</span>
-                </label>
-                <label className="control-row">
-                  <span className="control-label">KP Altitude</span>
+                  <span className="control-label">KP Distance</span>
                   <input
                     type="range"
                     min="0"
                     max="10"
                     step="0.1"
-                    value={config.kp_altitude}
-                    onChange={(e) => onSlider("kp_altitude", e.target.value)}
+                    value={config.kp_distance}
+                    onChange={(e) => onSlider("kp_distance", e.target.value)}
                   />
-                  <span className="control-value">{config.kp_altitude.toFixed(1)}</span>
+                  <span className="control-value">{config.kp_distance.toFixed(1)}</span>
                 </label>
                 <label className="control-row">
                   <span className="control-label">Min Altitude</span>
@@ -577,32 +552,6 @@ export default function App() {
                   <span className="control-value">{config.dead_zone_deg.toFixed(1)}°</span>
                 </label>
                 <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
-                  <span className="control-label">KP Forward</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="20"
-                    step="0.1"
-                    value={config.kp_forward}
-                    disabled={config.yaw_only}
-                    onChange={(e) => onSlider("kp_forward", e.target.value)}
-                  />
-                  <span className="control-value">{config.kp_forward.toFixed(1)}</span>
-                </label>
-                <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
-                  <span className="control-label">KP Backward</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="20"
-                    step="0.1"
-                    value={config.kp_backward}
-                    disabled={config.yaw_only}
-                    onChange={(e) => onSlider("kp_backward", e.target.value)}
-                  />
-                  <span className="control-value">{config.kp_backward.toFixed(1)}</span>
-                </label>
-                <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
                   <span className="control-label">Max Fwd Accel</span>
                   <input
                     type="range"
@@ -614,18 +563,6 @@ export default function App() {
                     onChange={(e) => onSlider("max_forward_accel", e.target.value)}
                   />
                   <span className="control-value">{config.max_forward_accel.toFixed(1)} m/s²</span>
-                </label>
-                <label className="control-row">
-                  <span className="control-label">Dead Zone Y</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    value={config.dead_zone_y_deg}
-                    onChange={(e) => onSlider("dead_zone_y_deg", e.target.value)}
-                  />
-                  <span className="control-value">{config.dead_zone_y_deg.toFixed(1)}deg</span>
                 </label>
                 <label className={`control-row${config.yaw_only ? " disabled" : ""}`}>
                   <span className="control-label">Dead Zone BBox %</span>
@@ -739,25 +676,6 @@ export default function App() {
               </div>
             </div>
           )}
-
-          <div className="logs-panel side-card">
-            <button
-              className="controls-toggle"
-              onClick={() => setLogsOpen((o) => !o)}
-            >
-              Logs {logsOpen ? "\u25B2" : "\u25BC"}
-            </button>
-            {logsOpen && (
-              <div className="logs-body">
-                {logs.map((entry) => (
-                  <div key={entry.id} className="log-line">
-                    {entry.msg}
-                  </div>
-                ))}
-                <div ref={logEndRef} />
-              </div>
-            )}
-          </div>
         </div>
 
         <div className="video-column">
@@ -812,6 +730,25 @@ export default function App() {
             })}
           </svg>
         )}
+          </div>
+
+          <div className="logs-panel side-card">
+            <button
+              className="controls-toggle"
+              onClick={() => setLogsOpen((o) => !o)}
+            >
+              Logs {logsOpen ? "▲" : "▼"}
+            </button>
+            {logsOpen && (
+              <div className="logs-body">
+                {logs.map((entry) => (
+                  <div key={entry.id} className="log-line">
+                    {entry.msg}
+                  </div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
+            )}
           </div>
         </div>
       </div>

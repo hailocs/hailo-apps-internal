@@ -154,7 +154,7 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 | `--takeoff-landing` | off | Auto arm/takeoff/land. Without this, the pilot switches to OFFBOARD via GCS. |
 | `--ui` | off | Enable web UI with live video and click-to-follow (port 5001) |
 | `--record` | off | Record video + detection overlays for the entire session |
-| `--target-bbox-height` | `0.3` | Desired person size in frame (0-1). Adjustable mid-flight via UI. |
+| `--target-bbox-height` | `0.25` | Desired person size in frame (0-0.25). Drives forward/backward distance. Adjustable mid-flight via UI. |
 | `--target-altitude` | `3.0` | Target altitude in metres. Also used as takeoff height. |
 | `--yaw-only` / `--no-yaw-only` | on | Yaw only: no forward/backward movement. Use `--no-yaw-only` for full follow. |
 | `--no-reid` | off | Disable ReID re-identification |
@@ -274,7 +274,7 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 
 **Simulation configs** in `sim/configs/`: `simulation.json` (yaw-only), `simulation_follow.json` (full follow with reduced speeds).
 
-**USB camera with sim:** Always add `--yaw-only` — forward/altitude commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
+**USB camera with sim:** Always add `--yaw-only` — forward commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
 
 ## OpenHD Integration
 
@@ -330,7 +330,7 @@ NN core utilization is read from HailoRT's monitor data (`/tmp/hmon_files/`), en
 
 Yaw-only mode is **on by default** (`--yaw-only`). The drone only rotates to keep the person centered in the frame — no forward/backward or altitude movement. Use `--no-yaw-only` for full follow. This is also available as a toggle in the web UI.
 
-Note: `--forward-gain 0` also fully disables forward/backward motion (including the safety backward retreat).
+Note: `--distance-gain 0` also disables forward/backward motion while leaving yaw active (the safety backward retreat still fires).
 
 ## Web UI Controls
 

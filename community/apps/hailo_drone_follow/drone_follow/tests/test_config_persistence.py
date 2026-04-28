@@ -31,7 +31,7 @@ def test_default_config_path_in_repo_root():
 def test_save_roundtrip_preserves_all_fields(tmp_path):
     """save_json + from_json restores every field identically."""
     cfg = ControllerConfig(
-        kp_yaw=7.5, kp_forward=2.3, max_forward=1.8,
+        kp_yaw=7.5, kp_distance=2.3, max_forward=1.8,
         target_bbox_height=0.42, auto_select=False, max_forward_accel=0.9,
         yaw_only=False,
     )
@@ -40,7 +40,7 @@ def test_save_roundtrip_preserves_all_fields(tmp_path):
 
     loaded = ControllerConfig.from_json(path)
     assert loaded.kp_yaw == 7.5
-    assert loaded.kp_forward == 2.3
+    assert loaded.kp_distance == 2.3
     assert loaded.max_forward == 1.8
     assert loaded.target_bbox_height == 0.42
     assert loaded.auto_select is False
@@ -66,15 +66,15 @@ def test_load_from_file_mutates_in_place(tmp_path):
 
 def test_load_from_file_reports_only_changed(tmp_path):
     """Fields identical between memory and file are not in the returned list."""
-    cfg = ControllerConfig(kp_yaw=5.0, kp_forward=1.5)
+    cfg = ControllerConfig(kp_yaw=5.0, kp_distance=1.5)
     path = str(tmp_path / "df_config.json")
     # Only kp_yaw differs on disk
-    disk = ControllerConfig(kp_yaw=7.0, kp_forward=1.5)
+    disk = ControllerConfig(kp_yaw=7.0, kp_distance=1.5)
     disk.save_json(path)
 
     changed = cfg.load_from_file(path)
     assert "kp_yaw" in changed
-    assert "kp_forward" not in changed
+    assert "kp_distance" not in changed
 
 
 def test_load_from_file_rolls_back_on_validation_error(tmp_path):
