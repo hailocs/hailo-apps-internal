@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sdf version="1.9">
   <world name="2_persons_diagonal">
-    <!-- Person 1: walks from (-5,-5) to (5,5), diagonal NE. z=1.5 so clearly above ground. -->
+    <!-- Both persons walk diagonal paths in front of the drone (X>0).
+         They cross around (10, 0). z=1.0 so they stand on top of the ground
+         plane (matches the working 2_person_world). Speed ~0.7 m/s. -->
     <actor name="person_1">
       <skin>
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
       </skin>
-      <pose>-5 -5 0.5 0 0 0.785398</pose>
       <animation name="walking_person_1">
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
@@ -18,38 +19,30 @@
         <delay_start>0</delay_start>
         <auto_start>true</auto_start>
         <trajectory id="0" type="walking">
-          <waypoint>
-            <time>0</time>
-            <pose>-5 -5 0.5 0 0 0.785398</pose>
-          </waypoint>
-          <waypoint>
-            <time>5</time>
-            <pose>0 0 0.5 0 0 0.785398</pose>
-          </waypoint>
-          <waypoint>
-            <time>10</time>
-            <pose>5 5 0.5 0 0 0.785398</pose>
-          </waypoint>
-          <waypoint>
-            <time>15</time>
-            <pose>0 0 0.5 0 0 0.785398</pose>
-          </waypoint>
-          <waypoint>
-            <time>20</time>
-            <pose>-5 -5 0.5 0 0 0.785398</pose>
-          </waypoint>
+          <!-- 20 s hold while drone arms + takes off -->
+          <waypoint><time>0</time>     <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
+          <waypoint><time>20</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
+          <!-- Walk NE diagonal to (15, 5) — 14.14 m in 20 s ≈ 0.71 m/s -->
+          <waypoint><time>40</time>    <pose>15 5 1.0 0 0 0.785398</pose></waypoint>
+          <!-- Pivot to face back -->
+          <waypoint><time>40.5</time>  <pose>15 5 1.0 0 0 -2.356194</pose></waypoint>
+          <!-- Walk back SW to (5, -5) -->
+          <waypoint><time>60.5</time>  <pose>5 -5 1.0 0 0 -2.356194</pose></waypoint>
+          <!-- Pivot to face forward again before loop restart -->
+          <waypoint><time>61</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
         </trajectory>
       </script>
     </actor>
-    <!-- Person 2: walks from (5,5) to (-5,-5), diagonal SW. z=1.5 so clearly above ground. -->
     <actor name="person_2">
+      <!-- walk_red.dae is a recoloured copy of walk.dae with the sweater
+           material changed from green to red so the two persons are
+           visually distinguishable in the camera feed. -->
       <skin>
-        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <filename>model://Walking actor/meshes/walk_red.dae</filename>
         <scale>1.0</scale>
       </skin>
-      <pose>5 5 0.5 0 0 3.92699</pose>
       <animation name="walking_person_2">
-        <filename>model://Walking actor/meshes/walk.dae</filename>
+        <filename>model://Walking actor/meshes/walk_red.dae</filename>
         <scale>1.0</scale>
         <interpolate_x>true</interpolate_x>
       </animation>
@@ -58,26 +51,17 @@
         <delay_start>0</delay_start>
         <auto_start>true</auto_start>
         <trajectory id="0" type="walking">
-          <waypoint>
-            <time>0</time>
-            <pose>5 5 0.5 0 0 3.92699</pose>
-          </waypoint>
-          <waypoint>
-            <time>5</time>
-            <pose>0 0 0.5 0 0 3.92699</pose>
-          </waypoint>
-          <waypoint>
-            <time>10</time>
-            <pose>-5 -5 0.5 0 0 3.92699</pose>
-          </waypoint>
-          <waypoint>
-            <time>15</time>
-            <pose>0 0 0.5 0 0 3.92699</pose>
-          </waypoint>
-          <waypoint>
-            <time>20</time>
-            <pose>5 5 0.5 0 0 3.92699</pose>
-          </waypoint>
+          <!-- 20 s hold while drone arms + takes off -->
+          <waypoint><time>0</time>     <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
+          <waypoint><time>20</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
+          <!-- Walk SE diagonal to (15, -5) — crosses person_1's path near (10, 0) -->
+          <waypoint><time>40</time>    <pose>15 -5 1.0 0 0 -0.785398</pose></waypoint>
+          <!-- Pivot to face back -->
+          <waypoint><time>40.5</time>  <pose>15 -5 1.0 0 0 2.356194</pose></waypoint>
+          <!-- Walk back NW to (5, 5) -->
+          <waypoint><time>60.5</time>  <pose>5 5 1.0 0 0 2.356194</pose></waypoint>
+          <!-- Pivot to face forward again before loop restart -->
+          <waypoint><time>61</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
         </trajectory>
       </script>
     </actor>
