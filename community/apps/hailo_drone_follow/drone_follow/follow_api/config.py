@@ -75,6 +75,7 @@ class ControllerConfig:
     yaw_alpha: float = 0.3              # 0=very smooth, 1=no smoothing
     smooth_forward: bool = True
     forward_alpha: float = 0.15         # moderate smoothing on forward velocity
+    forward_velocity_deadband: float = 0.05  # |forward| below this → snap to 0 (kills hover twitch)
     smooth_down: bool = True            # smooth bbox_height-driven altitude output
     down_alpha: float = 0.2             # moderate smoothing to reduce alt jitter
     # --- Takeoff/misc ---
@@ -218,6 +219,9 @@ class ControllerConfig:
                            help=f"Enable/disable forward velocity smoothing (default: {defaults.smooth_forward})")
         group.add_argument("--forward-alpha", type=float, default=defaults.forward_alpha,
                            help=f"EMA smoothing factor for forward velocity (0=sluggish, 1=no smoothing, default: {defaults.forward_alpha})")
+        group.add_argument("--forward-velocity-deadband", type=float, default=defaults.forward_velocity_deadband,
+                           help=f"Deadband on commanded forward velocity. |forward| below this is "
+                                f"snapped to 0 to kill hover twitch (default: {defaults.forward_velocity_deadband})")
         group.add_argument("--smooth-down", action=argparse.BooleanOptionalAction, default=defaults.smooth_down,
                            help=f"Enable/disable vertical velocity smoothing (default: {defaults.smooth_down})")
         group.add_argument("--down-alpha", type=float, default=defaults.down_alpha,
@@ -292,6 +296,7 @@ class ControllerConfig:
             yaw_alpha=_arg("yaw_alpha", default=defaults.yaw_alpha),
             smooth_forward=_arg("smooth_forward", default=defaults.smooth_forward),
             forward_alpha=_arg("forward_alpha", default=defaults.forward_alpha),
+            forward_velocity_deadband=_arg("forward_velocity_deadband", default=defaults.forward_velocity_deadband),
             smooth_down=_arg("smooth_down", default=defaults.smooth_down),
             down_alpha=_arg("down_alpha", default=defaults.down_alpha),
             target_altitude=_arg("target_altitude", default=defaults.target_altitude),

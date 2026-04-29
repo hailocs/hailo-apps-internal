@@ -168,4 +168,13 @@ def compute_velocity_command(
     # frame edges as the bbox creeps into the margin (combined with natural cmd).
     forward = _apply_frame_edge_safety(forward, detection, config)
 
+    # Near-zero velocity deadband (PX4 follow-me pattern): if the commanded
+    # forward is below the deadband, snap to 0 to kill hover twitch from
+    # sub-actuator effort. The bbox-distance dead band operates on the
+    # relative bbox-error factor; this one operates on the absolute commanded
+    # velocity. The bbox-emergency safety branch above is unaffected — it
+    # returns -max_backward, which is always above the deadband.
+    if abs(forward) < config.forward_velocity_deadband:
+        forward = 0.0
+
     return VelocityCommand(forward, 0.0, yawspeed)

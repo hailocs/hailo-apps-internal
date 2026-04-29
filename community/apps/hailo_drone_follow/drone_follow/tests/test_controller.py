@@ -332,6 +332,40 @@ class TestDistanceForward:
         # Retreat is 3× as aggressive as approach for the same |factor|.
         assert abs(retreat.forward_m_s) == pytest.approx(3.0 * approach.forward_m_s, abs=1e-6)
 
+    def test_forward_below_deadband_clamped_to_zero(self):
+        cfg = ControllerConfig(
+            yaw_only=False, target_bbox_height=0.30,
+            kp_distance=1.0, kp_distance_back=1.0,
+            top_margin_safety=0.0, bottom_margin_safety=0.0,
+            dead_zone_bbox_percent=0.0,
+            forward_velocity_deadband=0.10,
+        )
+        # bbox=0.297 → factor = 0.30/0.297 - 1 ≈ 0.010, raw = 0.010 m/s, well under 0.10 deadband
+        cmd = compute_velocity_command(_det(bh=0.297), cfg)
+        assert cmd.forward_m_s == 0.0
+
+    def test_forward_above_deadband_passes_through(self):
+        cfg = ControllerConfig(
+            yaw_only=False, target_bbox_height=0.30,
+            kp_distance=1.0, kp_distance_back=1.0,
+            top_margin_safety=0.0, bottom_margin_safety=0.0,
+            dead_zone_bbox_percent=0.0,
+            forward_velocity_deadband=0.05,
+        )
+        # bbox=0.20 → factor = 0.50, raw = 0.50 m/s ≫ 0.05 deadband
+        cmd = compute_velocity_command(_det(bh=0.20), cfg)
+        assert cmd.forward_m_s == pytest.approx(0.5, abs=1e-6)
+
+    def test_emergency_safety_unaffected_by_deadband(self):
+        """The bbox > max_bbox_height_safety branch returns max_backward;
+        deadband must not interfere."""
+        cfg = ControllerConfig(
+            yaw_only=False, target_bbox_height=0.30,
+            forward_velocity_deadband=10.0,  # absurdly high
+        )
+        cmd = compute_velocity_command(_det(bh=0.95), cfg)  # > 0.8 safety
+        assert cmd.forward_m_s == -cfg.max_backward
+
 
 class TestFrameEdgeSafety:
     """Top/bottom frame margins apply a gradient backward/forward bias as the
