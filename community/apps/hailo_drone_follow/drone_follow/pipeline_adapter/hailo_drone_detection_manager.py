@@ -148,6 +148,67 @@ def _run_sot(persons, last_bbox):
     return persons[best_idx], det_bboxes[best_idx]
 
 
+def _dispatch_sot_or_mot(
+    persons,
+    target_id,
+    sot_enabled,
+    sot_active,
+    sot_last_bbox,
+    sot_target_id,
+    run_tracker,
+    run_sot,
+    attach_track_id=None,
+):
+    """Always run MOT; use SOT only as a fallback for the locked target.
+
+    Returns (available_ids, person_by_id, person_to_id, sot_recovered).
+
+    The MOT tracker runs unconditionally so every visible person gets a stable
+    track ID surfaced to the UI / OpenHD. SOT only kicks in when MOT lost the
+    locked target — a quiet safety net that re-attaches `target_id` to whichever
+    detection still IOU-matches the last bbox.
+
+    Parameters
+    ----------
+    persons : list of HailoDetection-like objects (each exposes get_bbox())
+    target_id : int or None — the operator-locked / auto-selected target
+    sot_enabled, sot_active, sot_last_bbox, sot_target_id : SOT state from user_data
+    run_tracker : callable(persons) -> (available_ids, person_by_id, person_to_id)
+        Wraps `_run_tracker(user_data.tracker, persons)` so this helper stays pure.
+    run_sot : callable(persons, last_bbox) -> (matched, new_bbox)
+        Wraps `_run_sot` for the same reason.
+    attach_track_id : callable(person, track_id) -> None or None
+        Used to attach a HailoUniqueID(track_id, TRACKING_ID) to a recovered
+        person on SOT-fallback frames. None disables attachment (testing).
+
+    sot_recovered : True iff MOT lost the target this frame *and* SOT recovered
+        it. The caller can use that to keep the SOT bookkeeping alive even
+        though MOT is now in charge again (refreshed for next frame).
+    """
+    available_ids, person_by_id, person_to_id = run_tracker(persons)
+
+    sot_recovered = False
+    if (
+        sot_enabled
+        and target_id is not None
+        and target_id not in person_by_id
+        and sot_active
+        and sot_last_bbox is not None
+        and sot_target_id == target_id
+    ):
+        # MOT lost the locked target this frame — try SOT IOU fallback.
+        matched, _new_bbox = run_sot(persons, sot_last_bbox)
+        if matched is not None:
+            if attach_track_id is not None:
+                attach_track_id(matched, target_id)
+            person_by_id[target_id] = matched
+            person_to_id[id(matched)] = target_id
+            available_ids.add(target_id)
+            sot_recovered = True
+
+    return available_ids, person_by_id, person_to_id, sot_recovered
+
+
 # Clamp matches the UI Target Size slider min/max
 _TGT_BH_MIN = 0.10
 _TGT_BH_MAX = 0.25
@@ -289,54 +350,36 @@ def _app_callback_inner(element, buffer, user_data):
         return
 
     # --- SOT/MOT dispatch ---
+    # MOT runs every frame so the operator sees every visible track ID and can
+    # switch lock targets at any time. SOT is a quiet safety net: only consulted
+    # when MOT loses the currently-locked target this frame.
     target_id = target_state.get_target() if target_state is not None else None
     reid_manager = user_data.reid_manager
 
-    use_sot = (
-        user_data.sot_enabled
-        and target_id is not None
-        and user_data.sot_active
-        and user_data.sot_last_bbox is not None
-        and user_data.sot_target_id == target_id
-        and user_data.sot_frames < _SOT_MOT_REFRESH_INTERVAL
+    available_ids, person_by_id, person_to_id, sot_recovered = _dispatch_sot_or_mot(
+        persons,
+        target_id=target_id,
+        sot_enabled=user_data.sot_enabled,
+        sot_active=user_data.sot_active,
+        sot_last_bbox=user_data.sot_last_bbox,
+        sot_target_id=user_data.sot_target_id,
+        run_tracker=lambda ps: _run_tracker(user_data.tracker, ps),
+        run_sot=_run_sot,
+        attach_track_id=lambda person, tid: person.add_object(
+            hailo.HailoUniqueID(tid, hailo.TRACKING_ID)),
     )
 
-    if use_sot:
-        matched, new_bbox = _run_sot(persons, user_data.sot_last_bbox)
-        if matched is not None:
-            # SOT succeeded
-            user_data.sot_last_bbox = new_bbox
-            user_data.sot_frames += 1
-            matched.add_object(hailo.HailoUniqueID(target_id, hailo.TRACKING_ID))
-            person_by_id = {target_id: matched}
-            person_to_id = {id(matched): target_id}
-            available_ids = {target_id}
-        else:
-            # SOT lost the target — fall back to MOT
-            LOGGER.info("[SOT→MOT] Target lost after %d SOT frames — resetting tracker",
-                        user_data.sot_frames)
-            user_data.sot_active = False
-            user_data.sot_last_bbox = None
-            user_data.sot_frames = 0
-            user_data.tracker.reset()
-            available_ids, person_by_id, person_to_id = _run_tracker(
-                user_data.tracker, persons)
-            for person in persons:
-                tid = person_to_id.get(id(person))
-                if tid is not None:
-                    person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
-    else:
-        # Full MOT — no target, SOT not active, or periodic refresh
-        if user_data.sot_enabled and user_data.sot_active and user_data.sot_frames >= _SOT_MOT_REFRESH_INTERVAL:
-            LOGGER.debug("[SOT] Periodic MOT refresh after %d frames", user_data.sot_frames)
-            user_data.tracker.reset()
-            user_data.sot_frames = 0
-        available_ids, person_by_id, person_to_id = _run_tracker(
-            user_data.tracker, persons)
-        for person in persons:
-            tid = person_to_id.get(id(person))
-            if tid is not None:
-                person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
+    # Attach HailoUniqueID to every MOT-tracked person so downstream consumers
+    # (overlay, OpenHD bridge) can read the track ID off the detection object.
+    for person in persons:
+        tid = person_to_id.get(id(person))
+        if tid is not None and (not sot_recovered or tid != target_id):
+            # SOT-recovered person already had its ID attached by the helper.
+            person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
+
+    if sot_recovered:
+        LOGGER.debug("[SOT] MOT lost target ID %s — SOT IOU fallback recovered it",
+                     target_id)
 
     _log_detections(user_data, persons, person_to_id)
 
