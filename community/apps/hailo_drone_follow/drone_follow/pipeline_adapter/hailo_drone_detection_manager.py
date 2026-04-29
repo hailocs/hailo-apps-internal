@@ -178,10 +178,10 @@ def _dispatch_sot_or_mot(
     persons : list of HailoDetection-like objects (each exposes get_bbox())
     target_id : int or None — the operator-locked / auto-selected target
     sot_enabled, sot_active, sot_last_bbox, sot_target_id : SOT state from user_data
-    run_tracker : callable(persons) -> 3-tuple or 4-tuple
-        Wraps `_run_tracker(user_data.tracker, persons)` so this helper stays pure.
-        Accepts either the new 4-tuple form (with filtered_tlwh_by_id) or the
-        legacy 3-tuple (for older test stubs); missing values default to {}.
+    run_tracker : callable(persons) -> 4-tuple
+        Wraps `_run_tracker(user_data.tracker, persons)` so this helper stays
+        pure. Returns (available_ids, person_by_id, person_to_id,
+        filtered_tlwh_by_id).
     run_sot : callable(persons, last_bbox) -> (matched, new_bbox)
         Wraps `_run_sot` for the same reason.
     attach_track_id : callable(person, track_id) -> None or None
@@ -195,12 +195,7 @@ def _dispatch_sot_or_mot(
         it. The caller can use that to keep the SOT bookkeeping alive even
         though MOT is now in charge again (refreshed for next frame).
     """
-    result = run_tracker(persons)
-    if len(result) == 4:
-        available_ids, person_by_id, person_to_id, filtered_tlwh_by_id = result
-    else:  # legacy 3-tuple (test stubs that haven't migrated)
-        available_ids, person_by_id, person_to_id = result
-        filtered_tlwh_by_id = {}
+    available_ids, person_by_id, person_to_id, filtered_tlwh_by_id = run_tracker(persons)
 
     sot_recovered = False
     if (
