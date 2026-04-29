@@ -198,6 +198,17 @@ class TestConfigValidation:
         """A valid altitude range should not raise."""
         ControllerConfig(min_altitude=1.0, max_altitude=50.0).validate()
 
+    def test_target_altitude_must_be_at_most_max_altitude(self):
+        with pytest.raises(ValueError, match="target_altitude"):
+            ControllerConfig(target_altitude=5.0, max_altitude=4.0)
+
+    def test_target_altitude_at_max_is_valid(self):
+        ControllerConfig(target_altitude=4.0, max_altitude=4.0).validate()
+
+    def test_target_altitude_below_min_raises(self):
+        with pytest.raises(ValueError, match="target_altitude"):
+            ControllerConfig(target_altitude=1.0, min_altitude=2.0, max_altitude=4.0)
+
 
 class TestForwardLowPass:
     """Tests for the first-order low-pass (EMA) that attenuates
