@@ -118,7 +118,6 @@ def _find_biggest_person(person_by_id):
 
 
 _SOT_IOU_THRESH = 0.3
-_SOT_MOT_REFRESH_INTERVAL = 150  # frames (~5s at 30fps)
 
 
 def _run_sot(persons, last_bbox):
@@ -316,7 +315,6 @@ def _app_callback_inner(element, buffer, user_data):
         user_data.tracker.update(_EMPTY_DET_ARRAY)
         user_data.sot_active = False
         user_data.sot_last_bbox = None
-        user_data.sot_frames = 0
         user_data.shared_state.update(None, available_ids=set())
         if target_state is not None and target_state.get_target() is not None:
             reid_mgr = user_data.reid_manager
@@ -418,13 +416,11 @@ def _app_callback_inner(element, buffer, user_data):
                 user_data.sot_target_id = target_id
                 if not user_data.sot_active:
                     user_data.sot_active = True
-                    user_data.sot_frames = 0
                     LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", target_id)
         else:
             # Target lost by tracker — reset SOT state and try ReID re-identification
             user_data.sot_active = False
             user_data.sot_last_bbox = None
-            user_data.sot_frames = 0
 
             if reid_manager is not None and reid_manager.has_gallery and person_by_id:
                 # ReID gallery exists — try re-identification
@@ -476,7 +472,6 @@ def _app_callback_inner(element, buffer, user_data):
         # No explicit target — reset SOT state and decide between idle, hold, or auto-select
         user_data.sot_active = False
         user_data.sot_last_bbox = None
-        user_data.sot_frames = 0
 
         if target_state is not None and target_state.is_paused():
             # True IDLE — hold position
@@ -521,7 +516,6 @@ def _app_callback_inner(element, buffer, user_data):
                 ], dtype=np.float32)
                 user_data.sot_target_id = biggest_id
                 user_data.sot_active = True
-                user_data.sot_frames = 0
                 LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", biggest_id)
         else:
             user_data.shared_state.update(None, available_ids=available_ids)
@@ -762,7 +756,6 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             self.sot_active = False
             self.sot_last_bbox = None
             self.sot_target_id = None
-            self.sot_frames = 0
             # Set after app creation so callback can extract frames for ReID
             self.video_width = 0
             self.video_height = 0
