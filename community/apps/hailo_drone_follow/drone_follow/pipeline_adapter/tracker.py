@@ -16,6 +16,10 @@ class TrackedObject:
     input_index: int
     is_activated: bool
     score: float
+    # (x_min, y_min, width, height) in normalized [0..1] frame fractions —
+    # the Kalman-filtered bbox state. Empty tuple if the tracker doesn't
+    # surface a filtered bbox (e.g. in unit-test stubs).
+    filtered_tlwh: tuple = ()
 
 
 class Tracker(Protocol):

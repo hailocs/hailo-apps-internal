@@ -521,6 +521,10 @@ class ByteTrackerAdapter:
                 input_index=t.input_index,
                 is_activated=t.is_activated,
                 score=t.score,
+                # STrack.tlwh is in the same SCALE=1000 units the caller fed in;
+                # divide back out to normalized [0..1] frame fractions so the
+                # consumer doesn't need to know the input scaling.
+                filtered_tlwh=tuple(float(v) / 1000.0 for v in t.tlwh),
             )
             for t in stracks
         ]

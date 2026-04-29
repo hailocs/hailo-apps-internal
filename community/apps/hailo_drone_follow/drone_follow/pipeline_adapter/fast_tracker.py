@@ -91,6 +91,10 @@ class FastTrackerAdapter(Tracker):
                 input_index=input_index,
                 is_activated=t.is_activated,
                 score=t.score,
+                # FastTracker's STrack uses the same KF math as ByteTracker;
+                # divide back out from the SCALE=1000 input units the caller
+                # passed in to recover normalized [0..1] frame fractions.
+                filtered_tlwh=tuple(float(v) / 1000.0 for v in t.tlwh),
             ))
         return results
 

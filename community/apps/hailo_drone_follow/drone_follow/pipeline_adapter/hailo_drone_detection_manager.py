@@ -75,13 +75,17 @@ def _update_ui(ui_state, persons, person_to_id, following_id, paused=False):
 
 
 def _run_tracker(tracker, persons):
-    """Run tracker and return (available_ids, person_by_id, person_to_id).
+    """Run tracker and return (available_ids, person_by_id, person_to_id, filtered_tlwh_by_id).
 
-    person_by_id:  {track_id -> person detection}
-    person_to_id:  {id(person) -> track_id}  (reverse lookup)
+    person_by_id:        {track_id -> person detection}
+    person_to_id:        {id(person) -> track_id}  (reverse lookup)
+    filtered_tlwh_by_id: {track_id -> (x, y, w, h)} in normalized [0..1] coords —
+        the Kalman-filtered bbox state. Empty for tracks where the tracker
+        didn't surface a filtered tlwh (test stubs, FastTracker fallbacks).
     """
     available_ids = set()
     person_by_id = {}
+    filtered_tlwh_by_id = {}
 
     SCALE = 1000.0
     det_array = np.empty((len(persons), 5), dtype=np.float32)
@@ -96,14 +100,16 @@ def _run_tracker(tracker, persons):
     all_tracks = tracker.update(det_array)
 
     for t in all_tracks:
-        if t.is_activated and 0 <= t.input_index < len(persons):
-            available_ids.add(t.track_id)
+        if not t.is_activated:
+            continue
+        available_ids.add(t.track_id)
+        if t.filtered_tlwh:
+            filtered_tlwh_by_id[t.track_id] = t.filtered_tlwh
+        if 0 <= t.input_index < len(persons):
             person_by_id[t.track_id] = persons[t.input_index]
-        elif t.is_activated:
-            available_ids.add(t.track_id)
 
     person_to_id = {id(p): tid for tid, p in person_by_id.items()}
-    return available_ids, person_by_id, person_to_id
+    return available_ids, person_by_id, person_to_id, filtered_tlwh_by_id
 
 
 def _find_biggest_person(person_by_id):
@@ -160,7 +166,7 @@ def _dispatch_sot_or_mot(
 ):
     """Always run MOT; use SOT only as a fallback for the locked target.
 
-    Returns (available_ids, person_by_id, person_to_id, sot_recovered).
+    Returns (available_ids, person_by_id, person_to_id, filtered_tlwh_by_id, sot_recovered).
 
     The MOT tracker runs unconditionally so every visible person gets a stable
     track ID surfaced to the UI / OpenHD. SOT only kicks in when MOT lost the
@@ -172,19 +178,29 @@ def _dispatch_sot_or_mot(
     persons : list of HailoDetection-like objects (each exposes get_bbox())
     target_id : int or None — the operator-locked / auto-selected target
     sot_enabled, sot_active, sot_last_bbox, sot_target_id : SOT state from user_data
-    run_tracker : callable(persons) -> (available_ids, person_by_id, person_to_id)
+    run_tracker : callable(persons) -> 3-tuple or 4-tuple
         Wraps `_run_tracker(user_data.tracker, persons)` so this helper stays pure.
+        Accepts either the new 4-tuple form (with filtered_tlwh_by_id) or the
+        legacy 3-tuple (for older test stubs); missing values default to {}.
     run_sot : callable(persons, last_bbox) -> (matched, new_bbox)
         Wraps `_run_sot` for the same reason.
     attach_track_id : callable(person, track_id) -> None or None
         Used to attach a HailoUniqueID(track_id, TRACKING_ID) to a recovered
         person on SOT-fallback frames. None disables attachment (testing).
 
+    filtered_tlwh_by_id : {track_id -> (x, y, w, h)} in normalized [0..1] coords.
+        SOT-recovered tracks are deliberately NOT included here — SOT bypasses
+        the Kalman filter, so the consumer falls back to the raw bbox.
     sot_recovered : True iff MOT lost the target this frame *and* SOT recovered
         it. The caller can use that to keep the SOT bookkeeping alive even
         though MOT is now in charge again (refreshed for next frame).
     """
-    available_ids, person_by_id, person_to_id = run_tracker(persons)
+    result = run_tracker(persons)
+    if len(result) == 4:
+        available_ids, person_by_id, person_to_id, filtered_tlwh_by_id = result
+    else:  # legacy 3-tuple (test stubs that haven't migrated)
+        available_ids, person_by_id, person_to_id = result
+        filtered_tlwh_by_id = {}
 
     sot_recovered = False
     if (
@@ -203,9 +219,11 @@ def _dispatch_sot_or_mot(
             person_by_id[target_id] = matched
             person_to_id[id(matched)] = target_id
             available_ids.add(target_id)
+            # Deliberately do NOT populate filtered_tlwh_by_id[target_id]: SOT
+            # bypassed the KF, so the consumer should fall back to raw bbox.
             sot_recovered = True
 
-    return available_ids, person_by_id, person_to_id, sot_recovered
+    return available_ids, person_by_id, person_to_id, filtered_tlwh_by_id, sot_recovered
 
 
 # Clamp matches the UI Target Size slider min/max
@@ -354,7 +372,13 @@ def _app_callback_inner(element, buffer, user_data):
     target_id = target_state.get_target() if target_state is not None else None
     reid_manager = user_data.reid_manager
 
-    available_ids, person_by_id, person_to_id, sot_recovered = _dispatch_sot_or_mot(
+    (
+        available_ids,
+        person_by_id,
+        person_to_id,
+        filtered_tlwh_by_id,
+        sot_recovered,
+    ) = _dispatch_sot_or_mot(
         persons,
         target_id=target_id,
         sot_enabled=user_data.sot_enabled,
@@ -530,15 +554,34 @@ def _app_callback_inner(element, buffer, user_data):
         _log_mode(user_data, "fallback", None)
         return
 
-    bbox = best.get_bbox()
-    cx = bbox.xmin() + bbox.width() / 2
-    cy = bbox.ymin() + bbox.height() / 2
+    # Prefer the tracker's Kalman-filtered tlwh over the raw post-NMS bbox.
+    # The KF is already running inside ByteTracker; pulling its output through
+    # to the controller damps detection-noise jitter and short-occlusion gaps
+    # in one place. SOT-recovered frames bypass the KF, so they fall back to
+    # the raw bbox automatically (filtered_tlwh_by_id[target_id] is unset).
+    #
+    # Re-read target_id from target_state: the AUTO-acquisition branch above
+    # updates target_state via set_target(biggest_id) but doesn't refresh the
+    # local `target_id` (which was last read at line ~493). Re-reading here
+    # ensures we look up the filtered bbox under the just-acquired ID.
+    target_id = target_state.get_target() if target_state is not None else None
+    filtered = filtered_tlwh_by_id.get(target_id) if target_id is not None else None
+    if filtered:
+        fx, fy, fw, fh = filtered
+        cx = fx + fw / 2.0
+        cy = fy + fh / 2.0
+        bbox_h = fh
+    else:
+        bbox = best.get_bbox()
+        cx = bbox.xmin() + bbox.width() / 2.0
+        cy = bbox.ymin() + bbox.height() / 2.0
+        bbox_h = bbox.height()
     user_data.shared_state.update(Detection(
         label="person",
         confidence=best.get_confidence(),
         center_x=cx,
         center_y=cy,
-        bbox_height=bbox.height(),
+        bbox_height=bbox_h,
         timestamp=time.monotonic(),
     ), available_ids=available_ids)
 
@@ -559,7 +602,7 @@ def _app_callback_inner(element, buffer, user_data):
 
     available_str = f"Available: {sorted(available_ids)}" if available_ids else ""
     LOGGER.debug("[FOLLOWING %s] conf=%.2f center=(%.2f,%.2f) h=%.2f %s",
-                follow_mode, best.get_confidence(), cx, cy, bbox.height(), available_str)
+                follow_mode, best.get_confidence(), cx, cy, bbox_h, available_str)
     _log_mode(user_data, follow_mode,
               target_state.get_target() if target_state else None)
 

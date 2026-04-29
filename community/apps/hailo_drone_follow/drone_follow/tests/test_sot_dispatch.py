@@ -27,18 +27,21 @@ def _attach_noop(_person, _tid):
     """Attach hook used in tests — mutation-free; just records calls."""
 
 
-def _make_run_tracker(mot_map):
+def _make_run_tracker(mot_map, filtered_tlwh_by_id=None):
     """Build a fake run_tracker that returns ids drawn from mot_map.
 
     mot_map: {track_id -> person} — what MOT will return for the given persons.
     available_ids covers every key in mot_map plus any "stale" IDs the caller
     wants to inject (we keep it simple here: == set(mot_map.keys())).
+    filtered_tlwh_by_id: optional override; defaults to {} (no filtered bboxes).
     """
+    filtered = dict(filtered_tlwh_by_id or {})
+
     def _run_tracker(persons):
         person_by_id = dict(mot_map)
         person_to_id = {id(p): tid for tid, p in person_by_id.items()}
         available_ids = set(person_by_id.keys())
-        return available_ids, person_by_id, person_to_id
+        return available_ids, person_by_id, person_to_id, dict(filtered)
     return _run_tracker
 
 
@@ -60,7 +63,7 @@ def test_no_target_runs_only_mot():
     p1, p2 = _FakePerson("a"), _FakePerson("b")
     mot_map = {1: p1, 2: p2}
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p1, p2],
         target_id=None,
         sot_enabled=True,
@@ -74,6 +77,7 @@ def test_no_target_runs_only_mot():
     assert avail == {1, 2}
     assert by_id == {1: p1, 2: p2}
     assert to_id == {id(p1): 1, id(p2): 2}
+    assert filt == {}
     assert recovered is False
 
 
@@ -88,7 +92,7 @@ def test_mot_keeps_target_lock_no_sot_fallback():
         sot_calls.append("called")
         return None, None
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p1, p2, p3],
         target_id=8,                  # MOT has 8
         sot_enabled=True,
@@ -102,6 +106,7 @@ def test_mot_keeps_target_lock_no_sot_fallback():
     # Critical: every visible person's ID is exposed, *not* just {target_id}.
     assert avail == {7, 8, 9}
     assert set(by_id.keys()) == {7, 8, 9}
+    assert filt == {}
     # SOT must not have been called — MOT had the target.
     assert sot_calls == []
     assert recovered is False
@@ -118,7 +123,7 @@ def test_mot_lost_target_sot_recovers():
     def _attach(person, tid):
         attached.append((person, tid))
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p_target, p_other],
         target_id=5,
         sot_enabled=True,
@@ -133,6 +138,9 @@ def test_mot_lost_target_sot_recovers():
     assert avail == {2, 5}
     assert by_id == {2: p_other, 5: p_target}
     assert to_id == {id(p_other): 2, id(p_target): 5}
+    # SOT-recovered tracks deliberately don't get a filtered_tlwh — the SOT
+    # path bypasses the Kalman filter, so 5 must not be in `filt`.
+    assert 5 not in filt
     assert recovered is True
     # The recovered person had its track ID attached for downstream consumers.
     assert attached == [(p_target, 5)]
@@ -143,7 +151,7 @@ def test_mot_lost_target_sot_also_lost():
     p_other = _FakePerson("other")
     mot_map = {2: p_other}
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p_other],
         target_id=5,
         sot_enabled=True,
@@ -157,6 +165,7 @@ def test_mot_lost_target_sot_also_lost():
     # SOT lost the target — only MOT-tracked persons remain, but they are visible.
     assert avail == {2}
     assert by_id == {2: p_other}
+    assert filt == {}
     assert recovered is False
 
 
@@ -171,7 +180,7 @@ def test_sot_disabled_means_pure_mot():
         sot_calls.append("called")
         return None, None
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p1],
         target_id=99,
         sot_enabled=False,
@@ -184,6 +193,7 @@ def test_sot_disabled_means_pure_mot():
     )
     assert sot_calls == []
     assert avail == {1}
+    assert filt == {}
     assert recovered is False
 
 
@@ -201,7 +211,7 @@ def test_sot_target_id_mismatch_skips_fallback():
         sot_calls.append("called")
         return None, None
 
-    avail, by_id, to_id, recovered = _dispatch_sot_or_mot(
+    avail, by_id, to_id, filt, recovered = _dispatch_sot_or_mot(
         persons=[p_other],
         target_id=5,                       # operator wants 5
         sot_enabled=True,
@@ -214,4 +224,5 @@ def test_sot_target_id_mismatch_skips_fallback():
     )
     assert sot_calls == []
     assert avail == {2}
+    assert filt == {}
     assert recovered is False
