@@ -72,7 +72,7 @@ class FastTrackerAdapter(Tracker):
         self._ft = Fasttracker(_Args(), config, frame_rate=self._kwargs["frame_rate"])
         self._img_size = (1080, 1920)
 
-    def update(self, detections: np.ndarray, embeddings=None) -> list[TrackedObject]:
+    def update(self, detections: np.ndarray) -> list[TrackedObject]:
         if len(detections) == 0:
             stracks = self._ft.update(
                 np.empty((0, 5), dtype=np.float32),

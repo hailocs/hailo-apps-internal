@@ -513,7 +513,7 @@ class ByteTrackerAdapter:
         self._TrackedObject = TrackedObject
         self._bt = ByteTracker(**kwargs)
 
-    def update(self, detections, embeddings=None):
+    def update(self, detections):
         stracks = self._bt.update(detections)
         return [
             self._TrackedObject(

@@ -21,7 +21,7 @@ class TrackedObject:
 class Tracker(Protocol):
     """Minimal tracker interface."""
 
-    def update(self, detections: np.ndarray, embeddings=None) -> Sequence[TrackedObject]: ...
+    def update(self, detections: np.ndarray) -> Sequence[TrackedObject]: ...
 
     def reset(self) -> None: ...
 
@@ -62,9 +62,9 @@ class MetricsTracker:
         self._inner = inner
         self.metrics = TrackerMetrics(init_ms=init_time_ms)
 
-    def update(self, detections: np.ndarray, embeddings=None) -> Sequence[TrackedObject]:
+    def update(self, detections: np.ndarray) -> Sequence[TrackedObject]:
         t0 = time.monotonic()
-        results = self._inner.update(detections, embeddings=embeddings)
+        results = self._inner.update(detections)
         elapsed_ms = (time.monotonic() - t0) * 1000.0
 
         m = self.metrics
