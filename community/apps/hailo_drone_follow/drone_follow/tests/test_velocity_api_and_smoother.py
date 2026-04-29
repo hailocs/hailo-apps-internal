@@ -41,27 +41,27 @@ class TestVelocityCommandAPIClamping:
         return VelocityCommandAPI(drone=None, config=cfg)
 
     def test_forward_clamped_to_max(self, api):
-        cmd = VelocityCommand(999.0, 0.0, 0.0, 0.0)
+        cmd = VelocityCommand(999.0, 0.0, 0.0)
         result = asyncio.run(api.send(cmd))
         assert result.forward_m_s == pytest.approx(2.0)
 
     def test_backward_clamped_to_max(self, api):
-        cmd = VelocityCommand(-999.0, 0.0, 0.0, 0.0)
+        cmd = VelocityCommand(-999.0, 0.0, 0.0)
         result = asyncio.run(api.send(cmd))
         assert result.forward_m_s == pytest.approx(-3.0)
 
     def test_down_clamped_both_directions(self, api):
-        up = asyncio.run(api.send(VelocityCommand(0.0, 0.0, -999.0, 0.0)))
-        down = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 999.0, 0.0)))
+        up = asyncio.run(api.send(VelocityCommand(0.0, -999.0, 0.0)))
+        down = asyncio.run(api.send(VelocityCommand(0.0, 999.0, 0.0)))
         assert up.down_m_s == pytest.approx(-1.5)
         assert down.down_m_s == pytest.approx(1.5)
 
     def test_yaw_clamped(self, api):
-        result = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 200.0)))
+        result = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 200.0)))
         assert result.yawspeed_deg_s == pytest.approx(90.0)
 
     def test_within_limits_passes_through(self, api):
-        cmd = VelocityCommand(1.0, 0.0, -0.5, 30.0)
+        cmd = VelocityCommand(1.0, -0.5, 30.0)
         result = asyncio.run(api.send(cmd))
         assert result.forward_m_s == pytest.approx(1.0)
         assert result.down_m_s == pytest.approx(-0.5)
@@ -75,7 +75,7 @@ class TestVelocityCommandAPIYawFilter:
         cfg = ControllerConfig(smooth_yaw=True, yaw_alpha=0.3, max_yawspeed=200.0)
         api = VelocityCommandAPI(drone=None, config=cfg)
 
-        step = VelocityCommand(0.0, 0.0, 0.0, 100.0)
+        step = VelocityCommand(0.0, 0.0, 100.0)
         r1 = asyncio.run(api.send(step))
         # First sample: filtered = 0.3 * 100 + 0.7 * 0 = 30
         assert r1.yawspeed_deg_s == pytest.approx(30.0)
@@ -88,7 +88,7 @@ class TestVelocityCommandAPIYawFilter:
         cfg = ControllerConfig(smooth_yaw=True, yaw_alpha=0.5, max_yawspeed=200.0)
         api = VelocityCommandAPI(drone=None, config=cfg)
 
-        step = VelocityCommand(0.0, 0.0, 0.0, 60.0)
+        step = VelocityCommand(0.0, 0.0, 60.0)
         result = None
         for _ in range(50):
             result = asyncio.run(api.send(step))
@@ -98,14 +98,14 @@ class TestVelocityCommandAPIYawFilter:
         cfg = ControllerConfig(smooth_yaw=False, max_yawspeed=200.0)
         api = VelocityCommandAPI(drone=None, config=cfg)
 
-        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 100.0)))
+        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 100.0)))
         assert r.yawspeed_deg_s == pytest.approx(100.0)
 
     def test_yaw_alpha_from_config(self):
         cfg = ControllerConfig(smooth_yaw=True, yaw_alpha=0.1, max_yawspeed=200.0)
         api = VelocityCommandAPI(drone=None, config=cfg)
 
-        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 100.0)))
+        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 100.0)))
         # alpha=0.1: filtered = 0.1 * 100 = 10
         assert r.yawspeed_deg_s == pytest.approx(10.0)
 
@@ -118,7 +118,7 @@ class TestVelocityCommandAPISendZero:
 
         # Build up filter state
         for _ in range(5):
-            asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 80.0)))
+            asyncio.run(api.send(VelocityCommand(0.0, 0.0, 80.0)))
         assert api._filtered_yaw != 0.0
 
         asyncio.run(api.send_zero())
@@ -131,15 +131,14 @@ class TestVelocityCommandAPISendZero:
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
 
-        asyncio.run(api.send(VelocityCommand(3.0, 0.0, 0.0, 50.0)))
+        asyncio.run(api.send(VelocityCommand(3.0, 0.0, 50.0)))
         api.reset_filters()
         assert api._filtered_yaw == 0.0
         assert api._filtered_forward == 0.0
-        assert api._filtered_right == 0.0
         assert api._filtered_down == 0.0
 
         # After reset, first sample should start from 0 again
-        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 100.0)))
+        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 100.0)))
         assert r.yawspeed_deg_s == pytest.approx(50.0)  # 0.5 * 100 + 0.5 * 0
 
 
@@ -162,26 +161,26 @@ class TestForwardSmoothing:
 
     def test_first_call_returns_alpha_times_input(self):
         api = self._make_api()
-        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
         # smoothed = 0.5 * 2.0 + 0.5 * 0.0 = 1.0
         assert r.forward_m_s == pytest.approx(1.0)
 
     def test_ema_converges_to_constant_input(self):
         api = self._make_api(forward_alpha=0.3)
         for _ in range(100):
-            r = asyncio.run(api.send(VelocityCommand(1.5, 0.0, 0.0, 0.0)))
+            r = asyncio.run(api.send(VelocityCommand(1.5, 0.0, 0.0)))
         assert r.forward_m_s == pytest.approx(1.5, abs=0.01)
 
     def test_high_alpha_responds_faster(self):
         api_fast = self._make_api(forward_alpha=0.9)
         api_slow = self._make_api(forward_alpha=0.1)
-        r_fast = asyncio.run(api_fast.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
-        r_slow = asyncio.run(api_slow.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+        r_fast = asyncio.run(api_fast.send(VelocityCommand(2.0, 0.0, 0.0)))
+        r_slow = asyncio.run(api_slow.send(VelocityCommand(2.0, 0.0, 0.0)))
         assert r_fast.forward_m_s > r_slow.forward_m_s
 
     def test_disabled_passes_through(self):
         api = self._make_api(smooth_forward=False)
-        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
         assert r.forward_m_s == pytest.approx(2.0)
 
 
@@ -200,27 +199,27 @@ class TestForwardSlewLimiter:
     def test_step_input_ramps_at_max_step(self):
         api = self._make_api()
         for expected in (0.1, 0.2, 0.3):
-            r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+            r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
             assert r.forward_m_s == pytest.approx(expected, abs=1e-6)
 
     def test_disabled_when_zero(self):
         api = self._make_api(max_forward_accel=0)
-        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
         assert r.forward_m_s == pytest.approx(2.0)
 
     def test_decel_symmetric(self):
         api = self._make_api()
         # Ramp up to 0.5, then issue 0.0 — should step down 0.1 per tick
         for _ in range(5):
-            asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+            asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
         for expected in (0.4, 0.3, 0.2, 0.1, 0.0):
-            r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0, 0.0)))
+            r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 0.0)))
             assert r.forward_m_s == pytest.approx(expected, abs=1e-6)
 
     def test_send_zero_resets_prev(self):
         api = self._make_api()
         for _ in range(5):
-            asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0, 0.0)))
+            asyncio.run(api.send(VelocityCommand(2.0, 0.0, 0.0)))
         assert api._prev_forward != 0.0
         asyncio.run(api.send_zero())
         assert api._prev_forward == 0.0
@@ -236,7 +235,7 @@ class TestDownSmoothing:
             max_down_speed=5.0,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
-        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 1.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(0.0, 1.0, 0.0)))
         # First tick: 0.2 * 1.0 + 0.8 * 0.0 = 0.2
         assert r.down_m_s == pytest.approx(0.2)
 
@@ -247,5 +246,5 @@ class TestDownSmoothing:
             max_down_speed=5.0,
         )
         api = VelocityCommandAPI(drone=None, config=cfg)
-        r = asyncio.run(api.send(VelocityCommand(0.0, 0.0, 1.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(0.0, 1.0, 0.0)))
         assert r.down_m_s == pytest.approx(1.0)

@@ -39,7 +39,6 @@ class TestSearchMode:
     def test_no_detection_zero_velocity(self, config):
         cmd = compute_velocity_command(None, config)
         assert cmd.forward_m_s == 0.0
-        assert cmd.right_m_s == 0.0
         assert cmd.down_m_s == 0.0
 
 
@@ -94,18 +93,6 @@ class TestYaw:
         assert abs(ratio - (2.0 ** 0.5)) < 0.01
 
 
-# ---- Right axis (always zero — orbit was removed) ----
-
-class TestRightAxis:
-    def test_right_always_zero(self, config):
-        """right_m_s should always be zero (orbit feature removed)."""
-        for cx in [0.1, 0.5, 0.9]:
-            for cy in [0.1, 0.5, 0.9]:
-                for bh in [0.1, 0.3, 0.6]:
-                    cmd = compute_velocity_command(_det(cx=cx, cy=cy, bh=bh), config)
-                    assert cmd.right_m_s == 0.0
-
-
 # ---- Combined scenarios ----
 
 class TestCombined:
@@ -115,7 +102,6 @@ class TestCombined:
             _det(cx=0.5, cy=0.5, bh=config.target_bbox_height), config
         )
         assert cmd.forward_m_s == 0.0
-        assert cmd.right_m_s == 0.0
         assert cmd.down_m_s == 0.0
         assert cmd.yawspeed_deg_s == 0.0
 
@@ -224,11 +210,11 @@ class TestForwardLowPass:
         api = VelocityCommandAPI(drone=None, config=cfg)
         from drone_follow.follow_api import VelocityCommand
         # Step from 0 → 1.0 m/s; after one send, output should be alpha * step = 0.07
-        first = asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0, 0.0)))
+        first = asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0)))
         assert first.forward_m_s == pytest.approx(0.07, abs=1e-6)
         # After many sends, converges toward the target
         for _ in range(100):
-            result = asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0, 0.0)))
+            result = asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0)))
         assert result.forward_m_s == pytest.approx(1.0, abs=0.01)
 
     def test_direction_reversal_is_smooth(self):
@@ -242,12 +228,12 @@ class TestForwardLowPass:
         from drone_follow.follow_api import VelocityCommand
         # Settle at +1.0
         for _ in range(100):
-            asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0, 0.0)))
+            asyncio.run(api.send(VelocityCommand(1.0, 0.0, 0.0)))
         # Abrupt flip to -1.0 — output must pass through zero, not jump
-        r = asyncio.run(api.send(VelocityCommand(-1.0, 0.0, 0.0, 0.0)))
+        r = asyncio.run(api.send(VelocityCommand(-1.0, 0.0, 0.0)))
         prev = r.forward_m_s
         for _ in range(10):
-            r = asyncio.run(api.send(VelocityCommand(-1.0, 0.0, 0.0, 0.0)))
+            r = asyncio.run(api.send(VelocityCommand(-1.0, 0.0, 0.0)))
             nxt = r.forward_m_s
             # Each step should move toward -1.0 monotonically (no overshoot)
             assert nxt <= prev + 1e-9

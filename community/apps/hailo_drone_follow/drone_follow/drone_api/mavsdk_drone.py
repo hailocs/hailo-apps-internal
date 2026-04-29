@@ -52,8 +52,15 @@ def add_drone_args(parser) -> None:
 # ---------------------------------------------------------------------------
 
 def _to_mavsdk(cmd: VelocityCommand) -> VelocityBodyYawspeed:
-    """Translate a pure VelocityCommand to MAVSDK's type."""
-    return VelocityBodyYawspeed(cmd.forward_m_s, cmd.right_m_s, cmd.down_m_s, cmd.yawspeed_deg_s)
+    """Translate a pure VelocityCommand to MAVSDK's type.
+
+    The MAVSDK 4-tuple has a right axis but VelocityCommand does not — orbit was
+    removed and the controller always emitted right=0. The literal 0.0 here makes
+    the right slot explicit at the boundary; bringing back lateral motion means
+    re-adding a right_m_s field that goes through the smoothing/clamping in
+    VelocityCommandAPI.send rather than passing through unguarded.
+    """
+    return VelocityBodyYawspeed(cmd.forward_m_s, 0.0, cmd.down_m_s, cmd.yawspeed_deg_s)
 
 
 class VelocityCommandAPI:
@@ -97,9 +104,6 @@ class VelocityCommandAPI:
 
         # Clamp each axis to configured maximums
         forward = max(-cfg.max_backward, min(cfg.max_forward, cmd.forward_m_s))
-        # right is always 0 from the controller (orbit was removed); pass through
-        # so the MAVSDK 4-tuple stays well-formed but no smoothing/clamping needed.
-        right = cmd.right_m_s
         down = max(-cfg.max_down_speed, min(cfg.max_down_speed, cmd.down_m_s))
         yaw_raw = max(-cfg.max_yawspeed, min(cfg.max_yawspeed, cmd.yawspeed_deg_s))
 
@@ -137,7 +141,7 @@ class VelocityCommandAPI:
         # Keep the EMA filter state in sync so it doesn't fight the slew limiter
         self._filtered_forward = forward
 
-        clamped = VelocityCommand(forward, right, down, yaw_out)
+        clamped = VelocityCommand(forward, down, yaw_out)
 
         if self._drone is not None:
             await self._drone.offboard.set_velocity_body(_to_mavsdk(clamped))
@@ -148,7 +152,6 @@ class VelocityCommandAPI:
         """Send an immediate zero-velocity command and reset all filter states."""
         self._filtered_yaw = 0.0
         self._filtered_forward = 0.0
-        self._filtered_right = 0.0
         self._filtered_down = 0.0
         self._prev_forward = 0.0
         zero = VelocityBodyYawspeed(0.0, 0.0, 0.0, 0.0)
@@ -164,7 +167,6 @@ class VelocityCommandAPI:
         """Reset all per-axis low-pass filter states."""
         self._filtered_yaw = 0.0
         self._filtered_forward = 0.0
-        self._filtered_right = 0.0
         self._filtered_down = 0.0
         self._prev_forward = 0.0
 
@@ -488,7 +490,7 @@ async def live_control_loop(drone, shared_state, config, shutdown, altitude_cach
                 elif current_alt >= config.max_altitude and down < 0:
                     down = 0.0  # at ceiling — don't climb further
                 if down != cmd.down_m_s:
-                    cmd = VelocityCommand(cmd.forward_m_s, cmd.right_m_s, down, cmd.yawspeed_deg_s)
+                    cmd = VelocityCommand(cmd.forward_m_s, down, cmd.yawspeed_deg_s)
 
             # Control-axes log (throttled)
             if now - _last_fwd_log_time >= _FWD_LOG_INTERVAL and detection is not None:
@@ -510,7 +512,7 @@ async def live_control_loop(drone, shared_state, config, shutdown, altitude_cach
                     mode = "SEARCH"
                 else:
                     mode = "SEARCH-WAIT"
-                ui_state.update_velocity(cmd.forward_m_s, cmd.down_m_s, cmd.yawspeed_deg_s, mode, right_m_s=cmd.right_m_s)
+                ui_state.update_velocity(cmd.forward_m_s, cmd.down_m_s, cmd.yawspeed_deg_s, mode)
             _prev_cmd = cmd
 
             # Periodic status log to UI
@@ -558,7 +560,7 @@ async def _start_offboard(drone, vel_api: VelocityCommandAPI, shutdown: asyncio.
     (NO_SETPOINT_SET otherwise). Streams at ~20 Hz for 2 s, then
     retries offboard.start() up to 3 times.
     """
-    zero = VelocityCommand(0.0, 0.0, 0.0, 0.0)
+    zero = VelocityCommand(0.0, 0.0, 0.0)
     setpoint_period_s = 0.05
 
     for _ in range(int(2.0 / setpoint_period_s)):

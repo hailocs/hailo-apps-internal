@@ -100,12 +100,11 @@ class SharedUIState:
         with self._lock:
             self._perf = perf
 
-    def update_velocity(self, forward_m_s: float, down_m_s: float, yawspeed_deg_s: float, mode: str, right_m_s: float = 0.0):
+    def update_velocity(self, forward_m_s: float, down_m_s: float, yawspeed_deg_s: float, mode: str):
         """Called from control loop to expose current command velocity in UI."""
         with self._lock:
             self._velocity = {
                 "forward_m_s": float(forward_m_s),
-                "right_m_s": float(right_m_s),
                 "down_m_s": float(down_m_s),
                 "yawspeed_deg_s": float(yawspeed_deg_s),
                 "mode": str(mode),

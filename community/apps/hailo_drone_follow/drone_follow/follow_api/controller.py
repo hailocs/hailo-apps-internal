@@ -134,12 +134,12 @@ def compute_velocity_command(
     # --- Search mode: no current detection ---
     if detection is None:
         if not search_active:
-            return hold_velocity if hold_velocity is not None else VelocityCommand(0.0, 0.0, 0.0, 0.0)
+            return hold_velocity if hold_velocity is not None else VelocityCommand(0.0, 0.0, 0.0)
         # Derive search direction from last seen position.
         search_direction = 1.0
         if last_detection is not None:
             search_direction = 1.0 if last_detection.center_x > 0.5 else -1.0
-        return VelocityCommand(0.0, 0.0, 0.0, search_direction * config.search_yawspeed_slow)
+        return VelocityCommand(0.0, 0.0, search_direction * config.search_yawspeed_slow)
 
     # --- Safety: bbox too large → emergency reverse ---
     if not config.yaw_only and detection.bbox_height > config.max_bbox_height_safety:
@@ -151,7 +151,7 @@ def compute_velocity_command(
             yawspeed = math.copysign(config.kp_yaw * math.sqrt(abs(error_x_deg)), error_x_deg)
         yawspeed = max(-config.max_yawspeed, min(config.max_yawspeed, yawspeed))
         # Altitude held by PX4 in live_control_loop — don't override down here.
-        return VelocityCommand(-config.max_backward, 0.0, 0.0, yawspeed)
+        return VelocityCommand(-config.max_backward, 0.0, yawspeed)
 
     # --- Tracking mode ---
     # Yaw: signed square-root response (horizontal centering)
@@ -168,4 +168,4 @@ def compute_velocity_command(
     # frame edges as the bbox creeps into the margin (combined with natural cmd).
     forward = _apply_frame_edge_safety(forward, detection, config)
 
-    return VelocityCommand(forward, 0.0, 0.0, yawspeed)
+    return VelocityCommand(forward, 0.0, yawspeed)

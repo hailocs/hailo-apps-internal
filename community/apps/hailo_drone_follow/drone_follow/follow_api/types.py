@@ -12,7 +12,6 @@ class VelocityCommand:
     the follow layer free of MAVSDK dependencies.
     """
     forward_m_s: float
-    right_m_s: float
     down_m_s: float
     yawspeed_deg_s: float
 
