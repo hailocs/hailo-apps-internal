@@ -102,7 +102,7 @@ yawspeed = clamp(yawspeed, ±max_yawspeed)
 
 - **P controller with a square-root response** — softer near zero error, still quick on large errors.  Standard practice in vision-servo yawing to avoid the step-step-step feeling of pure-P at low gain.
 - **Dead zone** (`dead_zone_deg = 2°`) suppresses jitter from noisy detections.
-- **EMA low-pass** (`yaw_alpha = 0.3`) in `VelocityCommandAPI.send()` — filters the commanded yawspeed before it hits MAVSDK. All four axes have per-axis EMA in `send()`: yaw (α=0.3), forward (α=0.15), right (α=0.3), down (α=0.2).
+- **EMA low-pass** (`yaw_alpha = 0.3`) in `VelocityCommandAPI.send()` — filters the commanded yawspeed before it hits MAVSDK. The three live axes have per-axis EMA in `send()`: yaw (α=0.3), forward (α=0.15), down (α=0.2). The right axis was removed with the orbit feature; the MAVSDK 4-tuple's right slot is a literal 0.0.
 
 ### 3.2 Forward / backward (`forward_m_s`) ← `bbox_height`
 
@@ -189,7 +189,8 @@ The following table gives a field-tuner's view of what to change when. Every val
 ### Forward / backward (bbox_height → forward_m_s)
 | Param | Default | Tune if |
 |---|---|---|
-| `kp_distance` | 1.0 | Approach/retreat too slow; raise cautiously |
+| `kp_distance` | 0.6 | Approach (forward) gain on (target/bbox - 1); raise cautiously |
+| `kp_distance_back` | 2.5 | Retreat (backward) gain; higher than `kp_distance` so retreat saturates `max_backward` before bbox-safety panic threshold |
 | `dead_zone_bbox_percent` | 10 % | Oscillating → widen; unresponsive → narrow |
 | `max_forward` / `max_backward` | 2.0 / 3.0 m/s | Hard cap on speeds |
 | `max_forward_accel` | 1.5 m/s² | Slew-rate cap (tilt-transient safety) |
