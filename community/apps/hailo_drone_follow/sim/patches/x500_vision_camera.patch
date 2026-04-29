@@ -29,16 +29,18 @@ index 75f30e440d..36ca6d07ea 100644
 +        <gz_frame_id>camera_link</gz_frame_id>
 +        <pose>0 0 0 0 0 0</pose>
 +        <camera>
-+          <!-- horizontal_fov in radians. 1.152 rad = 66 deg, matching the
-+               ControllerConfig default hfov used for yaw error scaling on
-+               the real RPi camera. With a 4:3 image (640x480) the derived
-+               vertical FOV is ~50.4 deg, against ControllerConfig vfov=41 deg
-+               default — close enough that yaw/forward gains tuned on the
-+               sim transfer cleanly to real hardware. -->
++          <!-- horizontal_fov = 1.152 rad = 66 deg, matching ControllerConfig
++               default hfov on the real RPi camera. Resolution 1280x720
++               matches the production GStreamerApp default (gstreamer_app.py
++               video_width=1280, video_height=720). gz-sim derives the
++               vertical FOV from image aspect: 2*atan(tan(1.152/2)*720/1280)
++               ~ 0.70 rad ~ 40.2 deg, almost exactly the real camera's 41 deg.
++               Same image-plane error -> same yaw/forward command on sim and
++               real, so SITL-tuned gains transfer cleanly. -->
 +          <horizontal_fov>1.152</horizontal_fov>
 +          <image>
-+            <width>640</width>
-+            <height>480</height>
++            <width>1280</width>
++            <height>720</height>
 +          </image>
 +          <clip>
 +            <near>0.1</near>
