@@ -223,7 +223,7 @@ If both flights converged cleanly, you should land near values like these
 | Forward axis oscillates (in-out pumping) | **Lower *Max forward accel*** | Lower *Forward smoothing (α)*, then lower *Distance P-gain* |
 | Drone lags converging back to target distance | Raise *Distance P-gain* | Raise *Max forward speed* |
 | Drone retreats too aggressively when subject approaches | Lower *Distance P-gain* | Lower *Max backward speed* |
-| Altitude drifts away from target | Re-set *Target altitude* mid-flight | — (PX4 alt-hold; not a controller knob) |
+| Altitude drifts away from target | Re-set *Target altitude* mid-flight | Raise *Alt-hold P-gain* (`kp_alt_hold`, default 0.5) |
 | Drone loses subject when subject stops | Raise *Dead-zone yaw* / *Dead-zone bbox* | Check detection stability, not the controller |
 | Subject leaves frame when drone pitches hard | Lower *Max forward accel* | — (this is exactly what that knob is for) |
 

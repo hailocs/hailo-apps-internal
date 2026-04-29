@@ -169,6 +169,20 @@
       "read_only": false
     },
     {
+      "id": "forward_velocity_deadband",
+      "mavlink_id": "DF_FWD_DB",
+      "type": "float",
+      "default": 0.05,
+      "min": 0.0,
+      "max": 0.5,
+      "step": 0.01,
+      "group": "fwd",
+      "order": 10,
+      "label": "Forward deadband (m/s)",
+      "description": "Commanded |forward| below this value snaps to 0. Kills hover twitch when bbox is within a few %% of target. 0 disables.",
+      "read_only": false
+    },
+    {
       "id": "smooth_forward",
       "mavlink_id": "DF_SMTH_FWD",
       "type": "bool",

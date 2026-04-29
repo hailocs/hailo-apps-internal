@@ -396,12 +396,13 @@ The primary branch output from `t_post` depends on CLI flags:
 @dataclass
 class VelocityCommand:
     forward_m_s: float      # +X body (nose)
-    right_m_s: float        # +Y body (starboard)
     down_m_s: float         # +Z body (down positive, NED)
     yawspeed_deg_s: float   # +ve = clockwise from above
 ```
 
-Single 4-DOF output per control tick. No attitude, no position targets, no thrust.
+3-DOF output per control tick. No attitude, no position targets, no thrust.
+The MAVSDK 4-tuple's right (+Y body) slot is a literal 0.0 at the boundary —
+the orbit-era `right_m_s` field was dropped along with the orbit feature.
 `down_m_s` is now vision-driven from `bbox_height` (plain P: person too small →
 descend, too big → climb), with floor/ceiling clamping in `live_control_loop`.
 See [control-architecture.md](control-architecture.md) for the control math.

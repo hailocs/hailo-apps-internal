@@ -279,6 +279,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         "yaw_alpha": float,
         "smooth_forward": bool,
         "forward_alpha": float,
+        "forward_velocity_deadband": float,
         "smooth_down": bool,
         "down_alpha": float,
         "target_altitude": float,

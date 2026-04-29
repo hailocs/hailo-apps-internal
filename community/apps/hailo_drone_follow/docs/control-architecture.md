@@ -56,10 +56,12 @@ Every control output is a `VelocityCommand` (`follow_api/types.py`):
 @dataclass
 class VelocityCommand:
     forward_m_s:     float   # +X body (nose direction)
-    right_m_s:       float   # +Y body (starboard)
     down_m_s:        float   # +Z body (down is positive — NED convention)
     yawspeed_deg_s:  float   # +ve = clockwise viewed from above
 ```
+
+The MAVSDK 4-tuple's right (+Y body) slot is rebuilt at the boundary as a
+literal `0.0` — no controller axis writes to it.
 
 Sent via `mavsdk.offboard.VelocityBodyYawspeed`, which maps to MAVLink's `SET_POSITION_TARGET_LOCAL_NED` with:
 - coordinate frame = `MAV_FRAME_BODY_NED`
@@ -142,13 +144,15 @@ zero at `min_altitude` (no further descent) and `max_altitude` (no further
 climb). `target_altitude` doubles as the takeoff height when
 `--takeoff-landing` is set, and is adjustable mid-flight via the UI.
 
-### 3.4 Lateral (`right_m_s`)
+### 3.4 Lateral (right axis)
 
 Always 0. The orbit feature was removed; lateral motion is no longer
-commanded by the controller. The `right_m_s` field stays on
-`VelocityCommand` because MAVSDK's body-frame velocity setpoint is a
-4-tuple (forward / right / down / yawspeed) — we just always send 0 on
-the right axis.
+commanded by the controller. `VelocityCommand` carries only three axes
+(forward / down / yawspeed); the MAVSDK 4-tuple's right slot is rebuilt
+at the `mavsdk_drone._to_mavsdk` boundary as a literal `0.0`. Re-introducing
+lateral motion later means re-adding a `right_m_s` field on `VelocityCommand`
+*and* routing it through the smoothing/clamping in `VelocityCommandAPI.send`,
+not just plumbing it through the boundary helper.
 
 ---
 

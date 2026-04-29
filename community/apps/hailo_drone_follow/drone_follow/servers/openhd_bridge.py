@@ -54,6 +54,7 @@ _CONFIG_PARAMS = {
     "max_altitude":             ("DF_MAX_ALT",   float),
     "yaw_alpha":                ("DF_YAW_ALPHA",  float),
     "forward_alpha":            ("DF_FWD_ALPHA",  float),
+    "forward_velocity_deadband": ("DF_FWD_DB",    float),
     "target_altitude":          ("DF_TGT_ALT",   float),
     "yaw_only":                 ("DF_YAW_ONLY",   bool),
     "auto_select":              ("DF_AUTO_SEL",  bool),
