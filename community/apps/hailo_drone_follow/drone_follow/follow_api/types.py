@@ -1,12 +1,6 @@
 """Pure domain types for drone follow — no third-party dependencies."""
 
 from dataclasses import dataclass
-from enum import Enum
-
-
-class FollowMode(str, Enum):
-    FOLLOW = "follow"
-    ORBIT = "orbit"
 
 
 @dataclass

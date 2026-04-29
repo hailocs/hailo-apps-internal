@@ -39,15 +39,12 @@ LOGGER = logging.getLogger(__name__)
 # ControllerConfig attribute name.  Values are native float or int (no scaling).
 _CONFIG_PARAMS = {
     "kp_yaw":                   ("DF_KP_YAW",    float),
-    "kp_forward":               ("DF_KP_FWD",     float),
-    "kp_backward":              ("DF_KP_BACK",    float),
     "max_forward":              ("DF_MAX_FWD",    float),
     "max_backward":             ("DF_MAX_BACK",   float),
     "max_forward_accel":        ("DF_MAX_ACC",   float),
-    "target_center_y":          ("DF_TGT_CY",    float),
-    "dead_zone_y_deg":          ("DF_DZ_Y",      float),
     "dead_zone_deg":            ("DF_DZ_YAW",    float),
-    "kp_altitude":              ("DF_KP_ALT",    float),
+    "kp_distance":              ("DF_KP_DIST",   float),
+    "kp_distance_back":         ("DF_KP_DIST_B", float),
     "target_bbox_height":       ("DF_TGT_BH",    float),
     "dead_zone_bbox_percent":   ("DF_DZ_BH_PCT", float),
     "max_climb_speed":          ("DF_MAX_CLM",   float),
@@ -61,12 +58,8 @@ _CONFIG_PARAMS = {
     "auto_select":              ("DF_AUTO_SEL",  bool),
     "smooth_yaw":               ("DF_SMTH_YAW",   bool),
     "smooth_forward":           ("DF_SMTH_FWD",   bool),
-    "right_alpha":              ("DF_RT_ALPHA",   float),
-    "smooth_right":             ("DF_SMTH_RT",    bool),
     "down_alpha":               ("DF_DN_ALPHA",   float),
     "smooth_down":              ("DF_SMTH_DN",    bool),
-    "orbit_speed_m_s":          ("DF_ORBIT_SPD",  float),
-    "orbit_direction":          ("DF_ORBIT_DIR",  int),
 }
 
 # Fields where value 0 maps to Python None

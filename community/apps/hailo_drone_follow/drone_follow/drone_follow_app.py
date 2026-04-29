@@ -73,6 +73,17 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--no-display", action="store_true",
                        help="Disable display window (headless mode)")
 
+    group.add_argument("--log-perf", action="store_true",
+                       help="Log pipeline and tracker performance metrics periodically")
+
+    group.add_argument("--sot", action="store_true",
+                       help="Enable single-object tracking mode for the locked target "
+                            "(default: off — pure multi-object tracking)")
+
+    group.add_argument("--test-log", type=str, default=None,
+                       help="Write per-frame detection log as JSONL to this path "
+                            "(used by simulation tests)")
+
     # ReID re-identification
     group.add_argument("--reid-model", type=str, default=_DEFAULT_REID_HEF,
                        help="Path to ReID HEF model for appearance-based re-identification "
@@ -105,12 +116,14 @@ def _build_parser() -> argparse.ArgumentParser:
       - app (this file):   UI/server ports
     """
     from hailo_apps.python.core.common.core import get_pipeline_parser
+    from drone_follow.pipeline_adapter import add_tracker_args
     parser = get_pipeline_parser()
 
     ControllerConfig.add_args(parser)
     add_drone_args(parser)
 
     _add_app_args(parser)
+    add_tracker_args(parser)
 
     # Camera is mounted right-side up: no mirroring needed.
     # The library defines --horizontal-mirror/--vertical-mirror (store_true, default=False).
@@ -140,6 +153,8 @@ def main():
     ui_pre.add_argument("--ui-fps", type=int, default=10)
     ui_pre.add_argument("--record", action="store_true")
     ui_pre.add_argument("--openhd-stream", action="store_true")
+    ui_pre.add_argument("--log-perf", action="store_true")
+    ui_pre.add_argument("--sot", action="store_true")
     ui_pre_args, _ = ui_pre.parse_known_args()
 
     # Build the recording branch whenever there is a control surface that can
@@ -188,12 +203,20 @@ def main():
 
     from drone_follow.pipeline_adapter import create_app
 
+    # Pre-parse --tracker to pass to create_app
+    tracker_pre = argparse.ArgumentParser(add_help=False)
+    tracker_pre.add_argument("--tracker", default="byte")
+    tracker_pre_args, _ = tracker_pre.parse_known_args()
+
     recordings_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
     app = create_app(shared_state, target_state=target_state, eos_reached=eos_reached,
                      ui_state=ui_state, ui_fps=ui_pre_args.ui_fps, parser=parser,
                      record_enabled=record_branch_enabled, record_dir=recordings_dir,
                      reid_manager=reid_manager,
-                     reid_search_timeout=reid_pre_args.reid_timeout)
+                     reid_search_timeout=reid_pre_args.reid_timeout,
+                     tracker_name=tracker_pre_args.tracker,
+                     log_perf=ui_pre_args.log_perf,
+                     sot_enabled=ui_pre_args.sot)
     args = app.options_menu
     _configure_logging(getattr(args, "log_verbosity", "normal"))
     _resolve_serial_connection(args)
@@ -204,6 +227,10 @@ def main():
     # Make the live config visible to the detection callback so it can read auto_select
     # and write target_bbox_height when a target is locked.
     app.user_data.controller_config = controller_config
+
+    test_log_path = getattr(args, "test_log", None)
+    if test_log_path:
+        app.user_data.open_test_log(test_log_path)
 
     # --save-config: dump effective config to JSON and exit
     save_path = getattr(args, "save_config", None)
@@ -301,6 +328,7 @@ def main():
         drone_thread.join(timeout=5.0)
         if reid_manager is not None:
             reid_manager.release()
+        app.user_data.close_test_log()
         if web_server is not None:
             web_server.stop()
         openhd_bridge.stop()

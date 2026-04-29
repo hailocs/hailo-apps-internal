@@ -154,7 +154,7 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 | `--takeoff-landing` | off | Auto arm/takeoff/land. Without this, the pilot switches to OFFBOARD via GCS. |
 | `--ui` | off | Enable web UI with live video and click-to-follow (port 5001) |
 | `--record` | off | Record video + detection overlays for the entire session |
-| `--target-bbox-height` | `0.3` | Desired person size in frame (0-1). Adjustable mid-flight via UI. |
+| `--target-bbox-height` | `0.25` | Desired person size in frame (0-0.25). Drives forward/backward distance. Adjustable mid-flight via UI. |
 | `--target-altitude` | `3.0` | Target altitude in metres. Also used as takeoff height. |
 | `--yaw-only` / `--no-yaw-only` | on | Yaw only: no forward/backward movement. Use `--no-yaw-only` for full follow. |
 | `--no-reid` | off | Disable ReID re-identification |
@@ -172,7 +172,7 @@ Enable with `--ui` (served on port 5001). Provides live MJPEG video, detection o
 
 Shows real-time telemetry:
 - **Following indicator** — Current mode: "Auto (largest person)", "Following: ID X" (locked), or "Idle (paused)".
-- **Velocity readout** — Mode (TRACK / SEARCH / ORBIT) and commanded velocities.
+- **Velocity readout** — Mode (TRACK / SEARCH) and commanded velocities.
 - **Performance** — FPS, latency, CPU%, memory, Hailo NN core utilization, and chip temperature.
 - **Record / Clear Target** buttons.
 
@@ -182,12 +182,9 @@ Shows real-time telemetry:
 
 | Control | Range | Default | Description |
 |---|---|---|---|
-| **Target Size** | 5%-100% | 30% | Desired person bbox height. Drone approaches if smaller, retreats if larger. |
-| **Target Alt** | 1-20 m | 3.0 | Target altitude. Changed mid-flight via slider. |
+| **Target Size** | 10–25% | 25% | Desired person bbox height. Drone approaches if smaller, retreats if larger. |
+| **Target Alt** | 1–8 m | 3.0 | Target altitude. Changed mid-flight via slider. |
 | **Yaw Only** | ON/OFF | ON | When ON, drone only rotates — no translation. |
-| **Mode** | FOLLOW/ORBIT | FOLLOW | FOLLOW: approach/retreat. ORBIT: circle the person. |
-| **Orbit Speed** | 0.2-3.0 m/s | 1.0 | Lateral speed in orbit mode. |
-| **Direction** | CW/CCW | CW | Orbit direction. |
 
 **Tuning:**
 
@@ -274,7 +271,7 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 
 **Simulation configs** in `sim/configs/`: `simulation.json` (yaw-only), `simulation_follow.json` (full follow with reduced speeds).
 
-**USB camera with sim:** Always add `--yaw-only` — forward/altitude commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
+**USB camera with sim:** Always add `--yaw-only` — forward commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
 
 ## OpenHD Integration
 
@@ -318,7 +315,6 @@ drone-follow --config configs/outdoor_follow.json --input rpi --serial --ui
 |---|---|---|
 | `outdoor_follow.json` | Full follow | Real drone outdoor. 5m altitude, conservative speeds. |
 | `outdoor_yaw_only.json` | Yaw-only | Real drone, rotation only. Safe for first outdoor tests. |
-| `outdoor_orbit.json` | Orbit | Cinematic circling at 1.5 m/s, 5m altitude. |
 
 ## Performance Monitoring
 
@@ -330,7 +326,7 @@ NN core utilization is read from HailoRT's monitor data (`/tmp/hmon_files/`), en
 
 Yaw-only mode is **on by default** (`--yaw-only`). The drone only rotates to keep the person centered in the frame — no forward/backward or altitude movement. Use `--no-yaw-only` for full follow. This is also available as a toggle in the web UI.
 
-Note: `--forward-gain 0` also fully disables forward/backward motion (including the safety backward retreat).
+Note: `--distance-gain 0` also disables forward/backward motion while leaving yaw active (the safety backward retreat still fires).
 
 ## Web UI Controls
 
@@ -339,7 +335,7 @@ The web UI (`--ui`, served on port 5001) provides live video, detection overlays
 ### Status Bar
 
 - **Following indicator** — Shows which person is being tracked (by ID) or "Auto (largest person)" if no specific target is selected.
-- **Velocity readout** — Current mode (TRACK/SEARCH/ORBIT) and commanded velocities: forward, lateral, down, and yaw.
+- **Velocity readout** — Current mode (TRACK/SEARCH) and commanded velocities: forward, down, and yaw.
 - **Record** — Start/stop recording the video stream.
 - **Clear Target** — Stop following a specific person and revert to auto (largest person).
 
@@ -349,24 +345,21 @@ The web UI (`--ui`, served on port 5001) provides live video, detection overlays
 
 | Control | Range | Default | Description |
 |---|---|---|---|
-| **Target Size** | 5% – 100% | 30% | Desired person bounding box height as percentage of frame. The drone approaches if the person is smaller than this, retreats if larger. Increase to keep the person closer, decrease for more distance. |
-| **Target Alt** | 1 – 20 m | 3.0 | Target altitude. Used as initial takeoff height (with `--takeoff-landing`) and as a go-to altitude when changed mid-flight. |
+| **Target Size** | 10% – 25% | 25% | Desired person bounding-box height as a fraction of frame. The drone approaches if the person is smaller, retreats if larger. Larger setpoint = drone holds closer. |
+| **Target Alt** | 1 – 8 m | 3.0 | Target altitude. Used as initial takeoff height (with `--takeoff-landing`) and as a soft reference when changed mid-flight. |
 | **Yaw Only** | ON/OFF | ON | When ON, disables all forward/backward and altitude movement. The drone only rotates to keep the person centered. Use `--no-yaw-only` for full follow. |
-| **Mode: FOLLOW / ORBIT** | — | FOLLOW | FOLLOW: drone faces and approaches/retreats from the person. ORBIT: drone circles around the person while maintaining yaw lock, adding lateral velocity. |
-| **Orbit Speed** | 0.2 – 3.0 m/s | 1.0 | Lateral speed during orbit mode. Only visible when Mode is ORBIT. |
-| **Direction: CW / CCW** | — | CW | Orbit direction: clockwise or counter-clockwise. Only visible when Mode is ORBIT. |
 
 **Tuning (below operational controls):**
 
 | Control | Range | Default | Description |
 |---|---|---|---|
 | **KP Yaw** | 0 – 10 | 5.0 | Yaw proportional gain. Higher = faster rotation to center the person. Uses sqrt response to avoid oscillation. |
-| **KP Forward** | 0 – 10 | 3.0 | Forward/approach proportional gain. Controls how aggressively the drone moves toward a distant person. Set to 0 to disable forward/backward movement entirely. |
-| **KP Backward** | 0 – 10 | 5.0 | Backward/retreat proportional gain. Controls retreat speed when too close. Higher than KP Forward by default for safety. |
+| **KP Distance** | 0 – 3 | 0.6 | Approach gain on `(target/bbox - 1)` when factor > 0 (person too far). Set to 0 to disable forward motion. |
+| **KP Dist Back** | 0 – 5 | 2.5 | Retreat gain when factor < 0 (person too close). Higher than approach gain so retreat saturates `max_backward` before the bbox-safety panic threshold trips. |
 | **Yaw Smooth** | ON/OFF | ON | Low-pass filter on yaw commands. Reduces jitter but adds slight lag. |
 | **Yaw Alpha** | 0.05 – 1.0 | 0.3 | EMA smoothing factor for yaw. Lower = smoother (more lag), higher = more responsive. Only active when Yaw Smooth is ON. |
 | **Fwd Smooth** | ON/OFF | ON | EMA smoothing on forward velocity. Reduces sudden speed changes. |
-| **Fwd Alpha** | 0.05 – 1.0 | 0.1 | EMA factor for forward smoothing. Lower = smoother, higher = more responsive. |
+| **Fwd Alpha** | 0.05 – 1.0 | 0.15 | EMA factor for forward smoothing. Lower = smoother, higher = more responsive. |
 
 ### How Target Size Works
 
@@ -407,7 +400,7 @@ drone_follow/
   ui/                  React web dashboard
   drone_follow_app.py  Composition root and CLI entrypoint
 reid_analysis/         ReID embedding extraction and gallery matching strategies
-configs/               Real-drone controller presets (outdoor_follow, outdoor_orbit, etc.)
+configs/               Real-drone controller presets (outdoor_follow, etc.)
 sim/
   PX4-Autopilot/       PX4 git submodule (v1.14.0)
   bridge/              Gazebo camera -> UDP video bridge

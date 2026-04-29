@@ -259,8 +259,6 @@ class _WebHandler(BaseHTTPRequestHandler):
 
     _CONFIG_FIELDS = {
         "kp_yaw": float,
-        "kp_forward": float,
-        "kp_backward": float,
         "max_forward": float,
         "max_backward": float,
         "max_forward_accel": float,
@@ -269,25 +267,21 @@ class _WebHandler(BaseHTTPRequestHandler):
         "yaw_only": bool,
         "auto_select": bool,
         "target_bbox_height": float,
-        "target_center_y": float,
-        "dead_zone_y_deg": float,
-        "kp_altitude": float,
+        "kp_distance": float,
+        "kp_distance_back": float,
         "dead_zone_bbox_percent": float,
         "max_climb_speed": float,
         "min_altitude": float,
         "max_altitude": float,
+        "top_margin_safety": float,
+        "bottom_margin_safety": float,
         "smooth_yaw": bool,
         "yaw_alpha": float,
         "smooth_forward": bool,
         "forward_alpha": float,
-        "smooth_right": bool,
-        "right_alpha": float,
         "smooth_down": bool,
         "down_alpha": float,
         "target_altitude": float,
-        "follow_mode": str,
-        "orbit_speed_m_s": float,
-        "orbit_direction": int,
     }
 
     def _handle_get_config(self):

@@ -1,15 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Scenario: single person walks across the drone's frame of view (left-to-right
+  in the camera image), then turns and walks straight toward the drone.
+  Purpose: exercise the follow controller's backward-motion response when the
+  target's bbox grows due to approach.
+
+  Drone spawns at (0, 0, 0) facing +X, takes off to ~3 m.
+  Camera FOV ~100°, so at X=8 the visible Y range is roughly ±9.5 m.
+
+  NOTE: no outer <pose> on the actor — in gz-sim8 (Harmonic) the outer pose
+  is added to trajectory waypoints, which would double position and yaw.
+  Matches the upstream /usr/share/gz/gz-sim8/worlds/actor.sdf convention.
+
+  A stationary "hold" waypoint at t=0..20 keeps the actor at (8,-6) while the
+  drone arms and takes off, so the follow loop engages before motion begins.
+
+  Phase 0 (0..20):   stationary at (8, -6), drone arms + takes off
+  Phase 1 (20..32):  walk across frame at X=8 from Y=-6 to Y=+6
+  Phase 2 (33..39):  return to centerline, now at (8, 0)
+  Phase 3 (40..53):  turn and walk straight toward drone, X=8 -> X=-5
+                     — backward-motion test. Person passes through the
+                     drone's origin; if the drone fails to retreat, the
+                     person overlaps the camera.
+  Phase 4 (54..75):  walk back to start and loop
+-->
 <sdf version="1.9">
-  <world name="2_persons_diagonal">
-    <!-- Both persons walk diagonal paths in front of the drone (X>0).
-         They cross around (10, 0). z=1.0 so they stand on top of the ground
-         plane (matches the working 2_person_world). Speed ~0.7 m/s. -->
-    <actor name="person_1">
+  <world name="walk_across_then_approach">
+    <actor name="person">
       <skin>
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
       </skin>
-      <animation name="walking_person_1">
+      <animation name="walking">
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
         <interpolate_x>true</interpolate_x>
@@ -19,52 +41,69 @@
         <delay_start>0</delay_start>
         <auto_start>true</auto_start>
         <trajectory id="0" type="walking">
-          <!-- 20 s hold while drone arms + takes off -->
-          <waypoint><time>0</time>     <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
-          <waypoint><time>20</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
-          <!-- Walk NE diagonal to (15, 5) — 14.14 m in 20 s ≈ 0.71 m/s -->
-          <waypoint><time>40</time>    <pose>15 5 1.0 0 0 0.785398</pose></waypoint>
-          <!-- Pivot to face back -->
-          <waypoint><time>40.5</time>  <pose>15 5 1.0 0 0 -2.356194</pose></waypoint>
-          <!-- Walk back SW to (5, -5) -->
-          <waypoint><time>60.5</time>  <pose>5 -5 1.0 0 0 -2.356194</pose></waypoint>
-          <!-- Pivot to face forward again before loop restart -->
-          <waypoint><time>61</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
+          <!-- Phase 0: hold at (8,-6) for 20 s (drone arms + takes off) -->
+          <waypoint>
+            <time>0</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>20</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 1: walk across frame, -Y to +Y at X=8 (~1 m/s) -->
+          <waypoint>
+            <time>32</time>
+            <pose>8 6 1.0 0 0 1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 2: turn around and walk back to centerline -->
+          <waypoint>
+            <time>33</time>
+            <pose>8 6 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>39</time>
+            <pose>8 0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+
+          <!-- Phase 3: turn to face drone, walk straight toward it.
+               13 m over 13 s (~1 m/s); passes through drone origin to
+               force sustained backward motion. -->
+          <waypoint>
+            <time>40</time>
+            <pose>8 0 1.0 0 0 3.14159</pose>
+          </waypoint>
+          <waypoint>
+            <time>53</time>
+            <pose>-5 0 1.0 0 0 3.14159</pose>
+          </waypoint>
+
+          <!-- Phase 4: return to start (off-camera) and loop -->
+          <waypoint>
+            <time>54</time>
+            <pose>-5 0 1.0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>67</time>
+            <pose>8 0 1.0 0 0 0</pose>
+          </waypoint>
+          <waypoint>
+            <time>68</time>
+            <pose>8 0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>74</time>
+            <pose>8 -6 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>75</time>
+            <pose>8 -6 1.0 0 0 1.5708</pose>
+          </waypoint>
         </trajectory>
       </script>
     </actor>
-    <actor name="person_2">
-      <!-- walk_red.dae is a recoloured copy of walk.dae with the sweater
-           material changed from green to red so the two persons are
-           visually distinguishable in the camera feed. -->
-      <skin>
-        <filename>model://Walking actor/meshes/walk_red.dae</filename>
-        <scale>1.0</scale>
-      </skin>
-      <animation name="walking_person_2">
-        <filename>model://Walking actor/meshes/walk_red.dae</filename>
-        <scale>1.0</scale>
-        <interpolate_x>true</interpolate_x>
-      </animation>
-      <script>
-        <loop>true</loop>
-        <delay_start>0</delay_start>
-        <auto_start>true</auto_start>
-        <trajectory id="0" type="walking">
-          <!-- 20 s hold while drone arms + takes off -->
-          <waypoint><time>0</time>     <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
-          <waypoint><time>20</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
-          <!-- Walk SE diagonal to (15, -5) — crosses person_1's path near (10, 0) -->
-          <waypoint><time>40</time>    <pose>15 -5 1.0 0 0 -0.785398</pose></waypoint>
-          <!-- Pivot to face back -->
-          <waypoint><time>40.5</time>  <pose>15 -5 1.0 0 0 2.356194</pose></waypoint>
-          <!-- Walk back NW to (5, 5) -->
-          <waypoint><time>60.5</time>  <pose>5 5 1.0 0 0 2.356194</pose></waypoint>
-          <!-- Pivot to face forward again before loop restart -->
-          <waypoint><time>61</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
-        </trajectory>
-      </script>
-    </actor>
+
     <physics type="ode">
       <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>

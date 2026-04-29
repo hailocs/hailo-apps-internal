@@ -77,7 +77,6 @@ class VelocityCommandAPI:
         self._config = config
         self._filtered_yaw: float = 0.0
         self._filtered_forward: float = 0.0
-        self._filtered_right: float = 0.0
         self._filtered_down: float = 0.0
         # Slew-rate limiter state for the forward axis (tilt-transient safety).
         # EMA bounds peak acceleration only as a function of step size; a hard
@@ -98,8 +97,9 @@ class VelocityCommandAPI:
 
         # Clamp each axis to configured maximums
         forward = max(-cfg.max_backward, min(cfg.max_forward, cmd.forward_m_s))
-        max_lat = cfg.max_orbit_speed
-        right = max(-max_lat, min(max_lat, cmd.right_m_s))
+        # right is always 0 from the controller (orbit was removed); pass through
+        # so the MAVSDK 4-tuple stays well-formed but no smoothing/clamping needed.
+        right = cmd.right_m_s
         down = max(-cfg.max_down_speed, min(cfg.max_down_speed, cmd.down_m_s))
         yaw_raw = max(-cfg.max_yawspeed, min(cfg.max_yawspeed, cmd.yawspeed_deg_s))
 
@@ -109,12 +109,6 @@ class VelocityCommandAPI:
             forward = self._filtered_forward
         else:
             self._filtered_forward = forward
-
-        if cfg.smooth_right:
-            self._filtered_right = self._ema(right, self._filtered_right, cfg.right_alpha)
-            right = self._filtered_right
-        else:
-            self._filtered_right = right
 
         if cfg.smooth_down:
             self._filtered_down = self._ema(down, self._filtered_down, cfg.down_alpha)
@@ -479,12 +473,16 @@ async def live_control_loop(drone, shared_state, config, shutdown, altitude_cach
                 hold_velocity=_prev_cmd,
             )
 
-            # Altitude limits: clamp bbox_height-driven altitude commands to
-            # [min_altitude, max_altitude].  compute_velocity_command() now
-            # produces the altitude command; we just enforce the floor/ceiling.
+            # Altitude hold: drive the down axis from a P-loop on
+            # (current_alt - target_altitude) so the drone holds the operator's
+            # commanded altitude. Then clamp to [min_altitude, max_altitude].
             current_alt = altitude_cache.get("m")
             if current_alt is not None:
                 down = cmd.down_m_s
+                if not config.yaw_only:
+                    alt_err = current_alt - config.target_altitude  # +ve = too high
+                    down = config.kp_alt_hold * alt_err
+                    down = max(-config.max_climb_speed, min(config.max_down_speed, down))
                 if current_alt <= config.min_altitude and down > 0:
                     down = 0.0  # at floor — don't descend further
                 elif current_alt >= config.max_altitude and down < 0:
@@ -506,9 +504,7 @@ async def live_control_loop(drone, shared_state, config, shutdown, altitude_cach
                      f"Fwd:{cmd.forward_m_s:+5.2f}m/s  "
                      f"Down:{cmd.down_m_s:+5.2f}m/s", level=logging.INFO)
             if ui_state is not None:
-                if detection is not None and config.follow_mode == "orbit":
-                    mode = "ORBIT"
-                elif detection is not None:
+                if detection is not None:
                     mode = "TRACK"
                 elif time_since_detection >= config.search_enter_delay_s:
                     mode = "SEARCH"

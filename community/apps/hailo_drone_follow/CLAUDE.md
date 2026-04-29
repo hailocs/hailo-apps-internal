@@ -21,7 +21,7 @@ A Hailo-based drone-follow application that uses an AI pipeline (GStreamer + Hai
 - `--connection URL` — MAVSDK connection string (default: `udpin://0.0.0.0:14540` for simulation)
 - `--takeoff-landing` — Enable auto arm/takeoff/land (default: off — drone must already be airborne)
 - `--target-altitude M` — Target altitude in metres (default: 3.0). Held by a fixed-altitude P loop; also used as takeoff height with `--takeoff-landing`. Adjustable mid-flight via UI.
-- `--target-bbox-height` — Desired person size in frame 0–1 (default: 0.3). Adjustable mid-flight via UI "Target Size" slider.
+- `--target-bbox-height` — Desired person size in frame 0–0.25 (default: 0.25). Drives forward/backward distance. Adjustable mid-flight via UI "Target Size" slider.
 - `--yaw-only` / `--no-yaw-only` — Yaw only mode (default: on). Use `--no-yaw-only` for full follow with forward/backward movement.
 - `--horizontal-mirror` / `--vertical-mirror` — Both default to off (camera right-side up). Pass both flags for 180° rotation if camera is mounted upside-down. The pipeline also passes `mirror_image=False` to `SOURCE_PIPELINE()`.
 - `--ui` / `--ui-port` / `--ui-fps` — Enable the web UI (port 5001 default, 10 FPS MJPEG default). Live video, click-to-follow, and slider-based controller tuning.
@@ -206,7 +206,7 @@ Pass `--world NAME` to `start_sim.sh` to load a custom world (uses PX4's native 
 
 **Simulation configs** in `sim/configs/`: `simulation.json` (yaw-only, safe for SITL), `simulation_follow.json` (full follow with reduced speeds).
 
-**USB camera with sim:** If using `--input usb` instead of the Gazebo camera, always add `--yaw-only` — forward/altitude commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
+**USB camera with sim:** If using `--input usb` instead of the Gazebo camera, always add `--yaw-only` — forward commands based on bbox size are unsafe because the webcam sees the real world, not the sim.
 
 ## Networking (Dual-Interface: Home WiFi + Field AP)
 

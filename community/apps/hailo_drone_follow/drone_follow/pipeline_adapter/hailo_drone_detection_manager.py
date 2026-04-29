@@ -5,6 +5,7 @@ No other module needs to import hailo or gi.repository.
 """
 
 import argparse
+import json
 import logging
 import os
 import subprocess
@@ -19,7 +20,9 @@ import numpy as np
 from drone_follow.follow_api.types import Detection
 from drone_follow.perf_tracker import PerfTracker
 
-from .byte_tracker import ByteTracker
+from .byte_tracker import iou_batch
+from .tracker import MetricsTracker
+from .tracker_factory import create_tracker
 from .reid_manager import get_frame_bgr
 
 LOGGER = logging.getLogger(__name__)
@@ -71,8 +74,8 @@ def _update_ui(ui_state, persons, person_to_id, following_id, paused=False):
     ui_state.update_detections(all_dets, following_id, paused=paused)
 
 
-def _run_tracker(byte_tracker, persons):
-    """Run ByteTracker and return (available_ids, person_by_id, person_to_id).
+def _run_tracker(tracker, persons):
+    """Run tracker and return (available_ids, person_by_id, person_to_id).
 
     person_by_id:  {track_id -> person detection}
     person_to_id:  {id(person) -> track_id}  (reverse lookup)
@@ -90,7 +93,7 @@ def _run_tracker(byte_tracker, persons):
         det_array[i, 3] = (bbox.ymin() + bbox.height()) * SCALE
         det_array[i, 4] = person.get_confidence()
 
-    all_tracks = byte_tracker.update(det_array)
+    all_tracks = tracker.update(det_array)
 
     for t in all_tracks:
         if t.is_activated and 0 <= t.input_index < len(persons):
@@ -114,9 +117,40 @@ def _find_biggest_person(person_by_id):
     return best_id, best_person
 
 
-# Clamp matches df_params.json target_bbox_height min/max
-_TGT_BH_MIN = 0.05
-_TGT_BH_MAX = 0.9
+_SOT_IOU_THRESH = 0.3
+_SOT_MOT_REFRESH_INTERVAL = 150  # frames (~5s at 30fps)
+
+
+def _run_sot(persons, last_bbox):
+    """Lightweight single-object tracking: IOU match against last known bbox.
+
+    Returns (matched_person, new_bbox_scaled) or (None, None) if lost.
+    last_bbox is [x1, y1, x2, y2] in SCALE (1000) coordinates.
+    """
+    SCALE = 1000.0
+    n = len(persons)
+    det_bboxes = np.empty((n, 4), dtype=np.float32)
+    for i, person in enumerate(persons):
+        bbox = person.get_bbox()
+        det_bboxes[i, 0] = bbox.xmin() * SCALE
+        det_bboxes[i, 1] = bbox.ymin() * SCALE
+        det_bboxes[i, 2] = (bbox.xmin() + bbox.width()) * SCALE
+        det_bboxes[i, 3] = (bbox.ymin() + bbox.height()) * SCALE
+
+    ious = iou_batch(last_bbox.reshape(1, 4), det_bboxes)  # shape (1, N)
+    if ious.size == 0:
+        return None, None
+
+    best_idx = np.argmax(ious[0])
+    if ious[0, best_idx] < _SOT_IOU_THRESH:
+        return None, None
+
+    return persons[best_idx], det_bboxes[best_idx]
+
+
+# Clamp matches the UI Target Size slider min/max
+_TGT_BH_MIN = 0.10
+_TGT_BH_MAX = 0.25
 
 
 def capture_bbox_setpoint_from_height(config, height: float, source: str = "lock") -> Optional[float]:
@@ -143,22 +177,68 @@ def _capture_bbox_setpoint(config, person):
 
 
 # ---------------------------------------------------------------------------
+# Test log helpers
+# ---------------------------------------------------------------------------
+
+def _log_detections(user_data, persons, person_to_id):
+    if user_data._frame_log_data is None:
+        return
+    user_data._frame_log_data["detections"] = [
+        {
+            "id": person_to_id.get(id(p)),
+            "bbox": [
+                round(p.get_bbox().xmin(), 4),
+                round(p.get_bbox().ymin(), 4),
+                round(p.get_bbox().width(), 4),
+                round(p.get_bbox().height(), 4),
+            ],
+            "score": round(p.get_confidence(), 3),
+        }
+        for p in persons
+    ]
+
+
+def _log_mode(user_data, mode, followed_id):
+    if user_data._frame_log_data is None:
+        return
+    user_data._frame_log_data["mode"] = mode
+    user_data._frame_log_data["followed_id"] = followed_id
+
+
+# ---------------------------------------------------------------------------
 # Main app callback
 # ---------------------------------------------------------------------------
 
 def app_callback(element, buffer, user_data):
     """Tiling pipeline callback: follow operator-selected person, update shared state.
 
-    ByteTracker runs synchronously in the callback:
+    Tracker runs synchronously in the callback:
     1. Convert detections to Nx5 array, run tracker.update() synchronously
     2. Each returned track has input_index pointing to the matched detection
     3. Build person_by_id directly -- no cross-frame IoU re-matching needed
     """
     _perf_t0 = user_data.perf.frame_start()
+    if user_data.test_log_file is not None:
+        user_data.frame_index += 1
+        user_data._frame_log_data = {
+            "t": time.time(),
+            "frame": user_data.frame_index,
+            "mode": "",
+            "followed_id": None,
+            "detections": [],
+        }
+    else:
+        user_data._frame_log_data = None
     try:
         _app_callback_inner(element, buffer, user_data)
     finally:
         user_data.perf.frame_end(_perf_t0, user_data.ui_state)
+        if user_data.test_log_file is not None and user_data._frame_log_data is not None:
+            try:
+                user_data.test_log_file.write(
+                    json.dumps(user_data._frame_log_data) + "\n")
+            except (ValueError, OSError):
+                pass
 
 
 def _app_callback_inner(element, buffer, user_data):
@@ -172,7 +252,10 @@ def _app_callback_inner(element, buffer, user_data):
     auto_select = bool(getattr(config, "auto_select", True)) if config is not None else True
 
     if not persons:
-        user_data.byte_tracker.update(_EMPTY_DET_ARRAY)
+        user_data.tracker.update(_EMPTY_DET_ARRAY)
+        user_data.sot_active = False
+        user_data.sot_last_bbox = None
+        user_data.sot_frames = 0
         user_data.shared_state.update(None, available_ids=set())
         if target_state is not None and target_state.get_target() is not None:
             reid_mgr = user_data.reid_manager
@@ -201,20 +284,63 @@ def _app_callback_inner(element, buffer, user_data):
         _update_ui(ui_state, [], {}, None, paused=_paused)
         if target_state is None or target_state.get_target() is None:
             LOGGER.debug("[SEARCH MODE] No person detected in frame")
+        _log_mode(user_data, "no-persons",
+                  target_state.get_target() if target_state else None)
         return
 
-    available_ids, person_by_id, person_to_id = _run_tracker(
-        user_data.byte_tracker, persons)
-
-    # Attach tracking IDs to Hailo detection objects so hailooverlay renders them
-    for person in persons:
-        track_id = person_to_id.get(id(person))
-        if track_id is not None:
-            person.add_object(hailo.HailoUniqueID(track_id, hailo.TRACKING_ID))
-
-    # --- Target selection ---
+    # --- SOT/MOT dispatch ---
     target_id = target_state.get_target() if target_state is not None else None
     reid_manager = user_data.reid_manager
+
+    use_sot = (
+        user_data.sot_enabled
+        and target_id is not None
+        and user_data.sot_active
+        and user_data.sot_last_bbox is not None
+        and user_data.sot_target_id == target_id
+        and user_data.sot_frames < _SOT_MOT_REFRESH_INTERVAL
+    )
+
+    if use_sot:
+        matched, new_bbox = _run_sot(persons, user_data.sot_last_bbox)
+        if matched is not None:
+            # SOT succeeded
+            user_data.sot_last_bbox = new_bbox
+            user_data.sot_frames += 1
+            matched.add_object(hailo.HailoUniqueID(target_id, hailo.TRACKING_ID))
+            person_by_id = {target_id: matched}
+            person_to_id = {id(matched): target_id}
+            available_ids = {target_id}
+        else:
+            # SOT lost the target — fall back to MOT
+            LOGGER.info("[SOT→MOT] Target lost after %d SOT frames — resetting tracker",
+                        user_data.sot_frames)
+            user_data.sot_active = False
+            user_data.sot_last_bbox = None
+            user_data.sot_frames = 0
+            user_data.tracker.reset()
+            available_ids, person_by_id, person_to_id = _run_tracker(
+                user_data.tracker, persons)
+            for person in persons:
+                tid = person_to_id.get(id(person))
+                if tid is not None:
+                    person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
+    else:
+        # Full MOT — no target, SOT not active, or periodic refresh
+        if user_data.sot_enabled and user_data.sot_active and user_data.sot_frames >= _SOT_MOT_REFRESH_INTERVAL:
+            LOGGER.debug("[SOT] Periodic MOT refresh after %d frames", user_data.sot_frames)
+            user_data.tracker.reset()
+            user_data.sot_frames = 0
+        available_ids, person_by_id, person_to_id = _run_tracker(
+            user_data.tracker, persons)
+        for person in persons:
+            tid = person_to_id.get(id(person))
+            if tid is not None:
+                person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
+
+    _log_detections(user_data, persons, person_to_id)
+
+    # --- Target selection ---
 
     best = None
     follow_mode = ""
@@ -235,8 +361,28 @@ def _app_callback_inner(element, buffer, user_data):
                         reid_manager.update_gallery(
                             frame_bgr, best.get_bbox(),
                             user_data.video_width, user_data.video_height)
+
+            # Activate SOT for next frame (if SOT mode enabled)
+            if user_data.sot_enabled:
+                SCALE = 1000.0
+                tbbox = best.get_bbox()
+                user_data.sot_last_bbox = np.array([
+                    tbbox.xmin() * SCALE,
+                    tbbox.ymin() * SCALE,
+                    (tbbox.xmin() + tbbox.width()) * SCALE,
+                    (tbbox.ymin() + tbbox.height()) * SCALE,
+                ], dtype=np.float32)
+                user_data.sot_target_id = target_id
+                if not user_data.sot_active:
+                    user_data.sot_active = True
+                    user_data.sot_frames = 0
+                    LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", target_id)
         else:
-            # Target lost by tracker
+            # Target lost by tracker — reset SOT state and try ReID re-identification
+            user_data.sot_active = False
+            user_data.sot_last_bbox = None
+            user_data.sot_frames = 0
+
             if reid_manager is not None and reid_manager.has_gallery and person_by_id:
                 # ReID gallery exists — try re-identification
                 last_seen = target_state.get_last_seen()
@@ -267,6 +413,7 @@ def _app_callback_inner(element, buffer, user_data):
                         # ReID didn't match — hold position and retry next frame
                         user_data.shared_state.update(None, available_ids=available_ids)
                         _update_ui(ui_state, persons, person_to_id, None)
+                        _log_mode(user_data, "reid-search", target_id)
                         return
             else:
                 # No ReID gallery — return to auto mode (or IDLE if auto-select disabled)
@@ -283,12 +430,18 @@ def _app_callback_inner(element, buffer, user_data):
     target_id = target_state.get_target() if target_state is not None else None
 
     if target_id is None and best is None:
+        # No explicit target — reset SOT state and decide between idle, hold, or auto-select
+        user_data.sot_active = False
+        user_data.sot_last_bbox = None
+        user_data.sot_frames = 0
+
         if target_state is not None and target_state.is_paused():
             # True IDLE — hold position
             user_data.shared_state.update(None, available_ids=available_ids)
             _update_ui(ui_state, persons, person_to_id, None, paused=True)
             LOGGER.debug("[IDLE] Paused. Available: %s",
                         sorted(available_ids) if available_ids else "none")
+            _log_mode(user_data, "idle", None)
             return
         if not auto_select:
             # Auto-select disabled — pilot-led workflow. Hold position; wait for operator click.
@@ -296,6 +449,7 @@ def _app_callback_inner(element, buffer, user_data):
             _update_ui(ui_state, persons, person_to_id, None, paused=True)
             LOGGER.debug("[IDLE] auto-select off — waiting for operator selection. Available: %s",
                         sorted(available_ids) if available_ids else "none")
+            _log_mode(user_data, "idle-no-auto", None)
             return
         # AUTO mode — select biggest person
         biggest_id, biggest_person = _find_biggest_person(person_by_id)
@@ -312,15 +466,31 @@ def _app_callback_inner(element, buffer, user_data):
             follow_mode = f"AUTO→ID {biggest_id}"
             LOGGER.debug("[AUTO] Selected biggest person ID %s. Available: %s",
                         biggest_id, sorted(available_ids) if available_ids else "none")
+            # Activate SOT for next frame (if SOT mode enabled)
+            if user_data.sot_enabled:
+                SCALE = 1000.0
+                tbbox = biggest_person.get_bbox()
+                user_data.sot_last_bbox = np.array([
+                    tbbox.xmin() * SCALE,
+                    tbbox.ymin() * SCALE,
+                    (tbbox.xmin() + tbbox.width()) * SCALE,
+                    (tbbox.ymin() + tbbox.height()) * SCALE,
+                ], dtype=np.float32)
+                user_data.sot_target_id = biggest_id
+                user_data.sot_active = True
+                user_data.sot_frames = 0
+                LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", biggest_id)
         else:
             user_data.shared_state.update(None, available_ids=available_ids)
             _update_ui(ui_state, persons, person_to_id, None)
+            _log_mode(user_data, "auto-no-tracked", None)
             return
 
     if best is None:
         # Safety fallback — should not normally reach here
         user_data.shared_state.update(None, available_ids=available_ids)
         _update_ui(ui_state, persons, person_to_id, None)
+        _log_mode(user_data, "fallback", None)
         return
 
     bbox = best.get_bbox()
@@ -353,6 +523,8 @@ def _app_callback_inner(element, buffer, user_data):
     available_str = f"Available: {sorted(available_ids)}" if available_ids else ""
     LOGGER.debug("[FOLLOWING %s] conf=%.2f center=(%.2f,%.2f) h=%.2f %s",
                 follow_mode, best.get_confidence(), cx, cy, bbox.height(), available_str)
+    _log_mode(user_data, follow_mode,
+              target_state.get_target() if target_state else None)
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +625,37 @@ def _shm_source_pipeline(video_source, video_width, video_height, frame_rate, na
     )
 
 
+def _udp_h264_source_pipeline(video_source, video_width, video_height, frame_rate, name="source"):
+    """Build a GStreamer source pipeline for an RTP/H.264 UDP stream.
+
+    The hailo-apps SOURCE_PIPELINE for `udp://` assumes raw MJPEG datagrams
+    and pipes `udpsrc ! jpegdec`, which fails immediately on RTP-framed input
+    (`Not a JPEG file: starts with 0x80 0x60` — `0x80` = RTP v2, `0x60` = pt 96).
+
+    Gazebo's `gz-video-bridge` and most simulators send H.264 inside RTP, so
+    we replace that branch here with `udpsrc ! rtph264depay ! avdec_h264`.
+    """
+    from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE
+
+    port = str(video_source).rsplit(':', 1)[-1]
+    caps = "application/x-rtp,media=video,encoding-name=H264,payload=96"
+
+    source_element = (
+        f'udpsrc port={port} caps="{caps}" name={name} ! '
+        f'{QUEUE(name=f"{name}_queue_rtp")} ! '
+        f'rtph264depay ! h264parse ! avdec_h264 name={name}_decodebin ! '
+    )
+    return (
+        f"{source_element} "
+        f"{QUEUE(name=f'{name}_scale_q')} ! "
+        f"videoscale name={name}_videoscale n-threads=2 ! "
+        f"{QUEUE(name=f'{name}_convert_q')} ! "
+        f"videoconvert n-threads=3 name={name}_convert qos=false ! "
+        f"video/x-raw, pixel-aspect-ratio=1/1, format=RGB, "
+        f"width={video_width}, height={video_height}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pipeline app factory
 # ---------------------------------------------------------------------------
@@ -461,7 +664,8 @@ def _shm_source_pipeline(video_source, video_width, video_height, frame_rate, na
 def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None, ui_fps=10,
                parser: Optional[argparse.ArgumentParser] = None,
                record_enabled=False, record_dir=None, reid_manager=None,
-               reid_search_timeout: float = 20.0, controller_config=None):
+               reid_search_timeout: float = 20.0, controller_config=None,
+               tracker_name=None, log_perf=False, sot_enabled=False):
     """Create the tiling pipeline app with drone-follow callback.
 
     Follows the hailo-app pattern: build parser, create user_data,
@@ -496,20 +700,46 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
     class DroneFollowUserData(app_callback_class):
         def __init__(self, shared_state, target_state=None, ui_state=None,
-                     byte_tracker=None, reid_manager=None, reid_search_timeout=20.0,
-                     controller_config=None):
+                     tracker=None, reid_manager=None, reid_search_timeout=20.0,
+                     controller_config=None, log_perf=False, sot_enabled=False):
             super().__init__()
             self.shared_state = shared_state
             self.target_state = target_state
             self.ui_state = ui_state
-            self.byte_tracker = byte_tracker
+            self.tracker = tracker
             self.reid_manager = reid_manager
             self.reid_search_timeout = reid_search_timeout
             self.controller_config = controller_config
-            self.perf = PerfTracker()
+            self.perf = PerfTracker(
+                log_perf=log_perf,
+                tracker_metrics=tracker.metrics if tracker is not None else None,
+            )
+            # SOT state (only used when sot_enabled)
+            self.sot_enabled = sot_enabled
+            self.sot_active = False
+            self.sot_last_bbox = None
+            self.sot_target_id = None
+            self.sot_frames = 0
             # Set after app creation so callback can extract frames for ReID
             self.video_width = 0
             self.video_height = 0
+            # Per-frame JSONL test log (opened lazily via open_test_log())
+            self.test_log_file = None
+            self.frame_index = 0
+            self._frame_log_data = None
+
+        def open_test_log(self, path):
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            self.test_log_file = open(path, "w", buffering=1)
+            LOGGER.info("[test-log] writing per-frame detection log to %s", path)
+
+        def close_test_log(self):
+            if self.test_log_file is not None:
+                try:
+                    self.test_log_file.close()
+                except OSError:
+                    pass
+                self.test_log_file = None
 
     class DroneFollowTilingApp(GStreamerTilingApp):
         """Tiling app with EOS handling and optional MJPEG appsink for web UI."""
@@ -694,10 +924,10 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 LOGGER.debug("SHM rebuild: waiting for Hailo DMA release")
                 time.sleep(2.0)
 
-            # Reset ByteTracker to clear stale predictions from old resolution
-            if hasattr(self, 'user_data') and hasattr(self.user_data, 'byte_tracker'):
-                self.user_data.byte_tracker.reset()
-                LOGGER.debug("SHM rebuild: ByteTracker reset")
+            # Reset tracker to clear stale predictions from old resolution
+            if hasattr(self, 'user_data') and hasattr(self.user_data, 'tracker'):
+                self.user_data.tracker.reset()
+                LOGGER.debug("SHM rebuild: tracker reset")
 
             # Now build a fresh pipeline from scratch (skip base class
             # teardown since we already did it above).
@@ -838,15 +1068,23 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             openhd_stream = getattr(self.options_menu, 'openhd_stream', False)
             no_display = getattr(self.options_menu, 'no_display', False)
             is_shm = str(self.video_source).startswith('shm://')
+            is_udp = str(self.video_source).startswith('udp://')
 
             # If no custom output needed, delegate to parent
-            if not self._ui_enabled and not self._record_enabled and not openhd_stream and not is_shm and not no_display:
+            if not self._ui_enabled and not self._record_enabled and not openhd_stream and not is_shm and not is_udp and not no_display:
                 return super().get_pipeline_string()
 
             # Build pipeline with tee: one branch for display, one for MJPEG appsink,
             # and (if recording is enabled) one raw-RGB appsink for ffmpeg subprocess.
             if is_shm:
                 source_pipeline = _shm_source_pipeline(
+                    self.video_source, self.video_width, self.video_height,
+                    self.frame_rate,
+                )
+            elif is_udp:
+                # Gazebo / sim video bridges send RTP-framed H.264 over UDP.
+                # Upstream SOURCE_PIPELINE for udp:// only handles raw MJPEG.
+                source_pipeline = _udp_h264_source_pipeline(
                     self.video_source, self.video_width, self.video_height,
                     self.frame_rate,
                 )
@@ -989,15 +1227,22 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
             return ' ! '.join(pipeline_parts)
 
-    tracker = ByteTracker(
+    _tracker_name = tracker_name or "byte"
+    _t0 = time.monotonic()
+    _inner_tracker = create_tracker(
+        _tracker_name,
         track_thresh=0.4, track_buffer=90, match_thresh=0.5, frame_rate=30,
     )
-    LOGGER.info("[tracking] ByteTracker running synchronously in callback")
+    _init_ms = (time.monotonic() - _t0) * 1000.0
+    tracker = MetricsTracker(_inner_tracker, init_time_ms=_init_ms)
+    LOGGER.info("[tracking] %s tracker (init %.1fms) running synchronously in callback",
+                _tracker_name, _init_ms)
 
     user_data = DroneFollowUserData(
-        shared_state, target_state, ui_state=ui_state, byte_tracker=tracker,
+        shared_state, target_state, ui_state=ui_state, tracker=tracker,
         reid_manager=reid_manager, reid_search_timeout=reid_search_timeout,
-        controller_config=controller_config,
+        controller_config=controller_config, log_perf=log_perf,
+        sot_enabled=sot_enabled,
     )
     app = DroneFollowTilingApp(
         app_callback, user_data, parser=parser, eos_reached=eos_reached,

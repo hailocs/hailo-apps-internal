@@ -211,9 +211,9 @@ sequenceDiagram
         SDS-->>CL: Detection + frame_count
         Note over CL: Check staleness (0.5s),<br/>search timeout (60s),<br/>IDLE mode
         CL->>CTRL: detection, config
-        Note over CTRL: center_x → yaw (sqrt P)<br/>center_y → forward (sqrt P)<br/>bbox_height → down (plain P)
-        CTRL-->>CL: VelocityCommand(fwd, right, down, yaw)
-        Note over CL: Altitude floor/ceiling clamp<br/>(min_altitude..max_altitude)
+        Note over CTRL: center_x → yaw (sqrt P)<br/>bbox_height → forward (distance P)<br/>down=0 (PX4 alt-hold)
+        CTRL-->>CL: VelocityCommand(fwd, right, 0, yaw)
+        Note over CL: PX4 alt-hold P-loop on (current_alt − target_altitude)<br/>Altitude floor/ceiling clamp<br/>(min_altitude..max_altitude)
         CL->>VAPI: send(cmd)
         Note over VAPI: Clamp all axes<br/>Per-axis EMA in VelocityCommandAPI
         VAPI->>PX4: set_velocity_body(fwd, right, down, yaw)
@@ -508,20 +508,15 @@ stateDiagram-v2
     TRACK --> IDLE: operator pauses or lock lost
     IDLE --> TRACK: operator resumes
 
-    TRACK --> ORBIT: follow_mode=orbit
-    ORBIT --> TRACK: follow_mode=follow
-    ORBIT --> SEARCH_WAIT: detection lost
-
     LANDING --> [*]
 ```
 
 | Mode | Behaviour |
 |------|-----------|
-| **TRACK** | Full 4-axis control: yaw (center_x) + forward (center_y) + altitude (bbox_height) + optional orbit |
+| **TRACK** | yaw (center_x → yawspeed) + forward (bbox_height → distance), altitude held by PX4 |
 | **SEARCH_WAIT** | Hold last velocity command (< 2s buffer) |
 | **SEARCH** | Slow yaw spin (10 deg/s) toward last-seen side, dampened forward |
 | **IDLE** | Zero velocity — hover in place |
-| **ORBIT** | TRACK + constant lateral velocity (drone circles subject) |
 | **LANDING** | Shutdown then `action.land()` |
 
 For the control math behind each mode, see

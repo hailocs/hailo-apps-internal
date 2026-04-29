@@ -1,16 +1,51 @@
 {
   "version": 1,
   "groups": [
-    {"id": "yaw",    "label": "YAW CONTROL",         "order": 1},
-    {"id": "fwd",    "label": "FORWARD / BACKWARD",   "order": 2},
-    {"id": "target", "label": "TARGET & DEAD ZONE",    "order": 4},
-    {"id": "alt",    "label": "ALTITUDE",               "order": 5},
-    {"id": "flight", "label": "FLIGHT",                "order": 6},
-    {"id": "lat",    "label": "LATERAL",                "order": 3},
-    {"id": "track",  "label": "TRACKING",              "order": 7},
-    {"id": "video",  "label": "VIDEO",                 "order": 8},
-    {"id": "rec",    "label": "RECORDING",              "order": 9},
-    {"id": "config", "label": "CONFIG PERSIST",          "order": 10}
+    {
+      "id": "yaw",
+      "label": "YAW CONTROL",
+      "order": 1
+    },
+    {
+      "id": "fwd",
+      "label": "FORWARD / BACKWARD",
+      "order": 2
+    },
+    {
+      "id": "target",
+      "label": "TARGET & DEAD ZONE",
+      "order": 4
+    },
+    {
+      "id": "alt",
+      "label": "ALTITUDE",
+      "order": 5
+    },
+    {
+      "id": "flight",
+      "label": "FLIGHT",
+      "order": 6
+    },
+    {
+      "id": "track",
+      "label": "TRACKING",
+      "order": 7
+    },
+    {
+      "id": "video",
+      "label": "VIDEO",
+      "order": 8
+    },
+    {
+      "id": "rec",
+      "label": "RECORDING",
+      "order": 9
+    },
+    {
+      "id": "config",
+      "label": "CONFIG PERSIST",
+      "order": 10
+    }
   ],
   "params": [
     {
@@ -19,7 +54,7 @@
       "type": "float",
       "default": 5.0,
       "min": 0.0,
-      "max": 20.0,
+      "max": 10.0,
       "step": 0.1,
       "group": "yaw",
       "order": 1,
@@ -37,8 +72,8 @@
       "step": 0.01,
       "group": "yaw",
       "order": 2,
-      "label": "Yaw smoothing (α)",
-      "description": "Low-pass filter coefficient — lower = smoother",
+      "label": "Yaw smoothing (\u03b1)",
+      "description": "Low-pass filter coefficient \u2014 lower = smoother",
       "read_only": false
     },
     {
@@ -69,7 +104,7 @@
       "type": "float",
       "default": 90.0,
       "min": 10.0,
-      "max": 360.0,
+      "max": 180.0,
       "step": 5.0,
       "group": "yaw",
       "order": 5,
@@ -83,49 +118,21 @@
       "type": "float",
       "default": 2.0,
       "min": 0.0,
-      "max": 15.0,
+      "max": 8.0,
       "step": 0.5,
       "group": "yaw",
       "order": 6,
       "label": "Dead-zone yaw (deg)",
-      "description": "Horizontal dead zone in degrees — target within this zone triggers no yaw",
-      "read_only": false
-    },
-    {
-      "id": "kp_forward",
-      "mavlink_id": "DF_KP_FWD",
-      "type": "float",
-      "default": 1.5,
-      "min": 0.0,
-      "max": 20.0,
-      "step": 0.1,
-      "group": "fwd",
-      "order": 1,
-      "label": "Forward P-gain",
-      "description": "Proportional gain for moving towards the target",
-      "read_only": false
-    },
-    {
-      "id": "kp_backward",
-      "mavlink_id": "DF_KP_BACK",
-      "type": "float",
-      "default": 2.5,
-      "min": 0.0,
-      "max": 20.0,
-      "step": 0.1,
-      "group": "fwd",
-      "order": 2,
-      "label": "Backward P-gain",
-      "description": "Proportional gain for reversing away when too close",
+      "description": "Horizontal dead zone in degrees \u2014 target within this zone triggers no yaw",
       "read_only": false
     },
     {
       "id": "max_forward",
       "mavlink_id": "DF_MAX_FWD",
       "type": "float",
-      "default": 1.0,
+      "default": 1.5,
       "min": 0.0,
-      "max": 10.0,
+      "max": 3.0,
       "step": 0.1,
       "group": "fwd",
       "order": 3,
@@ -139,7 +146,7 @@
       "type": "float",
       "default": 1.5,
       "min": 0.0,
-      "max": 10.0,
+      "max": 3.0,
       "step": 0.1,
       "group": "fwd",
       "order": 4,
@@ -157,8 +164,8 @@
       "step": 0.01,
       "group": "fwd",
       "order": 5,
-      "label": "Forward smoothing (α)",
-      "description": "Low-pass filter coefficient for forward/backward commands — lower = smoother, higher = more responsive",
+      "label": "Forward smoothing (\u03b1)",
+      "description": "Low-pass filter coefficient for forward/backward commands \u2014 lower = smoother, higher = more responsive",
       "read_only": false
     },
     {
@@ -178,37 +185,12 @@
       "type": "float",
       "default": 1.5,
       "min": 0.1,
-      "max": 10.0,
+      "max": 5.0,
       "step": 0.1,
       "group": "fwd",
       "order": 7,
-      "label": "Max forward accel (m/s²)",
-      "description": "Slew-rate cap on forward velocity — hard m/s² bound independent of max-forward and of the EMA filter. Limits PX4 pitch transients that can push the subject out of frame.",
-      "read_only": false
-    },
-    {
-      "id": "right_alpha",
-      "mavlink_id": "DF_RT_ALPHA",
-      "type": "float",
-      "default": 0.3,
-      "min": 0.01,
-      "max": 1.0,
-      "step": 0.01,
-      "group": "lat",
-      "order": 1,
-      "label": "Lateral smoothing (α)",
-      "description": "Low-pass filter coefficient for lateral (orbit) commands — lower = smoother, higher = more responsive",
-      "read_only": false
-    },
-    {
-      "id": "smooth_right",
-      "mavlink_id": "DF_SMTH_RT",
-      "type": "bool",
-      "default": true,
-      "group": "lat",
-      "order": 2,
-      "label": "Smooth lateral",
-      "description": "Enable exponential smoothing on lateral commands",
+      "label": "Max forward accel (m/s\u00b2)",
+      "description": "Slew-rate cap on forward velocity \u2014 hard m/s\u00b2 bound independent of max-forward and of the EMA filter. Limits PX4 pitch transients that can push the subject out of frame.",
       "read_only": false
     },
     {
@@ -221,8 +203,8 @@
       "step": 0.01,
       "group": "alt",
       "order": 7,
-      "label": "Altitude smoothing (α)",
-      "description": "Low-pass filter coefficient for altitude hold commands — lower = smoother, higher = more responsive",
+      "label": "Altitude smoothing (\u03b1)",
+      "description": "Low-pass filter coefficient for altitude hold commands \u2014 lower = smoother, higher = more responsive",
       "read_only": false
     },
     {
@@ -237,96 +219,54 @@
       "read_only": false
     },
     {
-      "id": "orbit_speed_m_s",
-      "mavlink_id": "DF_ORBIT_SPD",
+      "id": "kp_distance",
+      "mavlink_id": "DF_KP_DIST",
       "type": "float",
-      "default": 1.0,
+      "default": 0.6,
       "min": 0.0,
       "max": 3.0,
       "step": 0.1,
-      "group": "lat",
-      "order": 5,
-      "label": "Orbit speed (m/s)",
-      "description": "Lateral velocity used when orbit mode is active.",
+      "group": "fwd",
+      "order": 8,
+      "label": "Distance P-gain (approach)",
+      "description": "Approach gain on (target/bbox - 1) when factor > 0 (person too far). Lower than retreat gain by design \u2014 chasing is leisurely, retreating is safety.",
       "read_only": false
     },
     {
-      "id": "orbit_direction",
-      "mavlink_id": "DF_ORBIT_DIR",
-      "type": "int",
-      "default": 1,
-      "min": -1,
-      "max": 1,
-      "step": 2,
-      "group": "lat",
-      "order": 6,
-      "label": "Orbit direction",
-      "description": "+1 = clockwise, -1 = counter-clockwise. Only active in orbit mode.",
-      "read_only": false
-    },
-    {
-      "id": "target_center_y",
-      "mavlink_id": "DF_TGT_CY",
+      "id": "kp_distance_back",
+      "mavlink_id": "DF_KP_DIST_B",
       "type": "float",
-      "default": 0.5,
-      "min": 0.1,
-      "max": 0.9,
-      "step": 0.05,
-      "group": "alt",
-      "order": 1,
-      "label": "Target center Y",
-      "description": "Desired vertical position of the person in frame (0 = top, 1 = bottom). Altitude adjusts to keep the person at this Y.",
-      "read_only": false
-    },
-    {
-      "id": "dead_zone_y_deg",
-      "mavlink_id": "DF_DZ_Y",
-      "type": "float",
-      "default": 2.0,
+      "default": 2.5,
       "min": 0.0,
-      "max": 10.0,
-      "step": 0.5,
-      "group": "alt",
-      "order": 2,
-      "label": "Dead-zone Y (deg)",
-      "description": "Vertical dead-zone in degrees. Target within this zone triggers no altitude change.",
-      "read_only": false
-    },
-    {
-      "id": "kp_altitude",
-      "mavlink_id": "DF_KP_ALT",
-      "type": "float",
-      "default": 3.0,
-      "min": 0.0,
-      "max": 10.0,
+      "max": 5.0,
       "step": 0.1,
-      "group": "alt",
-      "order": 3,
-      "label": "Altitude P-gain",
-      "description": "Proportional gain for altitude correction based on vertical error.",
+      "group": "fwd",
+      "order": 9,
+      "label": "Distance P-gain (retreat)",
+      "description": "Retreat gain on (target/bbox - 1) when factor < 0 (person too close). Higher than the approach gain so retreat saturates max_backward before the bbox hits the panic safety threshold \u2014 avoids the abrupt max-retreat step.",
       "read_only": false
     },
     {
       "id": "target_bbox_height",
       "mavlink_id": "DF_TGT_BH",
       "type": "float",
-      "default": 0.3,
+      "default": 0.25,
       "min": 0.05,
-      "max": 0.9,
+      "max": 0.25,
       "step": 0.01,
       "group": "target",
       "order": 1,
       "label": "Target bbox height (0-1)",
-      "description": "Desired person height in frame (fraction). Drives altitude — smaller = drone flies higher, larger = flies lower. Captured from the target's current bbox at lock time so the drone holds the pilot-chosen distance; adjust here to move closer/further.",
+      "description": "Desired person height in frame (fraction). Drives altitude \u2014 smaller = drone flies higher, larger = flies lower. Captured from the target's current bbox at lock time so the drone holds the pilot-chosen distance; adjust here to move closer/further.",
       "read_only": false
     },
     {
       "id": "dead_zone_bbox_percent",
       "mavlink_id": "DF_DZ_BH_PCT",
       "type": "float",
-      "default": 15.0,
+      "default": 10.0,
       "min": 0.0,
-      "max": 50.0,
+      "max": 25.0,
       "step": 1.0,
       "group": "target",
       "order": 2,
@@ -354,26 +294,26 @@
       "type": "float",
       "default": 2.0,
       "min": 1.0,
-      "max": 10.0,
+      "max": 5.0,
       "step": 0.5,
       "group": "alt",
       "order": 5,
       "label": "Min altitude (m)",
-      "description": "Minimum allowed altitude — altitude commands are clamped above this.",
+      "description": "Minimum allowed altitude \u2014 altitude commands are clamped above this.",
       "read_only": false
     },
     {
       "id": "max_altitude",
       "mavlink_id": "DF_MAX_ALT",
       "type": "float",
-      "default": 20.0,
-      "min": 5.0,
-      "max": 50.0,
+      "default": 4.0,
+      "min": 3.0,
+      "max": 10.0,
       "step": 1.0,
       "group": "alt",
       "order": 6,
       "label": "Max altitude (m)",
-      "description": "Maximum allowed altitude — altitude commands are clamped below this.",
+      "description": "Maximum allowed altitude \u2014 altitude commands are clamped below this.",
       "read_only": false
     },
     {
@@ -382,7 +322,7 @@
       "type": "float",
       "default": 3.0,
       "min": 1.0,
-      "max": 20.0,
+      "max": 8.0,
       "step": 0.5,
       "group": "flight",
       "order": 1,
@@ -400,7 +340,7 @@
       "group": "track",
       "order": 1,
       "label": "Active tracked ID",
-      "description": "Read-only — the person ID currently being followed (0 = none)",
+      "description": "Read-only \u2014 the person ID currently being followed (0 = none)",
       "read_only": true,
       "hidden": true
     },
@@ -427,7 +367,7 @@
       "group": "track",
       "order": 3,
       "label": "Auto-select on clear/loss",
-      "description": "When on, AUTO mode re-acquires the biggest visible person whenever the target is cleared or lost. When off, the drone holds position — pilot-led workflow where the operator explicitly picks targets.",
+      "description": "When on, AUTO mode re-acquires the biggest visible person whenever the target is cleared or lost. When off, the drone holds position \u2014 pilot-led workflow where the operator explicitly picks targets.",
       "read_only": false
     },
     {
@@ -452,7 +392,7 @@
       "group": "rec",
       "order": 1,
       "label": "Air-side recording",
-      "description": "Toggle air-side recording (post-overlay frames → drone_follow/recordings/*.mp4 on the drone). Available whenever drone-follow runs with --openhd-stream. Air-side recordings have fewer compression artifacts than ground-side and survive RF dropouts.",
+      "description": "Toggle air-side recording (post-overlay frames \u2192 drone_follow/recordings/*.mp4 on the drone). Available whenever drone-follow runs with --openhd-stream. Air-side recordings have fewer compression artifacts than ground-side and survive RF dropouts.",
       "read_only": false
     },
     {
@@ -463,7 +403,7 @@
       "group": "config",
       "order": 1,
       "label": "Save config (air)",
-      "description": "Momentary trigger — set to ON to save the current controller values to df_config.json on the air unit. The toggle returns to OFF automatically once the save completes. The saved JSON is persisted on the drone's SD card and can be loaded on next boot via `drone-follow --config <path>`.",
+      "description": "Momentary trigger \u2014 set to ON to save the current controller values to df_config.json on the air unit. The toggle returns to OFF automatically once the save completes. The saved JSON is persisted on the drone's SD card and can be loaded on next boot via `drone-follow --config <path>`.",
       "read_only": false
     },
     {
@@ -474,7 +414,7 @@
       "group": "config",
       "order": 2,
       "label": "Load config (air)",
-      "description": "Momentary trigger — set to ON to live-reload controller values from df_config.json on the air unit into the running drone-follow. All sliders refresh from the reloaded values. Toggle returns to OFF when complete. Does nothing if no saved file exists.",
+      "description": "Momentary trigger \u2014 set to ON to live-reload controller values from df_config.json on the air unit into the running drone-follow. All sliders refresh from the reloaded values. Toggle returns to OFF when complete. Does nothing if no saved file exists.",
       "read_only": false
     }
   ]

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sdf version="1.9">
-  <world name="2_persons_diagonal">
-    <!-- Both persons walk diagonal paths in front of the drone (X>0).
-         They cross around (10, 0). z=1.0 so they stand on top of the ground
-         plane (matches the working 2_person_world). Speed ~0.7 m/s. -->
-    <actor name="person_1">
+  <world name="person_in_front">
+    <!-- A single stationary person standing 5 m in front of the drone spawn,
+         facing the drone. Use with --yaw-only (and without --takeoff-landing
+         if you want the drone to stay on the ground). -->
+    <actor name="Actor_stand">
       <skin>
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
       </skin>
-      <animation name="walking_person_1">
+      <animation name="walking">
         <filename>model://Walking actor/meshes/walk.dae</filename>
         <scale>1.0</scale>
         <interpolate_x>true</interpolate_x>
@@ -19,49 +19,8 @@
         <delay_start>0</delay_start>
         <auto_start>true</auto_start>
         <trajectory id="0" type="walking">
-          <!-- 20 s hold while drone arms + takes off -->
-          <waypoint><time>0</time>     <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
-          <waypoint><time>20</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
-          <!-- Walk NE diagonal to (15, 5) — 14.14 m in 20 s ≈ 0.71 m/s -->
-          <waypoint><time>40</time>    <pose>15 5 1.0 0 0 0.785398</pose></waypoint>
-          <!-- Pivot to face back -->
-          <waypoint><time>40.5</time>  <pose>15 5 1.0 0 0 -2.356194</pose></waypoint>
-          <!-- Walk back SW to (5, -5) -->
-          <waypoint><time>60.5</time>  <pose>5 -5 1.0 0 0 -2.356194</pose></waypoint>
-          <!-- Pivot to face forward again before loop restart -->
-          <waypoint><time>61</time>    <pose>5 -5 1.0 0 0 0.785398</pose></waypoint>
-        </trajectory>
-      </script>
-    </actor>
-    <actor name="person_2">
-      <!-- walk_red.dae is a recoloured copy of walk.dae with the sweater
-           material changed from green to red so the two persons are
-           visually distinguishable in the camera feed. -->
-      <skin>
-        <filename>model://Walking actor/meshes/walk_red.dae</filename>
-        <scale>1.0</scale>
-      </skin>
-      <animation name="walking_person_2">
-        <filename>model://Walking actor/meshes/walk_red.dae</filename>
-        <scale>1.0</scale>
-        <interpolate_x>true</interpolate_x>
-      </animation>
-      <script>
-        <loop>true</loop>
-        <delay_start>0</delay_start>
-        <auto_start>true</auto_start>
-        <trajectory id="0" type="walking">
-          <!-- 20 s hold while drone arms + takes off -->
-          <waypoint><time>0</time>     <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
-          <waypoint><time>20</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
-          <!-- Walk SE diagonal to (15, -5) — crosses person_1's path near (10, 0) -->
-          <waypoint><time>40</time>    <pose>15 -5 1.0 0 0 -0.785398</pose></waypoint>
-          <!-- Pivot to face back -->
-          <waypoint><time>40.5</time>  <pose>15 -5 1.0 0 0 2.356194</pose></waypoint>
-          <!-- Walk back NW to (5, 5) -->
-          <waypoint><time>60.5</time>  <pose>5 5 1.0 0 0 2.356194</pose></waypoint>
-          <!-- Pivot to face forward again before loop restart -->
-          <waypoint><time>61</time>    <pose>5 5 1.0 0 0 -0.785398</pose></waypoint>
+          <waypoint><time>0</time>     <pose>5 0 1 0 0 3.14159</pose></waypoint>
+          <waypoint><time>10000</time> <pose>5 0 1 0 0 3.14159</pose></waypoint>
         </trajectory>
       </script>
     </actor>
@@ -99,7 +58,9 @@
             </plane>
           </geometry>
           <surface>
-            <friction><ode/></friction>
+            <friction>
+              <ode/>
+            </friction>
             <bounce/>
             <contact/>
           </surface>
@@ -117,19 +78,26 @@
             <specular>0.8 0.8 0.8 1</specular>
           </material>
         </visual>
-        <pose>0 0 0 0 0 0</pose>
+        <pose>0 0 0 0 -0 0</pose>
         <inertial>
-          <pose>0 0 0 0 0 0</pose>
+          <pose>0 0 0 0 -0 0</pose>
           <mass>1</mass>
-          <inertia><ixx>1</ixx><ixy>0</ixy><ixz>0</ixz><iyy>1</iyy><iyz>0</iyz><izz>1</izz></inertia>
+          <inertia>
+            <ixx>1</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>1</iyy>
+            <iyz>0</iyz>
+            <izz>1</izz>
+          </inertia>
         </inertial>
         <enable_wind>false</enable_wind>
       </link>
-      <pose>0 0 0 0 0 0</pose>
+      <pose>0 0 0 0 -0 0</pose>
       <self_collide>false</self_collide>
     </model>
     <light name="sunUTC" type="directional">
-      <pose>0 0 500 0 0 0</pose>
+      <pose>0 0 500 0 -0 0</pose>
       <cast_shadows>true</cast_shadows>
       <intensity>1</intensity>
       <direction>0.001 0.625 -0.78</direction>
@@ -151,7 +119,7 @@
       <surface_model>EARTH_WGS84</surface_model>
       <world_frame_orientation>ENU</world_frame_orientation>
       <latitude_deg>47.397971057728974</latitude_deg>
-      <longitude_deg>8.546163739800146</longitude_deg>
+      <longitude_deg> 8.546163739800146</longitude_deg>
       <elevation>0</elevation>
     </spherical_coordinates>
   </world>
