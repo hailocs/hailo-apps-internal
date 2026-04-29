@@ -13,6 +13,7 @@ This guide provides instructions for installing the Hailo Application Infrastruc
 - [Manual Installation (Advanced)](#manual-installation-advanced)
 - [Hailo Suite Docker Installation](#hailo-suite-docker-installation)
 - [Post-Installation Verification](#post-installation-verification)
+- [Upgrading / Reinstalling](#upgrading--reinstalling)
 - [Uninstallation](#uninstallation)
 
 **Installing Hailo Packages (Prerequisites)**
@@ -407,6 +408,7 @@ After running any of the installation methods, you can verify that everything is
 *   **Driver Issues (RPi)**: If you see driver errors, ensure your kernel is up to date (`sudo apt update && sudo apt full-upgrade`).
 *   **`DEVICE_IN_USE()` Error**: This means the Hailo device is being used by another process. Run the cleanup script: `./scripts/kill_first_hailo.sh`.
 *   **GStreamer `cannot allocate memory in static TLS block` (RPi)**: This is a known issue. Add `export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1` to your `~/.bashrc` file and reboot.
+*   **Build Errors After Upgrade**: If you see ninja/meson errors or missing `.so` references after pulling a new version, run `sudo ./install.sh --force-cleanup` to clear stale build caches and reinstall cleanly.
 *   **Emoji Display Issues (RPi)**: If emoji icons (❌, ✅, etc.) are not displaying correctly in terminal output, install the Noto Color Emoji font:
     ```bash
     sudo apt-get update
@@ -420,6 +422,27 @@ After running any of the installation methods, you can verify that everything is
     ```
 
 </details>
+
+---
+
+## Upgrading / Reinstalling
+
+When upgrading to a new version of hailo-apps, use the `--force-cleanup` flag to remove stale build artifacts (e.g., old C++ postprocess caches) before reinstalling:
+
+```bash
+git pull
+sudo ./install.sh --force-cleanup
+```
+
+> **Note:** `--force-cleanup` removes the virtual environment, build caches, and downloaded resources before installation begins. Everything is recreated by `install.sh`.
+
+Alternatively, you can run the cleanup script manually before installing:
+
+```bash
+git pull
+sudo ./scripts/cleanup_installation.sh
+sudo ./install.sh
+```
 
 ---
 
