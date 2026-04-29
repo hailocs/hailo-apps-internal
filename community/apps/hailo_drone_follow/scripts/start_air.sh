@@ -1,5 +1,44 @@
 #!/bin/bash
-# Runs OpenHD air and drone-follow side by side on the drone (RPi)
+# Runs OpenHD air and drone-follow side by side on the drone (RPi).
+#
+# Two camera modes (see CLAUDE.md "OpenHD Camera Modes"):
+#   stream (default) — Mode A: drone-follow owns the CSI camera, encodes the
+#                      overlay and pushes RTP to OpenHD via --openhd-stream.
+#   shm              — Mode B: OpenHD owns the camera and tees raw NV12 to
+#                      /tmp/openhd_raw_video; drone-follow reads from SHM and
+#                      runs AI only (no encoding, no overlay in WFB stream).
+#
+# The companion install_air.sh writes the matching primary_camera_type and
+# /boot/openhd/hailo.txt flag — pass the same --mode to both.
+
+MODE="stream"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mode)
+            MODE="$2"; shift 2
+            ;;
+        -h|--help)
+            cat <<EOF
+Usage: $0 [--mode <stream|shm>]
+
+  --mode stream  (default) Mode A: drone-follow owns the camera, encodes overlay,
+                 pushes RTP to OpenHD on UDP 5500 (--openhd-stream).
+  --mode shm     Mode B: OpenHD owns the camera; drone-follow reads raw frames
+                 from /tmp/openhd_raw_video and does AI only.
+
+The mode must match how the air unit was configured by install_air.sh
+(primary_camera_type + /boot/openhd/hailo.txt).
+EOF
+            exit 0
+            ;;
+        *) echo "Unknown option: $1 (try --help)"; exit 1 ;;
+    esac
+done
+
+case "$MODE" in
+    stream|shm) ;;
+    *) echo "ERROR: --mode must be 'stream' or 'shm' (got: $MODE)"; exit 1 ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -44,7 +83,12 @@ else
     echo "No df_config.json found at $CONFIG_FILE — using ControllerConfig defaults"
 fi
 
-drone-follow --input rpi --openhd-stream "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 &
+case "$MODE" in
+    stream) MODE_ARGS=(--input rpi --openhd-stream) ;;
+    shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --no-display) ;;
+esac
+
+drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 &
 FOLLOW_PID=$!
 
 trap "kill $FOLLOW_PID 2>/dev/null; sudo kill $OPENHD_PID 2>/dev/null; wait" EXIT

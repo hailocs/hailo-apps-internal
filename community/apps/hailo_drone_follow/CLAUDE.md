@@ -78,10 +78,15 @@ By default (no `--takeoff-landing`), the app streams zero setpoints and waits fo
 ## Running
 
 ```bash
-# Real drone with OpenHD (RPi — starts OpenHD air + drone-follow):
+# Real drone with OpenHD — Mode A (default: drone-follow owns the camera):
 scripts/start_air.sh
-# (script invokes: drone-follow --input rpi --openhd-stream \
-#                                --connection tcpout://127.0.0.1:5760 --tiles-x 1 --tiles-y 1)
+# (invokes: drone-follow --input rpi --openhd-stream \
+#                        --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2)
+
+# Real drone with OpenHD — Mode B (OpenHD owns the camera, drone-follow reads SHM):
+scripts/start_air.sh --mode shm
+# (invokes: drone-follow --input shm:///tmp/openhd_raw_video --no-display \
+#                        --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2)
 
 # Manual OpenHD-mode invocation (e.g. with debug UI on the air unit):
 drone-follow --input rpi --openhd-stream --ui --no-display \
@@ -98,18 +103,15 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 
 ## OpenHD Camera Modes (Air Unit)
 
-`scripts/start_air.sh` runs **Mode A**: drone-follow owns the CSI camera (`--input rpi`), runs Hailo inference, encodes the overlay with x264, and pushes RTP to OpenHD on UDP 5500 (`--openhd-stream`). OpenHD relays that stream over the WFB radio link.
+There are two integration modes; both are supported by `scripts/install_air.sh` and `scripts/start_air.sh` via `--mode <stream|shm>`:
 
-For Mode A to work, OpenHD's primary camera type must be **5** (`X_CAM_TYPE_HAILO_AI`). Any other value (e.g. `31` = IMX219, the OpenHD default after a fresh build) makes OpenHD acquire the CSI camera itself at startup, and drone-follow's Picamera2 then fails with `Device or resource busy`.
+- **Mode A — `--mode stream`** *(default)*: drone-follow owns the CSI camera (`--input rpi`), runs Hailo inference, encodes the overlay with x264, and pushes RTP to OpenHD on UDP 5500 (`--openhd-stream`). OpenHD relays that stream over the WFB radio link. Requires `primary_camera_type=5` (`X_CAM_TYPE_HAILO_AI`); any other value (e.g. `31` = IMX219) makes OpenHD acquire the CSI camera itself and drone-follow's Picamera2 then fails with `Device or resource busy`. `/boot/openhd/hailo.txt` must NOT be present.
 
-Two ways to set it:
+- **Mode B — `--mode shm`**: OpenHD owns the camera and tees raw NV12 frames to a SHM socket. drone-follow reads from `/tmp/openhd_raw_video` (`--input shm://...`) and does AI only — no encoding, no overlay baked into the WFB stream. Requires `primary_camera_type` set to a libcamera value (`31` = IMX219, `32` = IMX708) and `/boot/openhd/hailo.txt` present.
 
-- **From QOpenHD (ground station):** Settings → Camera → Primary Camera Type = `5`. QOpenHD pushes the change via MAVLink and OpenHD persists it to the JSON below. Requires a paired radio link.
-- **Locally on the air unit:** edit `/usr/local/share/openhd/video/air_camera_generic.json` and set `"primary_camera_type": 5`. `scripts/install_air.sh` does this automatically on a fresh install (Step 7); only needed manually on units that pre-date that patch.
+`install_air.sh --mode <stream|shm> [--camera-type <N>]` configures `primary_camera_type` and the hailo.txt flag; `start_air.sh --mode <stream|shm>` invokes drone-follow with the matching CLI args. Pass the same `--mode` to both. The boot service reads an optional `MODE=stream|shm` line in `~/Desktop/drone-follow.conf` (see Boot Service below) and forwards it to `start_air.sh`.
 
-Either way, OpenHD must be fully restarted after the change — the camera handle is opened once at OpenHD startup.
-
-**Mode B** (legacy, not used by `start_air.sh`): OpenHD owns the camera and tees raw NV12 frames to a SHM socket. drone-follow reads from SHM (`--input shm:///tmp/openhd_raw_video`) and does AI only — no encoding, no overlay baked into the radio stream. To enable: keep `primary_camera_type` at the libcamera value matching your sensor (31 = IMX219, 32 = IMX708, etc.) and `sudo touch /boot/openhd/hailo.txt`.
+The `primary_camera_type` value can also be changed from QOpenHD (Settings → Camera → Primary Camera Type) — QOpenHD pushes the change via MAVLink and OpenHD persists it to `/usr/local/share/openhd/video/air_camera_generic.json`. Either way, OpenHD must be fully restarted after the change — the camera handle is opened once at OpenHD startup.
 
 See `OpenHD/HAILO_INTEGRATION.md` for the full architecture, parameter list, and the binary detection payload format.
 
@@ -222,7 +224,9 @@ A udev rule pins the TP-Link adapter to `wlan1` by MAC address. Both interfaces 
 
 A systemd service (`drone-follow-boot.service`) auto-starts drone-follow + OpenHD at boot, controlled by a desktop config file.
 
-- **Config:** `~/Desktop/drone-follow.conf` — set `ENABLED=true` or `ENABLED=false`
+- **Config:** `~/Desktop/drone-follow.conf`
+  - `ENABLED=true|false` — auto-start at boot
+  - `MODE=stream|shm` (optional) — passed through as `start_air.sh --mode <MODE>`. Omit for the script default (stream / Mode A). Must match how `install_air.sh` was run.
 - **Install:** `sudo scripts/boot/install.sh`
 - **Uninstall:** `sudo scripts/boot/uninstall.sh`
-- **Flow:** systemd → `drone-follow-boot.sh` → reads config → if enabled, runs `scripts/start_air.sh` as hailo user
+- **Flow:** systemd → `drone-follow-boot.sh` → reads config → if enabled, runs `scripts/start_air.sh` (with `--mode` if set) as hailo user

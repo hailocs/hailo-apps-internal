@@ -26,6 +26,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # Set ENABLED=true to auto-start at boot, ENABLED=false to disable.
 # The systemd unit reads this file on every boot — no reload needed.
 ENABLED=false
+
+# Camera mode passed through to start_air.sh. Optional — omit to use the
+# script's default (stream / Mode A). Must match how install_air.sh was run
+# (primary_camera_type + /boot/openhd/hailo.txt).
+#   stream  Mode A — drone-follow owns the camera, --openhd-stream RTP.
+#   shm     Mode B — OpenHD owns the camera, drone-follow reads SHM.
+#MODE=stream
 CONF
     chown "${DRONE_USER}:${DRONE_USER}" "$CONFIG_FILE"
     echo "Created config: $CONFIG_FILE (ENABLED=false — opt in by editing)"

@@ -30,7 +30,19 @@ if [ "$ENABLED" != "true" ]; then
     exit 0
 fi
 
-log "Drone-follow is ENABLED — starting."
+# Optional MODE=stream|shm in the conf file — must match what install_air.sh
+# was run with (primary_camera_type + /boot/openhd/hailo.txt).
+MODE=$(grep -oP '^MODE=\K.*' "$CONFIG_FILE" 2>/dev/null || echo "")
+MODE=$(echo "$MODE" | tr '[:upper:]' '[:lower:]' | xargs)
+MODE_ARGS=()
+if [ -n "$MODE" ]; then
+    case "$MODE" in
+        stream|shm) MODE_ARGS=(--mode "$MODE") ;;
+        *) log "WARNING: ignoring unknown MODE=$MODE in $CONFIG_FILE" ;;
+    esac
+fi
+
+log "Drone-follow is ENABLED${MODE:+ (mode=$MODE)} — starting."
 
 if [ ! -x "$START_SCRIPT" ]; then
     log "ERROR: start script not found or not executable: $START_SCRIPT"
@@ -41,4 +53,4 @@ fi
 exec sudo -u "$DRONE_USER" \
     DISPLAY=:0 \
     XDG_RUNTIME_DIR="/run/user/$(id -u "$DRONE_USER")" \
-    "$START_SCRIPT"
+    "$START_SCRIPT" "${MODE_ARGS[@]}"
