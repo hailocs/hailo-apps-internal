@@ -271,7 +271,7 @@
       "group": "target",
       "order": 2,
       "label": "Dead-zone bbox (%)",
-      "description": "Forward/backward dead-zone as a percentage of target bbox height. Error within this zone triggers no forward movement.",
+      "description": "Distance dead-band as percent of relative error |target/bbox - 1|. 10 = no forward when within +/-10%% of target distance. NOTE: semantics changed in 2026-04 — old configs reload with a wider effective band than before.",
       "read_only": false
     },
     {

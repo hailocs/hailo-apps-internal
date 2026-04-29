@@ -38,6 +38,10 @@ class ControllerConfig:
     kp_distance: float = 0.6            # approach gain (factor > 0, person too far)
     kp_distance_back: float = 2.5       # retreat gain (factor < 0, person too close)
     target_bbox_height: float = 0.25    # desired person size in frame (0-0.25)
+    # NOTE: semantics changed in 2026-04. Old: (pct/100)*target_bbox_height
+    # in bbox-units (15% × 0.3 = 0.045). New: pct/100 interpreted as |factor|
+    # directly (10 → ±10% relative distance error). Old configs load with a
+    # wider effective dead band than they meant.
     dead_zone_bbox_percent: float = 10.0  # dead zone: |factor| as fraction (10 → ±10% of target)
     max_climb_speed: float = 1.0        # max altitude change rate (m/s)
     max_down_speed: float = 1.5         # safety clamp in VelocityCommandAPI
