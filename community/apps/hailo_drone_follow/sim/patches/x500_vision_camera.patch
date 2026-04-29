@@ -29,7 +29,13 @@ index 75f30e440d..36ca6d07ea 100644
 +        <gz_frame_id>camera_link</gz_frame_id>
 +        <pose>0 0 0 0 0 0</pose>
 +        <camera>
-+          <horizontal_fov>1.74</horizontal_fov>
++          <!-- horizontal_fov in radians. 1.152 rad = 66 deg, matching the
++               ControllerConfig default hfov used for yaw error scaling on
++               the real RPi camera. With a 4:3 image (640x480) the derived
++               vertical FOV is ~50.4 deg, against ControllerConfig vfov=41 deg
++               default — close enough that yaw/forward gains tuned on the
++               sim transfer cleanly to real hardware. -->
++          <horizontal_fov>1.152</horizontal_fov>
 +          <image>
 +            <width>640</width>
 +            <height>480</height>
