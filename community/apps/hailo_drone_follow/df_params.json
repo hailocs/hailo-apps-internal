@@ -426,7 +426,7 @@
       "max": 2.0,
       "step": 0.05,
       "group": "alt",
-      "order": 8,
+      "order": 9,
       "label": "Alt-hold P-gain",
       "description": "Gain on (current_alt - target_altitude) -> down velocity. Higher = snappier altitude-hold, lower = gentler.",
       "read_only": false
