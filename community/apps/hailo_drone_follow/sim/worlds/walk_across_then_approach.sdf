@@ -79,25 +79,34 @@
             <pose>-5 0 1.0 0 0 3.14159</pose>
           </waypoint>
 
-          <!-- Phase 4: return to start (off-camera) and loop -->
+          <!-- Phase 4: U-turn well south of drone airspace before returning.
+               Original Phase 4 walked (-5,0) → (8,0), passing under the drone
+               and contaminating the test's "approach window" assertions when
+               the loop reset fired inside the 90 s capture. New path:
+               (-5,0) → (-5,-12) → (8,-12) → (8,-6), staying ≥6 m off the
+               flight axis until the start position. -->
           <waypoint>
             <time>54</time>
-            <pose>-5 0 1.0 0 0 0</pose>
+            <pose>-5 0 1.0 0 0 -1.5708</pose>
+          </waypoint>
+          <waypoint>
+            <time>66</time>
+            <pose>-5 -12 1.0 0 0 -1.5708</pose>
           </waypoint>
           <waypoint>
             <time>67</time>
-            <pose>8 0 1.0 0 0 0</pose>
+            <pose>-5 -12 1.0 0 0 0</pose>
           </waypoint>
           <waypoint>
-            <time>68</time>
-            <pose>8 0 1.0 0 0 -1.5708</pose>
+            <time>80</time>
+            <pose>8 -12 1.0 0 0 0</pose>
           </waypoint>
           <waypoint>
-            <time>74</time>
-            <pose>8 -6 1.0 0 0 -1.5708</pose>
+            <time>81</time>
+            <pose>8 -12 1.0 0 0 1.5708</pose>
           </waypoint>
           <waypoint>
-            <time>75</time>
+            <time>87</time>
             <pose>8 -6 1.0 0 0 1.5708</pose>
           </waypoint>
         </trajectory>
