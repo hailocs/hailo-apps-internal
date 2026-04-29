@@ -320,7 +320,7 @@ Before running hailo-apps, you need to install the Hailo runtime packages. The i
 **Note: Hailo Model Zoo GenAI** Is required only for Hailo-10H & GenAI use cases, like Hailo-Ollama, more details [Hailo Model Zoo GenAI](/hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)
 
 > **Supported versions:**
-> - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0
+> - **Hailo-8 / Hailo-8L:** HailoRT 4.23, TAPPAS Core 5.1.0 & 5.2.0 & 5.3.0
 > - **Hailo-10H:** HailoRT 5.1.1, 5.2.0 & 5.3.0, TAPPAS Core 5.1.0, 5.2.0 & 5.3.0
 
 ---
