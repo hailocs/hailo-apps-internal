@@ -123,6 +123,8 @@ sudo ./scripts/install_ground_station.sh
 
 The air unit's Step 5 prerequisite ("must be run after Steps 2-3") still applies because `start_air.sh` launches drone-follow alongside OpenHD; that constraint does not extend to the ground side.
 
+**Headless / kiosk display:** if neither `WAYLAND_DISPLAY` nor `DISPLAY` is set when `start_ground.sh` runs (SSH session, console boot, dedicated kiosk-style ground station), the script auto-exports `QT_QPA_PLATFORM=eglfs` so QOpenHD renders directly to KMS/DRM with no compositor required. Set `QT_QPA_PLATFORM` manually to override.
+
 ## Virtual Environment
 
 This repo owns its own venv at `./venv/` (created with `--system-site-packages` so apt-installed Hailo bindings are visible). `drone-follow` is installed as an editable package, and `hailo-apps` is pip-installed from GitHub (the `[hailo]` extra in `pyproject.toml`). Always `source setup_env.sh` before running — it activates `./venv/`, exports `PYTHONPATH`, runs the RPi kernel-compatibility check, and loads `/usr/local/hailo/resources/.env`.
