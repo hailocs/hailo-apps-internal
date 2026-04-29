@@ -204,8 +204,9 @@ def main():
     from drone_follow.pipeline_adapter import create_app
 
     # Pre-parse --tracker to pass to create_app
+    from drone_follow.pipeline_adapter.tracker_factory import TRACKER_CHOICES, DEFAULT_TRACKER
     tracker_pre = argparse.ArgumentParser(add_help=False)
-    tracker_pre.add_argument("--tracker", default="byte")
+    tracker_pre.add_argument("--tracker", default=DEFAULT_TRACKER, choices=TRACKER_CHOICES)
     tracker_pre_args, _ = tracker_pre.parse_known_args()
 
     recordings_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")

@@ -271,6 +271,20 @@ def _log_detections(user_data, persons, person_to_id):
     ]
 
 
+class FollowEvent:
+    """String constants for the per-frame `mode` JSONL field.
+
+    Free-form strings drift between code and test expectations as they pass
+    through the test_log writer. Keep them in one place.
+    """
+    NO_PERSONS = "no-persons"
+    IDLE = "idle"
+    IDLE_NO_AUTO = "idle-no-auto"
+    AUTO_NO_TRACKED = "auto-no-tracked"
+    FALLBACK = "fallback"
+    REID_SEARCH = "reid-search"
+
+
 def _log_mode(user_data, mode, followed_id):
     if user_data._frame_log_data is None:
         return
@@ -361,7 +375,7 @@ def _app_callback_inner(element, buffer, user_data):
         _update_ui(ui_state, [], {}, None, paused=_paused)
         if target_state is None or target_state.get_target() is None:
             LOGGER.debug("[SEARCH MODE] No person detected in frame")
-        _log_mode(user_data, "no-persons",
+        _log_mode(user_data, FollowEvent.NO_PERSONS,
                   target_state.get_target() if target_state else None)
         return
 
@@ -476,7 +490,7 @@ def _app_callback_inner(element, buffer, user_data):
                         # ReID didn't match — hold position and retry next frame
                         user_data.shared_state.update(None, available_ids=available_ids)
                         _update_ui(ui_state, persons, person_to_id, None)
-                        _log_mode(user_data, "reid-search", target_id)
+                        _log_mode(user_data, FollowEvent.REID_SEARCH, target_id)
                         return
             else:
                 # No ReID gallery — return to auto mode (or IDLE if auto-select disabled)
@@ -503,7 +517,7 @@ def _app_callback_inner(element, buffer, user_data):
             _update_ui(ui_state, persons, person_to_id, None, paused=True)
             LOGGER.debug("[IDLE] Paused. Available: %s",
                         sorted(available_ids) if available_ids else "none")
-            _log_mode(user_data, "idle", None)
+            _log_mode(user_data, FollowEvent.IDLE, None)
             return
         if not auto_select:
             # Auto-select disabled — pilot-led workflow. Hold position; wait for operator click.
@@ -511,7 +525,7 @@ def _app_callback_inner(element, buffer, user_data):
             _update_ui(ui_state, persons, person_to_id, None, paused=True)
             LOGGER.debug("[IDLE] auto-select off — waiting for operator selection. Available: %s",
                         sorted(available_ids) if available_ids else "none")
-            _log_mode(user_data, "idle-no-auto", None)
+            _log_mode(user_data, FollowEvent.IDLE_NO_AUTO, None)
             return
         # AUTO mode — select biggest person
         biggest_id, biggest_person = _find_biggest_person(person_by_id)
@@ -544,14 +558,14 @@ def _app_callback_inner(element, buffer, user_data):
         else:
             user_data.shared_state.update(None, available_ids=available_ids)
             _update_ui(ui_state, persons, person_to_id, None)
-            _log_mode(user_data, "auto-no-tracked", None)
+            _log_mode(user_data, FollowEvent.AUTO_NO_TRACKED, None)
             return
 
     if best is None:
         # Safety fallback — should not normally reach here
         user_data.shared_state.update(None, available_ids=available_ids)
         _update_ui(ui_state, persons, person_to_id, None)
-        _log_mode(user_data, "fallback", None)
+        _log_mode(user_data, FollowEvent.FALLBACK, None)
         return
 
     # Prefer the tracker's Kalman-filtered tlwh over the raw post-NMS bbox.
