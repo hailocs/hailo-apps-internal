@@ -408,14 +408,14 @@ def _app_callback_inner(element, buffer, user_data):
     # --- Target selection ---
 
     best = None
-    follow_mode = ""
+    follow_status = ""
     if target_id is not None:
         best = person_by_id.get(target_id)
 
         if best is not None:
             # Successfully tracking target
             target_state.update_last_seen()
-            follow_mode = f"ID {target_id}"
+            follow_status = f"ID {target_id}"
 
             # ReID: build/update gallery while following (auto or locked)
             if reid_manager is not None:
@@ -470,7 +470,7 @@ def _app_callback_inner(element, buffer, user_data):
                             reid_manager.on_reidentified(new_tid)
                             best = person_by_id[new_tid]
                             target_state.update_last_seen()
-                            follow_mode = f"REID→ID {new_tid}"
+                            follow_status = f"REID→ID {new_tid}"
 
                     if best is None:
                         # ReID didn't match — hold position and retry next frame
@@ -525,7 +525,7 @@ def _app_callback_inner(element, buffer, user_data):
             # current distance instead of converging to a fixed target_bbox_height.
             _capture_bbox_setpoint(config, biggest_person)
             best = biggest_person
-            follow_mode = f"AUTO→ID {biggest_id}"
+            follow_status = f"AUTO→ID {biggest_id}"
             LOGGER.debug("[AUTO] Selected biggest person ID %s. Available: %s",
                         biggest_id, sorted(available_ids) if available_ids else "none")
             # Activate SOT for next frame (if SOT mode enabled)
@@ -602,8 +602,8 @@ def _app_callback_inner(element, buffer, user_data):
 
     available_str = f"Available: {sorted(available_ids)}" if available_ids else ""
     LOGGER.debug("[FOLLOWING %s] conf=%.2f center=(%.2f,%.2f) h=%.2f %s",
-                follow_mode, best.get_confidence(), cx, cy, bbox_h, available_str)
-    _log_mode(user_data, follow_mode,
+                follow_status, best.get_confidence(), cx, cy, bbox_h, available_str)
+    _log_mode(user_data, follow_status,
               target_state.get_target() if target_state else None)
 
 
