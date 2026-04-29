@@ -263,7 +263,12 @@ def test_person_in_front_holds_one_id(sim_run):
 
 
 def test_2_person_world_sees_both_actors(sim_run):
-    """Two stationary actors at (5,0) and (5,3) at startup — should both be visible."""
+    """Two stationary actors at (3,0) and (3,3) for the first 20s — should both be visible.
+
+    After t=20 they walk a 22 m rectangular path (max range ~25 m). Test
+    only asserts visibility during the loop; geometry of the early static
+    phase is intentionally close so the sim's wide-FOV camera frames both
+    actors comfortably."""
     log = _read_jsonl(sim_run("2_person_world"))
     s = _summarize("2_person_world", log)
 
