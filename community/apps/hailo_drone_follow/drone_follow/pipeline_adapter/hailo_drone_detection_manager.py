@@ -306,11 +306,16 @@ def app_callback(element, buffer, user_data):
         _app_callback_inner(element, buffer, user_data)
     finally:
         user_data.perf.frame_end(_perf_t0, user_data.ui_state)
-        if user_data.test_log_file is not None and user_data._frame_log_data is not None:
+        # Snapshot the handle: another thread may None-out test_log_file
+        # between the is-not-None check and the .write() call (e.g., shutdown
+        # racing with an in-flight frame). AttributeError joins the catch list
+        # for the same reason — None.write would raise it.
+        log_file = user_data.test_log_file
+        if log_file is not None and user_data._frame_log_data is not None:
             try:
-                user_data.test_log_file.write(
+                log_file.write(
                     json.dumps(user_data._frame_log_data) + "\n")
-            except (ValueError, OSError):
+            except (ValueError, OSError, AttributeError):
                 pass
 
 
