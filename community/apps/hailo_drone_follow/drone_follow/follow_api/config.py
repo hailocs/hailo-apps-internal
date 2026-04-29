@@ -186,6 +186,10 @@ class ControllerConfig:
                            help=f"Distance dead zone as %% of target bbox height (default: {defaults.dead_zone_bbox_percent})")
         group.add_argument("--max-climb-speed", type=float, default=defaults.max_climb_speed,
                            help=f"Max altitude change rate m/s (default: {defaults.max_climb_speed})")
+        group.add_argument("--kp-alt-hold", type=float, default=defaults.kp_alt_hold,
+                           help=f"Altitude-hold P gain on (current_alt - target_altitude). "
+                                f"Drives the down axis whenever yaw_only=False. "
+                                f"(default: {defaults.kp_alt_hold})")
         group.add_argument("--min-altitude", type=float, default=defaults.min_altitude,
                            help=f"Hard altitude floor in metres (default: {defaults.min_altitude})")
         group.add_argument("--max-altitude", type=float, default=defaults.max_altitude,

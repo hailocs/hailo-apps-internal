@@ -49,6 +49,7 @@ _CONFIG_PARAMS = {
     "dead_zone_bbox_percent":   ("DF_DZ_BH_PCT", float),
     "max_climb_speed":          ("DF_MAX_CLM",   float),
     "max_yawspeed":             ("DF_MAX_YAW",   float),
+    "kp_alt_hold":              ("DF_KP_ALT_H",  float),
     "min_altitude":             ("DF_MIN_ALT",   float),
     "max_altitude":             ("DF_MAX_ALT",   float),
     "yaw_alpha":                ("DF_YAW_ALPHA",  float),

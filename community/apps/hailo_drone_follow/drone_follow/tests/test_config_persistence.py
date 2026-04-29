@@ -108,3 +108,33 @@ def test_load_from_file_ignores_unknown_keys(tmp_path):
     assert cfg.kp_yaw == 4.0
     assert "not_a_real_field" not in changed
     assert not hasattr(cfg, "not_a_real_field")
+
+
+def test_kp_alt_hold_round_trip(tmp_path):
+    """kp_alt_hold survives save/load — it's a tunable controller field."""
+    cfg = ControllerConfig(kp_alt_hold=0.7)
+    p = str(tmp_path / "df_config.json")
+    cfg.save_json(p)
+    loaded = ControllerConfig.from_json(p)
+    assert loaded.kp_alt_hold == pytest.approx(0.7)
+
+
+def test_kp_alt_hold_in_df_params():
+    """Slider for kp_alt_hold exists so QOpenHD/web-UI can tune it."""
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    with open(os.path.join(repo_root, "df_params.json")) as f:
+        params = json.load(f)["params"]
+    ids = {p["id"] for p in params}
+    assert "kp_alt_hold" in ids
+
+
+def test_kp_alt_hold_in_openhd_bridge_params():
+    """OpenHD MAVLink bridge exposes kp_alt_hold so QOpenHD can set it."""
+    from drone_follow.servers.openhd_bridge import _CONFIG_PARAMS
+    assert "kp_alt_hold" in _CONFIG_PARAMS
+
+
+def test_kp_alt_hold_in_web_server_fields():
+    """Web UI /config endpoint exposes kp_alt_hold."""
+    from drone_follow.servers.web_server import _WebHandler
+    assert "kp_alt_hold" in _WebHandler._CONFIG_FIELDS

@@ -416,6 +416,20 @@
       "label": "Load config (air)",
       "description": "Momentary trigger \u2014 set to ON to live-reload controller values from df_config.json on the air unit into the running drone-follow. All sliders refresh from the reloaded values. Toggle returns to OFF when complete. Does nothing if no saved file exists.",
       "read_only": false
+    },
+    {
+      "id": "kp_alt_hold",
+      "mavlink_id": "DF_KP_ALT_H",
+      "type": "float",
+      "default": 0.5,
+      "min": 0.0,
+      "max": 2.0,
+      "step": 0.05,
+      "group": "alt",
+      "order": 8,
+      "label": "Alt-hold P-gain",
+      "description": "Gain on (current_alt - target_altitude) -> down velocity. Higher = snappier altitude-hold, lower = gentler.",
+      "read_only": false
     }
   ]
 }

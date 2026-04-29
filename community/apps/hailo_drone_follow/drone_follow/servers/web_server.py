@@ -271,6 +271,7 @@ class _WebHandler(BaseHTTPRequestHandler):
         "kp_distance_back": float,
         "dead_zone_bbox_percent": float,
         "max_climb_speed": float,
+        "kp_alt_hold": float,
         "min_altitude": float,
         "max_altitude": float,
         "top_margin_safety": float,
