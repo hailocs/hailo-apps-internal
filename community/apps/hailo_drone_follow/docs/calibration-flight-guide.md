@@ -5,7 +5,8 @@ real flight in the minimum number of batteries. Every control name below
 matches the label shown in the **OpenHD / web UI** sliders.
 
 **In this guide, "P-gain" is the same thing as "kp_*" in the JSON/CLI.**
-`kp_yaw` = *Yaw P-gain*, `kp_distance` = *Distance P-gain*, etc.
+`kp_yaw` = *Yaw P-gain*, `kp_distance` = *Distance P-gain (approach)*,
+`kp_distance_back` = *Distance P-gain (retreat)*, `kp_alt_hold` = *Alt-hold P-gain*.
 
 ---
 
@@ -77,7 +78,9 @@ All values are current defaults from `df_params.json`. "Raise" and "Lower" descr
 
 | Slider | Default | What it does | Raise ⬆ | Lower ⬇ |
 |---|---|---|---|---|
-| **Distance P-gain** | 1.0 | Gain on `(target_bbox / bbox) - 1`. factor=1 means "person is 2× too far"; default saturates max_forward at factor=1. | Faster approach/retreat when distance is off. | Drone lags converging back to the target distance. |
+| **Distance P-gain (approach)** | 0.6 | Gain on `(target_bbox / bbox) - 1` when factor > 0 (person too far). factor=1 means "person is 2× too far"; default saturates max_forward at factor ≈ 2.5 (i.e. only at extreme distance error). Intentionally gentle — chasing is leisurely. | Faster approach when subject pulls away. | Drone lags converging back to the target distance. |
+| **Distance P-gain (retreat)** | 2.5 | Gain on `(target_bbox / bbox) - 1` when factor < 0 (person too close). Default saturates max_backward at factor ≈ -0.6, well before the panic safety threshold — avoids the abrupt max-retreat step. **Higher than approach gain by design** — retreat is a safety axis. | Snappier retreat when subject closes the gap. | Slower retreat; risk of late max-retreat step at the safety threshold. |
+| **Forward deadband (m/s)** | 0.05 | Commanded `\|forward\|` below this value snaps to 0. Kills hover twitch when bbox is within a few % of target. Set to 0 to disable. | Wider hover band — drone holds position even with small bbox jitter. | Tighter hold — drone reacts to small bbox changes (more pitch noise). |
 | **Target bbox height (0-1)** | 0.30 | Desired person size in frame — the "hold this distance" setpoint. Captured from the live bbox at lock time, so clicking the subject sets it automatically. | Drone moves **closer** — larger apparent size. | Drone moves **further** — smaller apparent size. |
 | **Dead-zone bbox (%)** | 10 | `\|factor\|` window with no forward command (10 → ±10% relative bbox error). | Less forward hunting from bbox jitter; wider steady-state distance variation allowed. | Tighter distance hold; more prone to hunting on detection noise. |
 | **Max forward speed (m/s)** | 2.0 | Clamp on commanded approach speed. | Can catch a faster subject; burns more battery and reduces reaction headroom. | Safer / calmer; can't keep up if subject is too fast. |
@@ -93,6 +96,7 @@ All values are current defaults from `df_params.json`. "Raise" and "Lower" descr
 | **Target altitude (m)** | 3.0 | Operator-set hover altitude. Used as takeoff height with `--takeoff-landing` and as the alt-hold reference in flight. Adjustable mid-flight via the UI. | Drone climbs to the new target. | Drone descends to the new target. |
 | **Min altitude (m)** | 2.0 | Hard floor enforced in `live_control_loop`. Down command clamped to ≥0 once at floor. | More headroom above ground/obstacles. | Risk of low-altitude excursions. |
 | **Max altitude (m)** | 4.0 | Hard ceiling. Down command clamped to ≤0 once at ceiling. | More vertical room for the alt-hold loop. | Safer; clipped early if alt-hold drifts. |
+| **Alt-hold P-gain** | 0.5 | Gain on `(current_alt - target_altitude) → down velocity`. The vision pipeline emits `down=0`; this loop is what actually closes the altitude error in `live_control_loop`. | Snappier altitude-hold. | Gentler — slower to converge on the target altitude. |
 | **Max climb speed (m/s)** | 1.0 | Clamp on the alt-hold output (negative side). | Faster recovery from altitude error. | Gentler vertical motion. |
 | **Altitude smoothing (α)** | 0.20 | Low-pass on the alt-hold command. | More responsive altitude changes; more jitter. | Smoother vertical motion; can lag during target changes. |
 | **Smooth altitude** | ON | Master switch. | — | Leave ON. |
@@ -159,7 +163,9 @@ more.
 to damp pitch transients, THEN tune gain):
 
 - Max forward accel = **1.0 m/s²** (defaults 1.5 — primary anti-oscillation knob)
-- Distance P-gain = **0.7** (defaults 1.0)
+- Distance P-gain (approach) = **0.5** (defaults 0.6)
+- Distance P-gain (retreat) = **2.0** (defaults 2.5 — leave the asymmetry intact)
+- Forward deadband (m/s) = **0.05** (default — leave at default for first pass)
 - Forward smoothing (α) = **0.12** (defaults 0.15)
 - Max forward speed = **1.5 m/s**
 - Max backward speed = **2.0 m/s**
@@ -175,17 +181,25 @@ to damp pitch transients, THEN tune gain):
    loop.
 2. **Then look at smoothing.** If oscillation persists at reasonable accel
    limits, lower *Forward smoothing (α)* 0.12 → 0.08.
-3. **Then lower gain.** Only if the two above didn't fix it: drop
-   *Distance P-gain* in 0.2 steps (0.7 → 0.5 → 0.3).
+3. **Then lower approach gain.** Only if the two above didn't fix it: drop
+   *Distance P-gain (approach)* in 0.1 steps (0.5 → 0.4 → 0.3). Leave
+   *Distance P-gain (retreat)* alone — its asymmetric default (2.5) is what
+   keeps the drone from doing an abrupt max-retreat step at the safety
+   threshold. Only touch it if retreat itself oscillates.
 4. **Stop-start-stop test.** With oscillation gone, walk the radial line and
    freeze mid-pass. Drone should settle within ~1.5 s with no overshoot. If
-   settling is slow, *raise* the gain back up cautiously in 0.1 steps.
-5. **Push max speeds.** Subject walks a full radial run. If the drone
+   settling is slow, *raise* the approach gain back up cautiously in 0.1 steps.
+5. **Hover twitch on target distance.** With subject standing still at the
+   target distance, watch for sub-metre forward/back twitching. First reach
+   for *Forward deadband (m/s)* — raise it 0.05 → 0.1 → 0.15. The twitch
+   stops cleanly once commanded forward falls inside the deadband window.
+6. **Push max speeds.** Subject walks a full radial run. If the drone
    saturates at 1.5 m/s forward, raise *Max forward speed* 1.5 → 2.0. Cap
    around 2.5 for a 2 m/s subject — headroom, not chase capacity.
-6. **Dead-zone bbox.** If there's residual hunting while subject stands at
-   good distance, raise *Dead-zone bbox (%)* 12 → 15 → 20.
-7. **Save.**
+7. **Dead-zone bbox.** If there's residual hunting while subject stands at
+   good distance *after* the deadband fix didn't kill it, raise
+   *Dead-zone bbox (%)* 12 → 15 → 20.
+8. **Save.**
 
 **Commit criterion:** Radial walk produces no oscillation; stop produces
 clean settle ≤1.5 s; no bounce-back when subject freezes.
@@ -203,12 +217,15 @@ If both flights converged cleanly, you should land near values like these
 | Yaw smoothing (α) | 0.30 | 0.15–0.25 |
 | Max yaw rate | 90 | 90–120 |
 | Dead-zone yaw | 2.0 | 2–4 |
-| Distance P-gain | 1.0 | 0.5–1.2 |
+| Distance P-gain (approach) | 0.6 | 0.3–0.8 |
+| Distance P-gain (retreat) | 2.5 | 2.0–3.0 (rarely needs tuning) |
+| Forward deadband (m/s) | 0.05 | 0.05–0.15 |
 | Max forward accel | 1.5 | **0.5–1.0** (key for damping osc) |
 | Forward smoothing (α) | 0.15 | 0.08–0.15 |
 | Max forward speed | 2.0 | 1.5–2.5 |
 | Max backward speed | 3.0 | 2.0–3.0 |
 | Dead-zone bbox | 10 | 10–20 |
+| Alt-hold P-gain | 0.5 | 0.3–0.8 |
 | Target altitude | 3.0 | site-specific |
 
 ---
@@ -220,10 +237,11 @@ If both flights converged cleanly, you should land near values like these
 | Yaw hunts left/right around a static target | Lower *Yaw P-gain* 25% | Raise *Dead-zone yaw* +1° |
 | Yaw is slow to catch a moving target | Raise *Yaw P-gain* | Raise *Max yaw rate* |
 | Yaw stutter / noisy rotation | Lower *Yaw smoothing (α)* (more filter) | — |
-| Forward axis oscillates (in-out pumping) | **Lower *Max forward accel*** | Lower *Forward smoothing (α)*, then lower *Distance P-gain* |
-| Drone lags converging back to target distance | Raise *Distance P-gain* | Raise *Max forward speed* |
-| Drone retreats too aggressively when subject approaches | Lower *Distance P-gain* | Lower *Max backward speed* |
-| Altitude drifts away from target | Re-set *Target altitude* mid-flight | Raise *Alt-hold P-gain* (`kp_alt_hold`, default 0.5) |
+| Forward axis oscillates (in-out pumping) | **Lower *Max forward accel*** | Lower *Forward smoothing (α)*, then lower *Distance P-gain (approach)* |
+| Drone lags converging back to target distance | Raise *Distance P-gain (approach)* | Raise *Max forward speed* |
+| Drone retreats too aggressively when subject approaches | Lower *Distance P-gain (retreat)* | Lower *Max backward speed* |
+| Drone twitches forward/back while subject stands still | Raise *Forward deadband (m/s)* 0.05 → 0.10 | Raise *Dead-zone bbox (%)* |
+| Altitude drifts away from target | Raise *Alt-hold P-gain* (default 0.5) | Re-set *Target altitude* mid-flight |
 | Drone loses subject when subject stops | Raise *Dead-zone yaw* / *Dead-zone bbox* | Check detection stability, not the controller |
 | Subject leaves frame when drone pitches hard | Lower *Max forward accel* | — (this is exactly what that knob is for) |
 

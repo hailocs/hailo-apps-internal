@@ -403,9 +403,10 @@ class VelocityCommand:
 3-DOF output per control tick. No attitude, no position targets, no thrust.
 The MAVSDK 4-tuple's right (+Y body) slot is a literal 0.0 at the boundary —
 the orbit-era `right_m_s` field was dropped along with the orbit feature.
-`down_m_s` is now vision-driven from `bbox_height` (plain P: person too small →
-descend, too big → climb), with floor/ceiling clamping in `live_control_loop`.
-See [control-architecture.md](control-architecture.md) for the control math.
+`down_m_s` is also a literal 0.0 from the controller; the altitude axis is
+closed in `live_control_loop` by a P-loop on `(current_alt − target_altitude)`
+with gain `kp_alt_hold` and floor/ceiling clamping. See
+[control-architecture.md](control-architecture.md) for the control math.
 
 ---
 

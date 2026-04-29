@@ -421,7 +421,7 @@ def _app_callback_inner(element, buffer, user_data):
     #
     # Re-read target_id from target_state: the AUTO-acquisition branch above
     # updates target_state via set_target(biggest_id) but doesn't refresh the
-    # local `target_id` (which was last read at line ~493). Re-reading here
+    # local `target_id` captured earlier in this function. Re-reading here
     # ensures we look up the filtered bbox under the just-acquired ID.
     target_id = target_state.get_target() if target_state is not None else None
     filtered = filtered_tlwh_by_id.get(target_id) if target_id is not None else None
