@@ -40,7 +40,7 @@ class TrackerMetrics:
     update_ms: float = 0.0
     match_ratio: float = 0.0
     active_tracks: int = 0
-    id_switches: int = 0
+    id_dropouts: int = 0
 
     # internal
     _last_time: float = field(default_factory=time.monotonic, repr=False)
@@ -55,7 +55,7 @@ class TrackerMetrics:
             "update_ms": round(self.update_ms, 2),
             "match_ratio": round(self.match_ratio, 3),
             "active_tracks": self.active_tracks,
-            "id_switches": self.id_switches,
+            "id_dropouts": self.id_dropouts,
         }
 
 
@@ -93,7 +93,7 @@ class MetricsTracker:
         current_ids = {r.track_id for r in results}
         if m._prev_ids:
             lost = m._prev_ids - current_ids
-            m.id_switches += len(lost)
+            m.id_dropouts += len(lost)
         m._prev_ids = current_ids
 
         return results

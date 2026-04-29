@@ -148,7 +148,7 @@ class PerfTracker:
                 parts.extend([f"tracker_fps={tm['fps']}",
                               f"tracker_update={tm['update_ms']}ms",
                               f"tracks={tm['active_tracks']}",
-                              f"id_sw={tm['id_switches']}"])
+                              f"id_drop={tm['id_dropouts']}"])
             LOGGER.info("[PERF] %s", " | ".join(parts))
 
     def get_stats(self):
