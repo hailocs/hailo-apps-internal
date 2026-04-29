@@ -20,7 +20,6 @@ import numpy as np
 from drone_follow.follow_api.types import Detection
 from drone_follow.perf_tracker import PerfTracker
 
-from .byte_tracker import iou_batch
 from .tracker import MetricsTracker
 from .tracker_factory import create_tracker
 from .reid_manager import get_frame_bgr
@@ -121,104 +120,6 @@ def _find_biggest_person(person_by_id):
         if area > best_area:
             best_id, best_person, best_area = tid, person, area
     return best_id, best_person
-
-
-_SOT_IOU_THRESH = 0.3
-
-
-def _run_sot(persons, last_bbox):
-    """Lightweight single-object tracking: IOU match against last known bbox.
-
-    Returns (matched_person, new_bbox_scaled) or (None, None) if lost.
-    last_bbox is [x1, y1, x2, y2] in SCALE (1000) coordinates.
-    """
-    SCALE = 1000.0
-    n = len(persons)
-    det_bboxes = np.empty((n, 4), dtype=np.float32)
-    for i, person in enumerate(persons):
-        bbox = person.get_bbox()
-        det_bboxes[i, 0] = bbox.xmin() * SCALE
-        det_bboxes[i, 1] = bbox.ymin() * SCALE
-        det_bboxes[i, 2] = (bbox.xmin() + bbox.width()) * SCALE
-        det_bboxes[i, 3] = (bbox.ymin() + bbox.height()) * SCALE
-
-    ious = iou_batch(last_bbox.reshape(1, 4), det_bboxes)  # shape (1, N)
-    if ious.size == 0:
-        return None, None
-
-    best_idx = np.argmax(ious[0])
-    if ious[0, best_idx] < _SOT_IOU_THRESH:
-        return None, None
-
-    return persons[best_idx], det_bboxes[best_idx]
-
-
-def _dispatch_sot_or_mot(
-    persons,
-    target_id,
-    sot_enabled,
-    sot_active,
-    sot_last_bbox,
-    sot_target_id,
-    run_tracker,
-    run_sot,
-    attach_track_id=None,
-):
-    """Always run MOT; use SOT only as a fallback for the locked target.
-
-    Returns (available_ids, person_by_id, person_to_id, filtered_tlwh_by_id, sot_recovered).
-
-    The MOT tracker runs unconditionally so every visible person gets a stable
-    track ID surfaced to the UI / OpenHD. SOT only kicks in when MOT lost the
-    locked target — a quiet safety net that re-attaches `target_id` to whichever
-    detection still IOU-matches the last bbox.
-
-    Parameters
-    ----------
-    persons : list of HailoDetection-like objects (each exposes get_bbox())
-    target_id : int or None — the operator-locked / auto-selected target
-    sot_enabled, sot_active, sot_last_bbox, sot_target_id : SOT state from user_data
-    run_tracker : callable(persons) -> 4-tuple
-        Wraps `_run_tracker(user_data.tracker, persons)` so this helper stays
-        pure. Returns (available_ids, person_by_id, person_to_id,
-        filtered_tlwh_by_id).
-    run_sot : callable(persons, last_bbox) -> (matched, new_bbox)
-        Wraps `_run_sot` for the same reason.
-    attach_track_id : callable(person, track_id) -> None or None
-        Used to attach a HailoUniqueID(track_id, TRACKING_ID) to a recovered
-        person on SOT-fallback frames. None disables attachment (testing).
-
-    filtered_tlwh_by_id : {track_id -> (x, y, w, h)} in normalized [0..1] coords.
-        SOT-recovered tracks are deliberately NOT included here — SOT bypasses
-        the Kalman filter, so the consumer falls back to the raw bbox.
-    sot_recovered : True iff MOT lost the target this frame *and* SOT recovered
-        it. The caller can use that to keep the SOT bookkeeping alive even
-        though MOT is now in charge again (refreshed for next frame).
-    """
-    available_ids, person_by_id, person_to_id, filtered_tlwh_by_id = run_tracker(persons)
-
-    sot_recovered = False
-    if (
-        sot_enabled
-        and target_id is not None
-        and target_id not in person_by_id
-        and sot_active
-        and sot_last_bbox is not None
-        and sot_target_id == target_id
-    ):
-        # MOT lost the locked target this frame — try SOT IOU fallback.
-        matched, _new_bbox = run_sot(persons, sot_last_bbox)
-        if matched is not None:
-            if attach_track_id is not None:
-                attach_track_id(matched, target_id)
-            person_by_id[target_id] = matched
-            person_to_id[id(matched)] = target_id
-            available_ids.add(target_id)
-            # Deliberately do NOT populate filtered_tlwh_by_id[target_id]: SOT
-            # bypassed the KF, so the consumer should fall back to raw bbox.
-            sot_recovered = True
-
-    return available_ids, person_by_id, person_to_id, filtered_tlwh_by_id, sot_recovered
 
 
 # Clamp matches the UI Target Size slider min/max
@@ -345,8 +246,6 @@ def _app_callback_inner(element, buffer, user_data):
 
     if not persons:
         user_data.tracker.update(_EMPTY_DET_ARRAY)
-        user_data.sot_active = False
-        user_data.sot_last_bbox = None
         user_data.shared_state.update(None, available_ids=set())
         if target_state is not None and target_state.get_target() is not None:
             reid_mgr = user_data.reid_manager
@@ -379,43 +278,24 @@ def _app_callback_inner(element, buffer, user_data):
                   target_state.get_target() if target_state else None)
         return
 
-    # --- SOT/MOT dispatch ---
-    # MOT runs every frame so the operator sees every visible track ID and can
-    # switch lock targets at any time. SOT is a quiet safety net: only consulted
-    # when MOT loses the currently-locked target this frame.
+    # --- MOT dispatch ---
+    # ByteTracker / FastTracker runs every frame so the operator sees every
+    # visible track ID and can switch lock targets at any time. ByteTracker's
+    # internal lost_stracks buffer (track_buffer frames, default 30 = 1 s at
+    # 30 fps) handles short occlusions of the locked target via Kalman state
+    # propagation; ReID gallery handles longer dropouts.
     target_id = target_state.get_target() if target_state is not None else None
     reid_manager = user_data.reid_manager
 
-    (
-        available_ids,
-        person_by_id,
-        person_to_id,
-        filtered_tlwh_by_id,
-        sot_recovered,
-    ) = _dispatch_sot_or_mot(
-        persons,
-        target_id=target_id,
-        sot_enabled=user_data.sot_enabled,
-        sot_active=user_data.sot_active,
-        sot_last_bbox=user_data.sot_last_bbox,
-        sot_target_id=user_data.sot_target_id,
-        run_tracker=lambda ps: _run_tracker(user_data.tracker, ps),
-        run_sot=_run_sot,
-        attach_track_id=lambda person, tid: person.add_object(
-            hailo.HailoUniqueID(tid, hailo.TRACKING_ID)),
-    )
+    available_ids, person_by_id, person_to_id, filtered_tlwh_by_id = \
+        _run_tracker(user_data.tracker, persons)
 
-    # Attach HailoUniqueID to every MOT-tracked person so downstream consumers
+    # Attach HailoUniqueID to every tracked person so downstream consumers
     # (overlay, OpenHD bridge) can read the track ID off the detection object.
     for person in persons:
         tid = person_to_id.get(id(person))
-        if tid is not None and (not sot_recovered or tid != target_id):
-            # SOT-recovered person already had its ID attached by the helper.
+        if tid is not None:
             person.add_object(hailo.HailoUniqueID(tid, hailo.TRACKING_ID))
-
-    if sot_recovered:
-        LOGGER.debug("[SOT] MOT lost target ID %s — SOT IOU fallback recovered it",
-                     target_id)
 
     _log_detections(user_data, persons, person_to_id)
 
@@ -440,26 +320,8 @@ def _app_callback_inner(element, buffer, user_data):
                         reid_manager.update_gallery(
                             frame_bgr, best.get_bbox(),
                             user_data.video_width, user_data.video_height)
-
-            # Activate SOT for next frame (if SOT mode enabled)
-            if user_data.sot_enabled:
-                SCALE = 1000.0
-                tbbox = best.get_bbox()
-                user_data.sot_last_bbox = np.array([
-                    tbbox.xmin() * SCALE,
-                    tbbox.ymin() * SCALE,
-                    (tbbox.xmin() + tbbox.width()) * SCALE,
-                    (tbbox.ymin() + tbbox.height()) * SCALE,
-                ], dtype=np.float32)
-                user_data.sot_target_id = target_id
-                if not user_data.sot_active:
-                    user_data.sot_active = True
-                    LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", target_id)
         else:
-            # Target lost by tracker — reset SOT state and try ReID re-identification
-            user_data.sot_active = False
-            user_data.sot_last_bbox = None
-
+            # Target lost by tracker — try ReID re-identification
             if reid_manager is not None and reid_manager.has_gallery and person_by_id:
                 # ReID gallery exists — try re-identification
                 last_seen = target_state.get_last_seen()
@@ -507,10 +369,7 @@ def _app_callback_inner(element, buffer, user_data):
     target_id = target_state.get_target() if target_state is not None else None
 
     if target_id is None and best is None:
-        # No explicit target — reset SOT state and decide between idle, hold, or auto-select
-        user_data.sot_active = False
-        user_data.sot_last_bbox = None
-
+        # No explicit target — decide between idle, hold, or auto-select
         if target_state is not None and target_state.is_paused():
             # True IDLE — hold position
             user_data.shared_state.update(None, available_ids=available_ids)
@@ -542,19 +401,6 @@ def _app_callback_inner(element, buffer, user_data):
             follow_status = f"AUTO→ID {biggest_id}"
             LOGGER.debug("[AUTO] Selected biggest person ID %s. Available: %s",
                         biggest_id, sorted(available_ids) if available_ids else "none")
-            # Activate SOT for next frame (if SOT mode enabled)
-            if user_data.sot_enabled:
-                SCALE = 1000.0
-                tbbox = biggest_person.get_bbox()
-                user_data.sot_last_bbox = np.array([
-                    tbbox.xmin() * SCALE,
-                    tbbox.ymin() * SCALE,
-                    (tbbox.xmin() + tbbox.width()) * SCALE,
-                    (tbbox.ymin() + tbbox.height()) * SCALE,
-                ], dtype=np.float32)
-                user_data.sot_target_id = biggest_id
-                user_data.sot_active = True
-                LOGGER.info("[MOT→SOT] Entering SOT mode for target ID %d", biggest_id)
         else:
             user_data.shared_state.update(None, available_ids=available_ids)
             _update_ui(ui_state, persons, person_to_id, None)
@@ -571,8 +417,7 @@ def _app_callback_inner(element, buffer, user_data):
     # Prefer the tracker's Kalman-filtered tlwh over the raw post-NMS bbox.
     # The KF is already running inside ByteTracker; pulling its output through
     # to the controller damps detection-noise jitter and short-occlusion gaps
-    # in one place. SOT-recovered frames bypass the KF, so they fall back to
-    # the raw bbox automatically (filtered_tlwh_by_id[target_id] is unset).
+    # in one place.
     #
     # Re-read target_id from target_state: the AUTO-acquisition branch above
     # updates target_state via set_target(biggest_id) but doesn't refresh the
@@ -759,7 +604,7 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                parser: Optional[argparse.ArgumentParser] = None,
                record_enabled=False, record_dir=None, reid_manager=None,
                reid_search_timeout: float = 20.0, controller_config=None,
-               tracker_name=None, log_perf=False, sot_enabled=False):
+               tracker_name=None, log_perf=False):
     """Create the tiling pipeline app with drone-follow callback.
 
     Follows the hailo-app pattern: build parser, create user_data,
@@ -795,7 +640,7 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
     class DroneFollowUserData(app_callback_class):
         def __init__(self, shared_state, target_state=None, ui_state=None,
                      tracker=None, reid_manager=None, reid_search_timeout=20.0,
-                     controller_config=None, log_perf=False, sot_enabled=False):
+                     controller_config=None, log_perf=False):
             super().__init__()
             self.shared_state = shared_state
             self.target_state = target_state
@@ -808,11 +653,6 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 log_perf=log_perf,
                 tracker_metrics=tracker.metrics if tracker is not None else None,
             )
-            # SOT state (only used when sot_enabled)
-            self.sot_enabled = sot_enabled
-            self.sot_active = False
-            self.sot_last_bbox = None
-            self.sot_target_id = None
             # Set after app creation so callback can extract frames for ReID
             self.video_width = 0
             self.video_height = 0
@@ -1335,7 +1175,6 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
         shared_state, target_state, ui_state=ui_state, tracker=tracker,
         reid_manager=reid_manager, reid_search_timeout=reid_search_timeout,
         controller_config=controller_config, log_perf=log_perf,
-        sot_enabled=sot_enabled,
     )
     app = DroneFollowTilingApp(
         app_callback, user_data, parser=parser, eos_reached=eos_reached,

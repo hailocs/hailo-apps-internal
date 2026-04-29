@@ -76,10 +76,6 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--log-perf", action="store_true",
                        help="Log pipeline and tracker performance metrics periodically")
 
-    group.add_argument("--sot", action="store_true",
-                       help="Enable single-object tracking mode for the locked target "
-                            "(default: off — pure multi-object tracking)")
-
     group.add_argument("--test-log", type=str, default=None,
                        help="Write per-frame detection log as JSONL to this path "
                             "(used by simulation tests)")
@@ -154,7 +150,6 @@ def main():
     ui_pre.add_argument("--record", action="store_true")
     ui_pre.add_argument("--openhd-stream", action="store_true")
     ui_pre.add_argument("--log-perf", action="store_true")
-    ui_pre.add_argument("--sot", action="store_true")
     ui_pre_args, _ = ui_pre.parse_known_args()
 
     # Build the recording branch whenever there is a control surface that can
@@ -216,8 +211,7 @@ def main():
                      reid_manager=reid_manager,
                      reid_search_timeout=reid_pre_args.reid_timeout,
                      tracker_name=tracker_pre_args.tracker,
-                     log_perf=ui_pre_args.log_perf,
-                     sot_enabled=ui_pre_args.sot)
+                     log_perf=ui_pre_args.log_perf)
     args = app.options_menu
     _configure_logging(getattr(args, "log_verbosity", "normal"))
     _resolve_serial_connection(args)
