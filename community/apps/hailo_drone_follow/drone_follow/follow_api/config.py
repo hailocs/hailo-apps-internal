@@ -92,11 +92,11 @@ class ControllerConfig:
             )
         if self.target_altitude > self.max_altitude:
             raise ValueError(
-                f"target_altitude ({self.target_altitude}) must be ≤ max_altitude ({self.max_altitude})"
+                f"target_altitude ({self.target_altitude}) must be <= max_altitude ({self.max_altitude})"
             )
         if self.target_altitude < self.min_altitude:
             raise ValueError(
-                f"target_altitude ({self.target_altitude}) must be ≥ min_altitude ({self.min_altitude})"
+                f"target_altitude ({self.target_altitude}) must be >= min_altitude ({self.min_altitude})"
             )
 
     # ── JSON serialization ──────────────────────────────────────────
