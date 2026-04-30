@@ -39,6 +39,7 @@ list_worlds() {
 START_BRIDGE=false
 REMOTE_IP=""
 WORLD=""
+REAP_STALE=true
 while [[ $# -gt 0 ]]; do
     case $1 in
         --bridge) START_BRIDGE=true; shift ;;
@@ -57,9 +58,10 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             WORLD="$2"; shift 2 ;;
+        --no-reap-stale) REAP_STALE=false; shift ;;
         *)
             echo -e "${RED}Unknown argument: $1${NC}"
-            echo "Usage: $0 [--bridge] [--remote IP] [--world NAME]"
+            echo "Usage: $0 [--bridge] [--remote IP] [--world NAME] [--no-reap-stale]"
             exit 1 ;;
     esac
 done
@@ -69,6 +71,51 @@ if [ ! -d "$PX4_DIR/build/px4_sitl_default" ]; then
     echo -e "${RED}Error: PX4 SITL not built. Run sim/setup_sim.sh first.${NC}"
     exit 1
 fi
+
+# Preflight: reap stale PX4 / Gazebo / bridge processes from a prior run.
+# PX4 refuses to start a second instance ("PX4 server already running for
+# instance 0"), so any leftovers from a crashed earlier run will block this
+# one. Patterns are scoped to this repo's PX4 build dir so unrelated PX4
+# instances elsewhere on the machine are not touched.
+preflight_reap_stale() {
+    local patterns=(
+        "$PX4_DIR/build/px4_sitl_default/bin/px4"
+        "make px4_sitl"
+        "$BRIDGE_SCRIPT"
+        "$RELAY_SCRIPT"
+        "gz sim.*$PX4_DIR/Tools/simulation/gz/worlds"
+    )
+    local pids
+    pids=$(for pat in "${patterns[@]}"; do
+        pgrep -f -- "$pat" 2>/dev/null || true
+    done | sort -u | grep -vE "^($$|$PPID)$" || true)
+
+    [ -z "$pids" ] && return 0
+
+    echo -e "${RED}Stale sim processes detected from a prior run:${NC}" >&2
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        ps -p "$pid" -o pid=,args= 2>/dev/null || echo "  pid=$pid (gone)"
+    done <<<"$pids" >&2
+
+    if ! $REAP_STALE; then
+        echo -e "${RED}Refusing to start while old instance is alive.${NC}" >&2
+        echo "Kill them manually, or rerun without --no-reap-stale." >&2
+        exit 2
+    fi
+
+    echo -e "${GREEN}Reaping stale processes...${NC}" >&2
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        kill "$pid" 2>/dev/null || true
+    done <<<"$pids"
+    sleep 1
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    done <<<"$pids"
+}
+preflight_reap_stale
 
 # Set GZ_SIM_RESOURCE_PATH so Gazebo can find custom models (e.g. "Walking actor")
 export GZ_SIM_RESOURCE_PATH="${SDF_WORLDS}:${GZ_SIM_RESOURCE_PATH:-}"

@@ -212,11 +212,15 @@ class DetachedMavsdkServer:
             LOGGER.warning("[drone] mavsdk_server not found at %s, using default System() behavior", server_path)
             return self.connection_url  # Fallback to default behavior
 
-        # Kill any stale mavsdk_server on our port (from previous runs that
-        # survived due to start_new_session=True).
+        # Reap any stale mavsdk_server from a prior run. start_new_session=True
+        # means the server survives Ctrl+C, and if our previous shutdown timed
+        # out (e.g. the drone_thread join expired during a stuck land/offboard
+        # call), __exit__ never ran. The leftover keeps UDP 14540 + TCP 50051
+        # bound, which blocks the next run from connecting to PX4. Kill by name
+        # so we cover both ports regardless of which one was held.
         try:
             subprocess.run(
-                ["fuser", "-k", f"{self.port}/tcp"],
+                ["pkill", "-9", "-f", "mavsdk_server"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3,
             )
             time.sleep(0.3)

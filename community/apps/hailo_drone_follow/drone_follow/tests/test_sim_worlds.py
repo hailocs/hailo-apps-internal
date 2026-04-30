@@ -155,7 +155,7 @@ def sim_run(tmp_path, request):
         reid_flag = "" if reid else " --no-reid"
         cmd = (
             f"source {SETUP_ENV} && "
-            f"drone-follow --input udp://0.0.0.0:5600 --no-display{reid_flag} "
+            f"drone-follow --input udp://0.0.0.0:5600 --no-display --ui{reid_flag} "
             f"--no-yaw-only --takeoff-landing "
             f"--record --test-log {log_path}{extra}"
         )

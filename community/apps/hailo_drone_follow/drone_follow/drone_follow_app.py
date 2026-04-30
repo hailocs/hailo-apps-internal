@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import logging
 import signal
+import subprocess
 import threading
 import time
 from drone_follow.follow_api import ControllerConfig, SharedDetectionState
@@ -344,6 +345,17 @@ def main():
             app.cleanup_recording_branch()
         # Wait for drone thread to finish cleanly
         drone_thread.join(timeout=5.0)
+        if drone_thread.is_alive():
+            # Drone thread is stuck (typically a MAVSDK land/offboard timeout
+            # against a sim that's already gone). Its `with DetachedMavsdkServer`
+            # __exit__ won't run, and start_new_session=True means mavsdk_server
+            # would survive us — leaving UDP 14540 + TCP 50051 bound and blocking
+            # the next run. Reap it by name now while we still own a shell.
+            try:
+                subprocess.run(["pkill", "-9", "-f", "mavsdk_server"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         if reid_manager is not None:
             reid_manager.release()
         app.user_data.close_test_log()
