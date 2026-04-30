@@ -170,6 +170,18 @@ class ReIDManager:
         """The ID the target had when the operator first selected it."""
         return self._original_id
 
+    @property
+    def gallery_size(self) -> int:
+        """Number of embeddings currently stored for the active target."""
+        with self._lock:
+            if self._original_id is None:
+                return 0
+            return self._gallery.embedding_count(str(self._original_id))
+
+    @property
+    def max_gallery_size(self) -> int:
+        return self._max_gallery_size
+
     # ------------------------------------------------------------------
     # Target lifecycle
     # ------------------------------------------------------------------
