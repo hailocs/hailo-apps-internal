@@ -11,24 +11,24 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_HAILO_BASE_CROPPER (gst_hailo_basecropper_get_type())
-#define GST_HAILO_BASE_CROPPER(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_HAILO_BASE_CROPPER, GstHailoBaseCropper))
-#define GST_HAILO_BASE_CROPPER_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_HAILO_BASE_CROPPER, GstHailoBaseCropperClass))
-#define GST_IS_HAILO_BASE_CROPPER(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_HAILO_BASE_CROPPER))
-#define GST_IS_HAILO_BASE_CROPPER_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_HAILO_BASE_CROPPER))
-#define GST_HAILO_BASE_CROPPER_CAST(obj) ((GstHailoBaseCropper *)obj)
-#define GST_HAILO_BASE_CROPPER_GET_CLASS(obj) \
-        (G_TYPE_INSTANCE_GET_CLASS ((obj),GST_TYPE_HAILO_BASE_CROPPER,GstHailoBaseCropperClass))
+#define GST_TYPE_HAILO_BASE_CROPPER_DYN (gst_hailo_basecropper_dyn_get_type())
+#define GST_HAILO_BASE_CROPPER_DYN(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_HAILO_BASE_CROPPER_DYN, GstHailoBaseCropperDyn))
+#define GST_HAILO_BASE_CROPPER_DYN_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_HAILO_BASE_CROPPER_DYN, GstHailoBaseCropperDynClass))
+#define GST_IS_HAILO_BASE_CROPPER_DYN(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_HAILO_BASE_CROPPER_DYN))
+#define GST_IS_HAILO_BASE_CROPPER_DYN_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_HAILO_BASE_CROPPER_DYN))
+#define GST_HAILO_BASE_CROPPER_DYN_CAST(obj) ((GstHailoBaseCropperDyn *)obj)
+#define GST_HAILO_BASE_CROPPER_DYN_GET_CLASS(obj) \
+        (G_TYPE_INSTANCE_GET_CLASS ((obj),GST_TYPE_HAILO_BASE_CROPPER_DYN,GstHailoBaseCropperDynClass))
 
 #define GST_HAILO_CROPPER_MAX_FILTER_STREAMS 40
-#define HAILO_BASE_CROPPER_SUPPORTED_FORMATS "{ RGB, RGBA, YUY2, NV12 }"
-#define HAILO_BASE_CROPPER_VIDEO_CAPS \
-    GST_VIDEO_CAPS_MAKE(HAILO_BASE_CROPPER_SUPPORTED_FORMATS)
+#define HAILO_BASE_CROPPER_SUPPORTED_FORMATS_DYN "{ RGB, RGBA, YUY2, NV12 }"
+#define HAILO_BASE_CROPPER_VIDEO_CAPS_DYN \
+    GST_VIDEO_CAPS_MAKE(HAILO_BASE_CROPPER_SUPPORTED_FORMATS_DYN)
 
-typedef struct _GstHailoBaseCropper GstHailoBaseCropper;
-typedef struct _GstHailoBaseCropperClass GstHailoBaseCropperClass;
+typedef struct _GstHailoBaseCropperDyn GstHailoBaseCropperDyn;
+typedef struct _GstHailoBaseCropperDynClass GstHailoBaseCropperDynClass;
 
-struct _GstHailoBaseCropper
+struct _GstHailoBaseCropperDyn
 {
     GstElement element;
     gboolean use_internal_offset;
@@ -47,15 +47,15 @@ struct _GstHailoBaseCropper
     const gchar *filter_streams[GST_HAILO_CROPPER_MAX_FILTER_STREAMS];
 };
 
-struct _GstHailoBaseCropperClass
+struct _GstHailoBaseCropperDynClass
 {
     GstElementClass parent_class;
 
-    std::vector<HailoROIPtr> (*prepare_crops) (GstHailoBaseCropper *hailocropper,  GstBuffer *buf);
-    void (*resize) (GstHailoBaseCropper *basecropper, std::vector<cv::Mat> &cropped_image, std::vector<cv::Mat> &resized_image, HailoROIPtr roi, GstVideoFormat image_format);
+    std::vector<HailoROIPtr> (*prepare_crops) (GstHailoBaseCropperDyn *hailocropper,  GstBuffer *buf);
+    void (*resize) (GstHailoBaseCropperDyn *basecropper, std::vector<cv::Mat> &cropped_image, std::vector<cv::Mat> &resized_image, HailoROIPtr roi, GstVideoFormat image_format);
 };
 
-G_GNUC_INTERNAL GType gst_hailo_basecropper_get_type(void);
+G_GNUC_INTERNAL GType gst_hailo_basecropper_dyn_get_type(void);
 void resize_normal(cv::InterpolationFlags method, std::vector<cv::Mat> &cropped_image_vec, std::vector<cv::Mat> &resized_image_vec, GstVideoFormat image_format);
 void resize_letterbox(cv::InterpolationFlags method, std::vector<cv::Mat> &cropped_image_vec, std::vector<cv::Mat> &resized_image_vec, HailoROIPtr roi, GstVideoFormat image_format, bool no_scaling_bbox);
 

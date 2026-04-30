@@ -27,7 +27,7 @@ GST_DEBUG_CATEGORY_STATIC(gst_hailotilecropper_dynamic_debug);
 #define gst_hailotilecropper_dynamic_parent_class parent_class
 G_DEFINE_TYPE_WITH_CODE(GstHailoTileCropperDynamic,
                         gst_hailotilecropper_dynamic,
-                        GST_TYPE_HAILO_BASE_CROPPER,
+                        GST_TYPE_HAILO_BASE_CROPPER_DYN,
                         _do_init);
 
 enum
@@ -44,11 +44,11 @@ static void gst_hailotilecropper_dynamic_get_property(GObject *o, guint id,
 static void gst_hailotilecropper_dynamic_finalize(GObject *o);
 
 static std::vector<HailoROIPtr>
-gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropper *cropper, GstBuffer *buf);
+gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropperDyn *cropper, GstBuffer *buf);
 
 /* Pass-through resize: same as TAPPAS hailotilecropper does. */
 static void
-hailotilecropper_dynamic_resize(GstHailoBaseCropper *,
+hailotilecropper_dynamic_resize(GstHailoBaseCropperDyn *,
                                 std::vector<cv::Mat> &cropped,
                                 std::vector<cv::Mat> &resized,
                                 HailoROIPtr,
@@ -103,7 +103,7 @@ gst_hailotilecropper_dynamic_class_init(GstHailoTileCropperDynamicClass *klass)
 {
     GObjectClass             *gobject_class    = G_OBJECT_CLASS(klass);
     GstElementClass          *gstelement_class = GST_ELEMENT_CLASS(klass);
-    GstHailoBaseCropperClass *base_class       = (GstHailoBaseCropperClass *)klass;
+    GstHailoBaseCropperDynClass *base_class       = (GstHailoBaseCropperDynClass *)klass;
 
     gobject_class->set_property = gst_hailotilecropper_dynamic_set_property;
     gobject_class->get_property = gst_hailotilecropper_dynamic_get_property;
@@ -206,7 +206,7 @@ gst_hailotilecropper_dynamic_get_property(GObject *object, guint prop_id,
  * downstream hailotileaggregator sees the same set we cropped.
  */
 static std::vector<HailoROIPtr>
-gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropper *cropper, GstBuffer *buf)
+gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropperDyn *cropper, GstBuffer *buf)
 {
     GstHailoTileCropperDynamic *self = GST_HAILO_TILE_CROPPER_DYNAMIC(cropper);
 

@@ -48,7 +48,7 @@ struct StaticTile
 
 struct _GstHailoTileCropperDynamic
 {
-    GstHailoBaseCropper hailo_cropper;     /* base */
+    GstHailoBaseCropperDyn hailo_cropper;     /* base */
     gchar              *tiles_static_str;  /* property: raw "x,y,w,h;..." */
     std::vector<StaticTile> static_tiles;  /* parsed cache */
     gboolean            allow_empty;       /* property: if FALSE, log a warning when no tiles produced */
@@ -56,7 +56,7 @@ struct _GstHailoTileCropperDynamic
 
 struct _GstHailoTileCropperDynamicClass
 {
-    GstHailoBaseCropperClass parent_class;
+    GstHailoBaseCropperDynClass parent_class;
 };
 
 GType gst_hailotilecropper_dynamic_get_type(void);
