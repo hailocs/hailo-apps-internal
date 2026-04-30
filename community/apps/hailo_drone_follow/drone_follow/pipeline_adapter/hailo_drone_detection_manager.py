@@ -22,7 +22,7 @@ from drone_follow.perf_tracker import PerfTracker
 
 from .tracker import MetricsTracker
 from .tracker_factory import create_tracker
-from .reid_manager import get_frame_bgr
+from .reid_manager import ACTION_SKIPPED_DRIFT, get_frame_bgr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +184,7 @@ class FollowEvent:
     AUTO_NO_TRACKED = "auto-no-tracked"
     FALLBACK = "fallback"
     REID_SEARCH = "reid-search"
+    REID_DRIFT = "reid-drift"
 
 
 def _log_mode(user_data, mode, followed_id):
@@ -317,13 +318,45 @@ def _app_callback_inner(element, buffer, user_data):
                 if reid_manager.should_update():
                     frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
                     if frame_bgr is not None:
-                        reid_manager.update_gallery(
+                        result = reid_manager.update_gallery(
                             frame_bgr, best.get_bbox(),
-                            user_data.video_width, user_data.video_height)
+                            user_data.video_width, user_data.video_height,
+                            person_by_id=person_by_id)
+                        # Drift handling: gallery rejected the embedding because
+                        # it was too dissimilar from existing vectors. The
+                        # manager already ran a re-acquisition pass over the
+                        # visible detections; act on its result.
+                        if result.action == ACTION_SKIPPED_DRIFT:
+                            new_tid = result.reacquired_track_id
+                            if new_tid is not None and new_tid != target_id:
+                                # Tracker drifted onto a different person and
+                                # ReID found the right one — switch tracks.
+                                target_state.set_target(new_tid)
+                                reid_manager.on_reidentified(new_tid)
+                                best = person_by_id.get(new_tid, best)
+                                target_id = new_tid
+                                target_state.update_last_seen()
+                                follow_status = f"REID-DRIFT→ID {new_tid}"
+                            elif new_tid is None:
+                                # Reacquire failed — hold position, retry
+                                # next frame. Mirrors the existing REID-lost
+                                # path's "no match" behaviour.
+                                user_data.shared_state.update(None, available_ids=available_ids)
+                                _update_ui(ui_state, persons, person_to_id, None)
+                                _log_mode(user_data, FollowEvent.REID_DRIFT, target_id)
+                                return
+                            # new_tid == target_id ⇒ false drift (e.g. pose
+                            # change). Embedding was NOT stored, but we keep
+                            # tracking; next update_interval retries.
         else:
-            # Target lost by tracker — try ReID re-identification
-            if reid_manager is not None and reid_manager.has_gallery and person_by_id:
-                # ReID gallery exists — try re-identification
+            # Target lost by tracker — try ReID re-identification.
+            # Note: we enter the gallery branch even when person_by_id is
+            # empty (i.e. tracker activated zero tracks this frame). In that
+            # case there's nothing to ReID-match against, but we still want
+            # to hold position and wait for the search timeout — the person
+            # may reappear in a frame or two. Bailing straight to auto on a
+            # single empty-tracker frame loses the lock unnecessarily.
+            if reid_manager is not None and reid_manager.has_gallery:
                 last_seen = target_state.get_last_seen()
                 if last_seen is not None and time.monotonic() - last_seen > user_data.reid_search_timeout:
                     LOGGER.info("[REID TIMEOUT] Search exceeded %.0fs — returning to %s",
@@ -335,35 +368,58 @@ def _app_callback_inner(element, buffer, user_data):
                         target_state.set_paused(True)
                     # Fall through to auto-select below (gated on auto_select)
                 else:
-                    frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
-                    if frame_bgr is not None:
-                        new_tid = reid_manager.try_reidentify(
-                            frame_bgr, person_by_id,
-                            user_data.video_width, user_data.video_height)
-                        if new_tid is not None:
-                            # Re-identified — resume following with the new track ID
-                            target_state.set_target(new_tid)
-                            reid_manager.on_reidentified(new_tid)
-                            best = person_by_id[new_tid]
-                            target_state.update_last_seen()
-                            follow_status = f"REID→ID {new_tid}"
+                    if person_by_id:
+                        # Candidates available — try to re-identify among them.
+                        frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
+                        if frame_bgr is not None:
+                            new_tid = reid_manager.try_reidentify(
+                                frame_bgr, person_by_id,
+                                user_data.video_width, user_data.video_height)
+                            if new_tid is not None:
+                                # Re-identified — resume following with the new track ID
+                                target_state.set_target(new_tid)
+                                reid_manager.on_reidentified(new_tid)
+                                best = person_by_id[new_tid]
+                                target_state.update_last_seen()
+                                follow_status = f"REID→ID {new_tid}"
+                    else:
+                        # Tracker activated nothing — score raw detections
+                        # against the gallery. If the locked person is found
+                        # above the match threshold we drive the controller
+                        # from the raw bbox even though no tracker id exists,
+                        # so a follow keeps working when ByteTracker drops
+                        # the person below its activation threshold.
+                        frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
+                        if frame_bgr is not None:
+                            _, raw_match = reid_manager.score_visible_persons(
+                                frame_bgr, persons,
+                                user_data.video_width, user_data.video_height)
+                            if raw_match is not None:
+                                best = raw_match
+                                target_state.update_last_seen()
+                                follow_status = f"REID-RAW→ID {reid_manager.original_id}"
 
                     if best is None:
-                        # ReID didn't match — hold position and retry next frame
+                        # No match (or no candidates) — hold position, retry next frame.
                         user_data.shared_state.update(None, available_ids=available_ids)
                         _update_ui(ui_state, persons, person_to_id, None)
                         _log_mode(user_data, FollowEvent.REID_SEARCH, target_id)
                         return
             else:
-                # No ReID gallery — return to auto mode (or IDLE if auto-select disabled)
+                # No ReID gallery — return to auto mode (or IDLE if auto-select disabled).
+                # Show the operator-facing original ID when available; falling
+                # back to the current tracker ID otherwise.
+                display_id = target_id
+                if reid_manager is not None and reid_manager.original_id is not None:
+                    display_id = reid_manager.original_id
                 target_state.enter_auto_mode()
                 if not auto_select:
                     target_state.set_paused(True)
                     LOGGER.info("[IDLE] Target ID %s lost — auto-select off, holding position. Available: %s",
-                                target_id, sorted(available_ids) if available_ids else "none")
+                                display_id, sorted(available_ids) if available_ids else "none")
                 else:
                     LOGGER.info("[AUTO] Target ID %s lost — returning to auto mode. Available: %s",
-                                target_id, sorted(available_ids) if available_ids else "none")
+                                display_id, sorted(available_ids) if available_ids else "none")
 
     # Re-read target_id after possible enter_auto_mode() calls above
     target_id = target_state.get_target() if target_state is not None else None
@@ -445,15 +501,17 @@ def _app_callback_inner(element, buffer, user_data):
     ), available_ids=available_ids)
 
     # Use the original ID for the UI so the operator sees a stable ID
-    # even after ReID re-identifies the person with a new tracker ID.
+    # even after ReID re-identifies the person with a new tracker ID. Also
+    # covers the raw-match path, where `best` was selected by ReID directly
+    # without going through ByteTracker — in that case `best` isn't in
+    # `person_to_id` and would otherwise show no highlight at all.
     ui_following_id = target_state.get_target() if target_state else None
     ui_person_to_id = person_to_id
     if reid_manager is not None and reid_manager.original_id is not None:
         orig = reid_manager.original_id
         cur = target_state.get_target() if target_state else None
-        if orig != cur and cur is not None:
-            # Remap the followed detection's ID to the original so the
-            # green highlight and "Following: ID X" both use it.
+        best_has_track = person_to_id.get(id(best)) is not None
+        if (orig != cur and cur is not None) or not best_has_track:
             ui_following_id = orig
             ui_person_to_id = dict(person_to_id)
             ui_person_to_id[id(best)] = orig
@@ -629,7 +687,7 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
     from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
     from hailo_apps.python.core.common.core import get_pipeline_parser
     from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-        QUEUE,
+        QUEUE, get_source_type,
         INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE,
         TILE_CROPPER_PIPELINE, SOURCE_PIPELINE, OVERLAY_PIPELINE,
     )
@@ -1029,6 +1087,12 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     frame_rate=self.frame_rate,
                     sync=self.sync,
                 )
+                # File sources: throttle decode to PTS so playback runs at the
+                # file's native rate. Without this, the leaky tee queues let
+                # the decoder run unbounded and the MJPEG/UI feed shows the
+                # video sped up by the inference-vs-realtime ratio.
+                if get_source_type(self.video_source) == "file":
+                    source_pipeline += " ! identity name=file_throttle sync=true"
 
             detection_pipeline = INFERENCE_PIPELINE(
                 hef_path=self.hef_path,
