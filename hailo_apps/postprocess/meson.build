@@ -15,6 +15,22 @@ endif
 
 zlib_dep = dependency('zlib', required : false)
 
+# GStreamer deps (used by community/overlay/cropper plugins).
+gst_dep        = dependency('gstreamer-1.0',          required : false)
+gst_base_dep   = dependency('gstreamer-base-1.0',     required : false)
+gst_video_dep  = dependency('gstreamer-video-1.0',    required : false)
+gst_check_dep  = dependency('gstreamer-check-1.0',    required : false)
+
+# Resolve GStreamer plugin install dir from pkg-config.
+gst_plugins_dir = '/usr/lib/gstreamer-1.0'
+if gst_dep.found()
+    gst_plugins_dir_result = run_command('pkg-config', '--variable=pluginsdir', 'gstreamer-1.0', check: false)
+    if gst_plugins_dir_result.returncode() == 0
+        gst_plugins_dir = gst_plugins_dir_result.stdout().strip()
+    endif
+endif
+message('GStreamer plugin install dir: @0@'.format(gst_plugins_dir))
+
 # Try to find OpenCV4 for static linking
 # Option 1: Prefer static OpenCV (if available)
 # Set static: true to prefer static libraries
