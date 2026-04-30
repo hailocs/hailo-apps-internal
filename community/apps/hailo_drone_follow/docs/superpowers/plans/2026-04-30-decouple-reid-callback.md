@@ -592,6 +592,42 @@ git commit -m "docs: record before/after profile for async ReID gallery"
 
 ---
 
+## Task 6 Results (recorded 2026-04-30 ~21:10)
+
+Profiling environment had two complications, captured here so the next run knows what to expect:
+
+1. **GST-Shark plugin conflict.** The system has both `libgsthailotracers.so` (Hailo's customized GstShark, source pkg `hailo-tappas-core` — system-installed deb, version 0.7.2.1) and `libgstsharktracers.so` (newer 0.9.1.1, installed by `setup_check.py` from `~/gst-shark`). Both define the GObject type `GstSharkTracer` and the same tracer factory names; one overrides the other depending on registry-load order, and `gst-plugin-scanner` emits `cannot register existing type 'GstSharkTracer'` warnings during a fresh registry build. The newer plugin partially honors `GST_SHARK_LOCATION` but emits CTF files into a `gstshark_<timestamp>/` directory under the **caller's working directory**, not the configured output dir. Look there if `analyze_trace.py` reports "No metadata file" on the dir the profiler script printed.
+
+   **To resolve before future profiling**: pick one variant. Either `cd ~/gst-shark && sudo make uninstall` (keep `hailotracers`) or remove the `hailo-tappas-core` GST-tracer plugin (keep `sharktracers`).
+
+2. **Concurrent claude-code session.** A second session was running `gst-launch-1.0 ... hailotilecropper_dynamic` during this experiment, which adds CPU noise. Several `hailotilecropper_dynamic` commits authored by the same git identity ended up on this branch (`bc34699d`, `95d84cda`, `2edd3a49`, `252a3e4f`, `9a666725`, `cc75ba28`, `29866b24`). They touch `community/apps/postprocess/...`, not the `drone_follow/...` paths this plan modifies — no merge conflicts, but they should be split onto a separate branch before review.
+
+### Comparison (baseline vs async-ReID)
+
+- Baseline: `community/apps/hailo_drone_follow/drone_follow/gst_profiler_traces/2026-04-30_15:24:06` (synchronous code path, pre-change).
+- Experiment: `gstshark_2026-04-30_17:17:05` (async-ReID via `ReIDWorker`, post-change).
+- Both: 15 s wall, `--ui --no-display --input /usr/local/hailo/resources/videos/tiling_visdrone_720p.mp4 --mission-duration 15`.
+
+| Metric | Baseline | Experiment | Delta |
+|---|---:|---:|---|
+| Throughput (events / 15 s) | 44 | 42 | -5% (within noise) |
+| `identity_callback` proctime mean | 0.68 ms | 0.86 ms | +0.18 ms |
+| `inference_hailonet` proctime mean | 5.19 ms | 4.88 ms | -0.31 ms (-6%) |
+| `inference_hailonet_q` avg fill | 1.9% | similar | small |
+| CPU overall | 16.1% | (corrupted) | n/a |
+
+The identity-callback proctime number didn't drop materially because the synchronous gallery update was already small (`should_update()` only fires every `--update-interval=30` frames; with 42 events total, the inner work ran ≤2 times). The throughput throttle is upstream of the callback — likely vaapi-decode latency under sync=true clock pacing, not the per-frame Python work in `app_callback`.
+
+CPU numbers in the experiment trace are unusable (overall 1754%, single core 15027% — accumulator overflow in `cpuusage` tracer with the conflicting plugin variants).
+
+### Decision
+
+**Architecturally ship this change.** The smoke run was clean, all 6 unit tests green, and code review approved each task. The empirical profile shows no regression. The expected throughput win didn't materialize in this measurement because (a) `should_update()` rate-limits the work, and (b) the throughput cap is upstream. The `--reid-sync` escape hatch makes this safely revertible at runtime.
+
+**Re-measure under cleaner conditions before claiming a perf win.** Specifically: resolve the GST-Shark plugin conflict, run without a parallel claude-code session, and use a longer trace window (e.g. `--duration 30 --mission-duration 30`) so `should_update()` triggers more times.
+
+---
+
 ## Self-Review Checklist (before claiming the plan is done)
 
 - [ ] All 6 tasks have concrete code/commands — no "TBD" or placeholders.
