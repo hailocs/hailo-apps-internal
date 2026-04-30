@@ -242,3 +242,35 @@ A systemd service (`drone-follow-boot.service`) auto-starts drone-follow + OpenH
 - **Install:** `sudo scripts/boot/install.sh`
 - **Uninstall:** `sudo scripts/boot/uninstall.sh`
 - **Flow:** systemd → `drone-follow-boot.sh` → reads config → if enabled, runs `scripts/start_air.sh` (with `--mode` if set) as hailo user
+
+## Troubleshooting
+
+### Never use `openhd --clean-start` on a paired air/ground
+
+`openhd --clean-start` regenerates `/usr/local/share/openhd/txrx.key` (and resets `/usr/local/share/openhd/video/air_camera_generic.json` back to defaults — `primary_camera_type=31`, undoing Mode A). The new random key won't match the other side's, so WFB packets are encrypted with one key and decrypted with another → ground silently drops everything → QOpenHD shows black screen and the scan-for-air-unit menu finds nothing.
+
+**Recovery options:**
+
+1. **Sync keys:** copy one side's `/usr/local/share/openhd/txrx.key` to the other (any 128-byte file as long as both sides match).
+2. **Reset both to the OpenHD example_key** (deterministic, no scp needed if both Pis have the OpenHD source tree):
+   ```
+   sudo cp <openhd-src>/OpenHD/ohd_interface/lib/wifibroadcast/example_key/txrx.key \
+           /usr/local/share/openhd/txrx.key
+   ```
+   Restart OpenHD on that side **without** `--clean-start`.
+
+To configure Mode A vs Mode B, use `scripts/install_air.sh --mode <stream|shm>` (which only flips `primary_camera_type` + `/boot/openhd/hailo.txt` — no key regeneration). Don't use `--clean-start` for mode switching.
+
+### Kernel upgrades break WFB on the ground / air unit
+
+Symptom: ground or air looks fine until the next reboot after `apt upgrade`, then `wlan1` doesn't appear and OpenHD logs "no wifibroadcast cards". Cause: the OpenHD-modified `rtl88x2bu_ohd` driver is built for the old kernel; the new kernel can't load a `.ko` from a different ABI.
+
+**Fix:** build and install via DKMS so the driver auto-rebuilds on every kernel update. The current `scripts/install_air.sh` and `scripts/install_ground_station.sh` (via `OpenHD/build_native.sh driver`) install via DKMS by default. If you upgraded from a pre-DKMS install:
+
+```
+sudo dkms status -m rtl88x2bu             # if empty: never registered
+cd <openhd-src> && sudo ./build_native.sh driver   # registers + builds for current kernel
+sudo modprobe 88x2bu_ohd                  # load it (or reboot)
+```
+
+After this, `dkms status` should list `rtl88x2bu/<version>, <kernel>: installed`. Future kernel upgrades will auto-rebuild.
