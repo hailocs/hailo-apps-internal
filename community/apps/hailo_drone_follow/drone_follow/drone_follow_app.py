@@ -226,6 +226,12 @@ def main():
     # and write target_bbox_height when a target is locked.
     app.user_data.controller_config = controller_config
 
+    # Async ReID gallery worker. None when --no-reid (no manager) or --reid-sync.
+    if reid_manager is not None and not getattr(args, "reid_sync", False):
+        from drone_follow.pipeline_adapter.reid_worker import ReIDWorker
+        app.user_data.reid_worker = ReIDWorker(reid_manager, max_queue=2)
+        app.user_data.reid_worker.start()
+
     test_log_path = getattr(args, "test_log", None)
     if test_log_path:
         app.user_data.open_test_log(test_log_path)
@@ -324,6 +330,9 @@ def main():
             app.cleanup_recording_branch()
         # Wait for drone thread to finish cleanly
         drone_thread.join(timeout=5.0)
+        if getattr(app.user_data, "reid_worker", None) is not None:
+            app.user_data.reid_worker.stop(timeout=2.0)
+            app.user_data.reid_worker = None
         if reid_manager is not None:
             reid_manager.release()
         app.user_data.close_test_log()

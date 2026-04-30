@@ -649,6 +649,9 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             self.reid_manager = reid_manager
             self.reid_search_timeout = reid_search_timeout
             self.controller_config = controller_config
+            # Filled in by drone_follow_app.main() after app creation. None when
+            # ReID is disabled, the user passed --reid-sync, or there is no manager.
+            self.reid_worker = None
             self.perf = PerfTracker(
                 log_perf=log_perf,
                 tracker_metrics=tracker.metrics if tracker is not None else None,
