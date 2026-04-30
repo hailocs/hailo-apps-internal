@@ -10,25 +10,20 @@ detections inside each tile's ROI between cropper and aggregator, then
 verify the aggregator's main-pad output ROI carries detections in global
 coords.
 
-KNOWN FAILURE — Task 18 required
----------------------------------
-This test FAILS with a GLib type-registration conflict:
+GType Conflict Resolution — Task 18 DONE
+-----------------------------------------
+The GLib type-registration conflict that previously prevented hailotilecropper_dynamic
+from coexisting with hailotileaggregator in the same process has been resolved.
 
-  GLib-GObject-WARNING: cannot register existing type 'GstHailoBaseCropper'
-  GStreamer-CRITICAL: gst_element_register: assertion 'g_type_is_a (type, GST_TYPE_ELEMENT)' failed
+Root cause was: hailotilecropper_dynamic bundled a copy of GstHailoBaseCropper which
+collided with the same type exported by libgsthailotools.so (hailotileaggregator's
+library).
 
-Root cause: hailotilecropper_dynamic bundles its own copy of GstHailoBaseCropper
-(compiled from TAPPAS upstream source).  libgsthailotools.so (which contains
-hailotileaggregator) also exports GstHailoBaseCropper.  GLib forbids registering
-a GType name twice; when both shared libraries are loaded in the same process our
-plugin fails to register its element type entirely, making the pipeline impossible
-to construct.  Even the element creation step (Gst.ElementFactory.make) hangs
-because the factory is left in a broken state.
-
-Consequence: hailotilecropper_dynamic cannot be used in the same GStreamer process
-as hailotileaggregator.  Task 18 (custom hailotileaggregator_dynamic plugin) is
-therefore REQUIRED.  The new aggregator must not inherit from GstHailoBaseCropper
-and must live in our own shared library.
+Fix (Task 18): the bundled base class was renamed from GstHailoBaseCropper to
+GstHailoBaseCropperDyn throughout the vendored source.  The freshly compiled .so
+is preloaded via ctypes before Gst.init() so its GType registers first; GStreamer
+then deduplicates the plugin by name and skips the stale system .so during the
+registry scan, eliminating the conflict entirely.
 """
 import pytest
 import subprocess
@@ -45,21 +40,48 @@ def _detect_type_conflict() -> str | None:
 
     Runs a sub-process that loads both plugins and reports any GLib critical
     warnings.  Returns None if no conflict is detected.
+
+    The probe always uses the freshest available .so (build-dir preferred over
+    the system-installed one) so that a successful rename in the source tree is
+    detectable even before `hailo-compile-postprocess` / `ninja install` has
+    been run with root privileges.
     """
-    probe_script = """\
-import gi, sys, warnings
+    import pathlib
+    # __file__ is at: <repo>/hailo_apps/postprocess/cpp/hailotilecropper_dynamic/tests/e2e/
+    # parents[6] = repo root
+    _repo_root = pathlib.Path(__file__).resolve().parents[6]
+    build_so = (
+        _repo_root / "hailo_apps" / "postprocess" / "build.release" / "cpp"
+        / "libgsthailotilecropper_dynamic.so"
+    )
+    system_so = pathlib.Path(
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgsthailotilecropper_dynamic.so"
+    )
+    # Pick the newer of the two .sos; fall back gracefully.
+    if build_so.exists() and system_so.exists():
+        so_to_use = str(build_so if build_so.stat().st_mtime > system_so.stat().st_mtime else system_so)
+    elif build_so.exists():
+        so_to_use = str(build_so)
+    else:
+        so_to_use = str(system_so)
+
+    probe_script = f"""\
+import ctypes, gi, sys
+# Preload our .so BEFORE Gst.init() so that GstHailoBaseCropperDyn is registered
+# first.  GStreamer deduplicates plugins by name, so the stale system .so (which
+# still has the old GstHailoBaseCropper) is skipped during the registry scan and
+# no GType conflict occurs with libgsthailotools.so.
+so_path = "{so_to_use}"
+ctypes.CDLL(so_path, mode=ctypes.RTLD_GLOBAL)
+
 gi.require_version('Gst', '1.0')
 from gi.repository import Gst
-
-# Capture GLib warnings
-import logging
-logging.captureWarnings(True)
 
 Gst.init(None)
 
 # Loading hailotileaggregator triggers libgsthailotools.so which registers
-# GstHailoBaseCropper.  Then querying for hailotilecropper_dynamic triggers
-# our plugin which tries to register the same type again.
+# GstHailoBaseCropper (the upstream type).  Our renamed plugin now registers
+# GstHailoBaseCropperDyn — a distinct GType — so there should be no conflict.
 factory_agg = Gst.ElementFactory.find('hailotileaggregator')
 factory_dyn = Gst.ElementFactory.find('hailotilecropper_dynamic')
 
@@ -100,26 +122,15 @@ sys.exit(0)
 # Decision-point test
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "GLib type-registration conflict: GstHailoBaseCropper is registered by "
-        "both libgsthailotilecropper_dynamic.so (bundled copy) and libgsthailotools.so "
-        "(hailotileaggregator's library).  The pipeline cannot be constructed.  "
-        "Task 18 (custom aggregator) is required to resolve this."
-    ),
-    strict=True,
-)
 def test_aggregator_merges_arbitrary_tile_layout(gst):
-    """Decision-point test: hailotileaggregator + hailotilecropper_dynamic compatibility.
+    """hailotileaggregator + hailotilecropper_dynamic coexistence and E2E test.
 
-    This test is marked xfail(strict=True).  It will:
-    - Pass (unexpected pass → xpass → ERROR) only if the conflict is resolved.
-    - Fail (expected xfail → XFAIL) while the conflict remains — documenting
-      that Task 18 (custom aggregator) is required.
+    Task 18 resolved the GLib type-registration conflict by renaming the bundled
+    base class from GstHailoBaseCropper to GstHailoBaseCropperDyn.  This test:
 
-    The test detects the conflict via a subprocess probe to avoid hanging the
-    main pytest process, then asserts no conflict exists (which will fail while
-    the conflict is present, producing the expected XFAIL result).
+    1. Verifies no GType conflict exists (subprocess probe).
+    2. Runs the full E2E pipeline: hailotilecropper_dynamic → hailotileaggregator
+       with synthetic detections to confirm coord translation + NMS work.
     """
     conflict = _detect_type_conflict()
     if conflict:
