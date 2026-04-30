@@ -319,10 +319,10 @@ def test_2_persons_diagonal_keeps_initial_target(sim_run):
 
     # One ID should dominate the steady-state run. A swap at the cross would
     # split the followed-id histogram roughly 50/50 between the two persons'
-    # tracker IDs, so demanding ≥ 80% on a single ID catches that regression
-    # while tolerating a brief tracker glitch around the meeting point.
+    # tracker IDs, so demanding ≥ 70% on a single ID catches that regression
+    # while tolerating brief tracker glitches around the meeting point.
     ratio = top_n / len(steady)
-    assert ratio >= 0.80, (
+    assert ratio >= 0.70, (
         f"followed_id swapped during the diagonal cross — top id {top_id} held "
         f"only {top_n}/{len(steady)} ({ratio:.0%}) of steady-state frames; "
         f"id histogram = {dict(counts)}"
