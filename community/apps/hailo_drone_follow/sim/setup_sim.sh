@@ -60,11 +60,14 @@ apply_patch() {
         echo -e "${RED}  Error: Patch file not found at $patch_file${NC}"
         exit 1
     fi
-    if git apply --check "$patch_file" 2>/dev/null; then
-        git apply "$patch_file"
+    if git apply -R --check "$patch_file" 2>/dev/null; then
+        echo -e "${YELLOW}  Already applied: $description${NC}"
+    elif git apply --recount "$patch_file" 2>/dev/null; then
         echo -e "  Applied: $description"
     else
-        echo -e "${YELLOW}  Already applied or conflicts — skipping: $description${NC}"
+        echo -e "${RED}  ERROR applying $description:${NC}"
+        git apply --recount -v "$patch_file"
+        exit 1
     fi
 }
 
