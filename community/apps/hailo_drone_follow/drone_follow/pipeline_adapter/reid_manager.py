@@ -92,7 +92,7 @@ class ReIDManager:
     """
 
     def __init__(self, hef_path: str, update_interval: int = 30,
-                 max_gallery_size: int = 10, reid_match_threshold: float = 0.6,
+                 max_gallery_size: int = 10, reid_match_threshold: float = 0.75,
                  drift_threshold: float = 0.6,
                  duplicate_threshold: float = 0.9,
                  refresh_every: int = 5,

@@ -88,8 +88,8 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                        help="Disable ReID re-identification")
     group.add_argument("--update-interval", type=int, default=30,
                        help="Frames between ReID gallery embedding updates while following (default: 30)")
-    group.add_argument("--reid-threshold", type=float, default=0.7,
-                       help="Cosine similarity threshold for ReID match (0.0–1.0, default: 0.7)")
+    group.add_argument("--reid-threshold", type=float, default=0.75,
+                       help="Cosine similarity threshold for ReID match (0.0–1.0, default: 0.75)")
     group.add_argument("--reid-timeout", type=float, default=20.0,
                        help="Seconds to search for a lost locked target via ReID before returning "
                             "to auto mode (default: 20.0)")
@@ -193,7 +193,7 @@ def main():
     reid_pre.add_argument("--reid-model", type=str, default=_DEFAULT_REID_HEF)
     reid_pre.add_argument("--no-reid", action="store_true")
     reid_pre.add_argument("--update-interval", type=int, default=30)
-    reid_pre.add_argument("--reid-threshold", type=float, default=0.7)
+    reid_pre.add_argument("--reid-threshold", type=float, default=0.75)
     reid_pre.add_argument("--reid-timeout", type=float, default=20.0)
     reid_pre.add_argument("--reid-drift-threshold", type=float, default=0.6,
         help="Below this similarity vs gallery, an in-track embedding is "

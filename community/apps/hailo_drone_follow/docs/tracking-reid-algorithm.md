@@ -223,7 +223,7 @@ crop → embed → max-similarity probe against the gallery.
 | Flag | Default | Effect |
 |---|---|---|
 | `--update-interval` | 30 | Frames between in-track gallery sampling. |
-| `--reid-threshold` | 0.7 | Minimum similarity for a re-acquisition / raw-match to be accepted. |
+| `--reid-threshold` | 0.75 | Minimum similarity for a re-acquisition / raw-match to be accepted. |
 | `--reid-drift-threshold` | 0.6 | Below this, an in-track sample is treated as drift; gallery is not updated and reacquire is triggered. |
 | `--reid-duplicate-threshold` | 0.9 | Above this, an in-track sample is treated as redundant and skipped (with periodic refresh). |
 | `--reid-refresh-every` | 5 | After this many consecutive duplicate-band decisions, replace the oldest gallery vector. |
