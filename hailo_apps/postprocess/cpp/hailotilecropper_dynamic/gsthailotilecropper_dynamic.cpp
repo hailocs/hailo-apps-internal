@@ -81,8 +81,19 @@ parse_static_tiles(const gchar *raw)
             try { vals[idx++] = std::stof(field); }
             catch (const std::exception &) { idx = -1; break; }
         }
-        if (idx == 4 && vals[2] > 0 && vals[3] > 0)
-            out.push_back({vals[0], vals[1], vals[2], vals[3]});
+        /* I1: bounds-check to [0,1] with small float epsilon. */
+        constexpr float kEps = 1e-4f;
+        bool valid = (idx == 4
+                      && vals[2] > 0 && vals[3] > 0
+                      && vals[0] >= -kEps && vals[1] >= -kEps
+                      && vals[0] + vals[2] <= 1.0f + kEps
+                      && vals[1] + vals[3] <= 1.0f + kEps);
+        /* I2: warn on malformed/out-of-range entries instead of silently dropping. */
+        if (!valid) {
+            GST_WARNING("Skipping malformed tile entry: '%s'", tile_str.c_str());
+            continue;
+        }
+        out.push_back({vals[0], vals[1], vals[2], vals[3]});
     }
     return out;
 }
@@ -203,8 +214,14 @@ gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropper *cropper, GstBuff
     std::vector<HailoROIPtr> crops;
 
     /* 1. Dynamic tiles: HailoTileROI objects pre-attached to main_roi. */
-    for (auto &obj : main_roi->get_objects_typed(HAILO_TILE))
-        crops.push_back(std::dynamic_pointer_cast<HailoROI>(obj));
+    for (auto &obj : main_roi->get_objects_typed(HAILO_TILE)) {
+        /* I4: guard against a non-HailoROI HAILO_TILE object (defensive cast). */
+        auto roi = std::dynamic_pointer_cast<HailoROI>(obj);
+        if (roi) crops.push_back(std::move(roi));
+    }
+
+    /* I3: capture dynamic count explicitly before appending static tiles. */
+    const size_t dynamic_count = crops.size();
 
     /* 2. Static tiles: snapshot under lock so set_property mid-flight is safe. */
     std::vector<StaticTile> snapshot;
@@ -235,7 +252,7 @@ gst_hailotilecropper_dynamic_prepare_crops(GstHailoBaseCropper *cropper, GstBuff
     GST_LOG_OBJECT(self,
         "prepare_crops: %zu tile(s) (%zu dynamic + %zu static)",
         crops.size(),
-        crops.size() - snapshot.size(),
+        dynamic_count,
         snapshot.size());
 
     return crops;
