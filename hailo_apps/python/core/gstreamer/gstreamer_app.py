@@ -629,6 +629,7 @@ class GStreamerApp:
         # signal.signal() may only be called from the main thread (e.g. EOS/shutdown from pipeline thread)
         if threading.current_thread() is threading.main_thread():
             signal.signal(signal.SIGINT, signal.SIG_DFL)
+        
         self.pipeline.set_state(Gst.State.PAUSED)
         GLib.usleep(100000)
 
