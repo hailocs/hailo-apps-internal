@@ -311,15 +311,21 @@ def _app_callback_inner(element, buffer, user_data):
             target_state.update_last_seen()
             follow_status = f"ID {target_id}"
 
-            # ReID: build/update gallery while following (auto or locked)
+            # ReID: build/update gallery while following (auto or locked).
+            # Gallery update is offloaded to ReIDWorker when --reid-sync is not set.
             if reid_manager is not None:
                 reid_manager.on_target_selected(target_id)
                 if reid_manager.should_update():
                     frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
                     if frame_bgr is not None:
-                        reid_manager.update_gallery(
-                            frame_bgr, best.get_bbox(),
-                            user_data.video_width, user_data.video_height)
+                        if user_data.reid_worker is not None:
+                            user_data.reid_worker.submit_gallery_update(
+                                frame_bgr, best.get_bbox(),
+                                user_data.video_width, user_data.video_height)
+                        else:
+                            reid_manager.update_gallery(
+                                frame_bgr, best.get_bbox(),
+                                user_data.video_width, user_data.video_height)
         else:
             # Target lost by tracker — try ReID re-identification
             if reid_manager is not None and reid_manager.has_gallery and person_by_id:
