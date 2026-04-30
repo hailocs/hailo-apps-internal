@@ -116,3 +116,15 @@ def test_submit_after_stop_is_silently_ignored():
     worker.submit_gallery_update(_frame(), object(), 1280, 720)
     time.sleep(0.05)
     assert fake.calls == []
+
+
+def test_cli_parser_has_reid_sync_flag_default_false():
+    """--reid-sync exists and defaults to False (async is the default behavior)."""
+    from drone_follow.drone_follow_app import _build_parser
+    parser = _build_parser()
+    args = parser.parse_args([])
+    assert hasattr(args, "reid_sync")
+    assert args.reid_sync is False
+
+    args2 = parser.parse_args(["--reid-sync"])
+    assert args2.reid_sync is True

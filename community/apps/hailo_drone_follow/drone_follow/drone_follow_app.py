@@ -86,6 +86,9 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                             f"(default: {_DEFAULT_REID_HEF}). Use --no-reid to disable.")
     group.add_argument("--no-reid", action="store_true",
                        help="Disable ReID re-identification")
+    group.add_argument("--reid-sync", action="store_true",
+                       help="Run ReID gallery updates synchronously in the streaming "
+                            "thread (legacy behavior). Default: async via background worker.")
     group.add_argument("--update-interval", type=int, default=30,
                        help="Frames between ReID gallery embedding updates while following (default: 30)")
     group.add_argument("--reid-threshold", type=float, default=0.7,
