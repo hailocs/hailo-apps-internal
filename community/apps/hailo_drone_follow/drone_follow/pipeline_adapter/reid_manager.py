@@ -197,7 +197,7 @@ class ReIDManager:
             self._original_id = track_id
             self._frame_counter = 0
             self._duplicate_streak = 0
-        LOGGER.info("[REID] New target ID %d — gallery reset", track_id)
+        LOGGER.debug("[REID] New target ID %d — gallery reset", track_id)
 
     def should_update(self) -> bool:
         """Increment frame counter and return True when it's time to sample."""
@@ -293,7 +293,7 @@ class ReIDManager:
         reacquired = None
         reacquire_attempted = False
         if action == ACTION_SKIPPED_DRIFT and person_by_id:
-            LOGGER.info(
+            LOGGER.debug(
                 "[REID DRIFT] target=%s sim=%.3f < %.2f — reacquiring among %d visible",
                 self._original_id, sim, self._drift_threshold, len(person_by_id),
             )
@@ -303,32 +303,33 @@ class ReIDManager:
                 log_prefix="[REID DRIFT]",
             )
 
-        # INFO logs — one line per call so the operator can see decisions live.
+        # One DEBUG line per call so decisions can be inspected when needed
+        # without spamming the default INFO log.
         if action == ACTION_BOOTSTRAP:
-            LOGGER.info("[REID GALLERY] bootstrap stored for ID %s (1/%d)",
-                        self._original_id, self._max_gallery_size)
+            LOGGER.debug("[REID GALLERY] bootstrap stored for ID %s (1/%d)",
+                         self._original_id, self._max_gallery_size)
         elif action == ACTION_ADDED:
-            LOGGER.info("[REID GALLERY] added sim=%.3f size=%d/%d",
-                        sim, size, self._max_gallery_size)
+            LOGGER.debug("[REID GALLERY] added sim=%.3f size=%d/%d",
+                         sim, size, self._max_gallery_size)
         elif action == ACTION_SKIPPED_DUPLICATE:
-            LOGGER.info("[REID GALLERY] skip-similar sim=%.3f size=%d/%d streak=%d",
-                        sim, size, self._max_gallery_size, self._duplicate_streak)
+            LOGGER.debug("[REID GALLERY] skip-similar sim=%.3f size=%d/%d streak=%d",
+                         sim, size, self._max_gallery_size, self._duplicate_streak)
         elif action == ACTION_REFRESHED:
-            LOGGER.info("[REID GALLERY] refreshed (replaced oldest) sim=%.3f size=%d/%d",
-                        sim, size, self._max_gallery_size)
+            LOGGER.debug("[REID GALLERY] refreshed (replaced oldest) sim=%.3f size=%d/%d",
+                         sim, size, self._max_gallery_size)
         elif action == ACTION_SKIPPED_DRIFT:
             if reacquired is not None and reacquired != self._tracking_id:
-                LOGGER.info("[REID GALLERY] drift sim=%.3f -> reacquired as ID %d",
-                            sim, reacquired)
+                LOGGER.debug("[REID GALLERY] drift sim=%.3f -> reacquired as ID %d",
+                             sim, reacquired)
             elif reacquired is not None:
-                LOGGER.info("[REID GALLERY] drift sim=%.3f but reID confirms same ID %d (false drift)",
-                            sim, reacquired)
+                LOGGER.debug("[REID GALLERY] drift sim=%.3f but reID confirms same ID %d (false drift)",
+                             sim, reacquired)
             elif reacquire_attempted:
-                LOGGER.info("[REID GALLERY] drift sim=%.3f -> reacquire failed; will hold/search",
-                            sim)
+                LOGGER.debug("[REID GALLERY] drift sim=%.3f -> reacquire failed; will hold/search",
+                             sim)
             else:
-                LOGGER.info("[REID GALLERY] drift sim=%.3f -> no visible candidates",
-                            sim)
+                LOGGER.debug("[REID GALLERY] drift sim=%.3f -> no visible candidates",
+                             sim)
 
         return GalleryUpdateResult(
             action=action,
@@ -402,19 +403,19 @@ class ReIDManager:
 
         for tid, sim in sims_log:
             match_str = " << MATCH" if tid == best_tid else ""
-            LOGGER.info("%s   ID %d  sim=%.3f  (threshold=%.2f)%s",
+            LOGGER.debug("%s   ID %d  sim=%.3f  (threshold=%.2f)%s",
                          log_prefix, tid, sim, self._reid_match_threshold, match_str)
 
         if best_tid is not None:
-            LOGGER.info("%s Re-identified target as track ID %d "
-                        "(best sim=%.3f, candidates=%d, threshold=%.2f)",
-                        log_prefix, best_tid, best_sim, len(sims_log),
-                        self._reid_match_threshold)
+            LOGGER.debug("%s Re-identified target as track ID %d "
+                         "(best sim=%.3f, candidates=%d, threshold=%.2f)",
+                         log_prefix, best_tid, best_sim, len(sims_log),
+                         self._reid_match_threshold)
         else:
-            LOGGER.info("%s No match — best candidate ID %d sim=%.3f "
-                        "(candidates=%d, threshold=%.2f)",
-                        log_prefix, top_tid, top_sim, len(sims_log),
-                        self._reid_match_threshold)
+            LOGGER.debug("%s No match — best candidate ID %d sim=%.3f "
+                         "(candidates=%d, threshold=%.2f)",
+                         log_prefix, top_tid, top_sim, len(sims_log),
+                         self._reid_match_threshold)
         return best_tid
 
     def try_reidentify(self, frame_bgr: np.ndarray, person_by_id: dict,
@@ -475,16 +476,16 @@ class ReIDManager:
         best_person = kept_persons[best_idx] if best_sim >= self._reid_match_threshold else None
 
         if best_person is not None:
-            LOGGER.info("[REID SEARCH] tracker has no tracks — raw-detection MATCH "
-                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d) — "
-                        "driving controller from raw bbox",
-                        best_sim, len(sims), self._reid_match_threshold,
-                        self.gallery_size, self._max_gallery_size)
+            LOGGER.debug("[REID SEARCH] tracker has no tracks — raw-detection MATCH "
+                         "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d) — "
+                         "driving controller from raw bbox",
+                         best_sim, len(sims), self._reid_match_threshold,
+                         self.gallery_size, self._max_gallery_size)
         else:
-            LOGGER.info("[REID SEARCH] tracker has no tracks — best raw-detection "
-                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d)",
-                        best_sim, len(sims), self._reid_match_threshold,
-                        self.gallery_size, self._max_gallery_size)
+            LOGGER.debug("[REID SEARCH] tracker has no tracks — best raw-detection "
+                         "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d)",
+                         best_sim, len(sims), self._reid_match_threshold,
+                         self.gallery_size, self._max_gallery_size)
         return best_sim, best_person
 
     def on_reidentified(self, new_track_id: int) -> None:
@@ -494,7 +495,7 @@ class ReIDManager:
         self._frame_counter = 0
         # Streak tracking is per-target — drop it on a switch.
         self._duplicate_streak = 0
-        LOGGER.info("[REID] Tracking resumed via ReID for ID %s", self._original_id)
+        LOGGER.debug("[REID] Tracking resumed via ReID for ID %s", self._original_id)
 
     # ------------------------------------------------------------------
     # Cleanup
