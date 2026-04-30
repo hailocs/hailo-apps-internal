@@ -59,7 +59,13 @@ else
 fi
 
 # Get the absolute path of the project's root directory (where this script is located).
-PROJECT_ROOT=$(pwd)
+# Resolve from BASH_SOURCE so this works when sourced from any cwd.
+if [ -n "$ZSH_VERSION" ]; then
+    PROJECT_ROOT="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+else
+    PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+cd "$PROJECT_ROOT"
 
 # Prepend the project root to the PYTHONPATH.
 # This ensures our project's modules are found first.
