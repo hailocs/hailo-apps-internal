@@ -11,11 +11,39 @@ so that the detection pipeline's VDevice is always created first.
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 
 LOGGER = logging.getLogger(__name__)
+
+
+# Action constants returned by ReIDManager.update_gallery to describe what
+# happened with a candidate in-track embedding. Strings (not enum) so the
+# callback can string-compare without an extra import.
+ACTION_BOOTSTRAP = "bootstrap"
+ACTION_ADDED = "added"
+ACTION_SKIPPED_DUPLICATE = "skipped_duplicate"
+ACTION_REFRESHED = "refreshed"
+ACTION_SKIPPED_DRIFT = "skipped_drift"
+ACTION_NOOP = "noop"
+
+
+@dataclass(frozen=True)
+class GalleryUpdateResult:
+    """Outcome of a single ReIDManager.update_gallery() call.
+
+    similarity is -1.0 when no comparison was made (bootstrap, NOOP).
+    reacquired_track_id is set only when action == ACTION_SKIPPED_DRIFT and
+    the on-the-fly re-acquisition pass found a gallery match among the
+    visible detections.
+    """
+    action: str
+    similarity: float
+    gallery_size: int
+    reacquired_track_id: Optional[int] = None
+    reacquire_attempted: bool = False
 
 _buffer_utils = None
 
@@ -64,11 +92,25 @@ class ReIDManager:
     """
 
     def __init__(self, hef_path: str, update_interval: int = 30,
-                 max_gallery_size: int = 10, reid_match_threshold: float = 0.6):
+                 max_gallery_size: int = 10, reid_match_threshold: float = 0.6,
+                 drift_threshold: float = 0.5,
+                 duplicate_threshold: float = 0.9,
+                 refresh_every: int = 5,
+                 min_gallery_for_drift_check: int = 2):
         self._hef_path = hef_path
         self._max_gallery_size = max_gallery_size
         self._reid_match_threshold = reid_match_threshold
         self._update_interval = update_interval
+        self._drift_threshold = drift_threshold
+        self._duplicate_threshold = duplicate_threshold
+        self._refresh_every = refresh_every
+        # Drift check over a single seed embedding is too brittle (one bad
+        # outlier kicks reacquire). Wait until we have at least this many.
+        self._min_gallery_for_drift_check = min_gallery_for_drift_check
+        # Counts consecutive duplicate-band decisions; used to throttle the
+        # refresh-oldest mechanism so the gallery doesn't go stale on a long
+        # clean follow.
+        self._duplicate_streak = 0
         # Extractor created lazily so the detection pipeline's VDevice is
         # always initialized first (avoids segfault on early pipeline errors).
         self._extractor = None
@@ -82,9 +124,11 @@ class ReIDManager:
         self._frame_counter = 0
         self._lock = threading.Lock()
         LOGGER.debug("[REID] Configured: model=%s, update_interval=%d, "
-                    "max_gallery=%d, threshold=%.2f",
+                    "max_gallery=%d, match_thresh=%.2f, drift_thresh=%.2f, "
+                    "dup_thresh=%.2f, refresh_every=%d",
                     os.path.basename(hef_path), update_interval,
-                    max_gallery_size, reid_match_threshold)
+                    max_gallery_size, reid_match_threshold,
+                    drift_threshold, duplicate_threshold, refresh_every)
 
     # ------------------------------------------------------------------
     # Lazy extractor init
@@ -140,7 +184,8 @@ class ReIDManager:
             self._tracking_id = track_id
             self._original_id = track_id
             self._frame_counter = 0
-        LOGGER.debug("[REID] New target ID %d — gallery reset", track_id)
+            self._duplicate_streak = 0
+        LOGGER.info("[REID] New target ID %d — gallery reset", track_id)
 
     def should_update(self) -> bool:
         """Increment frame counter and return True when it's time to sample."""
@@ -149,52 +194,152 @@ class ReIDManager:
         return self._frame_counter == 1 or self._frame_counter % self._update_interval == 0
 
     def update_gallery(self, frame_bgr: np.ndarray, hailo_bbox,
-                       video_width: int, video_height: int) -> None:
-        """Extract embedding from the followed person's crop and store it."""
+                       video_width: int, video_height: int,
+                       *, person_by_id: Optional[dict] = None
+                       ) -> GalleryUpdateResult:
+        """Validate and store an embedding for the currently followed person.
+
+        Drift-protected pipeline:
+          - empty gallery       → bootstrap (always store)
+          - gallery still small → store unconditionally (drift check is brittle
+                                  with too few reference vectors)
+          - sim < drift_thresh  → drift suspected; do NOT store. If
+                                  ``person_by_id`` is provided, run the
+                                  re-acquisition pass (same as try_reidentify)
+                                  to find the right person among visible tracks.
+          - sim > duplicate_thr → near-duplicate; skip add. Every Nth such
+                                  decision in a row, replace the oldest
+                                  vector instead so the gallery doesn't go
+                                  stale on a long clean follow.
+          - middle band         → store (or FIFO-replace when full).
+
+        Returns a ``GalleryUpdateResult`` describing the action taken plus the
+        re-acquired track id when drift fired.
+        """
         if not self._ensure_extractor():
-            return
+            return GalleryUpdateResult(ACTION_NOOP, -1.0, 0)
+
         crop = _crop_person(frame_bgr, hailo_bbox, video_width, video_height)
         if crop is None or crop.size == 0:
-            return
+            with self._lock:
+                size = self._gallery.embedding_count(str(self._original_id))
+            return GalleryUpdateResult(ACTION_NOOP, -1.0, size)
+
+        # Embedding extraction is a Hailo NPU call — must run outside the lock
+        # so re-identification on a parallel call is never blocked behind it.
         try:
             emb = self._extractor.extract_embedding(crop)
-            name = str(self._original_id)
-            with self._lock:
-                if self._gallery.size == 0:
-                    self._gallery.add_person(name, emb)
-                    LOGGER.debug("[REID] Gallery: first embedding stored for ID %d", self._original_id)
-                else:
-                    count_before = self._gallery.embedding_count(name)
-                    self._gallery.update(name, emb, self._frame_counter)
-                    count = self._gallery.embedding_count(name)
-                    if count_before >= self._max_gallery_size:
-                        LOGGER.debug("[REID] Gallery: replaced oldest embedding for ID %d (%d/%d stored)",
-                                    self._original_id, count, self._max_gallery_size)
-                    else:
-                        LOGGER.debug("[REID] Gallery: embedding added for ID %d (%d/%d stored)",
-                                    self._original_id, count, self._max_gallery_size)
         except Exception as e:
-            LOGGER.warning("[REID] Gallery update failed: %s", e)
+            LOGGER.warning("[REID] Gallery update extraction failed: %s", e)
+            with self._lock:
+                size = self._gallery.embedding_count(str(self._original_id))
+            return GalleryUpdateResult(ACTION_NOOP, -1.0, size)
+
+        name = str(self._original_id)
+        sim = -1.0
+        action = ACTION_NOOP
+        size = 0
+
+        with self._lock:
+            if self._gallery.size == 0:
+                self._gallery.add_person(name, emb)
+                action = ACTION_BOOTSTRAP
+                size = self._gallery.embedding_count(name)
+            else:
+                sim = self._gallery.max_similarity(name, emb)
+                size_before = self._gallery.embedding_count(name)
+
+                if size_before < self._min_gallery_for_drift_check:
+                    # Bootstrap-protect: too few reference vectors for a
+                    # reliable drift check — just append.
+                    self._gallery.update(name, emb, self._frame_counter)
+                    action = ACTION_ADDED
+                    self._duplicate_streak = 0
+                    size = self._gallery.embedding_count(name)
+                elif sim < self._drift_threshold:
+                    # Suspected drift — reacquire happens after lock release.
+                    action = ACTION_SKIPPED_DRIFT
+                    self._duplicate_streak = 0
+                    size = size_before
+                elif sim > self._duplicate_threshold:
+                    self._duplicate_streak += 1
+                    if self._duplicate_streak >= self._refresh_every:
+                        self._gallery.replace_oldest(name, emb)
+                        self._duplicate_streak = 0
+                        action = ACTION_REFRESHED
+                    else:
+                        action = ACTION_SKIPPED_DUPLICATE
+                    size = self._gallery.embedding_count(name)
+                else:
+                    self._gallery.update(name, emb, self._frame_counter)
+                    action = ACTION_ADDED
+                    self._duplicate_streak = 0
+                    size = self._gallery.embedding_count(name)
+
+        # Drift consequences run outside the lock — the reacquire pass calls
+        # back into the gallery and would deadlock otherwise.
+        reacquired = None
+        reacquire_attempted = False
+        if action == ACTION_SKIPPED_DRIFT and person_by_id:
+            LOGGER.info(
+                "[REID DRIFT] target=%s sim=%.3f < %.2f — reacquiring among %d visible",
+                self._original_id, sim, self._drift_threshold, len(person_by_id),
+            )
+            reacquire_attempted = True
+            reacquired = self._reacquire(
+                frame_bgr, person_by_id, video_width, video_height,
+                log_prefix="[REID DRIFT]",
+            )
+
+        # INFO logs — one line per call so the operator can see decisions live.
+        if action == ACTION_BOOTSTRAP:
+            LOGGER.info("[REID GALLERY] bootstrap stored for ID %s (1/%d)",
+                        self._original_id, self._max_gallery_size)
+        elif action == ACTION_ADDED:
+            LOGGER.info("[REID GALLERY] added sim=%.3f size=%d/%d",
+                        sim, size, self._max_gallery_size)
+        elif action == ACTION_SKIPPED_DUPLICATE:
+            LOGGER.info("[REID GALLERY] skip-similar sim=%.3f size=%d/%d streak=%d",
+                        sim, size, self._max_gallery_size, self._duplicate_streak)
+        elif action == ACTION_REFRESHED:
+            LOGGER.info("[REID GALLERY] refreshed (replaced oldest) sim=%.3f size=%d/%d",
+                        sim, size, self._max_gallery_size)
+        elif action == ACTION_SKIPPED_DRIFT:
+            if reacquired is not None and reacquired != self._tracking_id:
+                LOGGER.info("[REID GALLERY] drift sim=%.3f -> reacquired as ID %d",
+                            sim, reacquired)
+            elif reacquired is not None:
+                LOGGER.info("[REID GALLERY] drift sim=%.3f but reID confirms same ID %d (false drift)",
+                            sim, reacquired)
+            elif reacquire_attempted:
+                LOGGER.info("[REID GALLERY] drift sim=%.3f -> reacquire failed; will hold/search",
+                            sim)
+            else:
+                LOGGER.info("[REID GALLERY] drift sim=%.3f -> no visible candidates",
+                            sim)
+
+        return GalleryUpdateResult(
+            action=action,
+            similarity=sim,
+            gallery_size=size,
+            reacquired_track_id=reacquired,
+            reacquire_attempted=reacquire_attempted,
+        )
 
     # ------------------------------------------------------------------
     # Re-identification
     # ------------------------------------------------------------------
 
-    def try_reidentify(self, frame_bgr: np.ndarray, person_by_id: dict,
-                       video_width: int, video_height: int) -> Optional[int]:
-        """Try to find the lost target among visible persons.
+    def _reacquire(self, frame_bgr: np.ndarray, person_by_id: dict,
+                   video_width: int, video_height: int,
+                   *, log_prefix: str = "[REID]") -> Optional[int]:
+        """Pure search loop: crop all visible persons, batch-extract, pick best
+        gallery match above ``reid_match_threshold``.
 
-        Args:
-            frame_bgr: Current frame in BGR format.
-            person_by_id: {track_id: hailo_detection} of visible persons.
-            video_width, video_height: Frame dimensions for crop calculation.
-
-        Returns:
-            The track_id of the re-identified person, or None.
+        Shared between the "tracker lost target" path (try_reidentify) and the
+        "drift suspected at gallery-update time" path. Does not mutate any
+        ReIDManager state — caller decides what to do with the returned id.
         """
-        if not self._ensure_extractor():
-            return None
-
         with self._lock:
             if self._gallery.size == 0:
                 return None
@@ -203,8 +348,8 @@ class ReIDManager:
         if not person_by_id:
             return None
 
-        LOGGER.debug("[REID] Searching for lost target ID %d among %d visible persons (gallery: %d embeddings)",
-                    self._tracking_id, len(person_by_id), gallery_count)
+        LOGGER.debug("%s Searching for target ID %s among %d visible persons (gallery: %d embeddings)",
+                     log_prefix, self._tracking_id, len(person_by_id), gallery_count)
 
         crops = []
         tids = []
@@ -220,7 +365,7 @@ class ReIDManager:
         try:
             embeddings = self._extractor.extract_embeddings_batch(crops)
         except Exception as e:
-            LOGGER.warning("[REID] Batch extraction failed: %s", e)
+            LOGGER.warning("%s Batch extraction failed: %s", log_prefix, e)
             return None
 
         best_tid = None
@@ -236,23 +381,39 @@ class ReIDManager:
 
         for tid, sim in sims_log:
             match_str = " << MATCH" if tid == best_tid else ""
-            LOGGER.debug("[REID]   ID %d  sim=%.3f  (threshold=%.2f)%s",
-                        tid, sim, self._reid_match_threshold, match_str)
+            LOGGER.debug("%s   ID %d  sim=%.3f  (threshold=%.2f)%s",
+                         log_prefix, tid, sim, self._reid_match_threshold, match_str)
 
         if best_tid is not None:
-            LOGGER.debug("[REID] Re-identified target as track ID %d (sim=%.3f)", best_tid, best_sim)
+            LOGGER.debug("%s Re-identified target as track ID %d (sim=%.3f)",
+                         log_prefix, best_tid, best_sim)
         else:
-            LOGGER.debug("[REID] No match found (best sim=%.3f, threshold=%.2f)",
-                        max(s for _, s in sims_log) if sims_log else 0.0,
-                        self._reid_match_threshold)
+            LOGGER.debug("%s No match found (best sim=%.3f, threshold=%.2f)",
+                         log_prefix,
+                         max(s for _, s in sims_log) if sims_log else 0.0,
+                         self._reid_match_threshold)
         return best_tid
+
+    def try_reidentify(self, frame_bgr: np.ndarray, person_by_id: dict,
+                       video_width: int, video_height: int) -> Optional[int]:
+        """Try to find the lost target among visible persons.
+
+        Thin wrapper around ``_reacquire`` that also handles lazy extractor init.
+        Used by the callback when the tracker reports the target as lost.
+        """
+        if not self._ensure_extractor():
+            return None
+        return self._reacquire(frame_bgr, person_by_id, video_width, video_height,
+                               log_prefix="[REID LOST]")
 
     def on_reidentified(self, new_track_id: int) -> None:
         """Update internal tracking ID after successful re-identification."""
         self._tracking_id = new_track_id
         # Reset frame counter so we immediately capture a fresh embedding
         self._frame_counter = 0
-        LOGGER.debug("[REID] Tracking resumed with new ID %d", new_track_id)
+        # Streak tracking is per-target — drop it on a switch.
+        self._duplicate_streak = 0
+        LOGGER.info("[REID] Tracking resumed via ReID for ID %s", self._original_id)
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -265,6 +426,7 @@ class ReIDManager:
             self._tracking_id = None
             self._original_id = None
             self._frame_counter = 0
+            self._duplicate_streak = 0
 
     def release(self) -> None:
         """Release Hailo NPU resources."""

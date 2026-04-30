@@ -22,7 +22,7 @@ from drone_follow.perf_tracker import PerfTracker
 
 from .tracker import MetricsTracker
 from .tracker_factory import create_tracker
-from .reid_manager import get_frame_bgr
+from .reid_manager import ACTION_SKIPPED_DRIFT, get_frame_bgr
 
 LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +184,7 @@ class FollowEvent:
     AUTO_NO_TRACKED = "auto-no-tracked"
     FALLBACK = "fallback"
     REID_SEARCH = "reid-search"
+    REID_DRIFT = "reid-drift"
 
 
 def _log_mode(user_data, mode, followed_id):
@@ -317,9 +318,36 @@ def _app_callback_inner(element, buffer, user_data):
                 if reid_manager.should_update():
                     frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
                     if frame_bgr is not None:
-                        reid_manager.update_gallery(
+                        result = reid_manager.update_gallery(
                             frame_bgr, best.get_bbox(),
-                            user_data.video_width, user_data.video_height)
+                            user_data.video_width, user_data.video_height,
+                            person_by_id=person_by_id)
+                        # Drift handling: gallery rejected the embedding because
+                        # it was too dissimilar from existing vectors. The
+                        # manager already ran a re-acquisition pass over the
+                        # visible detections; act on its result.
+                        if result.action == ACTION_SKIPPED_DRIFT:
+                            new_tid = result.reacquired_track_id
+                            if new_tid is not None and new_tid != target_id:
+                                # Tracker drifted onto a different person and
+                                # ReID found the right one — switch tracks.
+                                target_state.set_target(new_tid)
+                                reid_manager.on_reidentified(new_tid)
+                                best = person_by_id.get(new_tid, best)
+                                target_id = new_tid
+                                target_state.update_last_seen()
+                                follow_status = f"REID-DRIFT→ID {new_tid}"
+                            elif new_tid is None:
+                                # Reacquire failed — hold position, retry
+                                # next frame. Mirrors the existing REID-lost
+                                # path's "no match" behaviour.
+                                user_data.shared_state.update(None, available_ids=available_ids)
+                                _update_ui(ui_state, persons, person_to_id, None)
+                                _log_mode(user_data, FollowEvent.REID_DRIFT, target_id)
+                                return
+                            # new_tid == target_id ⇒ false drift (e.g. pose
+                            # change). Embedding was NOT stored, but we keep
+                            # tracking; next update_interval retries.
         else:
             # Target lost by tracker — try ReID re-identification
             if reid_manager is not None and reid_manager.has_gallery and person_by_id:
