@@ -11,9 +11,21 @@
 # no cloning into the home directory.
 #
 # Usage:
-#   sudo ./install_air.sh [--platform <rpi|rpi5>] [--generate-key]
+#   sudo ./install_air.sh [--platform <rpi|rpi5>] [--mode <stream|shm>]
+#                         [--camera-type <N>] [--generate-key]
 #
 # If --platform is not given, auto-detects from /proc/device-tree/model.
+#
+# --mode selects the OpenHD camera integration (see CLAUDE.md):
+#   stream (default) Mode A — drone-follow owns the CSI camera and pushes RTP to
+#                    OpenHD via --openhd-stream. Sets primary_camera_type=5
+#                    (X_CAM_TYPE_HAILO_AI) and removes /boot/openhd/hailo.txt.
+#   shm              Mode B — OpenHD owns the camera and tees raw NV12 to SHM;
+#                    drone-follow reads from /tmp/openhd_raw_video. Sets
+#                    primary_camera_type to a libcamera value (--camera-type,
+#                    default 31 = IMX219; 32 = IMX708) and creates
+#                    /boot/openhd/hailo.txt.
+#
 # Pass --generate-key on the FIRST unit to create /usr/local/share/openhd/txrx.key;
 # on the second unit, copy that key over instead (the radio link needs matching
 # keys on both ends).
@@ -61,15 +73,27 @@ OPENHD_SYSUTILS_DIR="${APP_ROOT}/OpenHD-SysUtils"
 # Parse args
 PLATFORM=""
 GENERATE_KEY=false
+MODE="stream"
+SHM_CAMERA_TYPE=31  # 31 = IMX219, 32 = IMX708 (Camera Module 3)
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --platform) PLATFORM="$2"; shift 2 ;;
+        --mode) MODE="$2"; shift 2 ;;
+        --camera-type) SHM_CAMERA_TYPE="$2"; shift 2 ;;
         --generate-key) GENERATE_KEY=true; shift ;;
         --help|-h)
             cat <<EOF
-Usage: sudo $0 [--platform <rpi|rpi5>] [--generate-key]
+Usage: sudo $0 [--platform <rpi|rpi5>] [--mode <stream|shm>]
+              [--camera-type <N>] [--generate-key]
 
   --platform       Override auto-detected platform.
+  --mode           Camera integration:
+                     stream (default) — Mode A, drone-follow owns the camera
+                                        (primary_camera_type=5).
+                     shm              — Mode B, OpenHD tees raw frames to SHM
+                                        (creates /boot/openhd/hailo.txt).
+  --camera-type    Libcamera sensor value used in --mode shm. Default 31 (IMX219);
+                   32 = IMX708 (Camera Module 3). Ignored in --mode stream.
   --generate-key   Generate a fresh /usr/local/share/openhd/txrx.key if one is
                    missing. WITHOUT this flag the script will not create a key
                    — air and ground must share the same key, so on the second
@@ -80,6 +104,11 @@ EOF
         *) echo "Unknown option: $1 (try --help)"; exit 1 ;;
     esac
 done
+
+case "$MODE" in
+    stream|shm) ;;
+    *) echo "ERROR: --mode must be 'stream' or 'shm' (got: $MODE)"; exit 1 ;;
+esac
 
 # Auto-detect RPi platform
 if [ -z "$PLATFORM" ]; then
@@ -304,46 +333,77 @@ fi
 
 normalize_wb_frequency
 
-# Force OpenHD into Mode A (X_CAM_TYPE_HAILO_AI = 5). With the default
-# (31 = IMX219) OpenHD acquires the CSI camera itself at startup, which
-# starves drone-follow's Picamera2 with "Device or resource busy". In Mode A
-# drone-follow owns the camera and pushes RTP to OpenHD via --openhd-stream
-# (the layout scripts/start_air.sh uses). Idempotent: writes a minimal
-# config on a fresh install (OpenHD fills in other defaults on first start)
-# and updates an existing config in place. See CLAUDE.md "OpenHD Camera
-# Modes" for context.
+# Configure OpenHD's primary camera type based on the selected mode.
+#
+#   Mode A (stream): primary_camera_type=5 (X_CAM_TYPE_HAILO_AI). drone-follow
+#       owns the CSI camera and pushes RTP to OpenHD via --openhd-stream.
+#       OpenHD must NOT acquire the camera (otherwise Picamera2 hits
+#       "Device or resource busy"), and /boot/openhd/hailo.txt must be absent.
+#
+#   Mode B (shm):    primary_camera_type=$SHM_CAMERA_TYPE (libcamera, e.g.
+#       31=IMX219, 32=IMX708). OpenHD opens the camera, encodes for WFB, and —
+#       because /boot/openhd/hailo.txt is present — also tees raw NV12 to
+#       /tmp/openhd_raw_video. drone-follow reads the SHM and runs AI only.
+#
+# Idempotent: writes a minimal config on a fresh install (OpenHD fills in other
+# defaults on first start) and updates an existing config in place. See
+# CLAUDE.md "OpenHD Camera Modes" for context.
+case "$MODE" in
+    stream) CAMERA_TYPE=5 ;;
+    shm)    CAMERA_TYPE="$SHM_CAMERA_TYPE" ;;
+esac
+
 CAM_CONFIG="/usr/local/share/openhd/video/air_camera_generic.json"
 mkdir -p "$(dirname "$CAM_CONFIG")"
 # OpenHD overwrites this file on first start with its full default schema
-# (and primary_camera_type=31 = IMX219). To make Mode A stick across
-# install→first boot, we must pre-seed all the keys OpenHD expects, not
-# just primary_camera_type. The schema below mirrors what OpenHD 2.6.4-
-# hailo writes; if a future OpenHD adds keys, they'll be filled in on
-# first start (only existing keys are preserved verbatim).
+# (and primary_camera_type=31 = IMX219). To make our choice stick across
+# install→first boot, we pre-seed all the keys OpenHD expects, not just
+# primary_camera_type. The schema below mirrors what OpenHD 2.6.4-hailo
+# writes; if a future OpenHD adds keys, they'll be filled in on first start
+# (only existing keys are preserved verbatim).
 if [ ! -f "$CAM_CONFIG" ]; then
-    cat > "$CAM_CONFIG" <<'JSON'
+    cat > "$CAM_CONFIG" <<JSON
 {
     "dualcam_primary_video_allocated_bandwidth_perc": 60,
     "enable_audio": 1,
-    "primary_camera_type": 5,
+    "primary_camera_type": $CAMERA_TYPE,
     "secondary_camera_type": 255,
     "switch_primary_and_secondary": false
 }
 JSON
-    echo "  $CAM_CONFIG: pre-seeded full schema, primary_camera_type=5 (Mode A / HAILO_AI)"
+    echo "  $CAM_CONFIG: pre-seeded full schema, primary_camera_type=$CAMERA_TYPE (Mode ${MODE^^})"
 else
-    python3 - "$CAM_CONFIG" <<'PY'
-import json, pathlib, sys
+    CAMERA_TYPE="$CAMERA_TYPE" python3 - "$CAM_CONFIG" <<'PY'
+import json, os, pathlib, sys
 path = pathlib.Path(sys.argv[1])
+target = int(os.environ["CAMERA_TYPE"])
 data = json.loads(path.read_text())
-if data.get("primary_camera_type") != 5:
-    data["primary_camera_type"] = 5
+if data.get("primary_camera_type") != target:
+    data["primary_camera_type"] = target
     path.write_text(json.dumps(data, indent=4) + "\n")
-    print(f"  {path}: set primary_camera_type=5 (Mode A / HAILO_AI)")
+    print(f"  {path}: set primary_camera_type={target}")
 else:
-    print(f"  {path}: primary_camera_type already 5")
+    print(f"  {path}: primary_camera_type already {target}")
 PY
 fi
+
+# Mode B requires the hailo.txt flag file to make OpenHD tee raw frames to SHM.
+# In Mode A it must be absent (otherwise OpenHD still tees, even when
+# drone-follow isn't reading SHM, wasting CPU on the air unit).
+HAILO_FLAG="/boot/openhd/hailo.txt"
+case "$MODE" in
+    stream)
+        if [ -f "$HAILO_FLAG" ]; then
+            rm -f "$HAILO_FLAG"
+            echo "  $HAILO_FLAG: removed (Mode A)"
+        fi
+        ;;
+    shm)
+        mkdir -p "$(dirname "$HAILO_FLAG")"
+        touch "$HAILO_FLAG"
+        echo "  $HAILO_FLAG: present (Mode B / SHM)"
+        ;;
+esac
 
 # txrx.key must be IDENTICAL on air and ground for the WFB radio link to work.
 # See install_ground_station.sh for the full reasoning behind --generate-key.
@@ -380,14 +440,19 @@ echo "=========================================="
 echo " Air unit install complete!"
 echo "=========================================="
 echo ""
-echo "Platform:  $PLATFORM"
+echo "Platform:    $PLATFORM"
+echo "Camera mode: $MODE (primary_camera_type=$CAMERA_TYPE)"
 echo "Binaries:"
 echo "  OpenHD:        /usr/local/bin/openhd"
 echo "  SysUtils:      /usr/local/bin/openhd_sys_utils"
 echo "  drone-follow:  ${APPS_INFRA_ROOT}/venv_hailo_apps/bin/drone-follow"
 echo ""
 echo "Run:"
-echo "  ${APP_ROOT}/scripts/start_air.sh"
+if [ "$MODE" = "stream" ]; then
+    echo "  ${APP_ROOT}/scripts/start_air.sh"
+else
+    echo "  ${APP_ROOT}/scripts/start_air.sh --mode shm"
+fi
 echo ""
 echo "Optional — auto-start at boot:"
 echo "  sudo ${APP_ROOT}/scripts/boot/install.sh"
