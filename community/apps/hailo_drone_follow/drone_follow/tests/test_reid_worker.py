@@ -34,6 +34,7 @@ def _frame(h=720, w=1280):
 
 
 def test_submit_returns_immediately_even_when_handler_is_slow():
+    """Submit must not block on a slow handler — the streaming thread cannot wait."""
     fake = _FakeReIDManager(sleep_s=0.1)
     worker = ReIDWorker(fake, max_queue=4)
     worker.start()
@@ -48,6 +49,7 @@ def test_submit_returns_immediately_even_when_handler_is_slow():
 
 
 def test_worker_processes_submissions_off_caller_thread():
+    """The handler runs on the worker thread, not the caller's."""
     fake = _FakeReIDManager()
     worker = ReIDWorker(fake, max_queue=4)
     worker.start()
@@ -96,6 +98,7 @@ def test_overflow_drops_oldest_to_keep_freshest_frame():
 
 
 def test_stop_is_idempotent_and_joins_thread():
+    """stop() can be called twice safely; after stop the thread is joined."""
     fake = _FakeReIDManager()
     worker = ReIDWorker(fake, max_queue=2)
     worker.start()
