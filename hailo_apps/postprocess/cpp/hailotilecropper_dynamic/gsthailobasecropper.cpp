@@ -352,12 +352,16 @@ gst_hailo_basecropper_get_property(GObject *object, guint prop_id,
 
 /**
  * Retrieves wanted caps from downstream elements and sets them.
+ * Falls back to @fallback_caps when the downstream peer accepts ANY caps
+ * (e.g. a fakesink), avoiding the gst_caps_fixate(ANY) assertion.
  *
- * @param[in] hailo_basecropper      Pointer to the element, used to send caps query on the crop pad.
+ * @param[in] hailo_basecropper  Pointer to the element.
+ * @param[in] fallback_caps      Caps to use when the peer returns ANY; typically
+ *                               the incoming sink caps.  Not consumed (caller owns).
  * @return Upon success, returns true. Otherwise, returns false.
  */
 static gboolean
-gst_crop_scale_setcaps(GstHailoBaseCropper *hailo_basecropper)
+gst_crop_scale_setcaps(GstHailoBaseCropper *hailo_basecropper, GstCaps *fallback_caps)
 {
     GstCaps *caps_result, *outcaps = NULL;
     GstQuery *query = NULL;
@@ -369,12 +373,25 @@ gst_crop_scale_setcaps(GstHailoBaseCropper *hailo_basecropper)
     gst_pad_peer_query(hailo_basecropper->srcpad_crop, query);
     gst_query_parse_caps_result(query, &caps_result);
 
-    // Fixate the caps
-    // gst_caps_fixate takes ownership of caps_result, no need to unref it.
-    outcaps = gst_caps_fixate(caps_result);
+    // If the peer returned ANY caps (e.g. fakesink accepts everything), fall
+    // back to the incoming caps so that gst_caps_fixate never sees ANY.
+    if (!caps_result || gst_caps_is_any(caps_result))
+    {
+        GST_DEBUG_OBJECT(hailo_basecropper,
+                         "Crop peer returned ANY caps; using fallback caps %" GST_PTR_FORMAT,
+                         fallback_caps);
+        outcaps = gst_caps_copy(fallback_caps);
+    }
+    else
+    {
+        // Fixate the caps
+        // gst_caps_fixate takes ownership of caps_result, no need to unref it.
+        outcaps = gst_caps_fixate(caps_result);
+    }
 
     // Set The caps, unref all objects and return.
     gboolean ret = gst_pad_set_caps(hailo_basecropper->srcpad_crop, outcaps);
+    gst_caps_unref(outcaps);
     gst_query_unref(query);
 
     return ret;
@@ -499,7 +516,7 @@ gst_hailo_basecropper_sink_event(GstPad *pad, GstObject *parent,
             return FALSE;
         }
 
-        ret = gst_crop_scale_setcaps(hailo_basecropper);
+        ret = gst_crop_scale_setcaps(hailo_basecropper, caps);
         if (!ret)
         {
             GST_ERROR_OBJECT(hailo_basecropper, "Unable to set caps on crop srcpad");
