@@ -32,11 +32,25 @@ Both: Raspberry Pi OS Bookworm 64-bit.
 > in `$HOME`. They're listed in `.gitignore`. `scripts/install_ground_station.sh`
 > handles cloning automatically.
 
+> **Two repo layouts.** drone-follow ships two ways:
+> 1. **Standalone clone** of `hailo-drone-follow` at `~/hailo-drone-follow`
+>    (the historic layout — paths in this guide use it).
+> 2. **In-repo** under `hailo-apps-internal/community/apps/hailo_drone_follow/`
+>    (the layout used by recent installs).
+>
+> Both `install.sh` and `scripts/install_air.sh` resolve `APP_ROOT` from their
+> own location, so they work in either layout. If you're on layout (2),
+> substitute `~/hailo-apps-internal/community/apps/hailo_drone_follow` for
+> `~/hailo-drone-follow` everywhere below — and skip the standalone clone in
+> §1 (you already have the code).
+
 ---
 
 ## Air Unit Setup
 
-### 1. Clone drone-follow
+### 1. Clone drone-follow (layout 1 only)
+
+Skip if you're using layout 2 (in-repo under `hailo-apps-internal`).
 
 ```bash
 cd ~
@@ -46,14 +60,44 @@ git clone -b feature/openhd-integration-new \
 
 ### 2. Automated install (recommended)
 
-`scripts/install_air.sh` installs `hailo-all`, clones OpenHD + OpenHD-SysUtils
-into the drone-follow repo root, builds OpenHD (with the WiFi driver), runs
-`./install.sh` to set up the venv + UI, and deploys `df_params.json`:
+The install is **three scripts in order**:
+
+1. `~/hailo-apps-internal/install.sh` (layout 2 only) — sets up the parent venv
+   `venv_hailo_apps` and writes `HAILO_APPS_PATH=…` into
+   `/usr/local/hailo/resources/.env`. Both later scripts read this.
+2. `<drone-follow>/install.sh` — installs the `drone-follow` package into the
+   parent venv, downloads ReID HEFs, builds the UI.
+3. `<drone-follow>/scripts/install_air.sh` (sudo) — installs `hailo-all`,
+   clones OpenHD + OpenHD-SysUtils into the drone-follow repo root, builds
+   OpenHD (with the WiFi driver), deploys `df_params.json`, and configures
+   `primary_camera_type` + `/boot/openhd/hailo.txt` to match `--mode`.
 
 ```bash
+# Layout 1 (standalone clone):
 cd ~/hailo-drone-follow
-sudo ./scripts/install_air.sh
+./install.sh
+sudo ./scripts/install_air.sh                  # Mode A (default)
+# or:                       --mode shm         # Mode B (SHM)
+# or:                       --mode shm --camera-type 32   # Mode B + IMX708
+
+# Layout 2 (in-repo under hailo-apps-internal):
+cd ~/hailo-apps-internal
+./install.sh                                   # parent venv + .env
+cd community/apps/hailo_drone_follow
+./install.sh                                   # drone-follow into parent venv
+sudo ./scripts/install_air.sh [--mode shm [--camera-type 32]]
 ```
+
+> **Camera mode (`--mode`):**
+> - `stream` (default) — Mode A. drone-follow owns the camera, encodes the
+>   overlay, and pushes RTP to OpenHD. Sets `primary_camera_type=5`
+>   (HAILO_AI) and removes `/boot/openhd/hailo.txt`. See [Camera Modes](#camera-modes).
+> - `shm` — Mode B. OpenHD owns the camera and tees raw NV12 to
+>   `/tmp/openhd_raw_video`; drone-follow does AI only. Sets
+>   `primary_camera_type` to the libcamera value (`--camera-type`, default
+>   `31` = IMX219; pass `32` for IMX708) and creates `/boot/openhd/hailo.txt`.
+>
+> Pass the same `--mode` to `scripts/start_air.sh` afterwards.
 
 > **Encryption key (`txrx.key`):** The WFB radio link requires the **same** key
 > on air and ground.
@@ -344,15 +388,25 @@ sudo systemctl restart NetworkManager
 
 ## Camera Modes
 
-There are two integration modes. Both use the Hailo8 for AI detection. In both modes, drone-follow's controller parameters are reachable from QOpenHD via the OpenHD parameter bridge (UDP 5510/5511) and from the local web UI (`--ui`, port 5001). Both surfaces edit the same in-process `ControllerConfig` — see [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
+There are two integration modes; both are supported by `scripts/install_air.sh` and `scripts/start_air.sh` via `--mode <stream|shm>`. Both use the Hailo8 for AI detection. In both modes, drone-follow's controller parameters are reachable from QOpenHD via the OpenHD parameter bridge (UDP 5510/5511) and from the local web UI (`--ui`, port 5001). Both surfaces edit the same in-process `ControllerConfig` — see [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
 
-### Mode A — Camera Type 5 (`X_CAM_TYPE_HAILO_AI`)
+| | Mode A — `--mode stream` | Mode B — `--mode shm` |
+|---|---|---|
+| Camera owner | drone-follow | OpenHD |
+| `primary_camera_type` | `5` (HAILO_AI) | libcamera value (`31`=IMX219, `32`=IMX708) |
+| `/boot/openhd/hailo.txt` | absent | present |
+| Overlay in WFB stream | ✅ burned in | ❌ (rendered by QOpenHD) |
+| drone-follow input | `--input rpi --openhd-stream` | `--input shm:///tmp/openhd_raw_video --no-display` |
+
+Pick one and pass the same `--mode` to both `install_air.sh` (configures camera type + flag file) and `start_air.sh` (selects the drone-follow CLI args). Today `start_air.sh` defaults to `stream`.
+
+### Mode A — `--mode stream` (Camera Type 5, `X_CAM_TYPE_HAILO_AI`)
 
 drone-follow **owns the camera** — it captures directly from the RPi camera,
 runs Hailo inference, draws overlay, encodes to H.264, and streams RTP to
 OpenHD which treats it as an external video source.
 
-**Command:**
+**Manual command** (or just `scripts/start_air.sh`):
 ```bash
 drone-follow --input rpi --openhd-stream --horizontal-mirror \
     --connection tcpout://127.0.0.1:5760
@@ -360,40 +414,29 @@ drone-follow --input rpi --openhd-stream --horizontal-mirror \
 > **Note:** `--horizontal-mirror` is only for selfie mode (front-facing camera).
 > Omit for rear-facing.
 
-**Configuration:**
-1. Set camera type to **5** (HAILO_AI) in QOpenHD camera settings, or edit directly:
-   ```bash
-   sudo vim /boot/openhd/camera1.txt
-   ```
-2. Make sure no `hailo.txt` flag file exists:
-   ```bash
-   sudo rm -f /boot/openhd/hailo.txt
-   ```
+**Configuration** (handled automatically by `install_air.sh --mode stream`):
+1. `primary_camera_type=5` in `/usr/local/share/openhd/video/air_camera_generic.json`
+   (or via QOpenHD: Settings → Camera → Primary Camera Type = 5).
+2. `/boot/openhd/hailo.txt` must NOT exist.
 3. Resolution is controlled by drone-follow CLI arguments (`--width`, `--height`).
 
-### Mode B — Shared Memory (`hailo.txt` flag) *(recommended)*
+### Mode B — `--mode shm` (Shared Memory, `hailo.txt` flag)
 
 OpenHD **owns the camera** — it captures from libcamera as normal, encodes
 for WFB transmission, and also tees raw NV12 frames to a shared-memory socket.
 drone-follow reads from SHM and performs AI inference only (no encoding).
 
-**Command:**
+**Manual command** (or `scripts/start_air.sh --mode shm`):
 ```bash
 drone-follow --input shm:///tmp/openhd_raw_video --no-display \
     --connection tcpout://127.0.0.1:5760
 ```
 
-**Configuration:**
-1. Set camera type to a **normal libcamera type** in QOpenHD, or edit directly:
-   ```bash
-   sudo vim /boot/openhd/camera1.txt
-   ```
-   Common values: `31` = IMX219, `32` = IMX708.
-2. Create the SHM flag file so OpenHD exposes raw video via shared memory:
-   ```bash
-   sudo mkdir -p /boot/openhd
-   sudo touch /boot/openhd/hailo.txt
-   ```
+**Configuration** (handled automatically by
+`install_air.sh --mode shm [--camera-type 32]`):
+1. `primary_camera_type` set to the libcamera value matching your sensor:
+   `31` = IMX219, `32` = IMX708.
+2. `/boot/openhd/hailo.txt` present.
 3. Resolution changes via QOpenHD work seamlessly (auto-detected via SHM metadata).
 
 ---
@@ -408,17 +451,26 @@ sudo /usr/local/bin/openhd --air
 
 ### Step 2 — Air: Start drone-follow
 
-**Camera Type 5 mode** (Mode A):
+Easiest is `scripts/start_air.sh` (which also starts OpenHD — skip Step 1 if
+you use it):
+
 ```bash
-cd ~/hailo-drone-follow && source venv/bin/activate
+scripts/start_air.sh             # Mode A (stream — default)
+scripts/start_air.sh --mode shm  # Mode B (SHM)
+```
+
+Manual invocation:
+
+```bash
+# Layout 1: cd ~/hailo-drone-follow && source venv/bin/activate
+# Layout 2: source ~/hailo-apps-internal/setup_env.sh
+
+# Mode A (Camera Type 5):
 drone-follow --input rpi --openhd-stream --horizontal-mirror \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
-```
 
-**SHM mode** (Mode B):
-```bash
-cd ~/hailo-drone-follow && source venv/bin/activate
+# Mode B (SHM):
 drone-follow --input shm:///tmp/openhd_raw_video --no-display \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
