@@ -93,10 +93,10 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--reid-timeout", type=float, default=20.0,
                        help="Seconds to search for a lost locked target via ReID before returning "
                             "to auto mode (default: 20.0)")
-    group.add_argument("--reid-drift-threshold", type=float, default=0.5,
+    group.add_argument("--reid-drift-threshold", type=float, default=0.6,
                        help="Below this similarity vs gallery, an in-track embedding is treated "
                             "as drift; gallery is not updated and re-acquisition is triggered "
-                            "(0.0–1.0, default: 0.5)")
+                            "(0.0–1.0, default: 0.6)")
     group.add_argument("--reid-duplicate-threshold", type=float, default=0.9,
                        help="Above this similarity, the embedding is redundant and skipped, "
                             "with periodic refresh via --reid-refresh-every (0.0–1.0, default: 0.9)")
@@ -195,7 +195,7 @@ def main():
     reid_pre.add_argument("--update-interval", type=int, default=30)
     reid_pre.add_argument("--reid-threshold", type=float, default=0.7)
     reid_pre.add_argument("--reid-timeout", type=float, default=20.0)
-    reid_pre.add_argument("--reid-drift-threshold", type=float, default=0.5,
+    reid_pre.add_argument("--reid-drift-threshold", type=float, default=0.6,
         help="Below this similarity vs gallery, an in-track embedding is "
              "treated as drift; gallery is not updated and re-acquisition "
              "is triggered.")

@@ -93,7 +93,7 @@ class ReIDManager:
 
     def __init__(self, hef_path: str, update_interval: int = 30,
                  max_gallery_size: int = 10, reid_match_threshold: float = 0.6,
-                 drift_threshold: float = 0.5,
+                 drift_threshold: float = 0.6,
                  duplicate_threshold: float = 0.9,
                  refresh_every: int = 5,
                  min_gallery_for_drift_check: int = 2):
@@ -380,30 +380,41 @@ class ReIDManager:
             LOGGER.warning("%s Batch extraction failed: %s", log_prefix, e)
             return None
 
-        best_tid = None
-        best_sim = -1.0
+        # First pass: score every candidate against the gallery (irrespective
+        # of threshold). This gives us the absolute best similarity in the
+        # frame, which we want in the operator-facing INFO log even when no
+        # candidate crosses the match threshold.
         sims_log = []
         with self._lock:
             for tid, emb in zip(tids, embeddings):
-                _, sim = self._gallery.match(emb, 0.0)  # get similarity regardless of threshold
+                _, sim = self._gallery.match(emb, 0.0)
                 sims_log.append((tid, sim))
-                if sim >= self._reid_match_threshold and sim > best_sim:
-                    best_sim = sim
-                    best_tid = tid
+
+        # Pick the highest-scoring candidate that also clears the threshold.
+        best_tid, best_sim = None, -1.0
+        for tid, sim in sims_log:
+            if sim >= self._reid_match_threshold and sim > best_sim:
+                best_tid, best_sim = tid, sim
+
+        # Top score across all candidates (useful when no match crossed the
+        # threshold — tells the operator how close we got).
+        top_tid, top_sim = max(sims_log, key=lambda ts: ts[1])
 
         for tid, sim in sims_log:
             match_str = " << MATCH" if tid == best_tid else ""
-            LOGGER.debug("%s   ID %d  sim=%.3f  (threshold=%.2f)%s",
+            LOGGER.info("%s   ID %d  sim=%.3f  (threshold=%.2f)%s",
                          log_prefix, tid, sim, self._reid_match_threshold, match_str)
 
         if best_tid is not None:
-            LOGGER.debug("%s Re-identified target as track ID %d (sim=%.3f)",
-                         log_prefix, best_tid, best_sim)
+            LOGGER.info("%s Re-identified target as track ID %d "
+                        "(best sim=%.3f, candidates=%d, threshold=%.2f)",
+                        log_prefix, best_tid, best_sim, len(sims_log),
+                        self._reid_match_threshold)
         else:
-            LOGGER.debug("%s No match found (best sim=%.3f, threshold=%.2f)",
-                         log_prefix,
-                         max(s for _, s in sims_log) if sims_log else 0.0,
-                         self._reid_match_threshold)
+            LOGGER.info("%s No match — best candidate ID %d sim=%.3f "
+                        "(candidates=%d, threshold=%.2f)",
+                        log_prefix, top_tid, top_sim, len(sims_log),
+                        self._reid_match_threshold)
         return best_tid
 
     def try_reidentify(self, frame_bgr: np.ndarray, person_by_id: dict,
@@ -417,6 +428,64 @@ class ReIDManager:
             return None
         return self._reacquire(frame_bgr, person_by_id, video_width, video_height,
                                log_prefix="[REID LOST]")
+
+    def score_visible_persons(self, frame_bgr: np.ndarray, persons,
+                              video_width: int, video_height: int):
+        """Score raw (untracked) detections against the gallery.
+
+        Used by the callback when persons are visible but the tracker activated
+        zero tracks for them. The returned tuple is::
+
+            (best_sim, best_person_or_None)
+
+        ``best_person_or_None`` is non-None only when the best similarity
+        crosses ``reid_match_threshold`` — the caller can then drive the
+        controller from that detection's bbox even though no tracker id
+        exists for it. Logs an INFO line either way so the operator sees the
+        score even when no match is taken.
+        """
+        if not self._ensure_extractor():
+            return -1.0, None
+        with self._lock:
+            if self._gallery.size == 0:
+                return -1.0, None
+
+        kept_persons = []
+        crops = []
+        for person in persons:
+            crop = _crop_person(frame_bgr, person.get_bbox(), video_width, video_height)
+            if crop is not None and crop.size > 0:
+                crops.append(crop)
+                kept_persons.append(person)
+
+        if not crops:
+            return -1.0, None
+
+        try:
+            embeddings = self._extractor.extract_embeddings_batch(crops)
+        except Exception as e:
+            LOGGER.warning("[REID SEARCH] Batch extraction failed: %s", e)
+            return -1.0, None
+
+        with self._lock:
+            sims = [self._gallery.match(emb, 0.0)[1] for emb in embeddings]
+
+        best_idx = int(np.argmax(sims))
+        best_sim = float(sims[best_idx])
+        best_person = kept_persons[best_idx] if best_sim >= self._reid_match_threshold else None
+
+        if best_person is not None:
+            LOGGER.info("[REID SEARCH] tracker has no tracks — raw-detection MATCH "
+                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d) — "
+                        "driving controller from raw bbox",
+                        best_sim, len(sims), self._reid_match_threshold,
+                        self.gallery_size, self._max_gallery_size)
+        else:
+            LOGGER.info("[REID SEARCH] tracker has no tracks — best raw-detection "
+                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d)",
+                        best_sim, len(sims), self._reid_match_threshold,
+                        self.gallery_size, self._max_gallery_size)
+        return best_sim, best_person
 
     def on_reidentified(self, new_track_id: int) -> None:
         """Update internal tracking ID after successful re-identification."""

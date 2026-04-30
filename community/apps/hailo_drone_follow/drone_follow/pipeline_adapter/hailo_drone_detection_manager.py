@@ -383,13 +383,21 @@ def _app_callback_inner(element, buffer, user_data):
                                 target_state.update_last_seen()
                                 follow_status = f"REID→ID {new_tid}"
                     else:
-                        # Tracker activated nothing — hold and wait for the
-                        # person to come back into a usable detection.
-                        LOGGER.debug(
-                            "[REID SEARCH] tracker activated no tracks — holding "
-                            "target ID %s, gallery=%d/%d",
-                            reid_manager.original_id, reid_manager.gallery_size,
-                            reid_manager.max_gallery_size)
+                        # Tracker activated nothing — score raw detections
+                        # against the gallery. If the locked person is found
+                        # above the match threshold we drive the controller
+                        # from the raw bbox even though no tracker id exists,
+                        # so a follow keeps working when ByteTracker drops
+                        # the person below its activation threshold.
+                        frame_bgr = get_frame_bgr(buffer, user_data.video_width, user_data.video_height)
+                        if frame_bgr is not None:
+                            _, raw_match = reid_manager.score_visible_persons(
+                                frame_bgr, persons,
+                                user_data.video_width, user_data.video_height)
+                            if raw_match is not None:
+                                best = raw_match
+                                target_state.update_last_seen()
+                                follow_status = f"REID-RAW→ID {reid_manager.original_id}"
 
                     if best is None:
                         # No match (or no candidates) — hold position, retry next frame.
@@ -493,15 +501,17 @@ def _app_callback_inner(element, buffer, user_data):
     ), available_ids=available_ids)
 
     # Use the original ID for the UI so the operator sees a stable ID
-    # even after ReID re-identifies the person with a new tracker ID.
+    # even after ReID re-identifies the person with a new tracker ID. Also
+    # covers the raw-match path, where `best` was selected by ReID directly
+    # without going through ByteTracker — in that case `best` isn't in
+    # `person_to_id` and would otherwise show no highlight at all.
     ui_following_id = target_state.get_target() if target_state else None
     ui_person_to_id = person_to_id
     if reid_manager is not None and reid_manager.original_id is not None:
         orig = reid_manager.original_id
         cur = target_state.get_target() if target_state else None
-        if orig != cur and cur is not None:
-            # Remap the followed detection's ID to the original so the
-            # green highlight and "Following: ID X" both use it.
+        best_has_track = person_to_id.get(id(best)) is not None
+        if (orig != cur and cur is not None) or not best_has_track:
             ui_following_id = orig
             ui_person_to_id = dict(person_to_id)
             ui_person_to_id[id(best)] = orig
