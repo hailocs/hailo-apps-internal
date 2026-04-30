@@ -288,3 +288,8 @@ shared_library('gsthailotilecropper_dynamic',
     install : true,
     install_dir : gst_plugins_dir,
 )
+
+# Optional: build C++ unit tests for hailotilecropper_dynamic.
+if get_option('build_tests') and gst_check_dep.found()
+    subdir('hailotilecropper_dynamic/tests/unit')
+endif

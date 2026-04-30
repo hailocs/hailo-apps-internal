@@ -1,0 +1,2 @@
+option('build_tests', type : 'boolean', value : false,
+       description : 'Build C++ unit tests for community plugins.')
