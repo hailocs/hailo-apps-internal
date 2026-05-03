@@ -188,6 +188,16 @@ load_openhd_driver() {
 # can always agree out of the box without per-region tuning. Override via
 # WB_DEFAULT_FREQUENCY=<MHz> in the environment.
 WB_DEFAULT_FREQUENCY="${WB_DEFAULT_FREQUENCY:-5180}"
+
+# Flight-controller serial. The Cube Orange+ enumerates over USB as
+# /dev/ttyACM0; OpenHD's stock default ("DEFAULT") maps to /dev/serial0 (the
+# RPi GPIO UART), so without this override OpenHD listens on the wrong device
+# and never sees any FC MAVLink — drone-follow then hangs in MAVSDK
+# discover_system() and the ground station gets no telemetry. Override with
+# FC_UART_DEVICE=<path> in the environment if you've wired the FC via GPIO
+# UART or a USB-serial bridge instead.
+FC_UART_DEVICE="${FC_UART_DEVICE:-/dev/ttyACM0}"
+FC_UART_BAUDRATE="${FC_UART_BAUDRATE:-115200}"
 normalize_wb_frequency() {
     local f=/usr/local/share/openhd/interface/wifibroadcast_settings.json
     if [ -f "$f" ]; then
@@ -404,6 +414,44 @@ case "$MODE" in
         echo "  $HAILO_FLAG: present (Mode B / SHM)"
         ;;
 esac
+
+# Point OpenHD's air-telemetry at the right FC serial device. The stock
+# "DEFAULT" maps to /dev/serial0 (RPi GPIO UART) on RPi — wrong for our
+# CubePilot-on-USB setup. See FC_UART_DEVICE comment near the top.
+TELEM_CONFIG="/usr/local/share/openhd/telemetry/air_settings.json"
+mkdir -p "$(dirname "$TELEM_CONFIG")"
+if [ ! -f "$TELEM_CONFIG" ]; then
+    cat > "$TELEM_CONFIG" <<JSON
+{
+    "fc_battery_n_cells": 0,
+    "fc_uart_baudrate": ${FC_UART_BAUDRATE},
+    "fc_uart_connection_type": "${FC_UART_DEVICE}",
+    "fc_uart_flow_control": false
+}
+JSON
+    echo "  $TELEM_CONFIG: pre-seeded fc_uart_connection_type=${FC_UART_DEVICE}"
+else
+    FC_UART_DEVICE_ENV="$FC_UART_DEVICE" FC_UART_BAUDRATE_ENV="$FC_UART_BAUDRATE" \
+        python3 - "$TELEM_CONFIG" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+device = os.environ["FC_UART_DEVICE_ENV"]
+baud = int(os.environ["FC_UART_BAUDRATE_ENV"])
+data = json.loads(path.read_text())
+changed = False
+if data.get("fc_uart_connection_type") != device:
+    data["fc_uart_connection_type"] = device
+    changed = True
+if data.get("fc_uart_baudrate") != baud:
+    data["fc_uart_baudrate"] = baud
+    changed = True
+if changed:
+    path.write_text(json.dumps(data, indent=4) + "\n")
+    print(f"  {path}: set fc_uart_connection_type={device}, fc_uart_baudrate={baud}")
+else:
+    print(f"  {path}: fc_uart already correct ({device} @ {baud})")
+PY
+fi
 
 # txrx.key must be IDENTICAL on air and ground for the WFB radio link to work.
 # See install_ground_station.sh for the full reasoning behind --generate-key.

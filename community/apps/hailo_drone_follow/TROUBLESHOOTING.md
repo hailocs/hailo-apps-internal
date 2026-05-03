@@ -142,6 +142,62 @@ If `~/Desktop/drone-follow.conf` has `ENABLED=true`, the systemd `drone-follow-b
 
 ---
 
+## No FC telemetry on the ground station / drone-follow can't connect to the FC
+
+Symptom: `start_air.sh` runs, the radio link is up, video reaches QOpenHD — but no MAVLink telemetry on the ground HUD, and drone-follow hangs in MAVSDK `discover_system()` (no "connected to flight controller" log line).
+
+drone-follow connects to the FC indirectly: `drone-follow → tcpout://127.0.0.1:5760 → OpenHD air-telemetry → FC serial`. If OpenHD isn't talking to the FC, that TCP server still accepts connections but only carries OpenHD-internal MAVLink — no autopilot heartbeat, so MAVSDK never finishes discovery and no telemetry is forwarded to ground either.
+
+**Diagnose:** sniff who is publishing on TCP 5760.
+
+```bash
+# On the air unit, with start_air.sh running:
+python3 - <<'PY'
+import socket, time
+s = socket.socket(); s.settimeout(3); s.connect(("127.0.0.1", 5760))
+buf = b""; end = time.time() + 2.5
+while time.time() < end:
+    try: s.settimeout(max(0.1, end-time.time())); buf += s.recv(4096)
+    except socket.timeout: break
+seen = {}
+i = 0
+while i < len(buf) - 12:
+    if buf[i] == 0xFD:
+        plen = buf[i+1]
+        if i + 12 + plen + 2 > len(buf): break
+        sysid, compid = buf[i+5], buf[i+6]
+        seen[(sysid, compid)] = seen.get((sysid, compid), 0) + 1
+        i += 12 + plen + 2
+    else:
+        i += 1
+print("sysid/compid counts:", seen)
+PY
+```
+
+Healthy output includes **sysid=1** (the autopilot). Output containing only OpenHD's own sysids (typically 99 / 101) means OpenHD is reading the wrong serial device.
+
+**Fix:** point OpenHD's air-telemetry at the actual FC port. The Cube Orange+ enumerates over USB as `/dev/ttyACM0`; OpenHD's stock `"DEFAULT"` value maps to `/dev/serial0` (the RPi GPIO UART), which is unwired in our build.
+
+```bash
+sudo python3 - <<'PY'
+import json, pathlib
+p = pathlib.Path("/usr/local/share/openhd/telemetry/air_settings.json")
+d = json.loads(p.read_text())
+d["fc_uart_connection_type"] = "/dev/ttyACM0"   # USB CDC ignores baud, but 115200 is sane
+d["fc_uart_baudrate"] = 115200
+p.write_text(json.dumps(d, indent=4) + "\n")
+print(d)
+PY
+
+# Restart OpenHD so it re-opens the serial endpoint:
+sudo pkill -f /usr/local/bin/openhd
+# Then re-run scripts/start_air.sh (or wait for the boot service to restart it).
+```
+
+`scripts/install_air.sh` ≥ Step 7 pre-seeds this on a fresh install (override with `FC_UART_DEVICE=/dev/...` if you've wired the FC via GPIO UART or a USB-serial bridge instead).
+
+---
+
 ## Camera grabs by another process
 
 ### `Failed to acquire camera: Device or resource busy` (drone-follow side)

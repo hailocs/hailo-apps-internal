@@ -8,6 +8,7 @@ sudo systemctl stop drone-follow-boot.service 2>/dev/null || true
 sudo systemctl disable drone-follow-boot.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/drone-follow-boot.service
 sudo rm -f /usr/local/bin/drone-follow-boot.sh
+sudo rm -f /etc/sudoers.d/drone-follow-openhd
 sudo systemctl daemon-reload
 
 echo "=== Done. Desktop config file left in place. ==="
