@@ -77,18 +77,22 @@ pytest community/apps/hailo_drone_follow/drone_follow/tests/
 
 ### Step 5: OpenHD radio link (air + ground)
 
-For the air unit (Raspberry Pi with Cube Orange+ + Hailo-8L), the OpenHD radio link install is `scripts/install_air.sh`. For the ground station (laptop or RPi with Hailo-8 PCIe), the QOpenHD GUI install is `scripts/install_ground_station.sh`. Both **must be run as root**, both **must be run AFTER** Steps 2-3, and they share an encryption key (see below).
+For the **air unit** (Raspberry Pi with Cube Orange+ + Hailo-8L), the OpenHD radio link install is `scripts/install_air.sh`. It must be run as root and **must be run after Steps 1-3**, since `scripts/start_air.sh` launches drone-follow alongside OpenHD and therefore needs the parent venv + drone-follow installed.
+
+For the **ground station** (laptop or any RPi), the QOpenHD GUI install is `scripts/install_ground_station.sh`. It must be run as root, but **does not require a Hailo device or Steps 1-3** — `scripts/start_ground.sh` only launches `openhd --ground` and the `QOpenHD` GUI; no Python, no Hailo runtime, no drone-follow code is touched on the ground side.
+
+Both ends share an encryption key (see below).
 
 These installers clone the OpenHD release branches we maintain — `2.6.4-hailo` (OpenHD), `main-hailo` (OpenHD-SysUtils), `v2.6.0-hailo` (QOpenHD), and `master-hailo` (rtl88x2bu WiFi driver), all under `https://github.com/giladnah/`. The `*-hailo` suffix denotes "based on upstream release tag X plus our drone-follow protocol additions".
 
 ```bash
-# Pi (air unit):
+# Pi (air unit) — Steps 1-3 first, then:
 cd <hailo-apps-infra>/community/apps/hailo_drone_follow
 sudo ./scripts/install_air.sh --generate-key      # FIRST machine — creates txrx.key
 
-# Laptop (ground station):
+# Ground station (laptop or RPi — no Hailo device, no Steps 1-3 needed):
 cd <hailo-apps-infra>/community/apps/hailo_drone_follow
-sudo ./scripts/install_ground_station.sh          # SECOND machine — no --generate-key
+sudo ./scripts/install_ground_station.sh
 sudo scp <pi-host>:/usr/local/share/openhd/txrx.key /tmp/txrx.key
 sudo install -m 644 /tmp/txrx.key /usr/local/share/openhd/txrx.key
 ```

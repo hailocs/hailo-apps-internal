@@ -9,6 +9,14 @@ QOPENHD_BIN="${APP_ROOT}/qopenHD/build/release/release/QOpenHD"
 OPENHD_LOG="/tmp/openhd.log"
 QOPENHD_LOG="/tmp/qopenhd.log"
 
+# When no display server is available (SSH session, console boot, dedicated
+# kiosk-style ground station) QOpenHD's Qt build defaults to xcb and dies with
+# "could not connect to display" on RPi OS Trixie + labwc. Fall back to direct
+# KMS/DRM rendering via eglfs so QOpenHD comes up regardless of session state.
+if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
+    export QT_QPA_PLATFORM=eglfs
+fi
+
 if [ ! -f "$OPENHD_BIN" ]; then
     echo "Error: openhd not found at $OPENHD_BIN"
     exit 1

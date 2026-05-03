@@ -2,7 +2,7 @@ diff --git a/Tools/simulation/gz/models/x500_vision/model.sdf b/Tools/simulation
 index 75f30e440d..36ca6d07ea 100644
 --- a/Tools/simulation/gz/models/x500_vision/model.sdf
 +++ b/Tools/simulation/gz/models/x500_vision/model.sdf
-@@ -4,10 +4,47 @@
+@@ -4,10 +4,55 @@
      <include merge='true'>
        <uri>x500</uri>
      </include>

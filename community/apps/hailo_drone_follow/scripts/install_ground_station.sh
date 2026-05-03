@@ -34,17 +34,6 @@ SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 RUN_AS_USER="${SUDO_USER:-$USER}"
 
-# Resolve apps-infra root without relative traversal.
-ENV_FILE="/usr/local/hailo/resources/.env"
-if [[ -z "${HAILO_APPS_PATH:-}" && -f "${ENV_FILE}" ]]; then
-  HAILO_APPS_PATH=$(grep -iE '^HAILO_APPS_PATH=' "${ENV_FILE}" | tail -1 | cut -d= -f2- | tr -d '"')
-  export HAILO_APPS_PATH
-fi
-if [[ -z "${HAILO_APPS_PATH:-}" || ! -d "${HAILO_APPS_PATH}" ]]; then
-  echo "ERROR: HAILO_APPS_PATH not resolvable. Run hailo-apps-infra/install.sh first." >&2
-  exit 1
-fi
-APPS_INFRA_ROOT="${HAILO_APPS_PATH}"
 # Look up the user's actual primary group — don't assume username == group name.
 RUN_AS_GROUP="$(id -gn "$RUN_AS_USER")"
 
