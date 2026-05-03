@@ -74,10 +74,11 @@ The implementation lives in:
 
 ## 2. Gallery-update sub-flow (drift filter)
 
-Runs every `update_interval` (default 30) frames while ByteTracker is
-successfully holding the locked target. Bands are configurable via CLI:
-`--reid-drift-threshold` (default 0.6), `--reid-duplicate-threshold` (0.9),
-`--reid-refresh-every` (5).
+Runs on the first locked frame and every `update_interval` (default 30)
+frames thereafter while ByteTracker is successfully holding the target
+(see `should_update()` in [`reid_manager.py`](../drone_follow/pipeline_adapter/reid_manager.py)).
+Bands are configurable via CLI: `--reid-drift-threshold` (default 0.6),
+`--reid-duplicate-threshold` (0.9), `--reid-refresh-every` (5).
 
 ```
         ┌────────────────────────────┐
@@ -92,7 +93,7 @@ successfully holding the locked target. Bands are configurable via CLI:
               │ yes             │ no
               ▼                 ▼
        ┌─────────────┐   ┌──────────────────────────┐
-       │ BOOTSTRAP   │   │ size < min_for_check (2)?│
+       │ BOOTSTRAP   │   │ size < min_for_check (6)?│
        │ store as    │   └─────┬─────────────┬──────┘
        │ first vec   │         │ yes         │ no
        └─────────────┘         ▼             ▼
@@ -131,6 +132,12 @@ Key invariant: a candidate embedding that lands in the **drift band** is
 **never** stored, even when re-acquisition confirms the same `target_id`
 (a "false drift"). The next sample (one `update_interval` later) gets a
 fresh chance.
+
+Bootstrap-protect: the first `min_gallery_for_drift_check` (default 6,
+constructor-only — not a CLI flag) samples bypass both the drift gate and
+the duplicate gate and are stored unconditionally. Drift detection over a
+single seed embedding is too brittle — one outlier would otherwise kick
+reacquire on every interval until the gallery filled out.
 
 ## 3. Recovery sub-flow (target lost by tracker)
 
@@ -208,7 +215,7 @@ The two diagrams join up like this:
 5. **ByteTracker rejects all detections this frame** (low detector
    confidence) — `person_by_id` is empty but raw detections exist; ReID
    scores them directly. If the best raw match crosses
-   `reid_match_threshold` (default 0.7), the controller is driven from that
+   `reid_match_threshold` (default 0.75), the controller is driven from that
    bbox even though no tracker id exists for it — locked-follow survives a
    tracker dropout.
 6. **No persons at all in frame** — early branch holds for the same
