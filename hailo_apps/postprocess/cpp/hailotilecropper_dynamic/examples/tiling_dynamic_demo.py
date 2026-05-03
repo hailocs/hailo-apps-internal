@@ -4,20 +4,49 @@ Reuses the standard tiling app from ``hailo_apps`` and swaps the regular
 ``hailotilecropper`` for the community ``hailotilecropper_dynamic`` element.
 Everything else — input source (``--input rpi/usb/file/...``), HEF resolution,
 inference pipeline, hailooverlay + display sink, FPS counter — is inherited
-from the framework. The only added Python is a per-buffer ``handoff`` that
-attaches a moving HailoTileROI so the dynamic cropper has a tile to crop.
+from the framework.
+
+Static + dynamic contrast
+-------------------------
+Two tiles run side-by-side every frame, so the same scene is inferred twice
+at different resolutions:
+
+  * **Static tile** — a *large* always-on rectangle on the left half of the
+    frame (``--static-tiles`` default ``"0.0,0.05,0.5,0.9"``). It covers a
+    wide area, so when ``internal-offset`` rescales it to the model's
+    expected input (e.g. 640×480 for the default HEF) every person inside
+    occupies only a small fraction of the tile pixels. **Lower per-object
+    detail → lower confidence.**
+
+  * **Dynamic tile** — a *small* moving rectangle (0.2 × 0.3) attached
+    per-frame via the identity-handoff pattern. Walks left-to-right and
+    back. Because it is smaller, internal-offset upscales fewer source
+    pixels by a larger factor, so each person inside occupies a larger
+    fraction of the model input. **Higher per-object detail → higher
+    confidence whenever an object is in the dynamic tile.**
+
+Watch the confidence reported by the user callback as the dynamic tile
+sweeps across the frame: persons that show up only in the static tile
+report lower confidences than the same persons once the dynamic tile lands
+on them. ``hailotileaggregator`` does cross-tile NMS so the higher-
+confidence (dynamic-tile) detection wins where the two overlap.
+
+Pass ``--static-tiles ""`` to disable the static tile and run only the
+dynamic one.
 
 Pipeline (inherited shape):
 
     source → identity (attach moving tile)
-           → hailotilecropper_dynamic
-                ├─ src_0 (bypass)  → agg.sink_0
-                └─ src_1 (cropped) → INFERENCE_PIPELINE → agg.sink_1
+           → hailotilecropper_dynamic [tiles-static="…"]
+                ├─ src_0 (bypass)        → agg.sink_0
+                └─ src_1 (cropped tiles) → INFERENCE_PIPELINE → agg.sink_1
+                       (one cropped buffer per static + dynamic tile)
            → hailotileaggregator → user_callback → hailooverlay → display
 
-Why this matters: the regular cropper runs inference on every cell of a
-fixed grid; here inference runs only on the dynamic tile, so all NPU budget
-goes to the region the application cares about.
+Why this matters: a regular cropper runs inference on every cell of a fixed
+grid (uniform budget across the frame). Here inference budget goes where
+the application points it — a coarse always-on safety net via the static
+tile, plus a high-detail tracker tile via the dynamic injection.
 
 Works on x86_64 and aarch64 (RPi). The plugin .so is preloaded via
 ``pkg-config --variable=pluginsdir gstreamer-1.0`` so the demo doesn't
@@ -155,9 +184,35 @@ def DYNAMIC_TILE_CROPPER_PIPELINE(
 
 CROPPER_NAME = "dyn_tc"
 
+# Static tile: a *large* always-on rectangle on the left half of the frame.
+# Covers a wide area, so when internal-offset rescales it to the model's
+# expected input (e.g. 640x480), each person inside occupies only a small
+# fraction of the tile pixels — detector confidence drops accordingly.
+# Format: "x,y,w,h;…" (normalized 0..1). Use --static-tiles "" to disable.
+DEFAULT_STATIC_TILES = "0.0,0.05,0.5,0.9"
+
 
 class GStreamerDynamicTilingApp(GStreamerTilingApp):
     """Tiling app that uses the community dynamic cropper instead of a fixed grid."""
+
+    def __init__(self, app_callback, user_data, parser=None):
+        # The parent already adds many args via _add_tiling_arguments; we
+        # tack one more on for the static-tile contrast experiment.
+        if parser is None:
+            from hailo_apps.python.core.common.core import get_pipeline_parser
+            parser = get_pipeline_parser()
+        parser.add_argument(
+            "--static-tiles",
+            default=DEFAULT_STATIC_TILES,
+            help=(
+                "Semicolon-separated 'x,y,w,h' rectangles (normalized 0..1) "
+                "passed to hailotilecropper_dynamic's tiles-static property. "
+                f"Default: '{DEFAULT_STATIC_TILES}' (a large always-on tile "
+                "on the left half — lower per-object detail, lower accuracy). "
+                "Pass '' to disable so only the moving dynamic tile runs."
+            ),
+        )
+        super().__init__(app_callback, user_data, parser)
 
     def get_pipeline_string(self) -> str:
         source_pipeline = self.get_source_pipeline()
@@ -175,6 +230,7 @@ class GStreamerDynamicTilingApp(GStreamerTilingApp):
             name=CROPPER_NAME,
             internal_offset=True,
             iou_threshold=self.iou_threshold,
+            tiles_static=self.options_menu.static_tiles,
         )
 
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
@@ -198,13 +254,22 @@ class GStreamerDynamicTilingApp(GStreamerTilingApp):
 # ---------------------------------------------------------------------------
 
 class TileWalker:
-    """Returns a moving 0.4-wide tile each frame; left edge bounces in [0.1, 0.5]."""
+    """Returns a small moving tile each frame; left edge bounces across the frame.
 
-    TILE_W = 0.4
-    TILE_H = 0.4
-    TILE_Y = 0.2
-    X_MIN = 0.1
-    X_MAX = 0.5
+    Intentionally smaller than the default static tile so that, when an object
+    falls inside the dynamic crop, internal-offset's rescale-to-model-input
+    upscales fewer source pixels by a larger factor — the object occupies a
+    larger fraction of the model's input field, and per-object confidence
+    typically rises versus what the static tile alone produces.
+    """
+
+    TILE_W = 0.2
+    TILE_H = 0.3
+    TILE_Y = 0.25
+    # Walk the left edge across most of the frame; X_MAX is set so the tile
+    # stays in-frame (X_MAX + TILE_W ≤ 1.0).
+    X_MIN = 0.0
+    X_MAX = 0.8
     PHASE_STEP = 0.02
 
     def __init__(self):
