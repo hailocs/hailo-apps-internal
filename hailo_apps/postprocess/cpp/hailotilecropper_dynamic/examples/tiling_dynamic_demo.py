@@ -1,57 +1,50 @@
-"""Demo: hailotilecropper_dynamic with a moving dynamic tile (with display).
+"""Demo: hailotilecropper_dynamic on top of GStreamerTilingApp.
 
-What you see:
-    A source video (test pattern, RPi camera, USB cam, or file) plays in a
-    window with a red rectangle drawn at the tile's location each frame.
-    The rectangle walks left-to-right and back across the frame, showing
-    where the dynamic tile cropper is currently cropping.
+Reuses the standard tiling app from ``hailo_apps`` and swaps the regular
+``hailotilecropper`` for the community ``hailotilecropper_dynamic`` element.
+Everything else — input source (``--input rpi/usb/file/...``), HEF resolution,
+inference pipeline, hailooverlay + display sink, FPS counter — is inherited
+from the framework. The only added Python is a per-buffer ``handoff`` that
+attaches a moving HailoTileROI so the dynamic cropper has a tile to crop.
 
-Pipeline:
-    source → identity (attach HailoTileROI per buffer) → hailotilecropper_dynamic
-                                                              ↓ src_0 (bypass)
-                                                                  → videoconvert
-                                                                  → cairooverlay (draws tile box)
-                                                                  → autovideosink
-                                                              ↓ src_1 (cropped tile)
-                                                                  → fakesink
+Pipeline (inherited shape):
 
-The bypass branch (src_0) is the one displayed because it carries the
-unmodified original frame; cairooverlay draws the tile box on top so you can
-see *where* the cropper is operating without depending on the aggregator +
-hailooverlay path (which requires real inference output to be useful).
+    source → identity (attach moving tile)
+           → hailotilecropper_dynamic
+                ├─ src_0 (bypass)  → agg.sink_0
+                └─ src_1 (cropped) → INFERENCE_PIPELINE → agg.sink_1
+           → hailotileaggregator → user_callback → hailooverlay → display
 
-The cropped output (src_1) is consumed by fakesink — in a real pipeline this
-is where ``hailonet ! hailofilter`` runs inference on the tile and feeds the
-result into ``hailotileaggregator``. See
-``tests/e2e/test_e2e_aggregator_compat.py`` for the full aggregator wiring.
+Why this matters: the regular cropper runs inference on every cell of a
+fixed grid; here inference runs only on the dynamic tile, so all NPU budget
+goes to the region the application cares about.
 
-Works on x86_64 and aarch64 (RPi). The plugin .so is preloaded via the path
-returned by ``pkg-config --variable=pluginsdir gstreamer-1.0`` so the demo
-doesn't hardcode any multiarch directory.
+Works on x86_64 and aarch64 (RPi). The plugin .so is preloaded via
+``pkg-config --variable=pluginsdir gstreamer-1.0`` so the demo doesn't
+hardcode a multiarch directory.
 
-Usage:
-    DISPLAY=:0 python tiling_dynamic_demo.py                            # videotestsrc (default)
-    DISPLAY=:0 python tiling_dynamic_demo.py --input libcamera          # RPi CSI camera
+Usage::
+
+    DISPLAY=:0 python tiling_dynamic_demo.py --input test               # videotestsrc
+    DISPLAY=:0 python tiling_dynamic_demo.py --input rpi                # RPi CSI camera
     DISPLAY=:0 python tiling_dynamic_demo.py --input /dev/video0        # USB webcam
     DISPLAY=:0 python tiling_dynamic_demo.py --input /path/to/video.mp4 # file
-    python tiling_dynamic_demo.py --frames 60 --no-display              # headless smoke test
 
 Press Ctrl-C to stop.
-"""
-import argparse
-import ctypes
-import pathlib
-import subprocess
-import sys
 
+The tile-grid flags inherited from the parent app (``--tiles-x``,
+``--tiles-y``, ``--multi-scale``, ``--scale-levels``) are ignored — the
+dynamic cropper has no grid.
+"""
 # ---------------------------------------------------------------------------
-# Plugin .so preload — works on any arch via pkg-config.
-#
-# GStreamer caches its plugin registry, so a freshly-built .so under
-# build.release/ may not be picked up before ``hailo-compile-postprocess
-# install`` updates the system copy. Preloading forces the library into the
-# process so Gst.init resolves the element regardless of registry state.
+# Plugin .so preload — must run BEFORE any hailo_apps import so that
+# GstHailoBaseCropperDyn registers before libgsthailotools.so registers
+# upstream's GstHailoBaseCropper.  Multiarch-portable via pkg-config.
 # ---------------------------------------------------------------------------
+import ctypes  # noqa: E402
+import pathlib  # noqa: E402
+import subprocess  # noqa: E402
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[5]  # …/hailo-apps-infra
 _BUILD_SO = (
     _REPO_ROOT / "hailo_apps" / "postprocess" / "build.release" / "cpp"
@@ -59,7 +52,7 @@ _BUILD_SO = (
 )
 
 
-def _system_plugin_so() -> pathlib.Path | None:
+def _system_plugin_so() -> "pathlib.Path | None":
     """Locate the installed plugin via pkg-config (multiarch-portable)."""
     try:
         pluginsdir = subprocess.check_output(
@@ -71,7 +64,7 @@ def _system_plugin_so() -> pathlib.Path | None:
     return pathlib.Path(pluginsdir) / "libgsthailotilecropper_dynamic.so" if pluginsdir else None
 
 
-def _preferred_so() -> pathlib.Path | None:
+def _preferred_so() -> "pathlib.Path | None":
     """Prefer the freshest of the local build vs. system-installed .so."""
     sys_so = _system_plugin_so()
     candidates = [p for p in (_BUILD_SO, sys_so) if p is not None and p.exists()]
@@ -83,181 +76,201 @@ if _so is not None:
     print(f"Preloading: {_so}", flush=True)
     ctypes.CDLL(str(_so), mode=ctypes.RTLD_GLOBAL)
 
-import gi  # noqa: E402
 
-gi.require_version("Gst", "1.0")
-from gi.repository import Gst, GLib  # noqa: E402
+# ---------------------------------------------------------------------------
+# Imports — after the preload above.
+# ---------------------------------------------------------------------------
 import hailo  # noqa: E402
 
-Gst.init(None)
+from hailo_apps.python.core.common.hailo_logger import get_logger  # noqa: E402
+from hailo_apps.python.core.gstreamer.gstreamer_app import (  # noqa: E402
+    app_callback_class,
+    dummy_callback,
+)
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (  # noqa: E402
+    DISPLAY_PIPELINE,
+    INFERENCE_PIPELINE,
+    QUEUE,
+    USER_CALLBACK_PIPELINE,
+)
+from hailo_apps.python.pipeline_apps.tiling.tiling_pipeline import (  # noqa: E402
+    GStreamerTilingApp,
+)
+
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Source-element selection (mirrors hailo_apps' SOURCE_PIPELINE conventions)
+# Helper: dynamic-tile-cropper pipeline fragment.
+# Mirrors hailo_apps' TILE_CROPPER_PIPELINE but with hailotilecropper_dynamic
+# and an upstream identity-handoff for per-buffer tile injection.
 # ---------------------------------------------------------------------------
 
-def build_source_element(input_src: str, width: int, height: int, frames: int) -> str:
-    """Return a GStreamer source chain ending in ``video/x-raw,format=RGB,WxH``."""
-    common_caps = f"video/x-raw,format=RGB,width={width},height={height}"
-    num_buffers = f" num-buffers={frames}" if frames > 0 else ""
+def DYNAMIC_TILE_CROPPER_PIPELINE(
+    inner_pipeline: str,
+    name: str = "dyn_tile_cropper",
+    internal_offset: bool = True,
+    iou_threshold: float = 0.3,
+    border_threshold: float = 0.0,
+    tiles_static: str = "",
+) -> str:
+    """Build a `tile_setter ! cropper [tee] aggregator` chain.
 
-    if input_src == "test":
-        return (
-            f"videotestsrc is-live=false{num_buffers} ! "
-            f"videoconvert ! {common_caps},framerate=30/1"
-        )
-    if input_src == "libcamera":
-        # RPi CSI camera via libcamera. Requires libcamera + gstreamer1.0-libcamera.
-        return (
-            f"libcamerasrc ! video/x-raw,framerate=30/1 ! "
-            f"videoscale ! videoconvert ! {common_caps}"
-        )
-    if input_src.startswith("/dev/video"):
-        # V4L2 device (USB webcam). MJPEG via decodebin handles most webcams.
-        return (
-            f"v4l2src device={input_src}{num_buffers} ! image/jpeg,framerate=30/1 ! "
-            f"decodebin ! videoscale ! videoconvert ! {common_caps}"
-        )
-    # Anything else — treat as a file path.
+    Same I/O contract as `TILE_CROPPER_PIPELINE` — drops in where that
+    helper would be used. The bypass branch carries the original frame to
+    `agg.sink_0`; the cropped branch is fed through ``inner_pipeline``
+    (typically ``INFERENCE_PIPELINE(...)``) and joins at ``agg.sink_1``.
+
+    Connect a Python handoff to the element named ``{name}_tile_setter`` to
+    attach `HailoTileROI` sub-objects per buffer.
+    """
+    border = (
+        f"border-threshold={str(border_threshold).lower()} "
+        if border_threshold else ""
+    )
+    static_prop = f'tiles-static="{tiles_static}" ' if tiles_static else ""
     return (
-        f"filesrc location=\"{input_src}\" ! decodebin ! "
-        f"videoscale ! videoconvert ! {common_caps}"
+        f"identity name={name}_tile_setter signal-handoffs=true ! "
+        f"{QUEUE(name=f'{name}_input_q')} ! "
+        f"hailotilecropper_dynamic name={name}_cropper "
+        f"internal-offset={str(internal_offset).lower()} {static_prop}"
+        f"hailotileaggregator name={name}_agg "
+        f"flatten-detections=true iou-threshold={iou_threshold} {border}"
+        # bypass branch
+        f"{name}_cropper. ! {QUEUE(name=f'{name}_bypass_q')} ! {name}_agg. "
+        # inference branch — capsfilter pins the crop output format to RGB so
+        # the cropper's src_1 caps negotiation doesn't fixate on a YUV format
+        # (which mismatches the bypass/sink format and trips the cropper's
+        # in_format == out_format guard).
+        f"{name}_cropper. ! video/x-raw,format=RGB ! {inner_pipeline} ! {name}_agg. "
+        # aggregator output
+        f"{name}_agg. ! {QUEUE(name=f'{name}_output_q')}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Tile state shared between the cropper-handoff and the cairooverlay draw.
+# Subclass: same as GStreamerTilingApp, with hailotilecropper_dynamic in the
+# pipeline string. Everything else (source, inference, display) is inherited.
+# ---------------------------------------------------------------------------
+
+CROPPER_NAME = "dyn_tc"
+
+
+class GStreamerDynamicTilingApp(GStreamerTilingApp):
+    """Tiling app that uses the community dynamic cropper instead of a fixed grid."""
+
+    def get_pipeline_string(self) -> str:
+        source_pipeline = self.get_source_pipeline()
+
+        detection_pipeline = INFERENCE_PIPELINE(
+            hef_path=self.hef_path,
+            post_process_so=self.post_process_so,
+            post_function_name=self.post_function,
+            batch_size=self.batch_size,
+            config_json=self.labels_json,
+        )
+
+        tile_cropper_pipeline = DYNAMIC_TILE_CROPPER_PIPELINE(
+            detection_pipeline,
+            name=CROPPER_NAME,
+            internal_offset=True,
+            iou_threshold=self.iou_threshold,
+        )
+
+        user_callback_pipeline = USER_CALLBACK_PIPELINE()
+
+        display_pipeline = DISPLAY_PIPELINE(
+            video_sink=self.video_sink,
+            sync=self.sync,
+            show_fps=self.show_fps,
+        )
+
+        return (
+            f"{source_pipeline} ! "
+            f"{tile_cropper_pipeline} ! "
+            f"{user_callback_pipeline} ! "
+            f"{display_pipeline}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Per-frame: walk a single tile across the frame.
 # ---------------------------------------------------------------------------
 
 class TileWalker:
-    """Per-frame tile generator. Walks a 0.4-wide tile back and forth."""
+    """Returns a moving 0.4-wide tile each frame; left edge bounces in [0.1, 0.5]."""
 
     TILE_W = 0.4
     TILE_H = 0.4
     TILE_Y = 0.2
     X_MIN = 0.1
-    X_MAX = 0.5  # so left edge stays in [0.1, 0.5] → tile fully in frame
-    PHASE_STEP = 0.05
+    X_MAX = 0.5
+    PHASE_STEP = 0.02
 
     def __init__(self):
         self._phase = 0.0
         self._frames = 0
-        self.x = self.X_MIN
 
-    def step(self) -> float:
-        """Advance one frame. Returns the new tile x (left edge, normalized)."""
-        self.x = self.X_MIN + (self.X_MAX - self.X_MIN) * abs((self._phase % 2.0) - 1.0)
+    def step(self) -> "hailo.HailoTileROI":
+        x = self.X_MIN + (self.X_MAX - self.X_MIN) * abs((self._phase % 2.0) - 1.0)
         self._phase += self.PHASE_STEP
         self._frames += 1
         if self._frames % 30 == 0:
-            print(f"  frame {self._frames:5d}  tile x={self.x:.3f}", flush=True)
-        return self.x
-
-
-# ---------------------------------------------------------------------------
-# Pipeline callbacks
-# ---------------------------------------------------------------------------
-
-def make_attach_dynamic_tile(walker: TileWalker):
-    """Handoff that attaches one moving tile per buffer.
-
-    In a real app this is where tracker / detector output goes.
-    """
-    def handoff(_identity, buf):
-        x = walker.step()
-        roi = hailo.get_roi_from_buffer(buf)
-        roi.add_object(hailo.HailoTileROI(
-            hailo.HailoBBox(x, walker.TILE_Y, walker.TILE_W, walker.TILE_H),
+            print(f"  frame {self._frames:5d}  tile x={x:.3f}", flush=True)
+        return hailo.HailoTileROI(
+            hailo.HailoBBox(x, self.TILE_Y, self.TILE_W, self.TILE_H),
             0, 0.0, 0.0, 0, hailo.SINGLE_SCALE,
-        ))
+        )
+
+
+def make_tile_handoff(walker: TileWalker):
+    def handoff(_identity, buf):
+        roi = hailo.get_roi_from_buffer(buf)
+        roi.add_object(walker.step())
     return handoff
 
 
-def make_draw_tile_box(walker: TileWalker, frame_w: int, frame_h: int):
-    """cairooverlay draw handler — paints the current tile rectangle on the frame."""
-    def draw(_overlay, ctx, _ts, _dur):
-        x = walker.x * frame_w
-        y = walker.TILE_Y * frame_h
-        w = walker.TILE_W * frame_w
-        h = walker.TILE_H * frame_h
-        ctx.set_source_rgb(1.0, 0.2, 0.2)  # red
-        ctx.set_line_width(3.0)
-        ctx.rectangle(x, y, w, h)
-        ctx.stroke()
-    return draw
+# ---------------------------------------------------------------------------
+# User callback: log the merged detections per frame (optional but nice).
+# ---------------------------------------------------------------------------
+
+class UserData(app_callback_class):
+    pass
+
+
+def app_callback(_pad, buffer, user_data):
+    if buffer is None:
+        return
+    dets = list(
+        hailo.get_roi_from_buffer(buffer).get_objects_typed(hailo.HAILO_DETECTION)
+    )
+    if dets:
+        labels = ", ".join(f"{d.get_label()}@{d.get_confidence():.2f}" for d in dets[:5])
+        print(f"  frame {user_data.get_count():5d}  detections=[{labels}]", flush=True)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def main():
-    p = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p.add_argument("--input", default="test",
-                   help="Source: 'test' (videotestsrc, default), 'libcamera' (RPi CSI), "
-                        "'/dev/videoN' (V4L2), or path to a video file.")
-    p.add_argument("--width", type=int, default=640)
-    p.add_argument("--height", type=int, default=480)
-    p.add_argument("--frames", type=int, default=0,
-                   help="Number of frames to process (0 = run until Ctrl-C). "
-                        "Only honoured for 'test' and V4L2 sources.")
-    p.add_argument("--no-display", action="store_true",
-                   help="Use fakesink instead of autovideosink (headless smoke test).")
-    args = p.parse_args()
+def main() -> None:
+    logger.info("Starting hailotilecropper_dynamic demo (on top of GStreamerTilingApp)")
 
+    user_data = UserData()
+    app = GStreamerDynamicTilingApp(app_callback, user_data)
+
+    # Wire dynamic-tile injection. Must happen after the pipeline has been
+    # built (in the parent's __init__) and before app.run() flips state.
     walker = TileWalker()
-    source = build_source_element(args.input, args.width, args.height, args.frames)
-    primary_sink = (
-        "fakesink sync=false async=false"
-        if args.no_display
-        else "videoconvert ! autovideosink sync=false"
-    )
+    tile_setter = app.pipeline.get_by_name(f"{CROPPER_NAME}_tile_setter")
+    if tile_setter is None:
+        raise RuntimeError(
+            f"could not find '{CROPPER_NAME}_tile_setter' in the pipeline — "
+            "DYNAMIC_TILE_CROPPER_PIPELINE wiring is wrong"
+        )
+    tile_setter.connect("handoff", make_tile_handoff(walker))
 
-    pipeline_str = (
-        f"{source} ! "
-        "identity name=tile_setter signal-handoffs=true ! "
-        "hailotilecropper_dynamic name=tc internal-offset=true "
-        # Bypass branch (src_0): the original frame, displayed with a tile-box overlay.
-        f"tc.src_0 ! queue ! videoconvert ! cairooverlay name=tile_overlay ! {primary_sink} "
-        # Cropped branch (src_1): consume so the cropper has somewhere to push.
-        # In a real pipeline this is hailonet ! hailofilter ! agg.sink_1.
-        "tc.src_1 ! queue ! fakesink sync=false async=false"
-    )
-    print(f"Pipeline:\n  {pipeline_str}\n", flush=True)
-
-    pipe = Gst.parse_launch(pipeline_str)
-    pipe.get_by_name("tile_setter").connect("handoff", make_attach_dynamic_tile(walker))
-    pipe.get_by_name("tile_overlay").connect(
-        "draw", make_draw_tile_box(walker, args.width, args.height)
-    )
-
-    loop = GLib.MainLoop()
-    bus = pipe.get_bus()
-    bus.add_signal_watch()
-
-    def on_msg(_b, msg):
-        t = msg.type
-        if t == Gst.MessageType.EOS:
-            print("EOS received — stopping.", flush=True)
-            loop.quit()
-        elif t == Gst.MessageType.ERROR:
-            err, dbg = msg.parse_error()
-            print(f"ERROR: {err.message}\n{dbg}", file=sys.stderr)
-            loop.quit()
-    bus.connect("message", on_msg)
-
-    pipe.set_state(Gst.State.PLAYING)
-    print("Pipeline running — press Ctrl-C to stop.\n", flush=True)
-    try:
-        loop.run()
-    except KeyboardInterrupt:
-        print("\nInterrupted.", flush=True)
-    finally:
-        pipe.set_state(Gst.State.NULL)
-    print("Pipeline stopped.", flush=True)
+    app.run()
 
 
 if __name__ == "__main__":
