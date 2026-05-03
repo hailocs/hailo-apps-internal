@@ -104,6 +104,10 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--reid-refresh-every", type=int, default=5,
                        help="On every Nth consecutive duplicate-band decision, replace the oldest "
                             "gallery vector to keep the gallery fresh (default: 5)")
+    group.add_argument("--reid-dump-embeddings", type=str, default=None,
+                       help="Save every embedding accepted into the ReID gallery for the active "
+                            "target to this .npy path at shutdown (used by tests to verify "
+                            "all stored embeddings describe the same person)")
 
     # OpenHD integration
     group.add_argument("--openhd-stream", action="store_true",
@@ -206,6 +210,7 @@ def main():
     reid_pre.add_argument("--reid-refresh-every", type=int, default=5,
         help="On every Nth consecutive duplicate-band decision, replace the "
              "oldest gallery vector to keep the gallery fresh.")
+    reid_pre.add_argument("--reid-dump-embeddings", type=str, default=None)
     reid_pre_args, _ = reid_pre.parse_known_args()
 
     reid_manager = None
@@ -218,6 +223,7 @@ def main():
             drift_threshold=reid_pre_args.reid_drift_threshold,
             duplicate_threshold=reid_pre_args.reid_duplicate_threshold,
             refresh_every=reid_pre_args.reid_refresh_every,
+            dump_embeddings_path=reid_pre_args.reid_dump_embeddings,
         )
 
     from drone_follow.pipeline_adapter import create_app
@@ -358,6 +364,7 @@ def main():
             except (OSError, subprocess.TimeoutExpired):
                 pass
         if reid_manager is not None:
+            reid_manager.dump_embeddings()
             reid_manager.release()
         app.user_data.close_test_log()
         if web_server is not None:

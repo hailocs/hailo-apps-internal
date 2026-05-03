@@ -19,6 +19,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -174,6 +175,16 @@ def sim_run(tmp_path, request):
         if app.poll() is not None:
             _log(f"drone-follow exited early (rc={app.returncode}); last app log lines:")
             print(_tail(app_log_path), flush=True)
+
+        # Shut drone-follow down here — before returning the log path — so the
+        # test body sees fully-flushed JSONL, a finalized recording, and any
+        # --reid-dump-embeddings file. main()'s `finally:` block (which calls
+        # reid_manager.dump_embeddings() and closes the test log) only runs on
+        # SIGTERM, so without this the test asserts on a file that hasn't been
+        # written yet.
+        _log("shutting down drone-follow so artifacts are flushed before assertions")
+        _kill_group(app)
+        procs.remove(app)
         return log_path
 
     yield _run
@@ -233,6 +244,11 @@ def _summarize(world, log):
 # these tests are about "did the sim wire up", not detector quality.
 MIN_FRAMES_WITH_DETECTION = 120
 
+# Pairwise cosine-similarity gate for the ReID gallery dump lives in
+# _reid_gate.py so test_reid_gallery_coherence_gate.py reads the same
+# thresholds and can prove the gate catches a swapped gallery.
+from drone_follow.tests._reid_gate import REID_PAIR_MEAN, REID_PAIR_MIN
+
 
 # ---------------------------------------------------------------------------
 # Per-world tests
@@ -282,51 +298,80 @@ def test_2_person_world_sees_both_actors(sim_run):
     )
 
 
-def test_2_persons_diagonal_keeps_initial_target(sim_run):
+def test_2_persons_diagonal_keeps_initial_target(sim_run, tmp_path):
     """Two actors walk diagonals that cross in front of the drone (~10,0).
 
     One wears green, the other red, so ReID has a colour cue to disambiguate
     them at the crossing. The drone should lock onto whichever person it
     selects first (largest in frame) and keep following that same one through
     the cross — not silently swap to the other actor.
+
+    Dumps every embedding accepted into the ReID gallery during the run, then
+    asserts pairwise cosine similarity is high — if the tracker swapped onto
+    the other actor and stored *their* embedding under the same target, the
+    gallery would mix two persons and the pairwise stats would tank. Embedding
+    file is deleted at the end.
     """
-    log = _read_jsonl(sim_run("2_persons_diagonal", reid=True))
-    s = _summarize("2_persons_diagonal", log)
+    emb_path = tmp_path / "reid_embeddings.npy"
+    try:
+        log = _read_jsonl(sim_run(
+            "2_persons_diagonal", reid=True,
+            extra_args=("--reid-dump-embeddings", str(emb_path)),
+        ))
+        s = _summarize("2_persons_diagonal", log)
 
-    assert s["n"] > 0
-    assert s["n_det"] > MIN_FRAMES_WITH_DETECTION
-    assert s["multi"] > 10, (
-        f">= 2 persons visible in only {s['multi']}/{s['n']} frames — at least "
-        f"some overlap window expected during the diagonal pass"
-    )
+        assert s["n"] > 0
+        assert s["n_det"] > MIN_FRAMES_WITH_DETECTION
+        assert s["multi"] > 10, (
+            f">= 2 persons visible in only {s['multi']}/{s['n']} frames — at "
+            f"least some overlap window expected during the diagonal pass"
+        )
 
-    # Frames where we were actively following someone (None = idle / no target).
-    followed = [r.get("followed_id") for r in log if r.get("followed_id") is not None]
-    assert len(followed) > MIN_FRAMES_WITH_DETECTION, (
-        f"only {len(followed)}/{s['n']} frames had a followed_id — drone never "
-        f"locked onto anyone, follow logic likely off"
-    )
+        followed = [r.get("followed_id") for r in log if r.get("followed_id") is not None]
+        assert len(followed) > MIN_FRAMES_WITH_DETECTION, (
+            f"only {len(followed)}/{s['n']} frames had a followed_id — drone "
+            f"never locked onto anyone, follow logic likely off"
+        )
 
-    # Skip the first ~5 s while persons are still in the hold pose and the
-    # drone is taking off — followed_id can flicker as detections come and go.
-    SKIP = min(150, len(followed) // 4)
-    steady = followed[SKIP:]
-    assert steady, "no steady-state frames after warm-up skip"
+        assert emb_path.exists(), (
+            f"no embedding dump at {emb_path} — ReID never accepted a "
+            f"single embedding; gallery wiring or extractor likely broken"
+        )
+        embs = np.load(emb_path)
+        assert embs.ndim == 2 and embs.shape[0] >= 4, (
+            f"only {embs.shape[0] if embs.ndim == 2 else 0} accepted "
+            f"embedding(s) — too few to assess coherence; expected the "
+            f"gallery to update through ~60 s of follow"
+        )
 
-    from collections import Counter
-    counts = Counter(steady)
-    top_id, top_n = counts.most_common(1)[0]
+        # Embeddings are L2-normalized, so a @ b.T is cosine similarity.
+        sim = embs @ embs.T
+        iu = np.triu_indices(embs.shape[0], k=1)
+        pairs = sim[iu]
+        min_sim = float(pairs.min())
+        mean_sim = float(pairs.mean())
+        _log(f"  reid embeddings: n={embs.shape[0]}  pair_min={min_sim:.3f}  "
+             f"pair_mean={mean_sim:.3f}")
 
-    # One ID should dominate the steady-state run. A swap at the cross would
-    # split the followed-id histogram roughly 50/50 between the two persons'
-    # tracker IDs, so demanding ≥ 70% on a single ID catches that regression
-    # while tolerating brief tracker glitches around the meeting point.
-    ratio = top_n / len(steady)
-    assert ratio >= 0.70, (
-        f"followed_id swapped during the diagonal cross — top id {top_id} held "
-        f"only {top_n}/{len(steady)} ({ratio:.0%}) of steady-state frames; "
-        f"id histogram = {dict(counts)}"
-    )
+        # If the gallery silently mixed two distinct people across the cross,
+        # cross-person pairs would land in the 0.2–0.4 range and pull both
+        # stats down hard. Same person across pose changes typically stays
+        # well above 0.5, with mean ≥ 0.7.
+        assert min_sim >= REID_PAIR_MIN, (
+            f"ReID gallery contains an outlier embedding (min pairwise "
+            f"sim={min_sim:.3f}) — likely a frame where the tracker swapped "
+            f"to the other actor and that crop got accepted into the gallery"
+        )
+        assert mean_sim >= REID_PAIR_MEAN, (
+            f"ReID gallery embeddings are not coherent (mean pairwise "
+            f"sim={mean_sim:.3f}) — gallery probably contains a mix of "
+            f"both actors rather than a single person"
+        )
+    finally:
+        try:
+            emb_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def test_walk_across_then_approach_holds_target_through_approach(sim_run):

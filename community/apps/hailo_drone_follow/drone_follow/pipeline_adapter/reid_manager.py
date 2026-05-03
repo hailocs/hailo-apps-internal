@@ -96,7 +96,8 @@ class ReIDManager:
                  drift_threshold: float = 0.6,
                  duplicate_threshold: float = 0.9,
                  refresh_every: int = 5,
-                 min_gallery_for_drift_check: int = 6):
+                 min_gallery_for_drift_check: int = 6,
+                 dump_embeddings_path: Optional[str] = None):
         self._hef_path = hef_path
         self._max_gallery_size = max_gallery_size
         self._reid_match_threshold = reid_match_threshold
@@ -111,6 +112,11 @@ class ReIDManager:
         # refresh-oldest mechanism so the gallery doesn't go stale on a long
         # clean follow.
         self._duplicate_streak = 0
+        # Optional dump: when set, every embedding accepted into the gallery
+        # for the active target is appended here so a test can assert pairwise
+        # coherence at shutdown. Reset on target change / clear().
+        self._dump_embeddings_path = dump_embeddings_path
+        self._accepted_embeddings: list = []
         # Extractor created lazily so the detection pipeline's VDevice is
         # always initialized first (avoids segfault on early pipeline errors).
         self._extractor = None
@@ -197,6 +203,7 @@ class ReIDManager:
             self._original_id = track_id
             self._frame_counter = 0
             self._duplicate_streak = 0
+            self._accepted_embeddings = []
         LOGGER.debug("[REID] New target ID %d — gallery reset", track_id)
 
     def should_update(self) -> bool:
@@ -287,6 +294,10 @@ class ReIDManager:
                     action = ACTION_ADDED
                     self._duplicate_streak = 0
                     size = self._gallery.embedding_count(name)
+
+            if (self._dump_embeddings_path is not None
+                    and action in (ACTION_BOOTSTRAP, ACTION_ADDED, ACTION_REFRESHED)):
+                self._accepted_embeddings.append(emb.copy())
 
         # Drift consequences run outside the lock — the reacquire pass calls
         # back into the gallery and would deadlock otherwise.
@@ -509,6 +520,27 @@ class ReIDManager:
             self._original_id = None
             self._frame_counter = 0
             self._duplicate_streak = 0
+            self._accepted_embeddings = []
+
+    def dump_embeddings(self) -> Optional[str]:
+        """Save accepted-embedding accumulator to ``dump_embeddings_path`` as .npy.
+
+        Returns the path written, or None if dumping is disabled or nothing
+        was collected. Called by the app at shutdown when --reid-dump-embeddings
+        is set; tests then load the file to assert pairwise coherence.
+        """
+        if self._dump_embeddings_path is None:
+            return None
+        with self._lock:
+            embs = list(self._accepted_embeddings)
+        if not embs:
+            LOGGER.info("[REID] No accepted embeddings to dump")
+            return None
+        arr = np.stack(embs)
+        np.save(self._dump_embeddings_path, arr)
+        LOGGER.info("[REID] Dumped %d accepted embeddings to %s",
+                    len(embs), self._dump_embeddings_path)
+        return self._dump_embeddings_path
 
     def release(self) -> None:
         """Release Hailo NPU resources."""
