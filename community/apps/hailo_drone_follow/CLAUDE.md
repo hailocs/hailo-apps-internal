@@ -8,7 +8,7 @@ A Hailo-based drone-follow application that uses an AI pipeline (GStreamer + Hai
 
 - **`drone_follow/follow_api/`** — Pure domain logic (follow controller, geometry, shared state)
 - **`drone_follow/drone_api/mavsdk_drone.py`** — MAVSDK adapter; CLI args, connection, control loop
-- **`drone_follow/pipeline_adapter/`** — Hailo/GStreamer detection pipeline, ByteTracker, ReID manager
+- **`drone_follow/pipeline_adapter/`** — Hailo/GStreamer detection pipeline, ByteTracker, ReID manager (drift protection + raw-detection fallback in [`reid_manager.py`](drone_follow/pipeline_adapter/reid_manager.py); see [`docs/tracking-reid-algorithm.md`](docs/tracking-reid-algorithm.md))
 - **`drone_follow/servers/`** — HTTP servers (follow API, web UI + MJPEG, OpenHD bridge)
 - **`drone_follow/drone_follow_app.py`** — Main entry point (`main()`), wires everything together
 - **`reid_analysis/`** — ReID embedding extraction and gallery matching strategies
@@ -25,6 +25,12 @@ A Hailo-based drone-follow application that uses an AI pipeline (GStreamer + Hai
 - `--yaw-only` / `--no-yaw-only` — Yaw only mode (default: on). Use `--no-yaw-only` for full follow with forward/backward movement.
 - `--horizontal-mirror` / `--vertical-mirror` — Both default to off (camera right-side up). Pass both flags for 180° rotation if camera is mounted upside-down. The pipeline also passes `mirror_image=False` to `SOURCE_PIPELINE()`.
 - `--ui` / `--ui-port` / `--ui-fps` — Enable the web UI (port 5001 default, 10 FPS MJPEG default). Live video, click-to-follow, and slider-based controller tuning.
+- `--reid-threshold M` (default 0.75) — Cosine-similarity floor for accepting a re-acquisition / raw-detection match.
+- `--reid-drift-threshold M` (default 0.6) — Below this similarity vs the gallery, an in-track sample is treated as drift; the gallery is **not** updated and an immediate re-acquisition pass runs over the visible detections.
+- `--reid-duplicate-threshold M` (default 0.9) — Above this similarity, an in-track sample is redundant and skipped, with periodic refresh via `--reid-refresh-every`.
+- `--reid-refresh-every N` (default 5) — On every Nth consecutive duplicate-band decision, replace the oldest gallery vector to keep the gallery fresh.
+- `--reid-timeout S` (default 20.0) — Seconds to keep searching with the gallery (during a tracker loss) before giving up and returning to auto.
+- `--update-interval N` (default 30) — Frames between in-track gallery sampling.
 - `--record` — Capture post-overlay frames to `drone_follow/recordings/rec_<timestamp>.mp4` via an ffmpeg subprocess (libx264, 5 Mbps). Auto-starts ~1 s after PLAYING; can also be toggled mid-flight from the web UI's Record button. Saved on the drone — fewer compression artifacts than a ground-side capture, and survives RF dropouts.
 - `--openhd-stream` — Send overlay video to OpenHD via UDP RTP instead of an X11 display sink. Uses x264 software encode (the RPi5 has no HW H.264).
 - `--openhd-port` (default: 5500) / `--openhd-bitrate` (default: 3917 kbps) — OpenHD UDP destination and x264 starting bitrate. Bitrate is updated dynamically from QOpenHD's WFB link recommendation via the OpenHD bridge.
@@ -54,6 +60,21 @@ The app has three follow modes:
 
 ### ReID search timeout
 When a locked target is lost, ReID searches for a configurable duration (`--reid-timeout`, default 20s). If the target is not re-identified within that time, the app returns to auto mode (not idle). The timeout applies both when other persons are visible (ReID compares embeddings each frame) and when no persons are visible (holding position).
+
+### ReID drift protection (every `--update-interval` frames)
+While ByteTracker is happily holding the locked target, the ReID manager periodically samples an embedding from the target bbox and decides what to do with it:
+
+- **`sim < drift_threshold` (default 0.6)** — Suspected tracker drift. The embedding is **not** stored, and an immediate re-acquisition pass runs over the visible tracks. If a different track matches the gallery above `--reid-threshold`, the lock is switched onto it. If reacquire confirms the same track, that's a "false drift" — still don't store, just keep tracking.
+- **`drift ≤ sim ≤ duplicate` (0.6–0.9)** — Normal enrichment. Add to the gallery (FIFO-replace oldest when full).
+- **`sim > duplicate_threshold` (0.9)** — Near-duplicate. Skip, but increment a streak counter; every `refresh_every` consecutive duplicates (default 5), replace the oldest gallery vector so the gallery doesn't go stale.
+
+The first `min_gallery_for_drift_check` (default 6) samples bypass the drift gate — drift detection over a single seed embedding is too brittle.
+
+### Raw-detection fallback
+If ByteTracker activates zero tracks for the locked person (e.g. detector confidence dropped below `track_thresh=0.4`) but raw `persons` are visible, ReID scores them directly via `score_visible_persons`. If the best raw match crosses `--reid-threshold`, the controller is driven from that raw bbox even though no tracker id exists for it — locked-follow survives a tracker dropout.
+
+### Where to read more
+[`docs/tracking-reid-algorithm.md`](docs/tracking-reid-algorithm.md) has the full per-frame flow (main flow + gallery sub-flow + recovery sub-flow as ASCII diagrams) plus a knobs table. The implementation lives in [`drone_follow/pipeline_adapter/reid_manager.py`](drone_follow/pipeline_adapter/reid_manager.py) (`update_gallery`, `_reacquire`, `try_reidentify`, `score_visible_persons`) and the callback wiring is in [`drone_follow/pipeline_adapter/hailo_drone_detection_manager.py`](drone_follow/pipeline_adapter/hailo_drone_detection_manager.py).
 
 ### OpenHD follow_id semantics
 - `-1` = IDLE (drone holds position)

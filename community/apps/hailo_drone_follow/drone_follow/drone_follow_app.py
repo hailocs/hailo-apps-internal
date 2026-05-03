@@ -24,6 +24,7 @@ import argparse
 import asyncio
 import logging
 import signal
+import subprocess
 import threading
 import time
 from drone_follow.follow_api import ControllerConfig, SharedDetectionState
@@ -88,11 +89,25 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                        help="Disable ReID re-identification")
     group.add_argument("--update-interval", type=int, default=30,
                        help="Frames between ReID gallery embedding updates while following (default: 30)")
-    group.add_argument("--reid-threshold", type=float, default=0.7,
-                       help="Cosine similarity threshold for ReID match (0.0–1.0, default: 0.7)")
+    group.add_argument("--reid-threshold", type=float, default=0.75,
+                       help="Cosine similarity threshold for ReID match (0.0–1.0, default: 0.75)")
     group.add_argument("--reid-timeout", type=float, default=20.0,
                        help="Seconds to search for a lost locked target via ReID before returning "
                             "to auto mode (default: 20.0)")
+    group.add_argument("--reid-drift-threshold", type=float, default=0.6,
+                       help="Below this similarity vs gallery, an in-track embedding is treated "
+                            "as drift; gallery is not updated and re-acquisition is triggered "
+                            "(0.0–1.0, default: 0.6)")
+    group.add_argument("--reid-duplicate-threshold", type=float, default=0.9,
+                       help="Above this similarity, the embedding is redundant and skipped, "
+                            "with periodic refresh via --reid-refresh-every (0.0–1.0, default: 0.9)")
+    group.add_argument("--reid-refresh-every", type=int, default=5,
+                       help="On every Nth consecutive duplicate-band decision, replace the oldest "
+                            "gallery vector to keep the gallery fresh (default: 5)")
+    group.add_argument("--reid-dump-embeddings", type=str, default=None,
+                       help="Save every embedding accepted into the ReID gallery for the active "
+                            "target to this .npy path at shutdown (used by tests to verify "
+                            "all stored embeddings describe the same person)")
 
     # OpenHD integration
     group.add_argument("--openhd-stream", action="store_true",
@@ -183,8 +198,19 @@ def main():
     reid_pre.add_argument("--reid-model", type=str, default=_DEFAULT_REID_HEF)
     reid_pre.add_argument("--no-reid", action="store_true")
     reid_pre.add_argument("--update-interval", type=int, default=30)
-    reid_pre.add_argument("--reid-threshold", type=float, default=0.7)
+    reid_pre.add_argument("--reid-threshold", type=float, default=0.75)
     reid_pre.add_argument("--reid-timeout", type=float, default=20.0)
+    reid_pre.add_argument("--reid-drift-threshold", type=float, default=0.6,
+        help="Below this similarity vs gallery, an in-track embedding is "
+             "treated as drift; gallery is not updated and re-acquisition "
+             "is triggered.")
+    reid_pre.add_argument("--reid-duplicate-threshold", type=float, default=0.9,
+        help="Above this similarity, the embedding is redundant and skipped "
+             "(with periodic refresh — see --reid-refresh-every).")
+    reid_pre.add_argument("--reid-refresh-every", type=int, default=5,
+        help="On every Nth consecutive duplicate-band decision, replace the "
+             "oldest gallery vector to keep the gallery fresh.")
+    reid_pre.add_argument("--reid-dump-embeddings", type=str, default=None)
     reid_pre_args, _ = reid_pre.parse_known_args()
 
     reid_manager = None
@@ -194,6 +220,10 @@ def main():
             hef_path=reid_pre_args.reid_model,
             update_interval=reid_pre_args.update_interval,
             reid_match_threshold=reid_pre_args.reid_threshold,
+            drift_threshold=reid_pre_args.reid_drift_threshold,
+            duplicate_threshold=reid_pre_args.reid_duplicate_threshold,
+            refresh_every=reid_pre_args.reid_refresh_every,
+            dump_embeddings_path=reid_pre_args.reid_dump_embeddings,
         )
 
     from drone_follow.pipeline_adapter import create_app
@@ -321,7 +351,20 @@ def main():
             app.cleanup_recording_branch()
         # Wait for drone thread to finish cleanly
         drone_thread.join(timeout=5.0)
+        if drone_thread.is_alive():
+            # Drone thread is stuck (typically a MAVSDK land/offboard timeout
+            # against a sim that's already gone). Its `with DetachedMavsdkServer`
+            # __exit__ won't run, and start_new_session=True means mavsdk_server
+            # would survive us — leaving UDP 14540 + TCP 50051 bound and blocking
+            # the next run. Reap it by name now while we still own a shell;
+            # scope to the current uid so we don't touch another user's server.
+            try:
+                subprocess.run(["pkill", "-9", "-u", str(os.getuid()), "-f", "mavsdk_server"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         if reid_manager is not None:
+            reid_manager.dump_embeddings()
             reid_manager.release()
         app.user_data.close_test_log()
         if web_server is not None:

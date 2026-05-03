@@ -120,6 +120,26 @@ class MultiEmbeddingStrategy(GalleryStrategy):
         """Return the number of stored embeddings for a person."""
         return len(self._person_embeddings.get(name, []))
 
+    def max_similarity(self, name: str, embedding: np.ndarray) -> float:
+        """Max cosine similarity of `embedding` against this person's stored vectors.
+
+        Returns -1.0 if the person isn't in the gallery or has no embeddings.
+        Used by the drift-protection path to decide whether a new in-track
+        embedding looks like the tracked person at all.
+        """
+        embs = self._person_embeddings.get(name)
+        if not embs:
+            return -1.0
+        arr = np.stack(embs)
+        return float(np.max(arr @ embedding))
+
+    def replace_oldest(self, name: str, embedding: np.ndarray) -> None:
+        """Force-replace the oldest stored embedding (for periodic refresh)."""
+        embs = self._person_embeddings[name]
+        if embs:
+            embs.pop(0)
+        embs.append(embedding.copy())
+
     def add_person(self, name: str, embedding: np.ndarray):
         self._name_to_idx[name] = len(self._names)
         self._names.append(name)
