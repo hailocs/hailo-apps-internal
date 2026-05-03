@@ -29,6 +29,59 @@ LOGGER = logging.getLogger(__name__)
 _EMPTY_DET_ARRAY = np.empty((0, 5), dtype=np.float32)
 
 
+# BT.601 green for the recorded bbox outline. Drawn on planar I420 by writing
+# Y, U and V plane bytes directly — no cv2, no extra colour conversion in the
+# record hot path.
+_REC_BBOX_Y = 149
+_REC_BBOX_U = 43
+_REC_BBOX_V = 21
+
+
+def _draw_bbox_i420(buf_arr: np.ndarray, width: int, height: int,
+                    x1: int, y1: int, x2: int, y2: int,
+                    thickness: int = 3) -> None:
+    """Draw a green rectangle outline onto a packed I420 buffer in-place.
+
+    `buf_arr` is a flat uint8 array of length 1.5*W*H laid out as
+    [Y plane | U plane | V plane]. Coords are in pixels of the Y plane;
+    U/V planes are subsampled 2x. Caller guarantees W and H are even, so
+    chroma indices are exact.
+    """
+    if x2 <= x1 or y2 <= y1:
+        return
+    x1 = max(0, min(width, x1))
+    x2 = max(0, min(width, x2))
+    y1 = max(0, min(height, y1))
+    y2 = max(0, min(height, y2))
+    if x2 - x1 < 2 or y2 - y1 < 2:
+        return
+
+    y_size = width * height
+    uv_w, uv_h = width // 2, height // 2
+    uv_size = uv_w * uv_h
+
+    y_plane = buf_arr[:y_size].reshape(height, width)
+    u_plane = buf_arr[y_size:y_size + uv_size].reshape(uv_h, uv_w)
+    v_plane = buf_arr[y_size + uv_size:y_size + 2 * uv_size].reshape(uv_h, uv_w)
+
+    t = max(1, thickness)
+    # Y plane (full res)
+    y_plane[y1:y1 + t, x1:x2] = _REC_BBOX_Y
+    y_plane[max(y1, y2 - t):y2, x1:x2] = _REC_BBOX_Y
+    y_plane[y1:y2, x1:x1 + t] = _REC_BBOX_Y
+    y_plane[y1:y2, max(x1, x2 - t):x2] = _REC_BBOX_Y
+
+    # U/V planes (half res)
+    ux1, uy1 = x1 // 2, y1 // 2
+    ux2, uy2 = (x2 + 1) // 2, (y2 + 1) // 2
+    ut = max(1, t // 2)
+    for plane, val in ((u_plane, _REC_BBOX_U), (v_plane, _REC_BBOX_V)):
+        plane[uy1:uy1 + ut, ux1:ux2] = val
+        plane[max(uy1, uy2 - ut):uy2, ux1:ux2] = val
+        plane[uy1:uy2, ux1:ux1 + ut] = val
+        plane[uy1:uy2, max(ux1, ux2 - ut):ux2] = val
+
+
 _gst_module = None
 
 
@@ -759,6 +812,12 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             self._record_lock = threading.Lock()
             self._shm_rebuild_pending = False
             self._ffmpeg_proc = None
+            # Resolved record dims (set in start_recording / pipeline build).
+            # The callback reads these to scale normalised UI bboxes onto the
+            # buffer it's about to draw on.
+            self._rec_w = 0
+            self._rec_h = 0
+            self._rec_fps = 0
 
             # Pre-detect SHM resolution BEFORE super().__init__() so that
             # the tiling configuration (tile grid, overlap, batch size) is
@@ -818,18 +877,57 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             return Gst.FlowReturn.OK
 
         def _on_record_sample(self, appsink):
-            """appsink callback: pipe raw RGB frames to ffmpeg subprocess."""
+            """appsink callback: draw the followed bbox onto the clean I420
+            frame and pipe the raw bytes to the ffmpeg subprocess.
+
+            The record branch taps from t_pre (no hailooverlay), so the only
+            thing the operator sees in the recording is the same single bbox
+            the web UI draws over the locked target — no tile boundaries, no
+            background detections.
+            """
             Gst = self._Gst
             sample = appsink.emit("pull-sample")
-            if sample and self._recording and self._ffmpeg_proc:
-                buf = sample.get_buffer()
-                ok, mapinfo = buf.map(Gst.MapFlags.READ)
-                if ok:
-                    try:
-                        self._ffmpeg_proc.stdin.write(mapinfo.data)
-                    except (BrokenPipeError, OSError):
-                        pass
-                    buf.unmap(mapinfo)
+            if not (sample and self._recording and self._ffmpeg_proc):
+                return Gst.FlowReturn.OK
+            buf = sample.get_buffer()
+            ok, mapinfo = buf.map(Gst.MapFlags.READ)
+            if not ok:
+                return Gst.FlowReturn.OK
+            try:
+                snap = self._ui_state.get_detections() if self._ui_state else None
+                followed_id = snap.get("following_id") if snap else None
+                followed = None
+                if snap and followed_id is not None:
+                    for det in snap.get("detections", ()):
+                        if det.get("id") == followed_id:
+                            followed = det
+                            break
+
+                if followed is None:
+                    # Nothing to draw — pipe the buffer through unchanged
+                    # (zero-copy, same cost as before this commit).
+                    payload = mapinfo.data
+                else:
+                    rec_w, rec_h = self._rec_w, self._rec_h
+                    bbox = followed["bbox"]
+                    x1 = int(bbox["x"] * rec_w)
+                    y1 = int(bbox["y"] * rec_h)
+                    x2 = int((bbox["x"] + bbox["w"]) * rec_w)
+                    y2 = int((bbox["y"] + bbox["h"]) * rec_h)
+                    # Writable copy: bbox drawing is a few hundred uint8
+                    # writes via numpy slicing, dominated by the underlying
+                    # memcpy. Negligible vs x264 cost.
+                    arr = np.frombuffer(mapinfo.data, dtype=np.uint8).copy()
+                    _draw_bbox_i420(arr, rec_w, rec_h, x1, y1, x2, y2,
+                                    thickness=3)
+                    payload = arr.tobytes()
+
+                try:
+                    self._ffmpeg_proc.stdin.write(payload)
+                except (BrokenPipeError, OSError):
+                    pass
+            finally:
+                buf.unmap(mapinfo)
             return Gst.FlowReturn.OK
 
         def bus_call(self, bus, message, loop):
@@ -1015,6 +1113,9 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
                 record_path = path or self._generate_record_path()
                 width, height, fps = self._record_dims()
+                # Cache dims for the appsink callback (bbox drawing) — must
+                # match the GStreamer caps and ffmpeg's `-s WxH` exactly.
+                self._rec_w, self._rec_h, self._rec_fps = width, height, fps
                 LOGGER.info(
                     "[record] Spawning ffmpeg: %dx%d @ %d fps, %d kbps → %s",
                     width, height, fps, self._record_bitrate, record_path,
@@ -1200,11 +1301,14 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     f"appsink name=mjpeg_sink sync=false drop=true emit-signals=true"
                 )
 
-            # Recording branch (shares overlayed frames from t_post).
+            # Recording branch — taps CLEAN frames from t_pre (no hailooverlay).
+            # _on_record_sample draws only the followed person's bbox in
+            # Python before piping to ffmpeg, so the recorded video matches
+            # the web UI (no tile boundaries, no other detections).
             # videorate first so dropped frames don't pay scale/convert cost;
-            # videoscale then videoconvert produce I420 at the requested size,
-            # which is exactly what libx264 wants — no swscale on the ffmpeg
-            # side, half the bytes through the Python pipe vs RGB.
+            # videoscale then videoconvert produce I420 at the requested size
+            # — what libx264 wants, no swscale on the ffmpeg side, half the
+            # bytes through the Python pipe vs RGB.
             record_branch = None
             if self._record_enabled:
                 rec_w, rec_h, rec_fps = self._record_dims()
@@ -1218,41 +1322,48 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     f"sync=false async=false max-buffers=1"
                 )
 
-            # Assemble output pipeline with two-stage tee:
-            #   t_pre (before overlay) — MJPEG taps clean frames here
-            #   t_post (after overlay) — primary + recording tap overlayed frames
             has_mjpeg = mjpeg_branch is not None
             has_record = record_branch is not None
+            # hailooverlay is only needed for the primary path: a real display
+            # or the OpenHD x264-encoded stream. With --no-display and no
+            # --openhd-stream, primary_sink is a fakesink and the overlay's
+            # output is discarded — skip the element entirely (RPi5 win).
+            primary_needs_overlay = openhd_stream or not no_display
 
-            if has_mjpeg and has_record:
-                # Two-stage tee: t_pre feeds MJPEG (clean) and overlay path;
-                # t_post feeds primary + recording (overlayed)
+            # Assemble output pipeline. All extra branches (MJPEG / record)
+            # tap CLEAN frames from t_pre; overlay only touches the primary
+            # branch when something downstream actually displays it.
+            primary_overlay = (
+                f"{QUEUE(name='overlay_q', leaky='downstream')} ! "
+                f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! "
+                if primary_needs_overlay else ""
+            )
+            primary_branch_q = QUEUE(name='primary_branch_q', leaky='downstream')
+
+            if not has_mjpeg and not has_record:
+                # Single output: optional overlay → primary
                 output_pipeline = (
-                    f"tee name=t_pre "
-                    f"t_pre. ! {QUEUE(name='mjpeg_branch_q', leaky='downstream')} ! {mjpeg_branch} "
-                    f"t_pre. ! {QUEUE(name='overlay_q', leaky='downstream')} ! "
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! tee name=t_post "
-                    f"t_post. ! {QUEUE(name='primary_branch_q', leaky='downstream')} ! {primary_sink} "
-                    f"t_post. ! {QUEUE(name='record_branch_q', max_size_buffers=1, leaky='downstream')} ! {record_branch}"
-                )
-            elif has_mjpeg:
-                # MJPEG only: t_pre feeds MJPEG (clean) and overlay → primary
-                output_pipeline = (
-                    f"tee name=t_pre "
-                    f"t_pre. ! {QUEUE(name='mjpeg_branch_q', leaky='downstream')} ! {mjpeg_branch} "
-                    f"t_pre. ! {QUEUE(name='overlay_q', leaky='downstream')} ! "
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! {primary_sink}"
-                )
-            elif has_record:
-                # Recording only: overlay → t_post feeds primary + recording
-                output_pipeline = (
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! tee name=t_post "
-                    f"t_post. ! {QUEUE(name='primary_branch_q', leaky='downstream')} ! {primary_sink} "
-                    f"t_post. ! {QUEUE(name='record_branch_q', max_size_buffers=1, leaky='downstream')} ! {record_branch}"
+                    f"{primary_overlay}{primary_sink}"
+                    if primary_needs_overlay
+                    else primary_sink
                 )
             else:
-                # No extra branches: overlay → primary
-                output_pipeline = f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! {primary_sink}"
+                branches = []
+                if has_mjpeg:
+                    branches.append(
+                        f"t_pre. ! {QUEUE(name='mjpeg_branch_q', leaky='downstream')} "
+                        f"! {mjpeg_branch}"
+                    )
+                if has_record:
+                    branches.append(
+                        f"t_pre. ! {QUEUE(name='record_branch_q', max_size_buffers=1, leaky='downstream')} "
+                        f"! {record_branch}"
+                    )
+                # Primary branch (with or without overlay)
+                branches.append(
+                    f"t_pre. ! {primary_branch_q} ! {primary_overlay}{primary_sink}"
+                )
+                output_pipeline = "tee name=t_pre " + " ".join(branches)
 
             if skip_tiling:
                 # Direct pipeline: source → inference → callback → output
