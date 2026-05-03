@@ -175,6 +175,9 @@ def sim_run(tmp_path, request):
         if app.poll() is not None:
             _log(f"drone-follow exited early (rc={app.returncode}); last app log lines:")
             print(_tail(app_log_path), flush=True)
+            raise RuntimeError(
+                f"drone-follow exited early (code={app.returncode}); see {app_log_path}"
+            )
 
         # Shut drone-follow down here — before returning the log path — so the
         # test body sees fully-flushed JSONL, a finalized recording, and any
