@@ -217,10 +217,12 @@ class DetachedMavsdkServer:
         # out (e.g. the drone_thread join expired during a stuck land/offboard
         # call), __exit__ never ran. The leftover keeps UDP 14540 + TCP 50051
         # bound, which blocks the next run from connecting to PX4. Kill by name
-        # so we cover both ports regardless of which one was held.
+        # so we cover both ports regardless of which one was held; scope to the
+        # current uid so we don't touch other users' mavsdk_server processes
+        # on shared hosts.
         try:
             subprocess.run(
-                ["pkill", "-9", "-f", "mavsdk_server"],
+                ["pkill", "-9", "-u", str(os.getuid()), "-f", "mavsdk_server"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3,
             )
             time.sleep(0.3)

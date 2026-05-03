@@ -476,16 +476,16 @@ class ReIDManager:
         best_person = kept_persons[best_idx] if best_sim >= self._reid_match_threshold else None
 
         if best_person is not None:
-            LOGGER.debug("[REID SEARCH] tracker has no tracks — raw-detection MATCH "
-                         "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d) — "
-                         "driving controller from raw bbox",
-                         best_sim, len(sims), self._reid_match_threshold,
-                         self.gallery_size, self._max_gallery_size)
+            LOGGER.info("[REID SEARCH] tracker has no tracks — raw-detection MATCH "
+                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d) — "
+                        "driving controller from raw bbox",
+                        best_sim, len(sims), self._reid_match_threshold,
+                        self.gallery_size, self._max_gallery_size)
         else:
-            LOGGER.debug("[REID SEARCH] tracker has no tracks — best raw-detection "
-                         "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d)",
-                         best_sim, len(sims), self._reid_match_threshold,
-                         self.gallery_size, self._max_gallery_size)
+            LOGGER.info("[REID SEARCH] tracker has no tracks — best raw-detection "
+                        "sim=%.3f among %d visible (threshold=%.2f, gallery=%d/%d)",
+                        best_sim, len(sims), self._reid_match_threshold,
+                        self.gallery_size, self._max_gallery_size)
         return best_sim, best_person
 
     def on_reidentified(self, new_track_id: int) -> None:

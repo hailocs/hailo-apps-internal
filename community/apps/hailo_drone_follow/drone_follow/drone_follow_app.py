@@ -350,9 +350,10 @@ def main():
             # against a sim that's already gone). Its `with DetachedMavsdkServer`
             # __exit__ won't run, and start_new_session=True means mavsdk_server
             # would survive us — leaving UDP 14540 + TCP 50051 bound and blocking
-            # the next run. Reap it by name now while we still own a shell.
+            # the next run. Reap it by name now while we still own a shell;
+            # scope to the current uid so we don't touch another user's server.
             try:
-                subprocess.run(["pkill", "-9", "-f", "mavsdk_server"],
+                subprocess.run(["pkill", "-9", "-u", str(os.getuid()), "-f", "mavsdk_server"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
             except (OSError, subprocess.TimeoutExpired):
                 pass
