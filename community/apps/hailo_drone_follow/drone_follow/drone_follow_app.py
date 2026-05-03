@@ -70,9 +70,24 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                        help="MJPEG stream frame rate (default: 10)")
     group.add_argument("--record", action="store_true",
                        help="Auto-start recording on launch (recording is always available from the UI)")
+    group.add_argument("--record-bitrate", type=int, default=5000,
+                       help="libx264 bitrate for --record output, in kbps (default: 5000).")
+    group.add_argument("--record-fps", type=int, default=None,
+                       help="Recording frame rate. Defaults to source frame rate. "
+                            "Lower values (e.g. 15) materially reduce CPU.")
+    group.add_argument("--record-scale", type=float, default=1.0,
+                       help="Scale factor for recording resolution (0.25–1.0, default 1.0). "
+                            "0.5 quarters the pixel count fed to x264 — biggest single CPU saving "
+                            "on RPi5 (no HW H.264 encoder).")
 
-    group.add_argument("--no-display", action="store_true",
-                       help="Disable display window (headless mode)")
+    # Headless by default — drone-follow runs on the air unit (RPi5) without
+    # an X server. Pass --display on a dev machine to open a video window.
+    group.add_argument("--display", dest="no_display", action="store_false",
+                       default=True,
+                       help="Open an X11 display window. Default is headless "
+                            "(equivalent to the legacy --no-display flag).")
+    group.add_argument("--no-display", dest="no_display", action="store_true",
+                       help="(legacy / no-op — headless is now the default)")
 
     group.add_argument("--log-perf", action="store_true",
                        help="Log pipeline and tracker performance metrics periodically")
@@ -163,6 +178,9 @@ def main():
     ui_pre.add_argument("--ui-port", type=int, default=5001)
     ui_pre.add_argument("--ui-fps", type=int, default=10)
     ui_pre.add_argument("--record", action="store_true")
+    ui_pre.add_argument("--record-bitrate", type=int, default=5000)
+    ui_pre.add_argument("--record-fps", type=int, default=None)
+    ui_pre.add_argument("--record-scale", type=float, default=1.0)
     ui_pre.add_argument("--openhd-stream", action="store_true")
     ui_pre.add_argument("--log-perf", action="store_true")
     ui_pre_args, _ = ui_pre.parse_known_args()
@@ -238,6 +256,9 @@ def main():
     app = create_app(shared_state, target_state=target_state, eos_reached=eos_reached,
                      ui_state=ui_state, ui_fps=ui_pre_args.ui_fps, parser=parser,
                      record_enabled=record_branch_enabled, record_dir=recordings_dir,
+                     record_bitrate=ui_pre_args.record_bitrate,
+                     record_fps=ui_pre_args.record_fps,
+                     record_scale=ui_pre_args.record_scale,
                      reid_manager=reid_manager,
                      reid_search_timeout=reid_pre_args.reid_timeout,
                      tracker_name=tracker_pre_args.tracker,

@@ -663,7 +663,11 @@ def _udp_h264_source_pipeline(video_source, video_width, video_height, frame_rat
 
 def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None, ui_fps=10,
                parser: Optional[argparse.ArgumentParser] = None,
-               record_enabled=False, record_dir=None, reid_manager=None,
+               record_enabled=False, record_dir=None,
+               record_bitrate: int = 5000,
+               record_fps: Optional[int] = None,
+               record_scale: float = 1.0,
+               reid_manager=None,
                reid_search_timeout: float = 20.0, controller_config=None,
                tracker_name=None, log_perf=False):
     """Create the tiling pipeline app with drone-follow callback.
@@ -739,7 +743,8 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
         """Tiling app with EOS handling and optional MJPEG appsink for web UI."""
         def __init__(self, app_callback, user_data, parser=None, eos_reached=None,
                      ui_enabled=False, ui_state=None, ui_fps=30,
-                     record_enabled=False, record_dir=None):
+                     record_enabled=False, record_dir=None,
+                     record_bitrate=5000, record_fps=None, record_scale=1.0):
             self._eos_reached = eos_reached
             self._ui_enabled = ui_enabled
             self._record_enabled = record_enabled
@@ -748,6 +753,9 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             self._recording = False
             self._record_dir = record_dir or os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "..", "recordings")
+            self._record_bitrate = max(200, int(record_bitrate))
+            self._record_fps_override = record_fps
+            self._record_scale = max(0.1, min(1.0, float(record_scale)))
             self._record_lock = threading.Lock()
             self._shm_rebuild_pending = False
             self._ffmpeg_proc = None
@@ -979,6 +987,20 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             return os.path.join(self._record_dir, f"rec_{ts}.mp4")
 
+        def _record_dims(self):
+            """Resolved (width, height, fps) for the recording branch.
+
+            Honours --record-scale and --record-fps. Snaps W/H to multiples
+            of 4 so GStreamer's I420 plane strides equal width (= no padding)
+            and the raw bytes match ffmpeg's packed yuv420p layout exactly.
+            """
+            w = max(4, int(self.video_width * self._record_scale))
+            h = max(4, int(self.video_height * self._record_scale))
+            w -= w % 4
+            h -= h % 4
+            fps = self._record_fps_override or self.frame_rate or 30
+            return w, h, fps
+
         def start_recording(self, path=None):
             """Spawn ffmpeg subprocess and open valve. Returns the output file path."""
             with self._record_lock:
@@ -992,22 +1014,27 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     return None
 
                 record_path = path or self._generate_record_path()
-                width, height = self.video_width, self.video_height
-                # --frame-rate has no parser default in hailo-apps, so
-                # self.frame_rate can be None when the user doesn't pass -f.
-                # ffmpeg requires an integer for -r, so fall back to the
-                # documented 30 FPS default.
-                fps = self.frame_rate or 30
-                LOGGER.info("[record] Spawning ffmpeg: %sx%s @ %s fps → %s",
-                            width, height, fps, record_path)
+                width, height, fps = self._record_dims()
+                LOGGER.info(
+                    "[record] Spawning ffmpeg: %dx%d @ %d fps, %d kbps → %s",
+                    width, height, fps, self._record_bitrate, record_path,
+                )
 
+                # I420 (yuv420p) input matches the GStreamer record-branch caps:
+                # avoids ffmpeg's input swscale and halves the bytes pumped
+                # through Python (1.5 bytes/px vs 3 for rgb24).
+                # -threads 2 caps libx264's frame-thread parallelism so the
+                # recorder can't monopolise all 4 RPi5 cores; the rest of the
+                # pipeline (tile cropper, MJPEG, tracker callback) needs them.
                 self._ffmpeg_proc = subprocess.Popen([
                     "ffmpeg", "-y", "-nostdin",
-                    "-f", "rawvideo", "-pix_fmt", "rgb24",
+                    "-f", "rawvideo", "-pix_fmt", "yuv420p",
                     "-s", f"{width}x{height}", "-r", str(fps),
                     "-i", "pipe:0",
                     "-c:v", "libx264", "-preset", "ultrafast",
-                    "-tune", "zerolatency", "-b:v", "5000k",
+                    "-tune", "zerolatency",
+                    "-threads", "2",
+                    "-b:v", f"{self._record_bitrate}k",
                     record_path,
                 ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -1173,12 +1200,20 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     f"appsink name=mjpeg_sink sync=false drop=true emit-signals=true"
                 )
 
-            # Recording branch (no overlay — shares overlayed frames from t_post)
+            # Recording branch (shares overlayed frames from t_post).
+            # videorate first so dropped frames don't pay scale/convert cost;
+            # videoscale then videoconvert produce I420 at the requested size,
+            # which is exactly what libx264 wants — no swscale on the ffmpeg
+            # side, half the bytes through the Python pipe vs RGB.
             record_branch = None
             if self._record_enabled:
+                rec_w, rec_h, rec_fps = self._record_dims()
                 record_branch = (
                     f"valve name=record_valve drop=true ! "
-                    f"videoconvert n-threads=2 ! video/x-raw,format=RGB ! "
+                    f"videorate ! videoscale ! "
+                    f"videoconvert n-threads=2 ! "
+                    f"video/x-raw,format=I420,"
+                    f"width={rec_w},height={rec_h},framerate={rec_fps}/1 ! "
                     f"appsink name=record_appsink emit-signals=true drop=true "
                     f"sync=false async=false max-buffers=1"
                 )
@@ -1248,6 +1283,8 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
         app_callback, user_data, parser=parser, eos_reached=eos_reached,
         ui_enabled=(ui_state is not None), ui_state=ui_state, ui_fps=ui_fps,
         record_enabled=record_enabled, record_dir=record_dir,
+        record_bitrate=record_bitrate, record_fps=record_fps,
+        record_scale=record_scale,
     )
     # Store video dimensions on user_data so the callback can extract
     # frames for ReID cropping without needing a reference to the app.

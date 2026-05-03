@@ -158,12 +158,15 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 | `--takeoff-landing` | off | Auto arm/takeoff/land. Without this, the pilot switches to OFFBOARD via GCS. |
 | `--ui` | off | Enable web UI with live video and click-to-follow (port 5001) |
 | `--record` | off | Record video + detection overlays for the entire session |
+| `--record-bitrate` | `5000` | libx264 bitrate (kbps) for `--record` output |
+| `--record-fps` | source | Record framerate. Lower (e.g. 15) cuts encoder CPU linearly. |
+| `--record-scale` | `1.0` | Scale factor for record resolution (0.25–1.0). 0.5 quarters x264 work. |
 | `--target-bbox-height` | `0.25` | Desired person size in frame (0-0.25). Drives forward/backward distance. Adjustable mid-flight via UI. |
 | `--target-altitude` | `3.0` | Target altitude in metres. Also used as takeoff height. |
 | `--yaw-only` / `--no-yaw-only` | on | Yaw only: no forward/backward movement. Use `--no-yaw-only` for full follow. |
 | `--no-reid` | off | Disable ReID re-identification |
 | `--reid-timeout` | `20.0` | Seconds to search via ReID before returning to auto mode |
-| `--no-display` | off | Headless mode (no display window) |
+| `--display` / `--no-display` | headless | Open an X11 window with `--display`. Headless is now the default; `--no-display` is accepted but a no-op. |
 | `--openhd-stream` | off | Send overlay video to OpenHD via UDP RTP instead of display |
 
 Run `drone-follow --help` for the full list.

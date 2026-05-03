@@ -31,10 +31,11 @@ A Hailo-based drone-follow application that uses an AI pipeline (GStreamer + Hai
 - `--reid-refresh-every N` (default 5) — On every Nth consecutive duplicate-band decision, replace the oldest gallery vector to keep the gallery fresh.
 - `--reid-timeout S` (default 20.0) — Seconds to keep searching with the gallery (during a tracker loss) before giving up and returning to auto.
 - `--update-interval N` (default 30) — Frames between in-track gallery sampling.
-- `--record` — Capture post-overlay frames to `drone_follow/recordings/rec_<timestamp>.mp4` via an ffmpeg subprocess (libx264, 5 Mbps). Auto-starts ~1 s after PLAYING; can also be toggled mid-flight from the web UI's Record button. Saved on the drone — fewer compression artifacts than a ground-side capture, and survives RF dropouts.
+- `--record` — Capture post-overlay frames to `drone_follow/recordings/rec_<timestamp>.mp4` via an ffmpeg subprocess (libx264, 5 Mbps). Auto-starts ~1 s after PLAYING; can also be toggled mid-flight from the web UI's Record button. Saved on the drone — fewer compression artifacts than a ground-side capture, and survives RF dropouts. The record branch feeds ffmpeg I420 (yuv420p) frames at the resolution / framerate set by `--record-scale` and `--record-fps`, and caps libx264 to 2 frame-threads so the encoder can't monopolise all 4 RPi5 cores.
+- `--record-bitrate` (default: 5000 kbps) / `--record-fps` (default: source rate) / `--record-scale` (default: 1.0) — Tuning knobs for the recording branch. RPi5 has no HW H.264 encoder, so x264 cost scales linearly with frames/s and (roughly) quadratically with resolution. Typical CPU-friendly recording: `--record-scale 0.5 --record-fps 15 --record-bitrate 3000` gives a watchable post-flight review at a fraction of the encode cost.
 - `--openhd-stream` — Send overlay video to OpenHD via UDP RTP instead of an X11 display sink. Uses x264 software encode (the RPi5 has no HW H.264).
 - `--openhd-port` (default: 5500) / `--openhd-bitrate` (default: 3917 kbps) — OpenHD UDP destination and x264 starting bitrate. Bitrate is updated dynamically from QOpenHD's WFB link recommendation via the OpenHD bridge.
-- `--no-display` — Headless mode (no X11 window). Pair with `--openhd-stream` or SHM input for SSH/bench sessions.
+- `--display` — Open an X11 display window (default is **headless** — drone-follow runs on the air unit without an X server). The legacy `--no-display` flag still parses but is now a no-op.
 
 ## Drone Connection
 
@@ -106,16 +107,17 @@ scripts/start_air.sh
 
 # Real drone with OpenHD — Mode B (OpenHD owns the camera, drone-follow reads SHM):
 scripts/start_air.sh --mode shm
-# (invokes: drone-follow --input shm:///tmp/openhd_raw_video --no-display \
+# (invokes: drone-follow --input shm:///tmp/openhd_raw_video \
 #                        --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2)
+# (headless is the default; pass --display only on a workstation with X)
 
 # Manual OpenHD-mode invocation (e.g. with debug UI on the air unit):
-drone-follow --input rpi --openhd-stream --ui --no-display \
+drone-follow --input rpi --openhd-stream --ui \
     --connection tcpout://127.0.0.1:5760 --tiles-x 1 --tiles-y 1
 
-# Dev machine with USB camera + flight controller:
+# Dev machine with USB camera + flight controller (add --display for a window):
 source setup_env.sh
-drone-follow --input usb --serial --ui
+drone-follow --input usb --serial --ui --display
 
 # Simulation (see Simulation section for full setup):
 source setup_env.sh
