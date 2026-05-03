@@ -1029,6 +1029,13 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     frame_rate=self.frame_rate,
                     sync=self.sync,
                 )
+                # Pace the source on PTS so file playback runs at wall-clock.
+                # Without this, the leaky tee queues let the decoder run
+                # unbounded and the MJPEG/UI feed shows files sped up by the
+                # inference-vs-realtime ratio. self.sync is "true" only for
+                # file sources (see GStreamerApp.__init__), so this is a
+                # no-op for live sources.
+                source_pipeline += f" ! identity name=source_pacer sync={self.sync}"
 
             detection_pipeline = INFERENCE_PIPELINE(
                 hef_path=self.hef_path,
