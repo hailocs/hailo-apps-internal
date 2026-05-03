@@ -241,13 +241,13 @@ Two flight-lifecycle modes, controlled by `--takeoff-landing`:
 - App connects, streams `VelocityBodyYawspeed(0,0,0,0)` at 20 Hz as a keep-alive setpoint.
 - Pilot switches the flight mode to OFFBOARD via GCS/RC.
 - On OFFBOARD detection (`telemetry.flight_mode() == OFFBOARD`), the control loop starts producing real commands.
-- If the pilot switches out of OFFBOARD at any point, the control loop pauses and the app waits for re-entry.
-- **The app never commands mode changes.** This is the safe handover pattern.
+- If the pilot switches out of OFFBOARD at any point, the control loop pauses, the app sends one zero-velocity setpoint, and the outer loop returns to streaming keep-alive setpoints while watching for OFFBOARD again. The app does **not** call `offboard.stop()` here — that MAVSDK call issues `MAV_CMD_DO_SET_MODE` → HOLD (AUTO LOITER) and would clobber the mode the pilot just RC-selected (e.g. STABILIZED → AUTO LOITER).
+- The drone stays in whatever mode the pilot's RC switch commanded; the app never overrides it on the handover path.
 
 ### With `--takeoff-landing`: app-managed lifecycle
 - `drone.action.set_takeoff_altitude()` → `action.arm()` (retried 6×) → `action.takeoff()` → `_start_offboard()`.
 - `_start_offboard` streams zero setpoints for 2 s (PX4 rejects `offboard.start()` if there's no setpoint history — `NO_SETPOINT_SET`) then calls `offboard.start()` with 3× retry.
-- On Ctrl+C or mission-duration expiry → `_land_safely()` → `offboard.stop()` + `action.land()`, with SIGINT ignored during landing so a second Ctrl+C can't abort mid-flare.
+- On Ctrl+C or mission-duration expiry → `_land_safely()` → `offboard.stop()` + `action.land()`, with SIGINT ignored during landing so a second Ctrl+C can't abort mid-flare. In this lifecycle the app *does* command modes — that's intentional, the app owns the flight.
 
 ### Required PX4 parameters (per project CLAUDE.md)
 - `COM_RC_IN_MODE = 4` — allow flight without RC

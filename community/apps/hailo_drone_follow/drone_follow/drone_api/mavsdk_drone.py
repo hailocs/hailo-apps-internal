@@ -807,10 +807,15 @@ async def run_live_drone(args, shared_state, shutdown, shutdown_read_fd=None,
                         await vel_api.send_zero()
                     except (OffboardError, ConnectionError):
                         pass
-                    try:
-                        await drone.offboard.stop()
-                    except (OffboardError, ConnectionError):
-                        pass
+                    # MAVSDK's offboard.stop() issues MAV_CMD_DO_SET_MODE→HOLD
+                    # (= AUTO LOITER), so calling it on the pilot-handover path
+                    # would clobber the mode the pilot just RC-selected. Only
+                    # force HOLD when we ourselves are tearing down.
+                    if shutdown.is_set():
+                        try:
+                            await drone.offboard.stop()
+                        except (OffboardError, ConnectionError):
+                            pass
 
                     if shutdown.is_set():
                         LOGGER.warning("[drone] Shutdown requested, stopping control loop...")

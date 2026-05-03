@@ -690,7 +690,7 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
     from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
     from hailo_apps.python.core.common.core import get_pipeline_parser
     from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-        QUEUE, get_source_type,
+        QUEUE,
         INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE,
         TILE_CROPPER_PIPELINE, SOURCE_PIPELINE, OVERLAY_PIPELINE,
     )
@@ -1090,12 +1090,13 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     frame_rate=self.frame_rate,
                     sync=self.sync,
                 )
-                # File sources: throttle decode to PTS so playback runs at the
-                # file's native rate. Without this, the leaky tee queues let
-                # the decoder run unbounded and the MJPEG/UI feed shows the
-                # video sped up by the inference-vs-realtime ratio.
-                if get_source_type(self.video_source) == "file":
-                    source_pipeline += " ! identity name=file_throttle sync=true"
+                # Pace the source on PTS so file playback runs at wall-clock.
+                # Without this, the leaky tee queues let the decoder run
+                # unbounded and the MJPEG/UI feed shows files sped up by the
+                # inference-vs-realtime ratio. self.sync is "true" only for
+                # file sources (see GStreamerApp.__init__), so this is a
+                # no-op for live sources.
+                source_pipeline += f" ! identity name=source_pacer sync={self.sync}"
 
             detection_pipeline = INFERENCE_PIPELINE(
                 hef_path=self.hef_path,
