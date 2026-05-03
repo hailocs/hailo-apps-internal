@@ -212,7 +212,36 @@ class GStreamerDynamicTilingApp(GStreamerTilingApp):
                 "Pass '' to disable so only the moving dynamic tile runs."
             ),
         )
+        # Walker survives EOS rebuilds so the tile keeps moving smoothly when
+        # the framework reloads the file. We attach the handoff after each
+        # rebuild via _on_pipeline_rebuilt below.
+        self._walker = TileWalker()
         super().__init__(app_callback, user_data, parser)
+        self._connect_tile_handoff()
+
+    def _connect_tile_handoff(self):
+        """Bind the per-frame tile-injection handoff to the (possibly fresh)
+        ``{CROPPER_NAME}_tile_setter`` element in the current pipeline.
+
+        Called once from __init__ and again from ``_on_pipeline_rebuilt``
+        after the framework recreates the pipeline on EOS.
+        """
+        tile_setter = self.pipeline.get_by_name(f"{CROPPER_NAME}_tile_setter")
+        if tile_setter is None:
+            raise RuntimeError(
+                f"could not find '{CROPPER_NAME}_tile_setter' in the pipeline — "
+                "DYNAMIC_TILE_CROPPER_PIPELINE wiring is wrong"
+            )
+        tile_setter.connect("handoff", make_tile_handoff(self._walker))
+
+    def _on_pipeline_rebuilt(self):
+        """Reattach the dynamic-tile handoff after the framework rebuilds the
+        pipeline on EOS. Without this, the new ``tile_setter`` identity has
+        no signal handler and the dynamic tile vanishes from the second loop
+        onward (only the static tile keeps producing crops).
+        """
+        super()._on_pipeline_rebuilt()
+        self._connect_tile_handoff()
 
     def get_pipeline_string(self) -> str:
         source_pipeline = self.get_source_pipeline()
@@ -323,18 +352,8 @@ def main() -> None:
 
     user_data = UserData()
     app = GStreamerDynamicTilingApp(app_callback, user_data)
-
-    # Wire dynamic-tile injection. Must happen after the pipeline has been
-    # built (in the parent's __init__) and before app.run() flips state.
-    walker = TileWalker()
-    tile_setter = app.pipeline.get_by_name(f"{CROPPER_NAME}_tile_setter")
-    if tile_setter is None:
-        raise RuntimeError(
-            f"could not find '{CROPPER_NAME}_tile_setter' in the pipeline — "
-            "DYNAMIC_TILE_CROPPER_PIPELINE wiring is wrong"
-        )
-    tile_setter.connect("handoff", make_tile_handoff(walker))
-
+    # Tile handoff is wired in the constructor and re-wired on every EOS
+    # rebuild via _on_pipeline_rebuilt — nothing more to do here.
     app.run()
 
 
