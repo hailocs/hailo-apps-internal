@@ -582,7 +582,8 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
         case HAILO_TILE:
         {
             HailoTileROIPtr tile = std::dynamic_pointer_cast<HailoTileROI>(obj);
-            draw_tile(hmat, tile);
+            if (params.show_tiles)
+                draw_tile(hmat, tile);
             draw_all(hmat, tile, params);
             break;
         }

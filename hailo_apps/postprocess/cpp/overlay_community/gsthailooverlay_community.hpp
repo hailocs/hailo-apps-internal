@@ -37,6 +37,7 @@ struct _GstHailoOverlayCommunity
     gboolean show_labels_text;
     gboolean show_landmarks;
     gboolean show_tracking_id;
+    gboolean show_tiles;
     gfloat min_confidence;
     gchar *show_labels_str;
     gchar *hide_labels_str;

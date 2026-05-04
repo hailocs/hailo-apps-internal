@@ -30,6 +30,7 @@ struct OverlayParams {
     bool show_labels_text;
     bool show_landmarks;
     bool show_tracking_id;
+    bool show_tiles;
     float min_confidence;
     bool text_background;
     float text_font_scale;      // 0 = auto

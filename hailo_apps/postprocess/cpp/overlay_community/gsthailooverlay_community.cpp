@@ -70,6 +70,7 @@ enum
     PROP_SHOW_LABELS_TEXT,
     PROP_SHOW_LANDMARKS,
     PROP_SHOW_TRACKING_ID,
+    PROP_SHOW_TILES,
     PROP_MIN_CONFIDENCE,
     PROP_SHOW_LABELS,
     PROP_HIDE_LABELS,
@@ -145,6 +146,9 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
     g_object_class_install_property(gobject_class, PROP_SHOW_TRACKING_ID,
                                     g_param_spec_boolean("show-tracking-id", "show-tracking-id", "Whether to draw tracking IDs.", true,
                                                          (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
+    g_object_class_install_property(gobject_class, PROP_SHOW_TILES,
+                                    g_param_spec_boolean("show-tiles", "show-tiles", "Whether to draw tile bounding boxes (HailoTileROI). Detections inside tiles are still drawn when disabled.", true,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
     g_object_class_install_property(gobject_class, PROP_MIN_CONFIDENCE,
                                     g_param_spec_float("min-confidence", "min-confidence", "Minimum confidence threshold to display a detection. Default 0.0 (show all).", 0.0f, 1.0f, 0.0f,
                                                        (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
@@ -208,6 +212,7 @@ gst_hailooverlay_community_init(GstHailoOverlayCommunity *hailooverlay)
     hailooverlay->show_labels_text = true;
     hailooverlay->show_landmarks = true;
     hailooverlay->show_tracking_id = true;
+    hailooverlay->show_tiles = true;
     hailooverlay->min_confidence = 0.0f;
     hailooverlay->show_labels_str = g_strdup("");
     hailooverlay->hide_labels_str = g_strdup("");
@@ -273,6 +278,9 @@ void gst_hailooverlay_community_set_property(GObject *object, guint property_id,
         break;
     case PROP_SHOW_TRACKING_ID:
         hailooverlay->show_tracking_id = g_value_get_boolean(value);
+        break;
+    case PROP_SHOW_TILES:
+        hailooverlay->show_tiles = g_value_get_boolean(value);
         break;
     case PROP_MIN_CONFIDENCE:
         hailooverlay->min_confidence = g_value_get_float(value);
@@ -380,6 +388,9 @@ void gst_hailooverlay_community_get_property(GObject *object, guint property_id,
         break;
     case PROP_SHOW_TRACKING_ID:
         g_value_set_boolean(value, hailooverlay->show_tracking_id);
+        break;
+    case PROP_SHOW_TILES:
+        g_value_set_boolean(value, hailooverlay->show_tiles);
         break;
     case PROP_MIN_CONFIDENCE:
         g_value_set_float(value, hailooverlay->min_confidence);
@@ -505,6 +516,7 @@ gst_hailooverlay_community_transform_ip(GstBaseTransform *trans,
         params.show_labels_text = hailooverlay->show_labels_text;
         params.show_landmarks = hailooverlay->show_landmarks;
         params.show_tracking_id = hailooverlay->show_tracking_id;
+        params.show_tiles = hailooverlay->show_tiles;
         params.min_confidence = hailooverlay->min_confidence;
         params.use_custom_colors = hailooverlay->use_custom_colors;
         params.text_background = hailooverlay->text_background;

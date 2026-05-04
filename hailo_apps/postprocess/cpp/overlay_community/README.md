@@ -63,6 +63,7 @@ compatibility. Set to `false` to hide the corresponding element.
 | `show-labels-text` | boolean | true | Draw detection label and confidence text. |
 | `show-landmarks` | boolean | true | Draw landmark keypoints and skeleton lines. |
 | `show-tracking-id` | boolean | true | Draw tracking / global ID text. |
+| `show-tiles` | boolean | true | Draw tile bounding boxes (`HailoTileROI`). Detections inside tiles are still drawn when this is `false`. |
 | `show-confidence` | boolean | true | Append confidence percentage to labels. |
 
 ### Filtering
