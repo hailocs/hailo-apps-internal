@@ -20,3 +20,15 @@ exclude = ["configs", "configs.*"]
 
 [project.scripts]
 drone-follow = "drone_follow.drone_follow_app:main"
+
+[tool.coverage.run]
+branch = true
+source = ["drone_follow"]
+omit = [
+    "*/_fasttracker/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

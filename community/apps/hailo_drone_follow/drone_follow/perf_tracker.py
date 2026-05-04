@@ -63,6 +63,8 @@ def _parse_device_utilization(data: bytes) -> float:
                     sub_field = sub_tag >> 3
                     sub_wire = sub_tag & 0x7
                     if sub_wire == 1 and sub_field == 2:  # fixed64 = utilization
+                        if sub_pos + 8 > len(data):
+                            return 0.0
                         return struct.unpack("<d", data[sub_pos:sub_pos + 8])[0]
                     elif sub_wire == 0:
                         while sub_pos < end and data[sub_pos] & 0x80:
