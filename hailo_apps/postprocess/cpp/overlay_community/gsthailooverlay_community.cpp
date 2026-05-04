@@ -59,6 +59,7 @@ G_DEFINE_TYPE_WITH_CODE(GstHailoOverlayCommunity, gst_hailooverlay_community, GS
 enum
 {
     PROP_0,
+    PROP_PASS_THROUGH,
     PROP_LINE_THICKNESS,
     PROP_FONT_THICKNESS,
     PROP_LANDMARK_POINT_RADIUS,
@@ -109,6 +110,12 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
 
     gobject_class->set_property = gst_hailooverlay_community_set_property;
     gobject_class->get_property = gst_hailooverlay_community_get_property;
+
+    /* Top-level enable: when true, the element becomes a true no-op via
+     * gst_base_transform_set_passthrough(). All other properties are ignored. */
+    g_object_class_install_property(gobject_class, PROP_PASS_THROUGH,
+                                    g_param_spec_boolean("pass-through", "pass-through", "When true, bypass all overlay drawing (true GstBaseTransform passthrough). Default false.", false,
+                                                         (GParamFlags)(GST_PARAM_CONTROLLABLE | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS)));
 
     /* Existing properties */
     g_object_class_install_property(gobject_class, PROP_LINE_THICKNESS,
@@ -200,6 +207,7 @@ gst_hailooverlay_community_class_init(GstHailoOverlayCommunityClass *klass)
 static void
 gst_hailooverlay_community_init(GstHailoOverlayCommunity *hailooverlay)
 {
+    hailooverlay->pass_through = false;
     hailooverlay->line_thickness = 1;
     hailooverlay->font_thickness = 1;
     hailooverlay->face_blur = false;
@@ -246,6 +254,11 @@ void gst_hailooverlay_community_set_property(GObject *object, guint property_id,
 
     switch (property_id)
     {
+    case PROP_PASS_THROUGH:
+        hailooverlay->pass_through = g_value_get_boolean(value);
+        gst_base_transform_set_passthrough(GST_BASE_TRANSFORM(hailooverlay),
+                                           hailooverlay->pass_through);
+        break;
     case PROP_LINE_THICKNESS:
         hailooverlay->line_thickness = g_value_get_int(value);
         break;
@@ -356,6 +369,9 @@ void gst_hailooverlay_community_get_property(GObject *object, guint property_id,
 
     switch (property_id)
     {
+    case PROP_PASS_THROUGH:
+        g_value_set_boolean(value, hailooverlay->pass_through);
+        break;
     case PROP_LINE_THICKNESS:
         g_value_set_int(value, hailooverlay->line_thickness);
         break;

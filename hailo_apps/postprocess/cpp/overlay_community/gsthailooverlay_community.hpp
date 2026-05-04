@@ -24,6 +24,8 @@ typedef struct _GstHailoOverlayCommunityClass GstHailoOverlayCommunityClass;
 struct _GstHailoOverlayCommunity
 {
     GstBaseTransform base_hailooverlay;
+    // Top-level enable
+    gboolean pass_through;
     // Existing
     gint line_thickness;
     gint font_thickness;

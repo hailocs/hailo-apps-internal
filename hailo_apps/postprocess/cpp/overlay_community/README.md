@@ -42,6 +42,12 @@ With no properties set, the output is identical to the original element.
 
 ## Properties
 
+### Pass-Through
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `pass-through` | boolean | false | When `true`, the element becomes a true no-op via `gst_base_transform_set_passthrough()` — buffers are forwarded without mapping or any drawing work. All other properties are ignored. |
+
 ### Drawing Style
 
 | Property | Type | Default | Mutable | Description |
