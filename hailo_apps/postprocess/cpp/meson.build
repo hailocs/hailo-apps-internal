@@ -267,3 +267,24 @@ shared_library('ocr_postprocess',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
 )
+
+################################################
+# HAILOTILECROPPER_DYNAMIC (community GStreamer element)
+################################################
+hailotilecropper_dynamic_inc = include_directories('hailotilecropper_dynamic')
+
+hailotilecropper_dynamic_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    hailotilecropper_dynamic_deps += opencv_dep
+endif
+
+shared_library('gsthailotilecropper_dynamic',
+    ['hailotilecropper_dynamic/gsthailobasecropper.cpp',
+     'hailotilecropper_dynamic/gsthailotilecropper_dynamic.cpp'],
+    include_directories : [hailotilecropper_dynamic_inc],
+    dependencies : hailotilecropper_dynamic_deps,
+    cpp_args : ['-DPACKAGE="hailotilecropper_dynamic"'],
+    gnu_symbol_visibility : 'default',
+    install : true,
+    install_dir : gst_plugins_dir,
+)
