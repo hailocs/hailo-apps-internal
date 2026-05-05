@@ -186,10 +186,13 @@ def _get_model_zoo_version(hailo_arch: str, hailort_version: str = "") -> str:
 
 def _get_hailo_arch() -> str | None:
     """Get Hailo device architecture.
-    
+
     Returns:
         The detected architecture string, or None if detection fails.
     """
+    env_arch = os.getenv(HAILO_ARCH_KEY)
+    if env_arch and env_arch != "auto":
+        return env_arch
     try:
         arch = detect_hailo_arch()
         if arch:
