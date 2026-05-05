@@ -182,8 +182,8 @@ def local_branch(*, display: bool, record: bool, record_output: Optional[str],
     """Display + record local branch.
 
     Both sub-branches share an upstream ``identity name=local_meta_id``
-    (pad-probe attachment point for ``strip_tiles_and_highlight_target``)
-    and a single ``hailooverlay``.
+    (pad-probe attachment point for :func:`highlight_target`) and a
+    single ``hailooverlay_community``.
     """
     if not display and not record:
         raise ValueError("local_branch requires display or record (or both)")
@@ -298,7 +298,6 @@ def highlight_target(pad, info, target_state):
 
     target_id = target_state.get_target() if target_state is not None else None
     roi = hailo.get_roi_from_buffer(buffer)
-    target_det = None
     target_orig = None
     others = []
 
@@ -309,12 +308,9 @@ def highlight_target(pad, info, target_state):
                 if uid.get_id() == target_id:
                     is_target = True
                     break
-        if is_target:
-            if det.get_class_id() == TARGET_OVERLAY_CLASS_ID:
-                target_det = det          # already retagged
-            else:
-                target_orig = det
-        else:
+        if is_target and det.get_class_id() != TARGET_OVERLAY_CLASS_ID:
+            target_orig = det
+        elif not is_target:
             others.append(det)
 
     # Tag every non-target detection white so it stands apart from the
