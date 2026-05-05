@@ -1741,7 +1741,7 @@ Expected: all pass, including new keypoint tests.
 You'll need a sim model for the actor that includes pose-able keypoints — most gz-sim actors don't, so this step is field-test on real hardware:
 
 ```bash
-drone-follow --input rpi --pose-model yolov8s_pose --no-yaw-only --ui
+drone-follow --input rpi --pose-model yolov8s_pose --no-yaw-only --webui
 ```
 
 Walk in front of the drone with arms-out, arms-up, etc. The forward command should stay calm (because span doesn't change with arm extension), unlike a `bbox_width` proxy.

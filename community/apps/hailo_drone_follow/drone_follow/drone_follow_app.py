@@ -57,22 +57,50 @@ def _resolve_serial_connection(args):
 
 
 def _add_app_args(parser: argparse.ArgumentParser) -> None:
-    """Register application-level CLI flags (servers, UI)."""
+    """Register application-level CLI flags (servers, UI).
+
+    Output branches are organised in two orthogonal groups:
+
+    * UI group — outbound network video, mutually exclusive:
+        --openhd : RTP H.264 to an OpenHD ground station
+        --webui  : MJPEG to the local web UI
+
+    * Local group — on-device output, may coexist:
+        --display : X11 window with overlay (tile rectangles stripped, target
+                    person's bbox emphasised by class-id remap)
+        --record  : pure-GStreamer recording (x264enc -> matroskamux -> filesink)
+
+    If neither --openhd nor --webui is passed, --display defaults to True.
+    """
     group = parser.add_argument_group("app")
 
     group.add_argument("--follow-server-port", type=int, default=8080,
                        help="HTTP server port for target selection")
-    group.add_argument("--ui", action="store_true",
-                       help="Enable web UI with live video and clickable bounding boxes")
-    group.add_argument("--ui-port", type=int, default=5001,
-                       help="Web UI server port (default: 5001)")
-    group.add_argument("--ui-fps", type=int, default=10,
-                       help="MJPEG stream frame rate (default: 10)")
-    group.add_argument("--record", action="store_true",
-                       help="Auto-start recording on launch (recording is always available from the UI)")
 
-    group.add_argument("--no-display", action="store_true",
-                       help="Disable display window (headless mode)")
+    # --- UI group (mutually exclusive) ---
+    group.add_argument("--webui", action="store_true",
+                       help="Enable web UI with live MJPEG and clickable bounding boxes")
+    group.add_argument("--webui-port", type=int, default=5001,
+                       help="Web UI server port (default: 5001)")
+    group.add_argument("--webui-fps", type=int, default=10,
+                       help="MJPEG stream frame rate (default: 10)")
+    group.add_argument("--openhd", action="store_true",
+                       help="Send overlay video to OpenHD via UDP RTP (mutually exclusive with --webui)")
+
+    # --- Local group ---
+    group.add_argument("--display", action="store_true",
+                       help="Show local X11 display window with overlay (tile rectangles "
+                            "stripped, target person's bbox emphasised). Default: enabled "
+                            "when neither --openhd nor --webui is set; disabled otherwise.")
+    group.add_argument("--record", action="store_true",
+                       help="Build pure-GStreamer recording branch (videoconvert + H.264 "
+                            "encode + matroskamux + filesink). Auto-starts on launch; "
+                            "can be toggled mid-run from the web UI / OpenHD.")
+    group.add_argument("--record-output", type=str, default=None,
+                       help="Path for the recorded .mkv file. Default: "
+                            "drone_follow/recordings/rec_<timestamp>.mkv")
+    group.add_argument("--record-bitrate", type=int, default=5000,
+                       help="x264enc bitrate in kbps for the recording branch (default: 5000)")
 
     group.add_argument("--log-perf", action="store_true",
                        help="Log pipeline and tracker performance metrics periodically")
@@ -110,8 +138,6 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                             "all stored embeddings describe the same person)")
 
     # OpenHD integration
-    group.add_argument("--openhd-stream", action="store_true",
-                       help="Send overlay video to OpenHD via UDP RTP instead of display sink")
     group.add_argument("--openhd-port", type=int, default=5500,
                        help="OpenHD UDP input port (default: 5500)")
     group.add_argument("--openhd-bitrate", type=int, default=3917,
@@ -154,24 +180,43 @@ def main():
     # Create target state for follow server
     target_state = FollowTargetState()
 
-    # Pre-parse --ui flag to set up web UI before create_app parses all args.
-    # --openhd-stream is also pre-parsed because, in OpenHD mode, the recording
-    # branch must be present in the pipeline so QOpenHD's Record button (via the
-    # OpenHD bridge) can toggle capture even when --record wasn't passed at startup.
+    # Pre-parse output-branch flags so we can wire the web UI / recording
+    # state objects before create_app() runs the full parser. Display
+    # follows the implicit rule: enabled when neither --openhd nor
+    # --webui is set.
     ui_pre = argparse.ArgumentParser(add_help=False)
-    ui_pre.add_argument("--ui", action="store_true")
-    ui_pre.add_argument("--ui-port", type=int, default=5001)
-    ui_pre.add_argument("--ui-fps", type=int, default=10)
+    ui_pre.add_argument("--webui", action="store_true")
+    ui_pre.add_argument("--webui-port", type=int, default=5001)
+    ui_pre.add_argument("--webui-fps", type=int, default=10)
+    ui_pre.add_argument("--openhd", action="store_true")
+    ui_pre.add_argument("--display", action="store_true")
     ui_pre.add_argument("--record", action="store_true")
-    ui_pre.add_argument("--openhd-stream", action="store_true")
     ui_pre.add_argument("--log-perf", action="store_true")
     ui_pre_args, _ = ui_pre.parse_known_args()
 
-    # Build the recording branch whenever there is a control surface that can
-    # trigger it remotely (--openhd-stream brings QOpenHD's Record button into
-    # play; --record means autostart). --record additionally drives autostart;
-    # the branch alone has negligible cost when the valve stays closed.
-    record_branch_enabled = ui_pre_args.record or ui_pre_args.openhd_stream or ui_pre_args.ui
+    if ui_pre_args.openhd and ui_pre_args.webui:
+        raise SystemExit("error: --openhd and --webui are mutually exclusive "
+                         "(only one network encoder may run at a time)")
+
+    if not ui_pre_args.openhd and not ui_pre_args.webui:
+        ui_pre_args.display = True
+
+    # Build the recording branch whenever there's a control surface that
+    # can toggle it remotely:
+    #
+    #   --record  : auto-start recording at launch.
+    #   --webui   : the web UI's Record button can toggle mid-flight.
+    #   --openhd  : QOpenHD's Record button (via the OpenHD bridge) can
+    #               toggle mid-flight.
+    #
+    # The valve gates frames at runtime, so building the branch when no
+    # toggle source exists wastes CPU; building it when one does lets
+    # operators flip recording on/off without restarting drone-follow.
+    record_branch_enabled = (
+        ui_pre_args.record
+        or ui_pre_args.webui
+        or ui_pre_args.openhd
+    )
 
     # Always create SharedUIState — the OpenHD bridge needs it for bbox
     # messages even when the web UI is disabled.
@@ -179,7 +224,7 @@ def main():
     ui_state = SharedUIState()
 
     web_server = None
-    if ui_pre_args.ui:
+    if ui_pre_args.webui:
         from drone_follow.servers import WebServer
         # Check that the UI has been built
         _ui_build_index = os.path.join(
@@ -236,13 +281,20 @@ def main():
 
     recordings_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recordings")
     app = create_app(shared_state, target_state=target_state, eos_reached=eos_reached,
-                     ui_state=ui_state, ui_fps=ui_pre_args.ui_fps, parser=parser,
+                     ui_state=ui_state, ui_fps=ui_pre_args.webui_fps, parser=parser,
                      record_enabled=record_branch_enabled, record_dir=recordings_dir,
                      reid_manager=reid_manager,
                      reid_search_timeout=reid_pre_args.reid_timeout,
                      tracker_name=tracker_pre_args.tracker,
                      log_perf=ui_pre_args.log_perf)
     args = app.options_menu
+    if getattr(args, "openhd", False) and getattr(args, "webui", False):
+        raise SystemExit("error: --openhd and --webui are mutually exclusive")
+    # Implicit-display rule: enabled when neither --openhd nor --webui is
+    # set. Mirror the pre-parse logic so the pipeline string builder reads
+    # the same display state.
+    if not getattr(args, "openhd", False) and not getattr(args, "webui", False):
+        args.display = True
     _configure_logging(getattr(args, "log_verbosity", "normal"))
     _resolve_serial_connection(args)
 
@@ -278,11 +330,11 @@ def main():
     openhd_bridge.start()
 
     # Start web UI server
-    if ui_pre_args.ui:
+    if ui_pre_args.webui:
         static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "build")
         web_server = WebServer(ui_state, target_state, shared_state,
                                controller_config=controller_config,
-                               port=args.ui_port, static_dir=static_dir,
+                               port=args.webui_port, static_dir=static_dir,
                                follow_server_port=args.follow_server_port,
                                recording_ctl=app)
 

@@ -236,7 +236,7 @@ Test that CLI arguments result in correct component configuration, without start
 | 75 | `--serial` → connection string is `serial:///dev/ttyACM0:57600` | Serial connection construction |
 | 76 | `--serial /dev/ttyUSB0 --serial-baud 115200` → correct string | Custom serial params |
 | 77 | `--record` → recording branch enabled | Recording flag wiring |
-| 78 | `--openhd-stream` → OpenHD pipeline elements present | OpenHD flag wiring |
+| 78 | `--openhd` → OpenHD pipeline elements present | OpenHD flag wiring |
 | 79 | No `--serial`, no `--connection` → defaults to `udpin://0.0.0.0:14540` | Simulation default |
 
 ---

@@ -23,4 +23,4 @@ LOG_FILE="$LOG_DIR/flight_$(date '+%Y-%m-%d_%H-%M-%S').log"
 echo "Logging to $LOG_FILE"
 
 source setup_env.sh
-drone-follow --input rpi --tiles-x 1 --tiles-y 1 --ui --record --serial 2>&1 | tee "$LOG_FILE"
+drone-follow --input rpi --tiles-x 1 --tiles-y 1 --webui --record --serial 2>&1 | tee "$LOG_FILE"

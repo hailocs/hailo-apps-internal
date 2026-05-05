@@ -215,7 +215,7 @@ If OpenHD is holding the camera and drone-follow needs it, `primary_camera_type`
 
 ### `Pipeline handler in use by another process` (OpenHD side, harmless)
 
-This is OpenHD trying to open the camera that drone-follow already correctly owns in Mode A. The error appears in the log but Mode A continues to work — OpenHD then waits for the external RTP stream from drone-follow's `--openhd-stream` instead. Ignore unless paired with "Restarting camera" symptoms.
+This is OpenHD trying to open the camera that drone-follow already correctly owns in Mode A. The error appears in the log but Mode A continues to work — OpenHD then waits for the external RTP stream from drone-follow's `--openhd` instead. Ignore unless paired with "Restarting camera" symptoms.
 
 ---
 
@@ -298,7 +298,7 @@ source setup_env.sh
 # Pi (CSI camera) with X11 display on the attached monitor:
 DISPLAY=:0 drone-follow --input rpi --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2
 # x86 dev machine with USB webcam:
-drone-follow --input usb --yaw-only --ui --no-display
+drone-follow --input usb --yaw-only --webui
 # Then http://localhost:5001/ in a browser for the web UI.
 ```
 
@@ -371,7 +371,7 @@ ssh rpi_home_drone 'tail -f /tmp/start_air.log'
 ssh rpi_home_drone 'sudo journalctl -u openhd -f'
 
 # Quick pipeline restart on Pi (without restarting OpenHD):
-ssh rpi_home_drone "sudo pkill -KILL -f 'Hailo Tiling|drone-follow' && sleep 1 && cd ~/hailo-app && source setup_env.sh && DISPLAY=:0 nohup drone-follow --input rpi --openhd-stream --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 > /tmp/df.log 2>&1 < /dev/null &"
+ssh rpi_home_drone "sudo pkill -KILL -f 'Hailo Tiling|drone-follow' && sleep 1 && cd ~/hailo-app && source setup_env.sh && DISPLAY=:0 nohup drone-follow --input rpi --openhd --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 > /tmp/df.log 2>&1 < /dev/null &"
 
 # Tear-down on Pi:
 ssh rpi_home_drone "sudo pkill -KILL -f 'start_air.sh|openhd|drone-follow|Hailo Tiling|mavsdk_server'"

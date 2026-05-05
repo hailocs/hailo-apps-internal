@@ -324,10 +324,10 @@ graph LR
 
 A single `hailooverlay` sits between `t_pre` and `t_post`, so both the primary output and the recording branch share the same overlay rendering. The MJPEG branch splits off before the overlay (clean frames for web UI SVG overlays).
 
-The primary branch output from `t_post` depends on CLI flags:
-- `--openhd-stream`: x264enc + rtph264pay + udpsink (port 5500)
-- `--no-display`: fakesink
-- default: ximagesink (X11 window)
+The primary branch output depends on CLI flags:
+- `--openhd`: openh264enc/x264enc + rtph264pay + udpsink (port 5500)
+- `--display`: fpsdisplaysink (X11 window)
+- default (no flags): fakesink (the pipeline still needs a sink)
 
 ### Named Elements
 
@@ -552,7 +552,7 @@ flowchart TD
     CONF -->|no| SKIP["Exit (no-op)"]
     CONF -->|yes| AIR["scripts/start_air.sh"]
     AIR --> OHD["Start OpenHD --air<br/>(background)"]
-    AIR --> DF["drone-follow<br/>--input rpi --openhd-stream<br/>--connection tcpout://127.0.0.1:5760"]
+    AIR --> DF["drone-follow<br/>--input rpi --openhd<br/>--connection tcpout://127.0.0.1:5760"]
 ```
 
 ### Execution Modes
@@ -560,9 +560,9 @@ flowchart TD
 | Mode | Command | Use case |
 |------|---------|----------|
 | Real drone + OpenHD | `scripts/start_air.sh` | Flight (RPi air unit) |
-| Dev machine + USB camera | `drone-follow --input usb --serial --ui` | Bench testing |
-| Simulation | `sim/start_sim.sh` + `drone-follow --input udp://... --takeoff-landing --ui` | Development |
-| Headless OpenHD | `drone-follow --input rpi --openhd-stream --no-display` | SSH sessions |
+| Dev machine + USB camera | `drone-follow --input usb --serial --webui` | Bench testing |
+| Simulation | `sim/start_sim.sh` + `drone-follow --input udp://... --takeoff-landing --webui` | Development |
+| Headless OpenHD | `drone-follow --input rpi --openhd` | SSH sessions |
 
 ---
 
