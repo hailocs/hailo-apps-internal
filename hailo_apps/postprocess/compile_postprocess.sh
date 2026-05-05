@@ -53,8 +53,26 @@ fi
 echo "Building project with Ninja..."
 ninja -j$(nproc)
 
-# Install the project (optional)
+# Install the project. The build step above runs as the calling user so
+# build artifacts are user-owned, but `meson install` writes to system
+# locations (e.g. /usr/lib/.../gstreamer-1.0 for the GStreamer plugins
+# vendored under postprocess/cpp/). Detect whether we already have write
+# access — if not, escalate just the install step with sudo.
 echo "Installing project..."
-ninja install
+GST_DIR=$(pkg-config --variable=pluginsdir gstreamer-1.0 2>/dev/null || true)
+GST_DIR=${GST_DIR:-/usr/lib/gstreamer-1.0}
+if [ -w "$GST_DIR" ] && [ -w "/usr/local/hailo/resources/so" ]; then
+    ninja install
+elif [ "$(id -u)" = "0" ]; then
+    # Already root — install as-is.
+    ninja install
+elif sudo -n true 2>/dev/null; then
+    echo "  (passwordless sudo available — using sudo for install step)"
+    sudo meson install --no-rebuild
+else
+    echo "  (system directories are root-owned — re-prompting for sudo for the install step)"
+    echo "  GStreamer plugins dir: $GST_DIR"
+    sudo meson install --no-rebuild
+fi
 
 echo "Build completed successfully!"
