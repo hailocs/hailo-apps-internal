@@ -112,10 +112,10 @@ static float read_tensor_value(HailoTensorPtr &tensor, uint row, uint col, uint 
         uint pos = (w * f) * row + f * col + channel;
         return fdata[pos];
     } else if (fmt.type == HailoTensorFormatType::HAILO_FORMAT_TYPE_UINT16) {
-        return tensor->get_full_percision(row, col, channel, /*is_uint16=*/true);
+        return tensor->get_full_precision(row, col, channel, /*is_uint16=*/true);
     } else {
         // UINT8 or AUTO — treat as uint8
-        return tensor->get_full_percision(row, col, channel, /*is_uint16=*/false);
+        return tensor->get_full_precision(row, col, channel, /*is_uint16=*/false);
     }
 }
 
