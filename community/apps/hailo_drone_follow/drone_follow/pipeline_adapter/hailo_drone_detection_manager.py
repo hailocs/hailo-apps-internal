@@ -237,7 +237,17 @@ def app_callback(element, buffer, user_data):
 def _app_callback_inner(element, buffer, user_data):
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-    persons = [d for d in detections if d.get_label() == "person"]
+    # Drop non-person detections (face, vehicle, license_plate, ...) from
+    # the ROI so downstream branches (display, record, openhd, webui)
+    # only see persons. The detector is multi-class but drone-follow only
+    # cares about people. This runs upstream of the output tee, so it
+    # applies once for all sinks.
+    persons = []
+    for det in detections:
+        if det.get_label() == "person":
+            persons.append(det)
+        else:
+            roi.remove_object(det)
 
     target_state = user_data.target_state
     ui_state = user_data.ui_state
