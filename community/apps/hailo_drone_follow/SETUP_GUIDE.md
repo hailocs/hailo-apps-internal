@@ -388,7 +388,7 @@ sudo systemctl restart NetworkManager
 
 ## Camera Modes
 
-There are two integration modes; both are supported by `scripts/install_air.sh` and `scripts/start_air.sh` via `--mode <stream|shm>`. Both use the Hailo8 for AI detection. In both modes, drone-follow's controller parameters are reachable from QOpenHD via the OpenHD parameter bridge (UDP 5510/5511) and from the local web UI (`--ui`, port 5001). Both surfaces edit the same in-process `ControllerConfig` — see [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
+There are two integration modes; both are supported by `scripts/install_air.sh` and `scripts/start_air.sh` via `--mode <stream|shm>`. Both use the Hailo8 for AI detection. In both modes, drone-follow's controller parameters are reachable from QOpenHD via the OpenHD parameter bridge (UDP 5510/5511) and from the local web UI (`--webui`, port 5001). Both surfaces edit the same in-process `ControllerConfig` — see [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
 
 | | Mode A — `--mode stream` | Mode B — `--mode shm` |
 |---|---|---|
@@ -396,7 +396,7 @@ There are two integration modes; both are supported by `scripts/install_air.sh` 
 | `primary_camera_type` | `5` (HAILO_AI) | libcamera value (`31`=IMX219, `32`=IMX708) |
 | `/boot/openhd/hailo.txt` | absent | present |
 | Overlay in WFB stream | ✅ burned in | ❌ (rendered by QOpenHD) |
-| drone-follow input | `--input rpi --openhd-stream` | `--input shm:///tmp/openhd_raw_video --no-display` |
+| drone-follow input | `--input rpi --openhd` | `--input shm:///tmp/openhd_raw_video` |
 
 Pick one and pass the same `--mode` to both `install_air.sh` (configures camera type + flag file) and `start_air.sh` (selects the drone-follow CLI args). Today `start_air.sh` defaults to `stream`.
 
@@ -408,7 +408,7 @@ OpenHD which treats it as an external video source.
 
 **Manual command** (or just `scripts/start_air.sh`):
 ```bash
-drone-follow --input rpi --openhd-stream --horizontal-mirror \
+drone-follow --input rpi --openhd --horizontal-mirror \
     --connection tcpout://127.0.0.1:5760
 ```
 > **Note:** `--horizontal-mirror` is only for selfie mode (front-facing camera).
@@ -428,7 +428,7 @@ drone-follow reads from SHM and performs AI inference only (no encoding).
 
 **Manual command** (or `scripts/start_air.sh --mode shm`):
 ```bash
-drone-follow --input shm:///tmp/openhd_raw_video --no-display \
+drone-follow --input shm:///tmp/openhd_raw_video \
     --connection tcpout://127.0.0.1:5760
 ```
 
@@ -466,19 +466,19 @@ Manual invocation:
 # Layout 2: source ~/hailo-apps-internal/setup_env.sh
 
 # Mode A (Camera Type 5):
-drone-follow --input rpi --openhd-stream --horizontal-mirror \
+drone-follow --input rpi --openhd --horizontal-mirror \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
 
 # Mode B (SHM):
-drone-follow --input shm:///tmp/openhd_raw_video --no-display \
+drone-follow --input shm:///tmp/openhd_raw_video \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
 ```
 
 > Start drone-follow **after** OpenHD.
 
-> **Local debug UI alongside OpenHD:** add `--ui` to either invocation to expose the air-side web UI on port 5001 — useful when SSH'd into the drone for bench testing. Web UI sliders edit the same `ControllerConfig` as QOpenHD's sliders, so changes are visible in both places. See [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
+> **Local debug UI alongside OpenHD:** add `--webui` to either invocation to expose the air-side web UI on port 5001 — useful when SSH'd into the drone for bench testing. Web UI sliders edit the same `ControllerConfig` as QOpenHD's sliders, so changes are visible in both places. See [PARAMETERS.md](PARAMETERS.md) for the bridge protocol.
 
 ### Step 3 — Ground: Start OpenHD
 
@@ -523,16 +523,16 @@ For archival captures, prefer **air-side** — it's higher quality and link-inde
 
 ### Air-side recording
 
-Add `--record` to either Mode A or Mode B startup. The video is encoded by an ffmpeg subprocess (libx264, ultrafast preset, 5 Mbps) writing to `~/hailo-drone-follow/drone_follow/recordings/rec_<timestamp>.mp4`. Recording auto-starts ~1 s after the GStreamer pipeline reaches PLAYING; it can also be toggled at any time from the web UI's Record button (with `--ui`). On Ctrl-C / EOS / shutdown the file is finalised cleanly.
+Add `--record` to either Mode A or Mode B startup. The video is encoded by an ffmpeg subprocess (libx264, ultrafast preset, 5 Mbps) writing to `~/hailo-drone-follow/drone_follow/recordings/rec_<timestamp>.mp4`. Recording auto-starts ~1 s after the GStreamer pipeline reaches PLAYING; it can also be toggled at any time from the web UI's Record button (with `--webui`). On Ctrl-C / EOS / shutdown the file is finalised cleanly.
 
 ```bash
 # Mode A + air-side recording:
-drone-follow --input rpi --openhd-stream --record \
+drone-follow --input rpi --openhd --record \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
 ```
 
-> **QOpenHD remote trigger:** in `--openhd-stream` mode the recording branch is built into the pipeline automatically, so QOpenHD's Record toggle (param `DF_RECORDING`) can start/stop air-side capture mid-flight even without `--record` at launch. `--record` is only required when you want recording to **auto-start** as soon as the pipeline reaches PLAYING. The OpenHD C++ side needs no recompile — `hailo_follow_bridge.cpp` is fully data-driven from `df_params.json`. Just redeploy the JSON to `/usr/local/share/openhd/` on both units and restart OpenHD (air) + QOpenHD (ground) + drone-follow.
+> **QOpenHD remote trigger:** in `--openhd` mode the recording branch is built into the pipeline automatically, so QOpenHD's Record toggle (param `DF_RECORDING`) can start/stop air-side capture mid-flight even without `--record` at launch. `--record` is only required when you want recording to **auto-start** as soon as the pipeline reaches PLAYING. The OpenHD C++ side needs no recompile — `hailo_follow_bridge.cpp` is fully data-driven from `df_params.json`. Just redeploy the JSON to `/usr/local/share/openhd/` on both units and restart OpenHD (air) + QOpenHD (ground) + drone-follow.
 
 ### Ground-side recording (QOpenHD) & offline embedding
 

@@ -4,7 +4,7 @@
 
 The drone-follow parameter control path spans three software layers across
 two Raspberry Pi units connected via wifibroadcast. The same parameter set is
-also editable from the air-side web UI (`--ui`, port 5001) — Web UI sliders
+also editable from the air-side web UI (`--webui`, port 5001) — Web UI sliders
 write to the same in-process `ControllerConfig` that this bridge edits, so
 both control surfaces stay in sync automatically.
 
@@ -157,8 +157,8 @@ A few params are wired directly in `OpenHDBridge` instead of being mirrored to `
 |---|---|---|---|---|
 | `follow_id` | `DF_FOLLOW_ID` | ground → air | `_apply_follow_id` | `-1` = IDLE (hold), `0` = AUTO (largest), `>0` = lock to that detection ID. Mirrored back so the badge reflects operator intent. |
 | `active_id` | `DF_ACTIVE_ID` | air → ground (read-only) | reported in `_send_report` | Currently active tracking ID (`0` = no one in view). Used by QOpenHD to distinguish AUTO-tracking-someone from no-target. |
-| `bitrate_kbps` | `DF_BITRATE` | ground → air | `_apply_bitrate` | Sets the `openhd_stream_encoder` x264enc bitrate dynamically from QOpenHD's WFB link recommendation. No-op outside `--openhd-stream` mode. |
-| `recording` | `DF_RECORDING` | ground → air, mirrored back | `_apply_recording` | Idempotent toggle for air-side recording (`1` = start, `0` = stop). Recording branch is auto-built in `--openhd-stream` mode, so the button works without `--record` at launch. State is reported back so the QOpenHD button reflects the true `is_recording` state (covers `--record` autostart, EOS, shutdown). |
+| `bitrate_kbps` | `DF_BITRATE` | ground → air | `_apply_bitrate` | Sets the `openhd_stream_encoder` x264enc bitrate dynamically from QOpenHD's WFB link recommendation. No-op outside `--openhd` mode. |
+| `recording` | `DF_RECORDING` | ground → air, mirrored back | `_apply_recording` | Idempotent toggle for air-side recording (`1` = start, `0` = stop). **Requires `--record` at launch** — the recording branch (videoconvert -> x264enc -> matroskamux -> filesink, gated by a `valve`) is built into the pipeline only when `--record` is set; the toggle just opens/closes the valve. One `.mkv` file is written per pipeline run; pause/resume creates a time gap inside the same file. State is reported back so the QOpenHD button reflects the true `is_recording` state (covers `--record` autostart, EOS, shutdown). |
 | `save_config` | `DF_SAVE` | ground → air (momentary) | `_apply_save_config` | Write the live `ControllerConfig` to `df_config.json` on the air unit. Always reported back as `0` so the QOpenHD toggle returns to rest. See "Saving / Loading Controller Config" below. |
 | `load_config` | `DF_LOAD` | ground → air (momentary) | `_apply_load_config` | Live-reload `ControllerConfig` in place from `df_config.json` on the air unit. Sliders (web + QOpenHD) refresh via the next periodic report. Always reported back as `0`. |
 
@@ -222,7 +222,7 @@ git add df_config.example.json && git commit -m "chore: regen df_config.example.
 
 ### Flow — CLI boot
 
-`drone-follow --config ~/hailo-drone-follow/df_config.json --input rpi --openhd-stream ...`
+`drone-follow --config ~/hailo-drone-follow/df_config.json --input rpi --openhd ...`
 - Loads the saved file as the pre-CLI defaults.
 - CLI flags still override. No QOpenHD / UI action needed for the initial values to take effect on startup.
 

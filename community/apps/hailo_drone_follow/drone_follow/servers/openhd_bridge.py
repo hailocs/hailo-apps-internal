@@ -207,10 +207,15 @@ class OpenHDBridge:
         self._send_immediate_report()
 
     def _apply_bitrate(self, kbps: int):
-        """Dynamically set x264enc bitrate from WFB link recommendation.
+        """Dynamically set the OpenHD encoder bitrate from the WFB link
+        recommendation.
 
-        Only applies in --openhd-stream mode where the drone-follow app owns the
-        x264enc encoder. In SHM mode OpenHD handles encoding directly.
+        Only applies in ``--openhd`` mode where the drone-follow app owns
+        the encoder. In SHM mode OpenHD handles encoding directly.
+
+        Handles both encoder backends transparently: ``x264enc`` (which
+        takes ``bitrate`` in kbps) and ``openh264enc`` (which takes it in
+        bits-per-second).
         """
         if kbps == self._current_bitrate_kbps:
             return
@@ -223,9 +228,13 @@ class OpenHDBridge:
         if encoder is None:
             # SHM mode — no local encoder; OpenHD handles bitrate directly
             return
-        encoder.set_property("bitrate", kbps)
+        factory_name = encoder.get_factory().get_name() if encoder.get_factory() else ""
+        if factory_name == "openh264enc":
+            encoder.set_property("bitrate", kbps * 1000)
+        else:
+            encoder.set_property("bitrate", kbps)
         self._current_bitrate_kbps = kbps
-        LOGGER.info("[openhd_bridge] x264enc bitrate set to %d kbps", kbps)
+        LOGGER.info("[openhd_bridge] %s bitrate set to %d kbps", factory_name or "encoder", kbps)
 
     def _apply_recording(self, value: int):
         """Start or stop air-side recording from QOpenHD's Record button.

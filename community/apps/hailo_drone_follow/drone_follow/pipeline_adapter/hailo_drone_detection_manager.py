@@ -8,7 +8,6 @@ import argparse
 import json
 import logging
 import os
-import subprocess
 import threading
 import time
 from datetime import datetime
@@ -531,27 +530,15 @@ def _app_callback_inner(element, buffer, user_data):
 # OpenHD pipeline helpers (local to drone-follow; not in hailo-apps core)
 # ---------------------------------------------------------------------------
 
-def _openhd_stream_pipeline(port=5500, host="127.0.0.1", bitrate=3917, name="openhd_stream"):
-    """H264 SW encode + RTP + UDP sink for OpenHD input.
+# Vision-branch construction (output stage) and the metadata pad probe
+# both live in vision_branches.py — see that file's module docstring for
+# the full topology.
+from .vision_branches import (
+    TARGET_CLASS_ID,  # re-exported for tests / external probes
+    assemble_output_stage,
+    wire_local_meta_probe,
+)
 
-    Uses x264enc with ultrafast/zerolatency settings.
-    RPi5 has no hardware H264 encoder; Hailo inference runs on the accelerator,
-    leaving CPU available for software encoding.
-    """
-    from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE
-    encoder = (
-        f"x264enc name={name}_encoder bitrate={bitrate} "
-        f"speed-preset=ultrafast tune=zerolatency "
-        f"sliced-threads=false threads=2 key-int-max=5"
-    )
-    return (
-        f"{QUEUE(name=f'{name}_convert_q')} ! "
-        f"videoconvert n-threads=2 ! video/x-raw,format=I420 ! "
-        f"{QUEUE(name=f'{name}_enc_q')} ! "
-        f"{encoder} ! "
-        f"rtph264pay config-interval=1 pt=96 mtu=1440 ! "
-        f"udpsink host={host} port={port} sync=false async=false"
-    )
 
 
 # Sideband metadata file written by OpenHD with current SHM resolution
@@ -690,9 +677,8 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
     from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
     from hailo_apps.python.core.common.core import get_pipeline_parser
     from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-        QUEUE,
         INFERENCE_PIPELINE, USER_CALLBACK_PIPELINE,
-        TILE_CROPPER_PIPELINE, SOURCE_PIPELINE, OVERLAY_PIPELINE,
+        TILE_CROPPER_PIPELINE, SOURCE_PIPELINE,
     )
 
     if parser is None:
@@ -750,7 +736,12 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 os.path.dirname(os.path.abspath(__file__)), "..", "recordings")
             self._record_lock = threading.Lock()
             self._shm_rebuild_pending = False
-            self._ffmpeg_proc = None
+            # Output file path of the active recording (set on start_recording).
+            self._current_record_path = None
+            # Path the FILE_SINK_PIPELINE was instantiated with (chosen at
+            # pipeline-build time). Used as the toggle target so the file
+            # name shown to operators matches what GStreamer is writing.
+            self._initial_record_path = None
 
             # Pre-detect SHM resolution BEFORE super().__init__() so that
             # the tiling configuration (tile grid, overlap, batch size) is
@@ -786,16 +777,21 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             # Connect appsink after pipeline is created by super().__init__
             if self._ui_enabled:
                 self._connect_mjpeg_sink()
+            # Wire the metadata pad probe (strip_tiles + highlight_target)
+            # to the local_meta_id identity element on the display/record branch.
+            self._connect_local_meta_probe()
 
         def _connect_mjpeg_sink(self):
-            """Connect the MJPEG appsink and record appsink new-sample signals."""
+            """Connect the MJPEG appsink new-sample signal (web UI only).
+
+            Recording uses a pure-GStreamer FILE_SINK_PIPELINE (videoconvert
+            -> x264enc -> matroskamux -> filesink) gated by record_valve, so
+            no appsink callback is needed for recording.
+            """
             self._Gst = _get_gst()
             mjpeg_sink = self.pipeline.get_by_name("mjpeg_sink")
             if mjpeg_sink:
                 mjpeg_sink.connect("new-sample", self._on_mjpeg_sample)
-            record_sink = self.pipeline.get_by_name("record_appsink")
-            if record_sink:
-                record_sink.connect("new-sample", self._on_record_sample)
 
         def _on_mjpeg_sample(self, appsink):
             """appsink callback: extract pre-encoded JPEG bytes."""
@@ -807,21 +803,6 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 if success:
                     self._ui_state.update_frame(bytes(map_info.data))
                     buf.unmap(map_info)
-            return Gst.FlowReturn.OK
-
-        def _on_record_sample(self, appsink):
-            """appsink callback: pipe raw RGB frames to ffmpeg subprocess."""
-            Gst = self._Gst
-            sample = appsink.emit("pull-sample")
-            if sample and self._recording and self._ffmpeg_proc:
-                buf = sample.get_buffer()
-                ok, mapinfo = buf.map(Gst.MapFlags.READ)
-                if ok:
-                    try:
-                        self._ffmpeg_proc.stdin.write(mapinfo.data)
-                    except (BrokenPipeError, OSError):
-                        pass
-                    buf.unmap(mapinfo)
             return Gst.FlowReturn.OK
 
         def bus_call(self, bus, message, loop):
@@ -967,6 +948,16 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             super()._on_pipeline_rebuilt()
             if self._ui_enabled:
                 self._connect_mjpeg_sink()
+            self._connect_local_meta_probe()
+
+        def _connect_local_meta_probe(self):
+            """Attach the strip_tiles + highlight_target metadata pad probe
+            to the local_meta_id identity element. The element only exists
+            when --display or --record is active, so this is a no-op
+            otherwise.
+            """
+            target_state = getattr(self.user_data, "target_state", None)
+            wire_local_meta_probe(self.pipeline, target_state)
 
         # ---- Recording control ----
 
@@ -977,48 +968,50 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
         def _generate_record_path(self):
             os.makedirs(self._record_dir, exist_ok=True)
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            return os.path.join(self._record_dir, f"rec_{ts}.mp4")
+            return os.path.join(self._record_dir, f"rec_{ts}.mkv")
 
         def start_recording(self, path=None):
-            """Spawn ffmpeg subprocess and open valve. Returns the output file path."""
+            """Open record_valve so frames flow through the GStreamer
+            recording branch (videoconvert -> x264enc -> matroskamux ->
+            filesink). The branch was built into the pipeline at startup
+            (when --record was set); this just toggles the valve.
+
+            ``path`` is informational only — the filesink location is set
+            at pipeline-construction time. Returns the file path that the
+            recording is actually being written to.
+
+            Note: GStreamer writes a single .mkv per pipeline run. Pausing
+            (stop_recording) and resuming creates a time gap inside the
+            same file rather than a new file. Header may need
+            ``ffmpeg -i in.mkv -c copy out.mkv`` after a hard stop.
+            """
             with self._record_lock:
-                if self._recording:
-                    LOGGER.warning("[record] Already recording")
+                if not self._record_enabled:
+                    LOGGER.warning("[record] --record was not set; recording branch not built")
                     return None
+                if self._recording:
+                    LOGGER.info("[record] Already recording: %s", self._current_record_path)
+                    return self._current_record_path
 
                 valve = self.pipeline.get_by_name("record_valve")
                 if valve is None:
                     LOGGER.error("[record] record_valve not found in pipeline")
                     return None
 
-                record_path = path or self._generate_record_path()
-                width, height = self.video_width, self.video_height
-                # --frame-rate has no parser default in hailo-apps, so
-                # self.frame_rate can be None when the user doesn't pass -f.
-                # ffmpeg requires an integer for -r, so fall back to the
-                # documented 30 FPS default.
-                fps = self.frame_rate or 30
-                LOGGER.info("[record] Spawning ffmpeg: %sx%s @ %s fps → %s",
-                            width, height, fps, record_path)
-
-                self._ffmpeg_proc = subprocess.Popen([
-                    "ffmpeg", "-y", "-nostdin",
-                    "-f", "rawvideo", "-pix_fmt", "rgb24",
-                    "-s", f"{width}x{height}", "-r", str(fps),
-                    "-i", "pipe:0",
-                    "-c:v", "libx264", "-preset", "ultrafast",
-                    "-tune", "zerolatency", "-b:v", "5000k",
-                    record_path,
-                ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
                 valve.set_property("drop", False)
                 self._recording = True
-                self._current_record_path = record_path
-                LOGGER.info("[record] Started recording to %s", record_path)
-                return record_path
+                self._current_record_path = self._initial_record_path or path
+                LOGGER.info("[record] Started recording (valve open) -> %s",
+                            self._current_record_path)
+                return self._current_record_path
 
         def stop_recording(self):
-            """Close valve and finalize ffmpeg in background. Non-blocking."""
+            """Close record_valve so frames stop reaching the encoder.
+
+            The encoder + matroskamux remain in PLAYING; the file is
+            finalised on pipeline shutdown (``cleanup_recording_branch``).
+            Non-blocking.
+            """
             with self._record_lock:
                 if not self._recording:
                     return None
@@ -1029,55 +1022,70 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
                 self._recording = False
                 path = self._current_record_path
-                proc = self._ffmpeg_proc
-                self._ffmpeg_proc = None
-
-                def _finalize():
-                    try:
-                        if proc and proc.stdin:
-                            proc.stdin.close()
-                        if proc:
-                            proc.wait(timeout=5)
-                    except Exception:
-                        LOGGER.exception("[record] ffmpeg finalize error")
-                    LOGGER.info("[record] Finalized: %s", path)
-
-                threading.Thread(target=_finalize, daemon=True).start()
-
-                LOGGER.info("[record] Stopped recording: %s", path)
+                LOGGER.info("[record] Paused recording (valve closed): %s", path)
                 return path
 
         def cleanup_recording_branch(self):
-            """Force recording branch elements to NULL so they don't block pipeline shutdown."""
+            """Send EOS to the recording branch and walk it down to NULL so
+            matroskamux flushes its index and filesink closes the file
+            cleanly.
+            """
             if not self._record_enabled:
                 return
             Gst = _get_gst()
             with self._record_lock:
-                for name in ("record_valve", "record_appsink"):
-                    el = self.pipeline.get_by_name(name)
+                # Send EOS into the valve so the encoder + muxer flush.
+                valve = self.pipeline.get_by_name("record_valve")
+                if valve is not None:
+                    valve.set_property("drop", False)
+                    sink_pad = valve.get_static_pad("sink")
+                    if sink_pad is not None:
+                        sink_pad.send_event(Gst.Event.new_eos())
+                file_sink = self.pipeline.get_by_name("file_sink")
+                # Walk the record sub-branch down to NULL so matroskamux
+                # flushes its index and filesink closes the file cleanly.
+                for el_name in ("record_valve", "file_sink_mux", "file_sink"):
+                    el = self.pipeline.get_by_name(el_name)
                     if el is not None:
                         el.set_state(Gst.State.NULL)
+                if file_sink is not None:
+                    LOGGER.info("[record] Recording branch torn down (file: %s)",
+                                self._current_record_path or self._initial_record_path)
 
         def get_pipeline_string(self):
-            openhd_stream = getattr(self.options_menu, 'openhd_stream', False)
+            """Build the GStreamer pipeline string.
+
+            Source -> tile_cropper(detection) -> user_callback -> output stage.
+            The output stage is built by ``vision_branches.assemble_output_stage``;
+            see that module for the branch topology.
+            """
+            openhd = getattr(self.options_menu, 'openhd', False)
+            webui = self._ui_enabled
+            record = self._record_enabled
             no_display = getattr(self.options_menu, 'no_display', False)
+            display = getattr(self.options_menu, 'display', False)
+            # Implicit-display rule: when neither --openhd nor --webui is set
+            # and --no-display was not passed, default the display window on.
+            if not openhd and not webui and not no_display:
+                display = True
+            if no_display:
+                display = False
             is_shm = str(self.video_source).startswith('shm://')
             is_udp = str(self.video_source).startswith('udp://')
 
-            # If no custom output needed, delegate to parent
-            if not self._ui_enabled and not self._record_enabled and not openhd_stream and not is_shm and not is_udp and not no_display:
+            # If nothing custom is requested and the source is standard,
+            # delegate to the upstream tiling app default pipeline.
+            if not display and not openhd and not webui and not record \
+                    and not is_shm and not is_udp:
                 return super().get_pipeline_string()
 
-            # Build pipeline with tee: one branch for display, one for MJPEG appsink,
-            # and (if recording is enabled) one raw-RGB appsink for ffmpeg subprocess.
+            # ---- Source ----
             if is_shm:
                 source_pipeline = _shm_source_pipeline(
                     self.video_source, self.video_width, self.video_height,
                     self.frame_rate,
                 )
             elif is_udp:
-                # Gazebo / sim video bridges send RTP-framed H.264 over UDP.
-                # Upstream SOURCE_PIPELINE for udp:// only handles raw MJPEG.
                 source_pipeline = _udp_h264_source_pipeline(
                     self.video_source, self.video_width, self.video_height,
                     self.frame_rate,
@@ -1090,14 +1098,10 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     frame_rate=self.frame_rate,
                     sync=self.sync,
                 )
-                # Pace the source on PTS so file playback runs at wall-clock.
-                # Without this, the leaky tee queues let the decoder run
-                # unbounded and the MJPEG/UI feed shows files sped up by the
-                # inference-vs-realtime ratio. self.sync is "true" only for
-                # file sources (see GStreamerApp.__init__), so this is a
-                # no-op for live sources.
+                # Pace file sources on PTS so playback runs at wall-clock.
                 source_pipeline += f" ! identity name=source_pacer sync={self.sync}"
 
+            # ---- Detection (tile cropper bypass on 1x1 identity case) ----
             detection_pipeline = INFERENCE_PIPELINE(
                 hef_path=self.hef_path,
                 post_process_so=self.post_process_so,
@@ -1105,31 +1109,23 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 batch_size=self.batch_size,
                 config_json=self.labels_json,
             )
-
-            # Detect identity case: 1x1 tiles where frame matches model
-            # input exactly.  The hailotilecropper has a DMA buffer-pool
-            # negotiation bug in this passthrough path (no scaling needed)
-            # that crashes the Hailo PCIe driver.  Skip the tile cropper
-            # entirely — the inference pipeline processes the full frame
-            # directly and produces identical results since coordinates
-            # map 1:1 when frame_size == model_input_size.
             skip_tiling = (
                 self.tiles_x == 1 and self.tiles_y == 1
                 and not self.use_multi_scale
                 and self.video_width == self.model_input_width
                 and self.video_height == self.model_input_height
             )
-
             if skip_tiling:
                 LOGGER.info(
                     "Bypassing tile cropper: 1x1 tiles with frame "
                     "(%dx%d) matching model input — direct inference",
                     self.video_width, self.video_height,
                 )
+                infer_stage = detection_pipeline
             else:
                 tiling_mode = 1 if self.use_multi_scale else 0
                 scale_level = self.scale_level if self.use_multi_scale else 0
-                tile_cropper_pipeline = TILE_CROPPER_PIPELINE(
+                infer_stage = TILE_CROPPER_PIPELINE(
                     detection_pipeline,
                     name='tile_cropper_wrapper',
                     internal_offset=True,
@@ -1143,90 +1139,38 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     border_threshold=self.border_threshold,
                 )
 
-            user_callback_pipeline = USER_CALLBACK_PIPELINE()
-
-            # Primary output sink (WITHOUT overlay — overlay is shared upstream)
-            if openhd_stream:
-                openhd_port = getattr(self.options_menu, 'openhd_port', 5500)
-                openhd_bitrate = getattr(self.options_menu, 'openhd_bitrate', 3917)
-                primary_sink = _openhd_stream_pipeline(port=openhd_port, bitrate=openhd_bitrate)
-            elif no_display:
-                primary_sink = f"fakesink sync={self.sync}"
-            else:
-                # Inline display pipeline without overlay (DISPLAY_PIPELINE has overlay built in)
-                primary_sink = (
-                    f"{QUEUE(name='hailo_display_videoconvert_q')} ! "
-                    f"videoconvert name=hailo_display_videoconvert n-threads=2 qos=false ! "
-                    f"{QUEUE(name='hailo_display_q')} ! "
-                    f"fpsdisplaysink name=hailo_display video-sink={self.video_sink} "
-                    f"sync={self.sync} text-overlay={self.show_fps} signal-fps-measurements=true "
+            # ---- Output stage (built in vision_branches.py) ----
+            record_output = None
+            if record:
+                record_output = (
+                    getattr(self.options_menu, 'record_output', None)
+                    or self._generate_record_path()
                 )
+                self._initial_record_path = record_output
 
-            # MJPEG branch for web UI (no overlay — browser draws interactive SVG)
-            mjpeg_branch = None
-            if self._ui_enabled:
-                mjpeg_branch = (
-                    f"videoconvert n-threads=2 ! "
-                    f"videorate max-rate={self._ui_fps} ! "
-                    f"video/x-raw,framerate={self._ui_fps}/1 ! "
-                    f"jpegenc quality=70 ! "
-                    f"appsink name=mjpeg_sink sync=false drop=true emit-signals=true"
-                )
+            output_pipeline = assemble_output_stage(
+                display=display,
+                record=record,
+                openhd=openhd,
+                webui=webui,
+                openhd_port=getattr(self.options_menu, 'openhd_port', 5500),
+                openhd_bitrate_kbps=getattr(self.options_menu, 'openhd_bitrate', 3917),
+                ui_fps=self._ui_fps,
+                record_output=record_output,
+                record_bitrate_kbps=getattr(self.options_menu, 'record_bitrate', 5000),
+                video_sink=self.video_sink,
+                sync=self.sync,
+                show_fps=self.show_fps,
+                fakesink_sync=self.sync,
+            )
+            if record:
+                LOGGER.info("[record] Recording branch built -> %s "
+                            "(bitrate %d kbps)",
+                            record_output,
+                            getattr(self.options_menu, 'record_bitrate', 5000))
 
-            # Recording branch (no overlay — shares overlayed frames from t_post)
-            record_branch = None
-            if self._record_enabled:
-                record_branch = (
-                    f"valve name=record_valve drop=true ! "
-                    f"videoconvert n-threads=2 ! video/x-raw,format=RGB ! "
-                    f"appsink name=record_appsink emit-signals=true drop=true "
-                    f"sync=false async=false max-buffers=1"
-                )
-
-            # Assemble output pipeline with two-stage tee:
-            #   t_pre (before overlay) — MJPEG taps clean frames here
-            #   t_post (after overlay) — primary + recording tap overlayed frames
-            has_mjpeg = mjpeg_branch is not None
-            has_record = record_branch is not None
-
-            if has_mjpeg and has_record:
-                # Two-stage tee: t_pre feeds MJPEG (clean) and overlay path;
-                # t_post feeds primary + recording (overlayed)
-                output_pipeline = (
-                    f"tee name=t_pre "
-                    f"t_pre. ! {QUEUE(name='mjpeg_branch_q', leaky='downstream')} ! {mjpeg_branch} "
-                    f"t_pre. ! {QUEUE(name='overlay_q', leaky='downstream')} ! "
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! tee name=t_post "
-                    f"t_post. ! {QUEUE(name='primary_branch_q', leaky='downstream')} ! {primary_sink} "
-                    f"t_post. ! {QUEUE(name='record_branch_q', max_size_buffers=1, leaky='downstream')} ! {record_branch}"
-                )
-            elif has_mjpeg:
-                # MJPEG only: t_pre feeds MJPEG (clean) and overlay → primary
-                output_pipeline = (
-                    f"tee name=t_pre "
-                    f"t_pre. ! {QUEUE(name='mjpeg_branch_q', leaky='downstream')} ! {mjpeg_branch} "
-                    f"t_pre. ! {QUEUE(name='overlay_q', leaky='downstream')} ! "
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! {primary_sink}"
-                )
-            elif has_record:
-                # Recording only: overlay → t_post feeds primary + recording
-                output_pipeline = (
-                    f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! tee name=t_post "
-                    f"t_post. ! {QUEUE(name='primary_branch_q', leaky='downstream')} ! {primary_sink} "
-                    f"t_post. ! {QUEUE(name='record_branch_q', max_size_buffers=1, leaky='downstream')} ! {record_branch}"
-                )
-            else:
-                # No extra branches: overlay → primary
-                output_pipeline = f"{OVERLAY_PIPELINE(name='hailo_overlay')} ! {primary_sink}"
-
-            if skip_tiling:
-                # Direct pipeline: source → inference → callback → output
-                pipeline_parts = [source_pipeline, detection_pipeline]
-            else:
-                pipeline_parts = [source_pipeline, tile_cropper_pipeline]
-            pipeline_parts.extend([user_callback_pipeline, output_pipeline])
-
-            return ' ! '.join(pipeline_parts)
+            return ' ! '.join([source_pipeline, infer_stage,
+                               USER_CALLBACK_PIPELINE(), output_pipeline])
 
     _tracker_name = tracker_name or "byte"
     _t0 = time.monotonic()
@@ -1244,9 +1188,20 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
         reid_manager=reid_manager, reid_search_timeout=reid_search_timeout,
         controller_config=controller_config, log_perf=log_perf,
     )
+    # ui_enabled means "build the MJPEG/web-UI branch" — pre-parse the
+    # parser so we read the actual --webui flag instead of just whether
+    # ui_state was created (it always is, since the OpenHD bridge needs
+    # SharedUIState even when --webui isn't passed).
+    _webui_enabled = False
+    if parser is not None:
+        try:
+            _pre_args, _ = parser.parse_known_args()
+            _webui_enabled = getattr(_pre_args, 'webui', False)
+        except SystemExit:
+            pass
     app = DroneFollowTilingApp(
         app_callback, user_data, parser=parser, eos_reached=eos_reached,
-        ui_enabled=(ui_state is not None), ui_state=ui_state, ui_fps=ui_fps,
+        ui_enabled=_webui_enabled, ui_state=ui_state, ui_fps=ui_fps,
         record_enabled=record_enabled, record_dir=record_dir,
     )
     # Store video dimensions on user_data so the callback can extract

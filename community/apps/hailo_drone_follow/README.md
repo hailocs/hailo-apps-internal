@@ -128,13 +128,13 @@ cd <hailo-apps-infra>
 source setup_env.sh
 
 # Dev machine with USB camera + flight controller over serial:
-drone-follow --input usb --serial --ui
+drone-follow --input usb --serial --webui
 
 # RPi with camera + Cube Orange+ over USB serial:
-drone-follow --input rpi --serial --ui
+drone-follow --input rpi --serial --webui
 
 # Simulation (Gazebo camera + PX4 SITL):
-drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
+drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --webui
 
 # Real drone with OpenHD (starts OpenHD air + drone-follow):
 ./scripts/start_air.sh
@@ -156,21 +156,22 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 | `--serial` | off | Connect via USB serial (`/dev/ttyACM0`); overrides `--connection` |
 | `--connection URL` | `udpin://0.0.0.0:14540` | MAVSDK connection string |
 | `--takeoff-landing` | off | Auto arm/takeoff/land. Without this, the pilot switches to OFFBOARD via GCS. |
-| `--ui` | off | Enable web UI with live video and click-to-follow (port 5001) |
-| `--record` | off | Record video + detection overlays for the entire session |
+| `--display` | auto-on when no UI flag | Local X11 window with overlay (tile rectangles stripped, target person's bbox highlighted via class-id remap). |
+| `--no-display` | off | Force headless mode (overrides the implicit-display default). Use for SSH/bench sessions or Mode-B SHM input. |
+| `--webui` | off | Web UI with live MJPEG video and click-to-follow (port 5001). Mutually exclusive with `--openhd`. |
+| `--openhd` | off | Send overlay video to OpenHD via UDP RTP. Mutually exclusive with `--webui`. |
+| `--record` | off | Record post-overlay video to `recordings/rec_<ts>.mkv` (pure-GStreamer x264enc + matroskamux + filesink). |
 | `--target-bbox-height` | `0.25` | Desired person size in frame (0-0.25). Drives forward/backward distance. Adjustable mid-flight via UI. |
 | `--target-altitude` | `3.0` | Target altitude in metres. Also used as takeoff height. |
 | `--yaw-only` / `--no-yaw-only` | on | Yaw only: no forward/backward movement. Use `--no-yaw-only` for full follow. |
 | `--no-reid` | off | Disable ReID re-identification |
 | `--reid-timeout` | `20.0` | Seconds to search via ReID before returning to auto mode |
-| `--no-display` | off | Headless mode (no display window) |
-| `--openhd-stream` | off | Send overlay video to OpenHD via UDP RTP instead of display |
 
 Run `drone-follow --help` for the full list.
 
 ## Web UI
 
-Enable with `--ui` (served on port 5001). Provides live MJPEG video, detection overlays, and click-to-follow target selection.
+Enable with `--webui` (served on port 5001). Provides live MJPEG video, detection overlays, and click-to-follow target selection.
 
 ### Status Bar
 
@@ -256,7 +257,7 @@ sim/start_sim.sh --bridge --world 2_person_world
 
 # Terminal 2 — Run drone-follow:
 source setup_env.sh
-drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
+drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --webui
 ```
 
 **Key ports:** `14540/udp` (MAVLink), `5600/udp` (video from Gazebo)
@@ -270,7 +271,7 @@ sim/start_sim.sh --remote <DRONE_APP_IP> --world 2_person_world
 
 # Drone-follow machine:
 source setup_env.sh
-drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
+drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --webui
 ```
 
 **Simulation configs** in `sim/configs/`: `simulation.json` (yaw-only), `simulation_follow.json` (full follow with reduced speeds).
@@ -282,7 +283,7 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --ui
 For FPV video with detection overlays streamed to an OpenHD ground station:
 
 ```bash
-drone-follow --input shm:///tmp/openhd_raw_video --openhd-stream --ui --serial
+drone-follow --input shm:///tmp/openhd_raw_video --openhd --webui --serial
 ```
 
 ### Real drone with OpenHD (air unit)
@@ -290,12 +291,12 @@ drone-follow --input shm:///tmp/openhd_raw_video --openhd-stream --ui --serial
 The air unit pairs drone-follow with OpenHD wifibroadcast for long-range telemetry/video to a ground station running QOpenHD. `scripts/start_air.sh` launches both side-by-side; the typical CLI is:
 
 ```bash
-drone-follow --input rpi --openhd-stream \
+drone-follow --input rpi --openhd \
     --connection tcpout://127.0.0.1:5760 \
     --tiles-x 1 --tiles-y 1
 ```
 
-`--openhd-stream` redirects the overlay video into an x264 encoder + RTP/UDP sink (default `127.0.0.1:5500`) so OpenHD picks it up as an external camera. Bitrate and port are tunable with `--openhd-bitrate` (default 3917 kbps) and `--openhd-port` (default 5500). For the full air/ground build and deployment story, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
+`--openhd` redirects the overlay video into an x264 encoder + RTP/UDP sink (default `127.0.0.1:5500`) so OpenHD picks it up as an external camera. Bitrate and port are tunable with `--openhd-bitrate` (default 3917 kbps) and `--openhd-port` (default 5500). For the full air/ground build and deployment story, see [SETUP_GUIDE.md](SETUP_GUIDE.md).
 
 The pipeline reads raw video from OpenHD's shared memory, runs detection, and streams H264+RTP back to OpenHD. Resolution is auto-detected from `/tmp/openhd_raw_video.meta`. The pipeline auto-recovers from OpenHD restarts (resolution changes, socket reconnection).
 
@@ -310,7 +311,7 @@ Store controller settings in JSON instead of CLI flags:
 drone-follow --save-config my_config.json
 
 # Run with a config file (CLI flags still override)
-drone-follow --config configs/outdoor_follow.json --input rpi --serial --ui
+drone-follow --config configs/outdoor_follow.json --input rpi --serial --webui
 ```
 
 ### Bundled Presets
@@ -334,7 +335,7 @@ Note: `--distance-gain 0` also disables forward/backward motion while leaving ya
 
 ## Web UI Controls
 
-The web UI (`--ui`, served on port 5001) provides live video, detection overlays, and real-time tuning of the controller. All changes take effect immediately. The same controller parameters are also exposed to QOpenHD on the ground via the OpenHD parameter bridge — both surfaces edit one shared `ControllerConfig`, so a slider moved on the air-side UI shows the same value on the ground-side QOpenHD and vice versa. See [PARAMETERS.md](PARAMETERS.md) for the bridge protocol and [Control Surfaces](#control-surfaces) below for the full picture.
+The web UI (`--webui`, served on port 5001) provides live video, detection overlays, and real-time tuning of the controller. All changes take effect immediately. The same controller parameters are also exposed to QOpenHD on the ground via the OpenHD parameter bridge — both surfaces edit one shared `ControllerConfig`, so a slider moved on the air-side UI shows the same value on the ground-side QOpenHD and vice versa. See [PARAMETERS.md](PARAMETERS.md) for the bridge protocol and [Control Surfaces](#control-surfaces) below for the full picture.
 
 ### Status Bar
 
@@ -431,8 +432,8 @@ drone-follow exposes the same control surface through three independent channels
 
 | Channel | Started by | Edits config | Selects target | Toggles recording | Reads detections |
 |---|---|---|---|---|---|
-| Web UI (HTTP/MJPEG, port 5001) | `--ui` | `POST /api/config` | UI click → `FollowServer POST /follow/<id>` | `POST /api/record/start` & `/stop` | MJPEG + SSE |
+| Web UI (HTTP/MJPEG, port 5001) | `--webui` | `POST /api/config` | UI click → `FollowServer POST /follow/<id>` | `POST /api/record/start` & `/stop` | MJPEG + SSE |
 | FollowServer (HTTP, port 8080) | always | — | `POST /follow/<id>` / `/follow/clear` | — | `GET /status` |
-| OpenHD bridge (UDP 5510/5511) | always | UDP JSON `{"param": ..., "value": ...}` from QOpenHD | `param=follow_id` (-1 idle / 0 auto / N lock) | `param=recording` (1=start, 0=stop) — branch is auto-built in `--openhd-stream` mode | bbox payload to OpenHD for ground display |
+| OpenHD bridge (UDP 5510/5511) | always | UDP JSON `{"param": ..., "value": ...}` from QOpenHD | `param=follow_id` (-1 idle / 0 auto / N lock) | `param=recording` (1=start, 0=stop) — branch is auto-built in `--openhd` mode | bbox payload to OpenHD for ground display |
 
-`--ui` and `--openhd-stream` are independent flags — you can run either, both, or neither (e.g. headless follow with no ground link). The OpenHD bridge always starts so that QOpenHD remains in sync regardless of the `--openhd-stream` setting.
+`--webui` and `--openhd` are independent flags — you can run either, both, or neither (e.g. headless follow with no ground link). The OpenHD bridge always starts so that QOpenHD remains in sync regardless of the `--openhd` setting.

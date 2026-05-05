@@ -18,7 +18,7 @@
 #
 # --mode selects the OpenHD camera integration (see CLAUDE.md):
 #   stream (default) Mode A — drone-follow owns the CSI camera and pushes RTP to
-#                    OpenHD via --openhd-stream. Sets primary_camera_type=5
+#                    OpenHD via --openhd. Sets primary_camera_type=5
 #                    (X_CAM_TYPE_HAILO_AI) and removes /boot/openhd/hailo.txt.
 #   shm              Mode B — OpenHD owns the camera and tees raw NV12 to SHM;
 #                    drone-follow reads from /tmp/openhd_raw_video. Sets
@@ -346,7 +346,7 @@ normalize_wb_frequency
 # Configure OpenHD's primary camera type based on the selected mode.
 #
 #   Mode A (stream): primary_camera_type=5 (X_CAM_TYPE_HAILO_AI). drone-follow
-#       owns the CSI camera and pushes RTP to OpenHD via --openhd-stream.
+#       owns the CSI camera and pushes RTP to OpenHD via --openhd.
 #       OpenHD must NOT acquire the camera (otherwise Picamera2 hits
 #       "Device or resource busy"), and /boot/openhd/hailo.txt must be absent.
 #

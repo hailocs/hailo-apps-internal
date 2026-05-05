@@ -3,7 +3,7 @@
 #
 # Two camera modes (see CLAUDE.md "OpenHD Camera Modes"):
 #   stream (default) — Mode A: drone-follow owns the CSI camera, encodes the
-#                      overlay and pushes RTP to OpenHD via --openhd-stream.
+#                      overlay and pushes RTP to OpenHD via --openhd.
 #   shm              — Mode B: OpenHD owns the camera and tees raw NV12 to
 #                      /tmp/openhd_raw_video; drone-follow reads from SHM and
 #                      runs AI only (no encoding, no overlay in WFB stream).
@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
 Usage: $0 [--mode <stream|shm>]
 
   --mode stream  (default) Mode A: drone-follow owns the camera, encodes overlay,
-                 pushes RTP to OpenHD on UDP 5500 (--openhd-stream).
+                 pushes RTP to OpenHD on UDP 5500 (--openhd).
   --mode shm     Mode B: OpenHD owns the camera; drone-follow reads raw frames
                  from /tmp/openhd_raw_video and does AI only.
 
@@ -84,7 +84,7 @@ else
 fi
 
 case "$MODE" in
-    stream) MODE_ARGS=(--input rpi --openhd-stream) ;;
+    stream) MODE_ARGS=(--input rpi --openhd) ;;
     shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --no-display) ;;
 esac
 

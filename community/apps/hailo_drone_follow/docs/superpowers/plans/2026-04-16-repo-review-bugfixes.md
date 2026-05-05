@@ -260,7 +260,7 @@ Update the `.toFixed()` display precision from `.toFixed(2)` to `.toFixed(2)` (a
 - [ ] **Step 4: Verify in browser**
 
 Run: `cd drone_follow/ui && npm run build`
-Start: `PYTHONPATH=. drone-follow --input usb --ui` (or sim equivalent)
+Start: `PYTHONPATH=. drone-follow --input usb --webui` (or sim equivalent)
 Open: `http://localhost:5001`
 Verify: sliders reflect new ranges.
 
