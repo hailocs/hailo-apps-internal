@@ -51,8 +51,8 @@ valid_versions:
 # The installer validates that the detected HailoRT+TAPPAS combo is in this list.
 
 valid_combinations:
-  hailo8: "4.23.0:5.1.0 4.23.0:5.2.0 4.23.0:5.3.0"
-  hailo8l: "4.23.0:5.1.0 4.23.0:5.2.0 4.23.0:5.3.0"
+  hailo8: "4.23.0:5.1.0"
+  hailo8l: "4.23.0:5.1.0"
   hailo10h: "5.1.1:5.1.0 5.2.0:5.2.0 5.3.0:5.3.0"
 
 #-------------------------------------------------------------------------------
@@ -118,8 +118,6 @@ system_packages:
   - "portaudio19-dev"
   - "python3-gi"
   - "python3-gi-cairo"
-  # Required by hailooverlay_community GStreamer plugin
-  - "libyaml-cpp-dev"
   # Static linking dependencies for TAPPAS >= 5.2.0
   - "libbz2-dev"
   - "liblzma-dev"
