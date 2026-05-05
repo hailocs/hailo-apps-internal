@@ -66,6 +66,15 @@ cd hailo-apps
 sudo ./install.sh
 ```
 
+### Upgrading
+
+When upgrading to a new version, use `--force-cleanup` to remove stale build artifacts before reinstalling:
+
+```bash
+git pull
+sudo ./install.sh --force-cleanup
+```
+
 ### Quick Examples
 
 ```bash
