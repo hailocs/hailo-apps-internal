@@ -610,8 +610,8 @@ export default function App() {
                     height={h}
                     fill="transparent"
                     stroke={isFollowing ? "#00ff00" : "#ffffff"}
-                    strokeWidth={isFollowing ? 3 : 2}
-                    strokeOpacity={0.9}
+                    strokeWidth={isFollowing ? 6 : 1}
+                    strokeOpacity={isFollowing ? 1.0 : 0.7}
                   />
                   <text
                     x={x + 4}

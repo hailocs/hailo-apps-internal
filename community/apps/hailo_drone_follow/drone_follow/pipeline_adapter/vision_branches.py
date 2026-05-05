@@ -7,21 +7,33 @@ into up to four branches. Only the ones the operator opts into are built::
         ├─ [--webui]   : MJPEG appsink (clean frames; client renders bbox)
         ├─ [--openhd]  : RTP H.264 over UDP to an OpenHD ground station
         └─ [--display / --record]
-                       : identity local_meta_id  (pad probe: strip_tiles +
-                                                  highlight_target — both
-                                                  pure-metadata, no pixels)
-                       : hailooverlay
+                       : identity local_meta_id  (pad probe: replace the
+                                                  target's HailoDetection
+                                                  with one whose class_id
+                                                  is TARGET_OVERLAY_CLASS_ID
+                                                  so the per-class YAML
+                                                  style applies)
+                       : hailooverlay_community show-tiles=false
+                                                style-config=<yaml>
                        : tee local_tee
                             ├─ [--display] : videoconvert + fpsdisplaysink
                             └─ [--record]  : valve + H.264 + matroskamux + filesink
 
 All vision work uses GStreamer-native elements + Hailo metadata APIs;
 no pad probe maps the buffer pixels.
+
+Tile-bbox suppression is handled at the element level
+(``show-tiles=false``). Per-detection emphasis (color + line thickness)
+is delegated to the community overlay's YAML style-config: the pad probe
+just retags the target detection with a sentinel class_id; the YAML rule
+under ``styles.<TARGET_OVERLAY_CLASS_ID>`` defines what that class looks
+like (green, thicker line, etc.).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from typing import Optional
@@ -30,12 +42,27 @@ import hailo
 
 LOGGER = logging.getLogger(__name__)
 
-# class_id used to recolour the locked/auto target detection on the local
-# display branch. hailooverlay paints by class_id (deterministic palette in
-# the compiled .so); 99 is far above any COCO class so the colour clearly
-# differs from the default 'person' bbox. Tune this if the rendered colour
-# isn't visually distinguishable enough on your display.
-TARGET_CLASS_ID = 99
+# Sentinel class_id used to retag the locked/auto target detection on
+# the local branch. The YAML style-config maps this to a thicker green
+# bbox; all other detections keep their default class_id and inherit
+# the element-level (thin) line thickness.
+TARGET_OVERLAY_CLASS_ID = 99
+
+# Packed 0xRRGGBB colour drawn around every non-target detection on the
+# local branch. Attached via an ``overlay_color`` HailoClassification
+# (read by hailooverlay_community when ``use-custom-colors=true``).
+NON_TARGET_BBOX_COLOR_RGB = 0xFFFFFF  # white
+
+# Path to the bundled overlay style YAML. Resolved relative to this file
+# so the module works from a checkout, an editable install, or a copied
+# tree without env-var fiddling.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_STYLE_CONFIG = os.path.normpath(
+    os.path.join(_THIS_DIR, "..", "..", "configs", "overlay_style.yaml")
+)
+DEFAULT_OVERLAY_STYLE_CONFIG = (
+    _DEFAULT_STYLE_CONFIG if os.path.isfile(_DEFAULT_STYLE_CONFIG) else ""
+)
 
 
 # ---------------------------------------------------------------------------
@@ -161,10 +188,18 @@ def local_branch(*, display: bool, record: bool, record_output: Optional[str],
     if not display and not record:
         raise ValueError("local_branch requires display or record (or both)")
 
+    overlay_props = (
+        "show-tiles=false line-thickness=2 "
+        "font-thickness=1 text-background=true "
+        "use-custom-colors=true"
+    )
+    if DEFAULT_OVERLAY_STYLE_CONFIG:
+        overlay_props += f' style-config="{DEFAULT_OVERLAY_STYLE_CONFIG}"'
     head = (
         "queue name=local_branch_q leaky=downstream max-size-buffers=3 ! "
         "identity name=local_meta_id ! "
-        "queue name=hailo_overlay_q ! hailooverlay name=hailo_overlay"
+        "queue name=hailo_overlay_q ! "
+        f"hailooverlay_community name=hailo_overlay {overlay_props}"
     )
 
     subs = []
@@ -221,22 +256,39 @@ def assemble_output_stage(*, display: bool, record: bool, openhd: bool,
 # Metadata pad probe (display/record branch)
 # ---------------------------------------------------------------------------
 
-def strip_tiles_and_highlight_target(pad, info, target_state):
-    """Pure-metadata pad probe for the local (display/record) branch.
-
-    1. Remove ``HAILO_TILE`` sub-objects so ``hailooverlay`` does not draw
-       the tile grid. Detections are unaffected because the tile aggregator
-       already flattens them onto the parent ROI.
-
-    2. If a target is locked, replace the target's ``HailoDetection`` with
-       a copy carrying ``class_id=TARGET_CLASS_ID`` so ``hailooverlay``
-       paints it in a different palette colour, visually emphasising the
-       followed person. Other detections are left at their default colour.
-
-    No pixel buffers are mapped; only ROI metadata is touched.
+def _tag_white(det):
+    """Attach an ``overlay_color`` classification (white) so the local
+    overlay renders this detection with a white bbox. Idempotent.
     """
-    # Local import — avoid pulling gi at import time.
-    import gi  # noqa: F401
+    for cls in det.get_objects_typed(hailo.HAILO_CLASSIFICATION):
+        if cls.get_classification_type() == "overlay_color":
+            return
+    det.add_object(hailo.HailoClassification(
+        "overlay_color",            # classification type read by overlay
+        NON_TARGET_BBOX_COLOR_RGB,  # class_id = packed 0xRRGGBB (white)
+        "",                         # label (unused on packed-int path)
+        0.0,                        # confidence
+    ))
+
+
+def highlight_target(pad, info, target_state):
+    """Style the local-branch detections so the operator can tell the
+    locked/auto target apart from everyone else at a glance:
+
+    * **Target**: retagged with ``class_id = TARGET_OVERLAY_CLASS_ID`` so
+      the YAML style-config rule applies — thicker, green bbox.
+    * **Non-target detections**: an ``overlay_color`` classification of
+      :data:`NON_TARGET_BBOX_COLOR_RGB` (white) is attached so they render
+      in white at the element-level (thin) line thickness.
+
+    Pure metadata work — no pixel buffers are mapped.
+
+    HailoDetection has no ``set_class_id`` setter in the Python binding,
+    so the target detection is replaced with a copy carrying the new
+    class_id; sub-objects (HailoUniqueID, classifications, …) are
+    re-attached so downstream metadata survives.
+    """
+    import gi  # noqa: F401 — local import keeps gi out of module-load time
     gi.require_version("Gst", "1.0")
     from gi.repository import Gst
 
@@ -244,43 +296,62 @@ def strip_tiles_and_highlight_target(pad, info, target_state):
     if buffer is None:
         return Gst.PadProbeReturn.OK
 
-    roi = hailo.get_roi_from_buffer(buffer)
-
-    for tile in roi.get_objects_typed(hailo.HAILO_TILE):
-        roi.remove_object(tile)
-
     target_id = target_state.get_target() if target_state is not None else None
-    if target_id is None or target_id <= 0:
-        return Gst.PadProbeReturn.OK
+    roi = hailo.get_roi_from_buffer(buffer)
+    target_det = None
+    target_orig = None
+    others = []
 
     for det in roi.get_objects_typed(hailo.HAILO_DETECTION):
-        match = False
-        for uid in det.get_objects_typed(hailo.HAILO_UNIQUE_ID):
-            if uid.get_id() == target_id:
-                match = True
-                break
-        if not match:
-            continue
-        if det.get_class_id() == TARGET_CLASS_ID:
-            return Gst.PadProbeReturn.OK
-        bbox = det.get_bbox()
-        new_det = hailo.HailoDetection(bbox, TARGET_CLASS_ID, det.get_label(),
-                                       det.get_confidence())
-        for child in list(det.get_objects()):
+        is_target = False
+        if target_id is not None and target_id > 0:
+            for uid in det.get_objects_typed(hailo.HAILO_UNIQUE_ID):
+                if uid.get_id() == target_id:
+                    is_target = True
+                    break
+        if is_target:
+            if det.get_class_id() == TARGET_OVERLAY_CLASS_ID:
+                target_det = det          # already retagged
+            else:
+                target_orig = det
+        else:
+            others.append(det)
+
+    # Tag every non-target detection white so it stands apart from the
+    # target's green bbox. Idempotent across probe re-runs.
+    for det in others:
+        _tag_white(det)
+
+    # Retag the target detection so the YAML rule for class_id 99 fires.
+    if target_orig is not None:
+        bbox = target_orig.get_bbox()
+        new_det = hailo.HailoDetection(
+            bbox, TARGET_OVERLAY_CLASS_ID, target_orig.get_label(),
+            target_orig.get_confidence(),
+        )
+        for child in list(target_orig.get_objects()):
+            # Skip any pre-existing overlay_color classification —
+            # otherwise the metadata would override the YAML green.
+            if (isinstance(child, hailo.HailoClassification)
+                    and child.get_classification_type() == "overlay_color"):
+                continue
             try:
                 new_det.add_object(child)
             except Exception:  # noqa: BLE001 — child re-attach is best-effort
                 pass
-        roi.remove_object(det)
+        roi.remove_object(target_orig)
         roi.add_object(new_det)
-        break
 
     return Gst.PadProbeReturn.OK
 
 
+# Backwards-compat alias — older callers may still import the old name.
+strip_tiles_and_highlight_target = highlight_target
+
+
 def wire_local_meta_probe(pipeline, target_state) -> bool:
-    """Attach :func:`strip_tiles_and_highlight_target` to the
-    ``local_meta_id`` identity element if it exists in the pipeline.
+    """Attach :func:`highlight_target` to the ``local_meta_id`` identity
+    element if it exists in the pipeline.
 
     Returns True if a probe was attached; False if the element is absent
     (no display/record branch was built). Safe to call after every
@@ -297,7 +368,7 @@ def wire_local_meta_probe(pipeline, target_state) -> bool:
     from gi.repository import Gst
     src_pad.add_probe(
         Gst.PadProbeType.BUFFER,
-        strip_tiles_and_highlight_target,
+        highlight_target,
         target_state,
     )
     return True

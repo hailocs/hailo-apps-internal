@@ -68,6 +68,15 @@ export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
 echo "Project directory added to PYTHONPATH for this session:"
 echo "${PROJECT_ROOT}"
 
+# Prepend a user-writable GStreamer plugin dir so locally-built C++
+# postprocess plugins (built with `bash hailo_apps/postprocess/compile_postprocess.sh release`)
+# are picked up without needing sudo to overwrite the system copy. Drop a
+# .so into ~/.local/lib/gstreamer-1.0/ and it wins over /usr/lib/.../gstreamer-1.0/.
+USER_GST_PLUGIN_PATH="${HOME}/.local/lib/gstreamer-1.0"
+if [ -d "${USER_GST_PLUGIN_PATH}" ]; then
+    export GST_PLUGIN_PATH="${USER_GST_PLUGIN_PATH}:${GST_PLUGIN_PATH}"
+fi
+
 # Activate the virtual environment
 if [ -d "$VENV_NAME" ]; then
     source $VENV_NAME/bin/activate

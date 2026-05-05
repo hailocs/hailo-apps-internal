@@ -534,7 +534,7 @@ def _app_callback_inner(element, buffer, user_data):
 # both live in vision_branches.py — see that file's module docstring for
 # the full topology.
 from .vision_branches import (
-    TARGET_CLASS_ID,  # re-exported for tests / external probes
+    TARGET_OVERLAY_CLASS_ID,  # re-exported for tests / external probes
     assemble_output_stage,
     wire_local_meta_probe,
 )
@@ -777,8 +777,8 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             # Connect appsink after pipeline is created by super().__init__
             if self._ui_enabled:
                 self._connect_mjpeg_sink()
-            # Wire the metadata pad probe (strip_tiles + highlight_target)
-            # to the local_meta_id identity element on the display/record branch.
+            # Wire the highlight_target metadata pad probe to the
+            # local_meta_id identity on the display/record branch.
             self._connect_local_meta_probe()
 
         def _connect_mjpeg_sink(self):
@@ -951,10 +951,9 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             self._connect_local_meta_probe()
 
         def _connect_local_meta_probe(self):
-            """Attach the strip_tiles + highlight_target metadata pad probe
-            to the local_meta_id identity element. The element only exists
-            when --display or --record is active, so this is a no-op
-            otherwise.
+            """Attach the highlight_target metadata pad probe to the
+            local_meta_id identity element. The element only exists when
+            --display or --record is active, so this is a no-op otherwise.
             """
             target_state = getattr(self.user_data, "target_state", None)
             wire_local_meta_probe(self.pipeline, target_state)

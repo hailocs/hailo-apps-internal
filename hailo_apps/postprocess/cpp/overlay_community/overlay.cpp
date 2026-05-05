@@ -484,9 +484,17 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
                 }
             }
 
-            // Bbox
-            if (draw_bbox && !bbox_replaced_by_sprite)
-                hmat.draw_rectangle(rect, color);
+            // Bbox. hmat.draw_rectangle uses the element-level line
+            // thickness (baked into the HailoMat at construction). To
+            // honour the per-class style.line_thickness override, fall
+            // through to cv::rectangle directly when one is set.
+            if (draw_bbox && !bbox_replaced_by_sprite) {
+                if (style && style->line_thickness > 0)
+                    cv::rectangle(hmat.get_matrices()[0], rect, color,
+                                  style->line_thickness);
+                else
+                    hmat.draw_rectangle(rect, color);
+            }
 
             // Detection text
             if (draw_label && !bbox_replaced_by_sprite && !text.empty()) {
