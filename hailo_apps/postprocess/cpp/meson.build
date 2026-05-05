@@ -267,3 +267,52 @@ shared_library('ocr_postprocess',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
 )
+
+################################################
+# HAILOTILECROPPER_DYNAMIC (community GStreamer element)
+################################################
+hailotilecropper_dynamic_inc = include_directories('hailotilecropper_dynamic')
+
+hailotilecropper_dynamic_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    hailotilecropper_dynamic_deps += opencv_dep
+endif
+
+shared_library('gsthailotilecropper_dynamic',
+    ['hailotilecropper_dynamic/gsthailobasecropper.cpp',
+     'hailotilecropper_dynamic/gsthailotilecropper_dynamic.cpp'],
+    include_directories : [hailotilecropper_dynamic_inc],
+    dependencies : hailotilecropper_dynamic_deps,
+    cpp_args : ['-DPACKAGE="hailotilecropper_dynamic"'],
+    gnu_symbol_visibility : 'default',
+    install : true,
+    install_dir : gst_plugins_dir,
+)
+
+################################################
+# HAILOOVERLAY_COMMUNITY (custom overlay GStreamer element)
+# Only built when yaml-cpp and GStreamer dependencies are available.
+################################################
+yaml_cpp_dep = dependency('yaml-cpp', required : false)
+
+if yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_video_dep.found()
+    overlay_community_inc = include_directories('overlay_community')
+
+    overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
+    if opencv_dep.found()
+        overlay_community_deps += opencv_dep
+    endif
+
+    shared_library('gsthailooverlay_community',
+        ['overlay_community/gsthailooverlay_community.cpp',
+         'overlay_community/overlay.cpp'],
+        include_directories : [rapidjson_inc, overlay_community_inc],
+        dependencies : overlay_community_deps,
+        cpp_args : ['-DPACKAGE="hailooverlay_community"'],
+        gnu_symbol_visibility : 'default',
+        install: true,
+        install_dir: gst_plugins_dir,
+    )
+else
+    message('Skipping hailooverlay_community (missing yaml-cpp or GStreamer dependencies)')
+endif
