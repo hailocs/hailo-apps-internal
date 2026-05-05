@@ -85,7 +85,7 @@ fi
 
 case "$MODE" in
     stream) MODE_ARGS=(--input rpi --openhd) ;;
-    shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --no-display) ;;
+    shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --openhd) ;;
 esac
 
 drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 &

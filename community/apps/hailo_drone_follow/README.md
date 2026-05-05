@@ -157,7 +157,6 @@ drone-follow --input udp://0.0.0.0:5600 --takeoff-landing --webui
 | `--connection URL` | `udpin://0.0.0.0:14540` | MAVSDK connection string |
 | `--takeoff-landing` | off | Auto arm/takeoff/land. Without this, the pilot switches to OFFBOARD via GCS. |
 | `--display` | auto-on when no UI flag | Local X11 window with overlay (tile rectangles stripped, target person's bbox highlighted via class-id remap). |
-| `--no-display` | off | Force headless mode (overrides the implicit-display default). Use for SSH/bench sessions or Mode-B SHM input. |
 | `--webui` | off | Web UI with live MJPEG video and click-to-follow (port 5001). Mutually exclusive with `--openhd`. |
 | `--openhd` | off | Send overlay video to OpenHD via UDP RTP. Mutually exclusive with `--webui`. |
 | `--record` | off | Record post-overlay video to `recordings/rec_<ts>.mkv` (pure-GStreamer x264enc + matroskamux + filesink). |

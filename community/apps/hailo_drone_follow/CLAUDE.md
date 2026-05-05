@@ -35,7 +35,7 @@ A Hailo-based drone-follow application that uses an AI pipeline (GStreamer + Hai
 - `--record-output PATH` / `--record-bitrate KBPS` — Override the recording filename and x264enc bitrate (default 5000 kbps).
 - `--openhd` — Send overlay video to OpenHD via UDP RTP. Uses x264 software encode (the RPi5 has no HW H.264). Mutually exclusive with `--webui`.
 - `--openhd-port` (default: 5500) / `--openhd-bitrate` (default: 3917 kbps) — OpenHD UDP destination and x264 starting bitrate. Bitrate is updated dynamically from QOpenHD's WFB link recommendation via the OpenHD bridge.
-- `--display` — Show the local X11 window with overlay. On the display branch, tile rectangles are stripped and the tracked target's bbox is recoloured via class-id remap (pure-metadata pad probe; see `strip_tiles_and_highlight_target` in `pipeline_adapter/vision_branches.py`). **Implicit-display rule:** when neither `--openhd` nor `--webui` is set, display defaults ON (so `drone-follow --input usb` opens a window). When a UI flag is set, display defaults OFF unless you also pass `--display` explicitly. Use `--no-display` to force headless mode (SSH sessions, Mode-B SHM input where OpenHD owns rendering).
+- `--display` — Show the local X11 window with overlay. On the display branch, tile rectangles are stripped and the tracked target's bbox is recoloured via class-id remap (pure-metadata pad probe; see `highlight_target` in `pipeline_adapter/vision_branches.py`). **Implicit-display rule:** when neither `--openhd` nor `--webui` is set, display defaults ON (so `drone-follow --input usb` opens a window). When a UI flag is set, display defaults OFF unless you also pass `--display` explicitly.
 
 ## Drone Connection
 

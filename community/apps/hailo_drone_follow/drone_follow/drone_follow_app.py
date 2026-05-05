@@ -91,12 +91,7 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--display", action="store_true",
                        help="Show local X11 display window with overlay (tile rectangles "
                             "stripped, target person's bbox emphasised). Default: enabled "
-                            "when neither --openhd nor --webui is set; disabled otherwise. "
-                            "Use --no-display to force headless mode.")
-    group.add_argument("--no-display", action="store_true",
-                       help="Force headless mode (overrides the implicit display default). "
-                            "Use this for SSH/bench sessions and Mode-B SHM input where "
-                            "OpenHD owns rendering.")
+                            "when neither --openhd nor --webui is set; disabled otherwise.")
     group.add_argument("--record", action="store_true",
                        help="Build pure-GStreamer recording branch (videoconvert + H.264 "
                             "encode + matroskamux + filesink). Auto-starts on launch; "
@@ -186,16 +181,15 @@ def main():
     target_state = FollowTargetState()
 
     # Pre-parse output-branch flags so we can wire the web UI / recording
-    # state objects before create_app() runs the full parser. Display follows
-    # the implicit rule: enabled when neither --openhd nor --webui is set,
-    # unless --no-display is passed.
+    # state objects before create_app() runs the full parser. Display
+    # follows the implicit rule: enabled when neither --openhd nor
+    # --webui is set.
     ui_pre = argparse.ArgumentParser(add_help=False)
     ui_pre.add_argument("--webui", action="store_true")
     ui_pre.add_argument("--webui-port", type=int, default=5001)
     ui_pre.add_argument("--webui-fps", type=int, default=10)
     ui_pre.add_argument("--openhd", action="store_true")
     ui_pre.add_argument("--display", action="store_true")
-    ui_pre.add_argument("--no-display", action="store_true")
     ui_pre.add_argument("--record", action="store_true")
     ui_pre.add_argument("--log-perf", action="store_true")
     ui_pre_args, _ = ui_pre.parse_known_args()
@@ -204,11 +198,8 @@ def main():
         raise SystemExit("error: --openhd and --webui are mutually exclusive "
                          "(only one network encoder may run at a time)")
 
-    if (not ui_pre_args.openhd and not ui_pre_args.webui
-            and not ui_pre_args.no_display):
+    if not ui_pre_args.openhd and not ui_pre_args.webui:
         ui_pre_args.display = True
-    if ui_pre_args.no_display:
-        ui_pre_args.display = False
 
     # Build the recording branch whenever --record is set. The valve gates
     # frames in/out at runtime so toggling from the UI / OpenHD bridge is
@@ -287,14 +278,11 @@ def main():
     args = app.options_menu
     if getattr(args, "openhd", False) and getattr(args, "webui", False):
         raise SystemExit("error: --openhd and --webui are mutually exclusive")
-    # Implicit-display rule: enabled when neither --openhd nor --webui is set,
-    # unless --no-display was passed. Mirror the pre-parse logic so the
-    # pipeline string builder reads the same display state.
-    if (not getattr(args, "openhd", False) and not getattr(args, "webui", False)
-            and not getattr(args, "no_display", False)):
+    # Implicit-display rule: enabled when neither --openhd nor --webui is
+    # set. Mirror the pre-parse logic so the pipeline string builder reads
+    # the same display state.
+    if not getattr(args, "openhd", False) and not getattr(args, "webui", False):
         args.display = True
-    if getattr(args, "no_display", False):
-        args.display = False
     _configure_logging(getattr(args, "log_verbosity", "normal"))
     _resolve_serial_connection(args)
 

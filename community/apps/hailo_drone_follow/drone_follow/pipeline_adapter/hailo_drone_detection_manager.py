@@ -1061,14 +1061,11 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             openhd = getattr(self.options_menu, 'openhd', False)
             webui = self._ui_enabled
             record = self._record_enabled
-            no_display = getattr(self.options_menu, 'no_display', False)
             display = getattr(self.options_menu, 'display', False)
-            # Implicit-display rule: when neither --openhd nor --webui is set
-            # and --no-display was not passed, default the display window on.
-            if not openhd and not webui and not no_display:
+            # Implicit-display rule: when neither --openhd nor --webui is
+            # set, default the local display window on.
+            if not openhd and not webui:
                 display = True
-            if no_display:
-                display = False
             is_shm = str(self.video_source).startswith('shm://')
             is_udp = str(self.video_source).startswith('udp://')
 
