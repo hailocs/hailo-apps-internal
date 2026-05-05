@@ -201,10 +201,22 @@ def main():
     if not ui_pre_args.openhd and not ui_pre_args.webui:
         ui_pre_args.display = True
 
-    # Build the recording branch whenever --record is set. The valve gates
-    # frames in/out at runtime so toggling from the UI / OpenHD bridge is
-    # cheap; the encoder runs throughout the pipeline lifetime.
-    record_branch_enabled = ui_pre_args.record
+    # Build the recording branch whenever there's a control surface that
+    # can toggle it remotely:
+    #
+    #   --record  : auto-start recording at launch.
+    #   --webui   : the web UI's Record button can toggle mid-flight.
+    #   --openhd  : QOpenHD's Record button (via the OpenHD bridge) can
+    #               toggle mid-flight.
+    #
+    # The valve gates frames at runtime, so building the branch when no
+    # toggle source exists wastes CPU; building it when one does lets
+    # operators flip recording on/off without restarting drone-follow.
+    record_branch_enabled = (
+        ui_pre_args.record
+        or ui_pre_args.webui
+        or ui_pre_args.openhd
+    )
 
     # Always create SharedUIState — the OpenHD bridge needs it for bbox
     # messages even when the web UI is disabled.

@@ -784,24 +784,27 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 shm_res = _read_shm_resolution()
                 if shm_res is not None:
                     self.video_width, self.video_height, self.frame_rate = shm_res
-            # Connect appsink after pipeline is created by super().__init__
-            if self._ui_enabled:
-                self._connect_mjpeg_sink()
+            # Connect appsink (mjpeg_sink) + splitmuxsink (file_sink)
+            # signals after pipeline is created. The helper is a no-op
+            # for elements that aren't in the current pipeline.
+            self._connect_mjpeg_sink()
             # Wire the highlight_target metadata pad probe to the
             # local_meta_id identity on the display/record branch.
             self._connect_local_meta_probe()
 
         def _connect_mjpeg_sink(self):
-            """Connect the MJPEG appsink new-sample signal (web UI only).
-
-            Recording uses a pure-GStreamer FILE_SINK_PIPELINE (videoconvert
-            -> x264enc -> matroskamux -> filesink) gated by record_valve, so
-            no appsink callback is needed for recording.
+            """Connect MJPEG appsink (web UI) and splitmuxsink
+            ``format-location-full`` (recording) signal handlers. Called
+            after every pipeline construction / rebuild.
             """
             self._Gst = _get_gst()
             mjpeg_sink = self.pipeline.get_by_name("mjpeg_sink")
             if mjpeg_sink:
                 mjpeg_sink.connect("new-sample", self._on_mjpeg_sample)
+            file_sink = self.pipeline.get_by_name("file_sink")
+            if file_sink:
+                file_sink.connect("format-location-full",
+                                  self._on_record_format_location)
 
         def _on_mjpeg_sample(self, appsink):
             """appsink callback: extract pre-encoded JPEG bytes."""
@@ -956,8 +959,7 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
         def _on_pipeline_rebuilt(self):
             super()._on_pipeline_rebuilt()
-            if self._ui_enabled:
-                self._connect_mjpeg_sink()
+            self._connect_mjpeg_sink()
             self._connect_local_meta_probe()
 
         def _connect_local_meta_probe(self):
@@ -979,27 +981,37 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             return os.path.join(self._record_dir, f"rec_{ts}.mkv")
 
+        def _on_record_format_location(self, splitmux, fragment_id, *_):
+            """``format-location-full`` callback for splitmuxsink. Returns
+            a fresh timestamped path for each new recording fragment so
+            each Record click produces its own ``.mkv`` file.
+            """
+            os.makedirs(self._record_dir, exist_ok=True)
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            path = os.path.join(self._record_dir, f"rec_{ts}.mkv")
+            self._current_record_path = path
+            LOGGER.info("[record] New recording fragment -> %s", path)
+            return path
+
         def start_recording(self, path=None):
-            """Open record_valve so frames flow through the GStreamer
-            recording branch (videoconvert -> x264enc -> matroskamux ->
-            filesink). The branch was built into the pipeline at startup
-            (when --record was set); this just toggles the valve.
+            """Open record_valve so frames flow through the recording
+            branch. ``splitmuxsink`` lazily creates a fresh ``.mkv`` for
+            this session via the ``format-location-full`` callback.
 
-            ``path`` is informational only — the filesink location is set
-            at pipeline-construction time. Returns the file path that the
-            recording is actually being written to.
-
-            Note: GStreamer writes a single .mkv per pipeline run. Pausing
-            (stop_recording) and resuming creates a time gap inside the
-            same file rather than a new file. Header may need
-            ``ffmpeg -i in.mkv -c copy out.mkv`` after a hard stop.
+            ``path`` is ignored (kept for API compatibility with the
+            previous implementation). Returns the file path the recording
+            is being written to (set by the format-location callback when
+            the first buffer arrives).
             """
             with self._record_lock:
                 if not self._record_enabled:
-                    LOGGER.warning("[record] --record was not set; recording branch not built")
+                    LOGGER.warning("[record] recording branch not built — "
+                                   "pass --record (or --webui / --openhd "
+                                   "for runtime toggling)")
                     return None
                 if self._recording:
-                    LOGGER.info("[record] Already recording: %s", self._current_record_path)
+                    LOGGER.info("[record] Already recording: %s",
+                                self._current_record_path)
                     return self._current_record_path
 
                 valve = self.pipeline.get_by_name("record_valve")
@@ -1009,17 +1021,17 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
                 valve.set_property("drop", False)
                 self._recording = True
-                self._current_record_path = self._initial_record_path or path
-                LOGGER.info("[record] Started recording (valve open) -> %s",
-                            self._current_record_path)
+                LOGGER.info("[record] Recording started (valve open)")
+                # _current_record_path will be set when the
+                # format-location-full callback fires for the new
+                # fragment. Return whatever is currently known.
                 return self._current_record_path
 
         def stop_recording(self):
-            """Close record_valve so frames stop reaching the encoder.
-
-            The encoder + matroskamux remain in PLAYING; the file is
-            finalised on pipeline shutdown (``cleanup_recording_branch``).
-            Non-blocking.
+            """Close record_valve and emit ``split-now`` on splitmuxsink
+            so the current ``.mkv`` is finalised. The next call to
+            :meth:`start_recording` will produce a brand-new file rather
+            than appending to the previous one.
             """
             with self._record_lock:
                 if not self._recording:
@@ -1029,15 +1041,23 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 if valve:
                     valve.set_property("drop", True)
 
-                self._recording = False
+                file_sink = self.pipeline.get_by_name("file_sink")
                 path = self._current_record_path
-                LOGGER.info("[record] Paused recording (valve closed): %s", path)
+                if file_sink is not None:
+                    try:
+                        file_sink.emit("split-now")
+                    except Exception:  # noqa: BLE001
+                        LOGGER.exception("[record] split-now emission failed")
+
+                self._recording = False
+                self._current_record_path = None
+                LOGGER.info("[record] Recording stopped, file finalised: %s", path)
                 return path
 
         def cleanup_recording_branch(self):
-            """Send EOS to the recording branch and walk it down to NULL so
-            matroskamux flushes its index and filesink closes the file
-            cleanly.
+            """Send EOS to the recording branch and walk it down to NULL
+            so the current ``splitmuxsink`` fragment finalises and the
+            file closes cleanly on pipeline shutdown.
             """
             if not self._record_enabled:
                 return
@@ -1050,16 +1070,22 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     sink_pad = valve.get_static_pad("sink")
                     if sink_pad is not None:
                         sink_pad.send_event(Gst.Event.new_eos())
-                file_sink = self.pipeline.get_by_name("file_sink")
-                # Walk the record sub-branch down to NULL so matroskamux
-                # flushes its index and filesink closes the file cleanly.
-                for el_name in ("record_valve", "file_sink_mux", "file_sink"):
+                # Walk the record sub-branch down to NULL so the current
+                # splitmuxsink fragment (if any) finalises cleanly.
+                torn_down = False
+                for el_name in ("record_valve", "file_sink"):
                     el = self.pipeline.get_by_name(el_name)
                     if el is not None:
                         el.set_state(Gst.State.NULL)
-                if file_sink is not None:
-                    LOGGER.info("[record] Recording branch torn down (file: %s)",
-                                self._current_record_path or self._initial_record_path)
+                        torn_down = True
+                if torn_down:
+                    last_file = self._current_record_path
+                    if last_file:
+                        LOGGER.info("[record] Recording branch torn down "
+                                    "(last file: %s)", last_file)
+                    else:
+                        LOGGER.info("[record] Recording branch torn down "
+                                    "(no recording was active)")
 
         def get_pipeline_string(self):
             """Build the GStreamer pipeline string.
@@ -1170,10 +1196,11 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                 fakesink_sync=self.sync,
             )
             if record:
-                LOGGER.info("[record] Recording branch built -> %s "
-                            "(bitrate %d kbps)",
-                            record_output,
-                            getattr(self.options_menu, 'record_bitrate', 5000))
+                LOGGER.info("[record] Recording branch ready "
+                            "(bitrate %d kbps; click Record on the web UI / "
+                            "OpenHD to start writing a fresh .mkv into %s)",
+                            getattr(self.options_menu, 'record_bitrate', 5000),
+                            self._record_dir)
 
             return ' ! '.join([source_pipeline, infer_stage,
                                USER_CALLBACK_PIPELINE(), output_pipeline])
