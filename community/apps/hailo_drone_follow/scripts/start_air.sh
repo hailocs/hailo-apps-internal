@@ -88,7 +88,7 @@ case "$MODE" in
     shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --openhd) ;;
 esac
 
-drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 --tiles-x 2 --tiles-y 2 &
+drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 &
 FOLLOW_PID=$!
 
 trap "kill $FOLLOW_PID 2>/dev/null; sudo kill $OPENHD_PID 2>/dev/null; wait" EXIT
