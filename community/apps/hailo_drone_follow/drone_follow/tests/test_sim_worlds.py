@@ -22,6 +22,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from drone_follow.pipeline_defaults import TILE_FLAGS
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SIM_SCRIPT = REPO_ROOT / "sim" / "start_sim.sh"
 SETUP_ENV = REPO_ROOT / "setup_env.sh"
@@ -152,7 +154,12 @@ def sim_run(tmp_path, request):
                 f"sim exited early (code={sim.returncode}); see {sim_log_path}"
             )
 
-        extra = (" " + " ".join(extra_args)) if extra_args else ""
+        # Tile / multi-scale flags from the canonical defaults, so tests
+        # exercise the same pipeline shape as production (start_air.sh).
+        # Tests can still override by re-passing --tiles-x etc. in
+        # extra_args — argparse uses last-wins.
+        all_extra = list(TILE_FLAGS) + list(extra_args)
+        extra = (" " + " ".join(all_extra)) if all_extra else ""
         reid_flag = "" if reid else " --no-reid"
         cmd = (
             f"source {SETUP_ENV} && "
@@ -256,14 +263,10 @@ from drone_follow.tests._reid_gate import REID_PAIR_MEAN, REID_PAIR_MIN
 
 def test_person_in_front_holds_one_id(sim_run):
     """Static single person facing the camera — one ByteTracker ID expected."""
-    # 3x2 grid + multi-scale level 1 adds a 1x1 (whole-frame) tile on top, so a
-    # target straddling the grid's central crack is also covered by the global
-    # pass.
-    log = _read_jsonl(sim_run(
-        "person_in_front",
-        extra_args=("--tiles-x", "3", "--tiles-y", "2",
-                    "--multi-scale", "--scale-levels", "1"),
-    ))
+    # Tile shape (3x2 + 1x1 multi-scale) comes from sim_run's TILE_FLAGS
+    # default — same shape that ``scripts/start_air.sh`` uses in
+    # production. Source: ``drone_follow/pipeline_defaults.py``.
+    log = _read_jsonl(sim_run("person_in_front"))
     s = _summarize("person_in_front", log)
 
     assert s["n"] > 0, "no log lines written — drone-follow likely never started"
