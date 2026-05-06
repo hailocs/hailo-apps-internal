@@ -115,8 +115,8 @@ def _add_app_args(parser: argparse.ArgumentParser) -> None:
                             f"(default: {_DEFAULT_REID_HEF}). Use --no-reid to disable.")
     group.add_argument("--no-reid", action="store_true",
                        help="Disable ReID re-identification")
-    group.add_argument("--update-interval", type=int, default=30,
-                       help="Frames between ReID gallery embedding updates while following (default: 30)")
+    group.add_argument("--update-interval", type=int, default=10,
+                       help="Frames between ReID gallery embedding updates while following (default: 10)")
     group.add_argument("--reid-threshold", type=float, default=0.75,
                        help="Cosine similarity threshold for ReID match (0.0–1.0, default: 0.75)")
     group.add_argument("--reid-timeout", type=float, default=20.0,
@@ -242,7 +242,7 @@ def main():
     reid_pre = argparse.ArgumentParser(add_help=False)
     reid_pre.add_argument("--reid-model", type=str, default=_DEFAULT_REID_HEF)
     reid_pre.add_argument("--no-reid", action="store_true")
-    reid_pre.add_argument("--update-interval", type=int, default=30)
+    reid_pre.add_argument("--update-interval", type=int, default=10)
     reid_pre.add_argument("--reid-threshold", type=float, default=0.75)
     reid_pre.add_argument("--reid-timeout", type=float, default=20.0)
     reid_pre.add_argument("--reid-drift-threshold", type=float, default=0.6,
