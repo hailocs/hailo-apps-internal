@@ -588,7 +588,7 @@ export default function App() {
         />
         {vw > 0 && vh > 0 && (
           <svg className="overlay" viewBox={`0 0 ${vw} ${vh}`}>
-            {detections.map((det) => {
+            {detections.map((det, i) => {
               const x = det.bbox.x * vw;
               const y = det.bbox.y * vh;
               const w = det.bbox.w * vw;
@@ -599,7 +599,7 @@ export default function App() {
 
               return (
                 <g
-                  key={det.id ?? `${det.bbox.x}-${det.bbox.y}`}
+                  key={`${det.id ?? "x"}-${i}-${det.bbox.x.toFixed(3)}-${det.bbox.y.toFixed(3)}`}
                   onClick={hasId ? () => handleFollow(det.id) : undefined}
                   style={{ cursor: hasId ? "pointer" : "default", pointerEvents: "auto" }}
                 >
