@@ -20,7 +20,7 @@ class ControllerConfig:
     hfov: float = 66.0
     vfov: float = 41.0
     # --- Yaw (horizontal centering): center_x → yawspeed ---
-    kp_yaw: float = 5
+    kp_yaw: float = 4
     dead_zone_deg: float = 2.0
     max_yawspeed: float = 90.0
     # --- Forward (distance via bbox): bbox_height → forward_m_s ---
@@ -35,7 +35,7 @@ class ControllerConfig:
     # the abrupt max-retreat step from max_bbox_height_safety. With
     # kp_distance_back=2.5 and max_backward=1.5, retreat saturates at
     # |factor|=0.6 → bbox≈1.6×target, well below the 0.8 panic line.
-    kp_distance: float = 0.6            # approach gain (factor > 0, person too far)
+    kp_distance: float = 0.8            # approach gain (factor > 0, person too far)
     kp_distance_back: float = 2.5       # retreat gain (factor < 0, person too close)
     target_bbox_height: float = 0.25    # desired person size in frame (0-0.25)
     # NOTE: semantics changed in 2026-04. Old: (pct/100)*target_bbox_height

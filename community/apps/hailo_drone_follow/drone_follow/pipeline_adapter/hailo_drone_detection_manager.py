@@ -65,10 +65,34 @@ def _build_det_info(person, track_id=None):
 
 
 def _update_ui(ui_state, persons, person_to_id, following_id, paused=False):
-    """Push detection metadata to the web UI if enabled."""
+    """Push detection metadata to the web UI if enabled.
+
+    A track id may end up attached to more than one detection in a single
+    frame (multi-scale tile duplicates that the tracker associates to the
+    same track, or transient cross-actor matches around a swap). The UI
+    keys SVG bboxes by id, so duplicates collide and React leaks stale
+    elements. Keep the highest-confidence detection per id; emit the rest
+    with id=None so they render as plain (white) clickable boxes.
+    """
     if ui_state is None:
         return
-    all_dets = [_build_det_info(p, person_to_id.get(id(p))) for p in persons]
+    keep_obj_id_by_tid: dict = {}
+    for p in persons:
+        tid = person_to_id.get(id(p))
+        if tid is None:
+            continue
+        prev = keep_obj_id_by_tid.get(tid)
+        if prev is None:
+            keep_obj_id_by_tid[tid] = id(p)
+        else:
+            prev_p = next((q for q in persons if id(q) == prev), None)
+            if prev_p is not None and p.get_confidence() > prev_p.get_confidence():
+                keep_obj_id_by_tid[tid] = id(p)
+    keep_obj_ids = set(keep_obj_id_by_tid.values())
+    all_dets = [
+        _build_det_info(p, person_to_id.get(id(p)) if id(p) in keep_obj_ids else None)
+        for p in persons
+    ]
     ui_state.update_detections(all_dets, following_id, paused=paused)
 
 
