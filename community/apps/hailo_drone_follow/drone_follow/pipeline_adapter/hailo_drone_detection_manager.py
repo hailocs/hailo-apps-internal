@@ -1007,12 +1007,20 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
         def _on_record_format_location(self, splitmux, fragment_id, *_):
             """``format-location-full`` callback for splitmuxsink. Returns
-            a fresh timestamped path for each new recording fragment so
-            each Record click produces its own ``.mkv`` file.
+            the path for the current recording fragment.
+
+            ``start_recording`` pre-generates the path and stashes it on
+            ``self._current_record_path`` so the bridge's caller has a
+            usable return value immediately. We honour that pre-set
+            value here; only fall back to generating a fresh path if it
+            wasn't pre-set (e.g. ``--record`` auto-start, where the
+            valve is opened before any explicit start_recording call).
             """
-            os.makedirs(self._record_dir, exist_ok=True)
-            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            path = os.path.join(self._record_dir, f"rec_{ts}.mkv")
+            if self._current_record_path:
+                LOGGER.info("[record] New recording fragment -> %s",
+                            self._current_record_path)
+                return self._current_record_path
+            path = self._generate_record_path()
             self._current_record_path = path
             LOGGER.info("[record] New recording fragment -> %s", path)
             return path
@@ -1043,12 +1051,17 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
                     LOGGER.error("[record] record_valve not found in pipeline")
                     return None
 
+                # Pre-generate the path now so the bridge / web UI
+                # caller gets the real filename in the return value.
+                # ``_on_record_format_location`` honours this pre-set
+                # value when splitmuxsink fires its callback shortly
+                # after the first buffer arrives, so no timestamp drift.
+                self._current_record_path = self._generate_record_path()
+
                 valve.set_property("drop", False)
                 self._recording = True
-                LOGGER.info("[record] Recording started (valve open)")
-                # _current_record_path will be set when the
-                # format-location-full callback fires for the new
-                # fragment. Return whatever is currently known.
+                LOGGER.info("[record] Recording started (valve open) -> %s",
+                            self._current_record_path)
                 return self._current_record_path
 
         def stop_recording(self):
