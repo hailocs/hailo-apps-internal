@@ -140,13 +140,46 @@ def openhd_branch(port: int, bitrate_kbps: int) -> str:
     bitrate_bps = bitrate_kbps * 1000
     encoder = select_h264_encoder(bitrate_bps, bitrate_kbps)
     factory, props = encoder.split(" ", 1)
+    # Streaming-only tuning. Three load-bearing properties on x264enc:
+    #
+    # * ``key-int-max=5`` — IDR every 5 frames so a single lost UDP packet
+    #   only corrupts ~0.2 s of video before the next IDR refresh, vs.
+    #   the ~10 s default GOP.
+    # * ``threads=2`` — explicit two-thread encoding so x264 doesn't run
+    #   single-threaded on RPi5 at the bitrates QOpenHD asks for.
+    # * ``sliced-threads=false`` — **load-bearing, do not remove**. With
+    #   ``tune=zerolatency``, libx264 internally enables sliced-threads
+    #   (i_sliced_threads=1), splitting each frame into 2 slices when
+    #   threads=2. On a lossy radio link this produces visible
+    #   "half-frame corruption" (one slice survives, the other turns
+    #   into blocky garbage) instead of clean whole-frame drops; we
+    #   want the latter. Confirmed by NAL-unit count regression: NEW
+    #   produced 2x slices/frame vs OLD until this was restored.
+    #
+    # Not applied to the recording branch — slice-loss artifacts don't
+    # apply to a local file.
+    if factory == "x264enc":
+        stream_props = "threads=2 key-int-max=5 sliced-threads=false"
+    else:  # openh264enc — no threads knob, gop-size already set in template
+        stream_props = ""
+    # All queues in this branch are pinned to max-size-buffers=3 and
+    # explicitly disable the byte/time limits (defaults are 10 MB / 1 s
+    # in GStreamer). Without these explicit caps the convert/enc queues
+    # would default to ``max-size-buffers=200`` and ``max-size-time=1s``;
+    # under CPU pressure x264 falls behind, ~1 s of frames pile up, the
+    # queue blocks, then drains in a burst — visible on the radio link
+    # as the periodic "resetting every second" stutter. The pre-refactor
+    # code used the project ``QUEUE()`` helper which already set these
+    # caps; we restore the same shape inline.
     return (
-        "queue name=openhd_branch_q leaky=downstream max-size-buffers=3 ! "
-        "queue name=openhd_stream_convert_q ! "
+        "queue name=openhd_branch_q leaky=downstream max-size-buffers=3 "
+        "max-size-bytes=0 max-size-time=0 ! "
+        "queue name=openhd_stream_convert_q max-size-buffers=3 "
+        "max-size-bytes=0 max-size-time=0 ! "
         "videoconvert n-threads=2 ! video/x-raw,format=I420 ! "
-        "queue name=openhd_stream_enc_q ! "
-        f"{factory} name=openhd_stream_encoder {props} ! "
-        "h264parse config-interval=1 ! "
+        "queue name=openhd_stream_enc_q max-size-buffers=3 "
+        "max-size-bytes=0 max-size-time=0 ! "
+        f"{factory} name=openhd_stream_encoder {props} {stream_props} ! "
         "rtph264pay config-interval=1 pt=96 mtu=1440 ! "
         f"udpsink host=127.0.0.1 port={port} sync=false async=false"
     )
