@@ -103,6 +103,25 @@ class FollowServerHandler(BaseHTTPRequestHandler):
             if self.shared_state is not None:
                 available_ids = self.shared_state.get_available_ids()
                 if detection_id not in available_ids:
+                    # The UI labels the followed bbox with ReID's stable
+                    # `original_id` (so the operator sees the same id across
+                    # ReID re-identifications). That id may not match any
+                    # current tracker id in `available_ids` after a swap. A
+                    # click on that bbox is the operator confirming the
+                    # existing lock — accept as a no-op success rather than
+                    # 404'ing the click.
+                    cur_target = self.target_state.get_target()
+                    if (self.reid_manager is not None
+                            and self.reid_manager.original_id == detection_id
+                            and cur_target is not None
+                            and cur_target in available_ids):
+                        captured_h = self._capture_bbox_for_id(detection_id)
+                        self._send_json({"status": "success",
+                                         "following_id": detection_id,
+                                         "target_bbox_height": captured_h})
+                        LOGGER.info("Click on stable ReID id %d — already following (tracker id %d)",
+                                    detection_id, cur_target)
+                        return
                     self._send_json({
                         "status": "error",
                         "message": f"Detection ID {detection_id} not found in current frame",

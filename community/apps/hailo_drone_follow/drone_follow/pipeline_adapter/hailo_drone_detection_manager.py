@@ -69,30 +69,25 @@ def _update_ui(ui_state, persons, person_to_id, following_id, paused=False):
 
     A track id may end up attached to more than one detection in a single
     frame (multi-scale tile duplicates that the tracker associates to the
-    same track, or transient cross-actor matches around a swap). The UI
-    keys SVG bboxes by id, so duplicates collide and React leaks stale
-    elements. Keep the highest-confidence detection per id; emit the rest
-    with id=None so they render as plain (white) clickable boxes.
+    same track, or transient cross-actor matches around a swap). Emit only
+    the highest-confidence detection per track id so the UI doesn't render
+    overlapping ghost bboxes that block clicks on the real one. Untracked
+    persons (no track id) are passed through unchanged.
     """
     if ui_state is None:
         return
-    keep_obj_id_by_tid: dict = {}
+    best_by_tid: dict = {}
+    untracked = []
     for p in persons:
         tid = person_to_id.get(id(p))
         if tid is None:
+            untracked.append(p)
             continue
-        prev = keep_obj_id_by_tid.get(tid)
-        if prev is None:
-            keep_obj_id_by_tid[tid] = id(p)
-        else:
-            prev_p = next((q for q in persons if id(q) == prev), None)
-            if prev_p is not None and p.get_confidence() > prev_p.get_confidence():
-                keep_obj_id_by_tid[tid] = id(p)
-    keep_obj_ids = set(keep_obj_id_by_tid.values())
-    all_dets = [
-        _build_det_info(p, person_to_id.get(id(p)) if id(p) in keep_obj_ids else None)
-        for p in persons
-    ]
+        prev = best_by_tid.get(tid)
+        if prev is None or p.get_confidence() > prev.get_confidence():
+            best_by_tid[tid] = p
+    all_dets = [_build_det_info(p, tid) for tid, p in best_by_tid.items()]
+    all_dets.extend(_build_det_info(p) for p in untracked)
     ui_state.update_detections(all_dets, following_id, paused=paused)
 
 
