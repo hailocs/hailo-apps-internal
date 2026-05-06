@@ -162,6 +162,13 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_app_args(parser)
     add_tracker_args(parser)
 
+    # Tile / multi-scale defaults are injected AFTER the upstream
+    # ``GStreamerTilingApp._add_tiling_arguments`` runs (it registers
+    # ``--tiles-x`` etc. and would clobber any ``set_defaults`` made
+    # here). See ``DroneFollowTilingApp._add_tiling_arguments`` in
+    # ``hailo_drone_detection_manager.py`` for the override; the values
+    # live in ``drone_follow/pipeline_defaults.py``.
+
     # Camera is mounted right-side up: no mirroring needed.
     # The library defines --horizontal-mirror/--vertical-mirror (store_true, default=False).
     # Pass both flags on the command line if the camera is upside-down.

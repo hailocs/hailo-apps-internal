@@ -22,8 +22,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from drone_follow.pipeline_defaults import TILE_FLAGS
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SIM_SCRIPT = REPO_ROOT / "sim" / "start_sim.sh"
 SETUP_ENV = REPO_ROOT / "setup_env.sh"
@@ -154,12 +152,10 @@ def sim_run(tmp_path, request):
                 f"sim exited early (code={sim.returncode}); see {sim_log_path}"
             )
 
-        # Tile / multi-scale flags from the canonical defaults, so tests
-        # exercise the same pipeline shape as production (start_air.sh).
-        # Tests can still override by re-passing --tiles-x etc. in
-        # extra_args — argparse uses last-wins.
-        all_extra = list(TILE_FLAGS) + list(extra_args)
-        extra = (" " + " ".join(all_extra)) if all_extra else ""
+        # Tile / multi-scale shape comes from drone-follow's own defaults
+        # (drone_follow/pipeline_defaults.py). Tests can still override
+        # by passing --tiles-x etc. via extra_args (CLI beats default).
+        extra = (" " + " ".join(extra_args)) if extra_args else ""
         reid_flag = "" if reid else " --no-reid"
         cmd = (
             f"source {SETUP_ENV} && "

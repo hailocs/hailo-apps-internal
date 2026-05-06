@@ -733,6 +733,25 @@ def create_app(shared_state, target_state=None, eos_reached=None, ui_state=None,
 
     class DroneFollowTilingApp(GStreamerTilingApp):
         """Tiling app with EOS handling and optional MJPEG appsink for web UI."""
+
+        def _add_tiling_arguments(self, parser):
+            """Register the upstream tiling args, then override their
+            defaults with our canonical pipeline shape.
+
+            ``set_defaults`` must run AFTER ``add_argument`` to take
+            effect (argparse evaluates action-level defaults first and
+            only applies parser-level defaults to fields that aren't
+            already set). Hooking here is the cleanest way to interpose
+            between registration and ``parse_args`` (which fires inside
+            ``super().__init__()`` further along the chain).
+
+            CLI flags continue to win over our defaults — pass
+            ``--tiles-x N`` to override per-run.
+            """
+            super()._add_tiling_arguments(parser)
+            from drone_follow.pipeline_defaults import TILE_DEFAULTS
+            parser.set_defaults(**TILE_DEFAULTS)
+
         def __init__(self, app_callback, user_data, parser=None, eos_reached=None,
                      ui_enabled=False, ui_state=None, ui_fps=30,
                      record_enabled=False, record_dir=None):

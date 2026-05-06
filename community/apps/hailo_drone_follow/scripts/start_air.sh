@@ -88,16 +88,7 @@ case "$MODE" in
     shm)    MODE_ARGS=(--input shm:///tmp/openhd_raw_video --openhd) ;;
 esac
 
-# Pull the canonical tile / multi-scale flags from drone_follow/pipeline_defaults.py
-# so production and the sim tests stay in lock-step on pipeline shape.
-# venv was activated above via setup_env.sh, so drone_follow is importable.
-PIPELINE_ARGS=( $(python3 -c "from drone_follow.pipeline_defaults import TILE_FLAGS; print(' '.join(TILE_FLAGS))") )
-if [ ${#PIPELINE_ARGS[@]} -eq 0 ]; then
-    echo "ERROR: failed to load TILE_FLAGS from drone_follow.pipeline_defaults" >&2
-    exit 1
-fi
-
-drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 "${PIPELINE_ARGS[@]}" &
+drone-follow "${MODE_ARGS[@]}" "${CONFIG_ARG[@]}" --connection tcpout://127.0.0.1:5760 &
 FOLLOW_PID=$!
 
 trap "kill $FOLLOW_PID 2>/dev/null; sudo kill $OPENHD_PID 2>/dev/null; wait" EXIT
