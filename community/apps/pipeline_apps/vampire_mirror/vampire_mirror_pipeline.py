@@ -5,6 +5,7 @@ and adds vampire-mirror-specific CLI arguments. The app-specific vampire
 logic runs in the Python callback, not in the pipeline.
 """
 
+import argparse
 import setproctitle
 
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -72,6 +73,13 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
             type=str,
             default=None,
             help="Directory for the vampire face database. Default: <app_dir>/database.",
+        )
+
+        parser.add_argument(
+            "--bg-process",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Run the background EMA in a subprocess (default: on). Use --no-bg-process for in-process.",
         )
 
         super().__init__(app_callback_fn, user_data, parser)

@@ -61,6 +61,7 @@ class VampireMirrorCallback(app_callback_class):
         # Modules — initialized after pipeline construction
         self.frame_geometry: FrameGeometry | None = None
         self.bg_manager: BackgroundManager | None = None
+        self.bg_service: "BackgroundService | None" = None
         self.engine: VampireEngine | None = None
 
         # Pipeline options — set by main() after pipeline construction
@@ -82,6 +83,32 @@ def _get_track_id(detection) -> int:
     return tracks[0].get_id() if len(tracks) == 1 else 0
 
 
+def _build_person_mask(detections, width: int, height: int) -> np.ndarray | None:
+    """Union of all person segmentation masks in pixel space. Returns None if no persons."""
+    out = None
+    for det in detections:
+        if det.get_label() != "person":
+            continue
+        masks = det.get_objects_typed(hailo.HAILO_CONF_CLASS_MASK)
+        if not masks:
+            continue
+        bbox = det.get_bbox()
+        px1 = max(int(bbox.xmin() * width), 0)
+        py1 = max(int(bbox.ymin() * height), 0)
+        px2 = min(int((bbox.xmin() + bbox.width()) * width), width)
+        py2 = min(int((bbox.ymin() + bbox.height()) * height), height)
+        if px2 <= px1 or py2 <= py1:
+            continue
+        mask = masks[0]
+        mask_data = np.array(mask.get_data()).reshape(mask.get_height(), mask.get_width())
+        resized = cv2.resize(mask_data, (px2 - px1, py2 - py1), interpolation=cv2.INTER_LINEAR)
+        binary = cv2.dilate((resized > 0.5).astype(np.uint8), _DILATION_KERNEL, iterations=2).astype(bool)
+        if out is None:
+            out = np.zeros((height, width), dtype=bool)
+        out[py1:py2, px1:px2] |= binary
+    return out
+
+
 def app_callback(element, buffer, user_data: VampireMirrorCallback):
     """Per-frame callback."""
     if buffer is None:
@@ -96,6 +123,7 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
     if frame is None:
         return 1
 
+    bg_service = getattr(user_data, "bg_service", None)
     bg_manager = user_data.bg_manager
     engine = user_data.engine
     geometry = user_data.frame_geometry
@@ -121,29 +149,44 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
             geometry.crop_y1, geometry.crop_y2,
         )
 
-    # --- Phase 1: Background capture ---
-    if not bg_manager.is_ready:
-        remaining = bg_manager.frames_remaining
-        bg_manager.update(frame)
-        overlay = frame.copy()
-        cv2.putText(
-            overlay, f"Capturing background... {remaining}",
-            (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2,
-        )
-        cropped = geometry.center_crop(overlay)
-        user_data.set_frame(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
-        return 1
+    roi = hailo.get_roi_from_buffer(buffer)
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    person_mask = _build_person_mask(detections, width, height)
+
+    # --- Service path (preferred) ---
+    if bg_service is not None:
+        bg_service.submit_frame(frame, person_mask=person_mask)
+        if not bg_service.is_ready():
+            overlay = frame.copy()
+            cv2.putText(
+                overlay, "Capturing background...",
+                (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2,
+            )
+            cropped = geometry.center_crop(overlay)
+            user_data.set_frame(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
+            return 1
+        background = bg_service.get_background_view()
+    else:
+        # --- Legacy in-process path ---
+        if not bg_manager.is_ready:
+            remaining = bg_manager.frames_remaining
+            bg_manager.update(frame)
+            overlay = frame.copy()
+            cv2.putText(
+                overlay, f"Capturing background... {remaining}",
+                (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2,
+            )
+            cropped = geometry.center_crop(overlay)
+            user_data.set_frame(cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR))
+            return 1
+        background = bg_manager.background
 
     # --- Phase 2: Vampire logic ---
     # Background is already uint8 in-place; no per-frame conversion needed.
-    background = bg_manager.background
     # output/combined_vampire_mask are allocated lazily — the common case
     # (no vampires) avoids a 1280x720x3 copy and an HxW bool alloc.
     output = frame
     combined_vampire_mask = None
-
-    roi = hailo.get_roi_from_buffer(buffer)
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
     for detection in detections:
         if detection.get_label() != "person":
@@ -222,13 +265,11 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
         output[y1:y2, x1:x2][binary_mask] = background[y1:y2, x1:x2][binary_mask]
         combined_vampire_mask[y1:y2, x1:x2] |= binary_mask
 
-    # --- Update dynamic background ---
-    vampire_mask = (
-        combined_vampire_mask
-        if combined_vampire_mask is not None and combined_vampire_mask.any()
-        else None
-    )
-    bg_manager.update(frame, vampire_mask=vampire_mask)
+    # --- Update dynamic background (legacy in-process path only) ---
+    if bg_service is None:
+        # Service-mode submit_frame was already called above. Only the legacy
+        # in-process path needs an explicit update here.
+        bg_manager.update(frame, vampire_mask=person_mask)
 
     # --- Center crop and display ---
     cropped = geometry.center_crop(output)
@@ -249,18 +290,36 @@ def main():
     user_data.mirror_ratio_str = opts.mirror_ratio
 
     # Initialize modules
-    user_data.bg_manager = BackgroundManager(
-        capture_frames=opts.bg_capture_frames,
-        alpha=opts.bg_alpha,
-    )
+    if opts.bg_process:
+        from community.apps.pipeline_apps.vampire_mirror.bg_service import BackgroundService
+        bg_service = BackgroundService(
+            width=opts.width if opts.width else 1280,
+            height=opts.height if opts.height else 720,
+            channels=3,
+            capture_frames=opts.bg_capture_frames,
+            alpha=opts.bg_alpha,
+        )
+        bg_service.start()
+        user_data.bg_service = bg_service
+        user_data.bg_manager = None
+    else:
+        user_data.bg_service = None
+        user_data.bg_manager = BackgroundManager(
+            capture_frames=opts.bg_capture_frames,
+            alpha=opts.bg_alpha,
+        )
     user_data.engine = VampireEngine()
 
     logger.info(
-        "Config: mirror_ratio=%s, bg_alpha=%.3f, bg_capture_frames=%d",
-        opts.mirror_ratio, opts.bg_alpha, opts.bg_capture_frames,
+        "Config: mirror_ratio=%s, bg_alpha=%.3f, bg_capture_frames=%d, bg_process=%s",
+        opts.mirror_ratio, opts.bg_alpha, opts.bg_capture_frames, opts.bg_process,
     )
 
-    app.run()
+    try:
+        app.run()
+    finally:
+        if user_data.bg_service is not None:
+            user_data.bg_service.stop()
 
 
 if __name__ == "__main__":
