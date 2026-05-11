@@ -1,3 +1,6 @@
+"""Tests for bg_shm — shared-memory helpers used by BackgroundService."""
+import os
+
 import numpy as np
 import pytest
 
@@ -30,6 +33,20 @@ class TestShmNdarray:
         finally:
             creator.close_and_unlink()
 
+    def test_close_and_unlink_is_idempotent(self):
+        """Calling close_and_unlink() twice must not raise."""
+        shm = ShmNdarray.create("vm_test_idempotent", shape=(2, 2), dtype=np.uint8)
+        shm.close_and_unlink()
+        # Second call must be silent, not raise FileNotFoundError.
+        shm.close_and_unlink()
+
+    def test_attach_after_unlink_raises(self):
+        """Attaching to an already-unlinked segment raises FileNotFoundError."""
+        shm = ShmNdarray.create("vm_test_gone", shape=(2, 2), dtype=np.uint8)
+        shm.close_and_unlink()
+        with pytest.raises(FileNotFoundError):
+            ShmNdarray.attach("vm_test_gone", shape=(2, 2), dtype=np.uint8)
+
 
 class TestAtomicUint8:
     def test_initial_value_zero(self):
@@ -48,3 +65,10 @@ class TestAtomicUint8:
             assert a.get() == 0
         finally:
             a.close_and_unlink()
+
+    def test_close_and_unlink_is_idempotent(self):
+        """Calling close_and_unlink() twice must not raise."""
+        a = AtomicUint8.create("vm_test_atomic_idempotent")
+        a.close_and_unlink()
+        # Second call must be silent, not raise FileNotFoundError.
+        a.close_and_unlink()
