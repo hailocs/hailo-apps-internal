@@ -290,3 +290,24 @@ shared_library('gsthailooverlay_community',
     install: true,
     install_dir: gst_plugins_dir,
 )
+
+################################################
+# HAILOVAMPIRE_OVERLAY (vampire-effect overlay using shared-memory background)
+################################################
+vampire_overlay_inc = include_directories('vampire_overlay')
+
+vampire_overlay_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    vampire_overlay_deps += opencv_dep
+endif
+
+shared_library('gsthailovampire_overlay',
+    ['vampire_overlay/gsthailovampire_overlay.cpp',
+     'vampire_overlay/vampire_draw.cpp'],
+    include_directories : [rapidjson_inc, vampire_overlay_inc],
+    dependencies : vampire_overlay_deps,
+    cpp_args : ['-DPACKAGE="hailovampire_overlay"'],
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: gst_plugins_dir,
+)
