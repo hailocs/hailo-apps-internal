@@ -304,7 +304,7 @@ endif
 shared_library('gsthailovampire_overlay',
     ['vampire_overlay/gsthailovampire_overlay.cpp',
      'vampire_overlay/vampire_draw.cpp'],
-    include_directories : [rapidjson_inc, vampire_overlay_inc],
+    include_directories : [vampire_overlay_inc],
     dependencies : vampire_overlay_deps,
     cpp_args : ['-DPACKAGE="hailovampire_overlay"'],
     gnu_symbol_visibility : 'default',
