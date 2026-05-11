@@ -47,14 +47,7 @@ struct _GstHailoVampireOverlay
     gint    dilate_radius;        // default 15
     gint    dilate_iterations;    // default 2
 
-    // Internal state — populated lazily on first transform_ip when shm names are set.
-    // Tasks 7/8 will fill these in. Declared here so the struct shape is stable.
-    void   *bg_a_map;    // mmap pointer (uint8*) for bg_shm_a
-    void   *bg_b_map;    // mmap pointer (uint8*) for bg_shm_b
-    void   *idx_map;     // mmap pointer (uint8*) for bg_idx_shm
-    int     bg_a_fd;
-    int     bg_b_fd;
-    int     idx_fd;
+    // Internal state — computed on first successful shm open.
     gsize   bg_bytes;    // bg_width * bg_height * 3
 };
 

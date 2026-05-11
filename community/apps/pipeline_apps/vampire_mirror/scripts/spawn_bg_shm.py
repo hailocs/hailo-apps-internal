@@ -40,6 +40,8 @@ def main() -> None:
             if svc.is_ready():
                 break
             time.sleep(0.02)
+        if not svc.is_ready():
+            print("WARNING: BackgroundService did not become ready within 1s", file=sys.stderr)
         print(f"prefix:    {svc.shm_prefix}")
         print(f"bg_a:      {svc.shm_prefix}bg_a")
         print(f"bg_b:      {svc.shm_prefix}bg_b")

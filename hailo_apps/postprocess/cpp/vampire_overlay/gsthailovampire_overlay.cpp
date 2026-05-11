@@ -13,15 +13,15 @@
 #include "bg_shm_reader.hpp"
 
 /* ---------------------------------------------------------------------------
- * File-static shared-memory readers.
+ * File-static shared-memory readers (s_ prefix = file-static convention).
  *
- * Known limitation: file-static globals mean only one element instance is
+ * Known limitation: file-static state means only one element instance is
  * supported per process. If multi-instance support becomes a concern, move
- * these into the GObject struct (_GstHailoVampireOverlay) in Task 8.
+ * these into the GObject struct (_GstHailoVampireOverlay) in a future task.
  * ---------------------------------------------------------------------------*/
-static std::unique_ptr<BgShmReader> g_bg_a;
-static std::unique_ptr<BgShmReader> g_bg_b;
-static std::unique_ptr<BgShmReader> g_idx;
+static std::unique_ptr<BgShmReader> s_bg_a;
+static std::unique_ptr<BgShmReader> s_bg_b;
+static std::unique_ptr<BgShmReader> s_idx;
 
 GST_DEBUG_CATEGORY_STATIC(gst_hailovampire_overlay_debug_category);
 #define GST_CAT_DEFAULT gst_hailovampire_overlay_debug_category
@@ -38,6 +38,7 @@ static void gst_hailovampire_overlay_get_property(GObject *object,
                                                    GParamSpec *pspec);
 static void gst_hailovampire_overlay_finalize(GObject *object);
 
+static gboolean gst_hailovampire_overlay_stop(GstBaseTransform *trans);
 static GstFlowReturn gst_hailovampire_overlay_transform_ip(GstBaseTransform *trans,
                                                             GstBuffer *buffer);
 
@@ -98,6 +99,7 @@ gst_hailovampire_overlay_class_init(GstHailoVampireOverlayClass *klass)
     gobject_class->get_property = gst_hailovampire_overlay_get_property;
     gobject_class->finalize     = gst_hailovampire_overlay_finalize;
 
+    base_transform_class->stop        = GST_DEBUG_FUNCPTR(gst_hailovampire_overlay_stop);
     base_transform_class->transform_ip =
         GST_DEBUG_FUNCPTR(gst_hailovampire_overlay_transform_ip);
 
@@ -169,13 +171,7 @@ gst_hailovampire_overlay_init(GstHailoVampireOverlay *self)
     self->dilate_radius    = 15;
     self->dilate_iterations = 2;
 
-    /* Internal state — zeroed until Tasks 7/8 populate them */
-    self->bg_a_map  = nullptr;
-    self->bg_b_map  = nullptr;
-    self->idx_map   = nullptr;
-    self->bg_a_fd   = -1;
-    self->bg_b_fd   = -1;
-    self->idx_fd    = -1;
+    /* Internal state */
     self->bg_bytes  = 0;
 
     /* Ensure the element actually runs transform_ip (not passthrough mode) */
@@ -282,10 +278,21 @@ gst_hailovampire_overlay_finalize(GObject *object)
     G_OBJECT_CLASS(gst_hailovampire_overlay_parent_class)->finalize(object);
 }
 
+static gboolean
+gst_hailovampire_overlay_stop(GstBaseTransform *trans)
+{
+    GstHailoVampireOverlay *self = GST_HAILO_VAMPIRE_OVERLAY(trans);
+    GST_DEBUG_OBJECT(self, "stop: releasing bg shm mappings");
+    s_bg_a.reset();
+    s_bg_b.reset();
+    s_idx.reset();
+    return TRUE;
+}
+
 static bool
 ensure_shm_open(GstHailoVampireOverlay *self)
 {
-    if (g_bg_a && g_bg_b && g_idx) return true;
+    if (s_bg_a && s_bg_b && s_idx) return true;
 
     const bool any_name_empty =
         (!self->bg_shm_a_name || self->bg_shm_a_name[0] == '\0') ||
@@ -296,19 +303,23 @@ ensure_shm_open(GstHailoVampireOverlay *self)
             "bg-shm-*-name properties not set; element is pass-through");
         return false;
     }
+    static bool warned_dims = false;
     if (self->bg_width <= 0 || self->bg_height <= 0) {
-        GST_ERROR_OBJECT(self,
-            "bg-width and bg-height must be > 0 (got %dx%d)",
-            self->bg_width, self->bg_height);
+        if (!warned_dims) {
+            GST_ERROR_OBJECT(self,
+                "bg-width and bg-height must be > 0 (got %dx%d)",
+                self->bg_width, self->bg_height);
+            warned_dims = true;
+        }
         return false;
     }
 
     const std::size_t bg_bytes =
         (std::size_t)self->bg_width * self->bg_height * 3;
     try {
-        g_bg_a = std::make_unique<BgShmReader>(self->bg_shm_a_name, bg_bytes);
-        g_bg_b = std::make_unique<BgShmReader>(self->bg_shm_b_name, bg_bytes);
-        g_idx  = std::make_unique<BgShmReader>(self->bg_idx_shm_name, 1);
+        s_bg_a = std::make_unique<BgShmReader>(self->bg_shm_a_name, bg_bytes);
+        s_bg_b = std::make_unique<BgShmReader>(self->bg_shm_b_name, bg_bytes);
+        s_idx  = std::make_unique<BgShmReader>(self->bg_idx_shm_name, 1);
         self->bg_bytes = bg_bytes;
         GST_INFO_OBJECT(self,
             "Opened bg shm: a=%s b=%s idx=%s (%zu bytes)",
@@ -317,9 +328,9 @@ ensure_shm_open(GstHailoVampireOverlay *self)
     } catch (const std::exception &e) {
         GST_ERROR_OBJECT(self, "Failed to open bg shm: %s", e.what());
         // Reset on partial failure so a later configure attempt can retry.
-        g_bg_a.reset();
-        g_bg_b.reset();
-        g_idx.reset();
+        s_bg_a.reset();
+        s_bg_b.reset();
+        s_idx.reset();
         return false;
     }
     return true;
@@ -334,9 +345,9 @@ gst_hailovampire_overlay_transform_ip(GstBaseTransform *trans, GstBuffer *buffer
         return GST_FLOW_OK;
     }
 
-    // Task 8 will read g_idx->data()[0] here, pick g_bg_a or g_bg_b,
+    // Task 8 will read s_idx->data()[0] here, pick s_bg_a or s_bg_b,
     // and call draw_vampires(...). For now, just verify the shm is alive.
-    const uint8_t current_idx = g_idx->data()[0];
+    const uint8_t current_idx = s_idx->data()[0];
     GST_LOG_OBJECT(self,
         "transform_ip: shm open, idx=%u, bg_bytes=%zu",
         current_idx, self->bg_bytes);
