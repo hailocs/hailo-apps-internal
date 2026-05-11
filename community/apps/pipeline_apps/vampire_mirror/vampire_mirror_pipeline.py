@@ -97,13 +97,21 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
             "--bg-process",
             action=argparse.BooleanOptionalAction,
             default=True,
-            help="Run the background EMA in a subprocess (default: on). Use --no-bg-process for in-process.",
+            help=(
+                "Run the background EMA in a subprocess and draw vampires via "
+                "the hailovampire_overlay C++ element (default: on). "
+                "--no-bg-process is a debug fallback that runs the EMA in-process "
+                "and disables the vampire-invisibility effect."
+            ),
         )
 
         super().__init__(app_callback_fn, user_data, parser)
 
-        # Force use_frame so the callback can access and modify frames
-        self.options_menu.use_frame = True
+        # Callback still needs the numpy frame view (to build person_mask and
+        # forward to bg_service), but we do NOT use the framework's
+        # display_user_data_frame subprocess — the GStreamer sink renders the
+        # frame directly after hailovampire_overlay paints it.
+        self.options_menu.use_frame = False
         user_data.use_frame = True
 
     def create_pipeline(self):
