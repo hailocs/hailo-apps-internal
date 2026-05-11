@@ -91,19 +91,20 @@ class BackgroundManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, frame: np.ndarray, vampire_mask: np.ndarray | None = None) -> None:
+    def update(self, frame: np.ndarray, person_mask: np.ndarray | None = None) -> None:
         """Update the background with a new frame.
 
         Args:
             frame: HxWxC uint8 image (or any numeric dtype).
-            vampire_mask: Optional boolean array of shape (H, W).  Where True,
-                          the background pixel is **not** updated (vampire is
-                          there).  Ignored during the initial capture phase.
+            person_mask: Optional boolean array of shape (H, W).  Where True,
+                         the background pixel is **not** updated (a segmented
+                         person is there).  Ignored during the initial capture
+                         phase.
         """
         if not self.is_ready:
             self._accumulate(frame)
         else:
-            self._ema_update(frame, vampire_mask)
+            self._ema_update(frame, person_mask)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -125,7 +126,7 @@ class BackgroundManager:
             self.background = (self._accumulator / self._capture_frames).astype(np.uint8)
             self._accumulator = None
 
-    def _ema_update(self, frame: np.ndarray, vampire_mask: np.ndarray | None) -> None:
-        """Apply EMA blend on non-vampire pixels (in-place, uint8, SIMD)."""
+    def _ema_update(self, frame: np.ndarray, person_mask: np.ndarray | None) -> None:
+        """Apply EMA blend on non-person pixels (in-place, uint8, SIMD)."""
         assert self.background is not None
-        self._updater.apply(self.background, frame, person_mask=vampire_mask)
+        self._updater.apply(self.background, frame, person_mask=person_mask)

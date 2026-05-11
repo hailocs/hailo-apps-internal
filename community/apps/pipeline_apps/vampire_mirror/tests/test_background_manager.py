@@ -91,7 +91,7 @@ class TestEMAUpdate:
         mgr.update(initial)            # capture phase done
 
         vampire_mask = solid_mask(True)   # whole frame is "vampire"
-        mgr.update(solid_frame(200), vampire_mask=vampire_mask)
+        mgr.update(solid_frame(200), person_mask=vampire_mask)
         # All pixels masked out → background stays at 100
         np.testing.assert_array_almost_equal(mgr.background, solid_frame(100, dtype=np.uint8))
 
@@ -105,7 +105,7 @@ class TestEMAUpdate:
         mask = np.zeros((4, 4), dtype=bool)
         mask[:2, :2] = True
 
-        mgr.update(solid_frame(200, shape=shape), vampire_mask=mask)
+        mgr.update(solid_frame(200, shape=shape), person_mask=mask)
 
         bg = mgr.background
         # Unmasked pixels should be 200
@@ -127,8 +127,8 @@ class TestEMAUpdate:
         """Vampire mask provided during capture phase is silently ignored."""
         mgr = BackgroundManager(capture_frames=2)
         mask = solid_mask(True)   # whole frame masked
-        mgr.update(solid_frame(100), vampire_mask=mask)
-        mgr.update(solid_frame(200), vampire_mask=mask)
+        mgr.update(solid_frame(100), person_mask=mask)
+        mgr.update(solid_frame(200), person_mask=mask)
         # Mask should have no effect during capture; result is average
         assert mgr.is_ready
         np.testing.assert_array_almost_equal(mgr.background, solid_frame(150, dtype=np.uint8))

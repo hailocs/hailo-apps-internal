@@ -61,6 +61,7 @@ class VampireMirrorCallback(app_callback_class):
         # Modules — initialized after pipeline construction
         self.frame_geometry: FrameGeometry | None = None
         self.bg_manager: BackgroundManager | None = None
+        # Forward-reference (import deferred to main() conditional on --bg-process).
         self.bg_service: "BackgroundService | None" = None
         self.engine: VampireEngine | None = None
 
@@ -188,6 +189,9 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
     output = frame
     combined_vampire_mask = None
 
+    # TODO(Task 9): the per-detection mask compute below repeats work already
+    # done in _build_person_mask. This will be eliminated when hailovampire_overlay
+    # moves the drawing path to C++.
     for detection in detections:
         if detection.get_label() != "person":
             continue
@@ -269,7 +273,7 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
     if bg_service is None:
         # Service-mode submit_frame was already called above. Only the legacy
         # in-process path needs an explicit update here.
-        bg_manager.update(frame, vampire_mask=person_mask)
+        bg_manager.update(frame, person_mask=person_mask)
 
     # --- Center crop and display ---
     cropped = geometry.center_crop(output)
@@ -291,6 +295,7 @@ def main():
 
     # Initialize modules
     if opts.bg_process:
+        # Late import: only pull in multiprocessing machinery when --bg-process is on.
         from community.apps.pipeline_apps.vampire_mirror.bg_service import BackgroundService
         bg_service = BackgroundService(
             width=opts.width if opts.width else 1280,
