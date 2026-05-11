@@ -1,17 +1,17 @@
-"""BackgroundManager: captures and dynamically updates a scene background.
+"""Background capture and EMA update logic for the vampire mirror effect.
 
-Phase 1 — Initial capture:
-    Accumulates ``capture_frames`` frames and averages them to form the
-    initial background.  The accumulator uses float64 for precision.
+Two public classes:
 
-Phase 2 — Dynamic EMA update:
-    After the background is ready, every call to ``update()`` blends the new
-    frame into the background using an exponential moving average:
+``BackgroundUpdater``
+    Stateless EMA blend (cv2.addWeighted, SIMD).  Operates in-place on a
+    uint8 buffer.  Used by both the in-process manager and the upcoming
+    background subprocess.
 
-        bg[~mask] = alpha * frame[~mask] + (1 - alpha) * bg[~mask]
-
-    Pixels where ``vampire_mask`` is True are **not** updated, preserving the
-    background that was behind the vampire before they appeared.
+``BackgroundManager``
+    In-process facade that owns the full capture→EMA lifecycle.  Phase 1
+    accumulates ``capture_frames`` frames (float64) and averages them to
+    form the initial background.  Phase 2 delegates every ``update()`` call
+    to ``BackgroundUpdater``, preserving pixels where a vampire mask is set.
 """
 from __future__ import annotations
 
@@ -37,8 +37,12 @@ class BackgroundUpdater:
         person_mask: np.ndarray | None,
     ) -> None:
         """Update ``bg`` in-place with one EMA step from ``frame``."""
-        assert bg.dtype == np.uint8 and frame.dtype == np.uint8
-        assert bg.shape == frame.shape
+        if bg.dtype != np.uint8 or frame.dtype != np.uint8:
+            raise ValueError(
+                f"bg and frame must be uint8, got bg={bg.dtype}, frame={frame.dtype}"
+            )
+        if bg.shape != frame.shape:
+            raise ValueError(f"Shape mismatch: bg {bg.shape} vs frame {frame.shape}")
         alpha = self._alpha
 
         if person_mask is None:
@@ -62,6 +66,8 @@ class BackgroundManager:
     def __init__(self, capture_frames: int = 30, alpha: float = 0.05) -> None:
         self._capture_frames: int = capture_frames
         self._alpha: float = float(alpha)
+
+        self._updater: BackgroundUpdater = BackgroundUpdater(alpha=self._alpha)
 
         self.background: np.ndarray | None = None   # uint8, set once ready
         self._accumulator: np.ndarray | None = None  # float64, used during capture
@@ -122,6 +128,4 @@ class BackgroundManager:
     def _ema_update(self, frame: np.ndarray, vampire_mask: np.ndarray | None) -> None:
         """Apply EMA blend on non-vampire pixels (in-place, uint8, SIMD)."""
         assert self.background is not None
-        if not hasattr(self, "_updater"):
-            self._updater = BackgroundUpdater(alpha=self._alpha)
         self._updater.apply(self.background, frame, person_mask=vampire_mask)

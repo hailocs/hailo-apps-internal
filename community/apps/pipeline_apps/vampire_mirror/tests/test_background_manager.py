@@ -162,7 +162,55 @@ class TestBackgroundUpdater:
         np.testing.assert_array_equal(bg[2:, :], 150)
 
     def test_apply_alpha_one_replaces(self):
+        """alpha=1.0 means the background is fully replaced by the frame."""
         bg = np.zeros((2, 2, 3), dtype=np.uint8)
         frame = np.full((2, 2, 3), 255, dtype=np.uint8)
         BackgroundUpdater(alpha=1.0).apply(bg, frame, person_mask=None)
         np.testing.assert_array_equal(bg, 255)
+
+    def test_apply_preserves_person_pixels_top_right(self):
+        """Top-right quad (unmasked but not in the 2: slice) should also be 150."""
+        bg = np.full((4, 4, 3), 100, dtype=np.uint8)
+        frame = np.full((4, 4, 3), 200, dtype=np.uint8)
+        mask = np.zeros((4, 4), dtype=bool)
+        mask[0:2, 0:2] = True  # top-left quad blocked
+        upd = BackgroundUpdater(alpha=0.5)
+        upd.apply(bg, frame, person_mask=mask)
+        np.testing.assert_array_equal(bg[:2, 2:], 150)
+
+    def test_apply_alpha_zero_freezes_background(self):
+        """alpha=0 means the background is never updated."""
+        bg = np.full((4, 4, 3), 50, dtype=np.uint8)
+        frame = np.full((4, 4, 3), 200, dtype=np.uint8)
+        BackgroundUpdater(alpha=0.0).apply(bg, frame, person_mask=None)
+        np.testing.assert_array_equal(bg, 50)
+
+    def test_apply_full_mask_freezes_background(self):
+        """An all-True mask means nothing is updated."""
+        bg = np.full((4, 4, 3), 50, dtype=np.uint8)
+        frame = np.full((4, 4, 3), 200, dtype=np.uint8)
+        mask = np.ones((4, 4), dtype=bool)
+        BackgroundUpdater(alpha=0.5).apply(bg, frame, person_mask=mask)
+        np.testing.assert_array_equal(bg, 50)
+
+    def test_apply_empty_mask_blends_everywhere(self):
+        """An all-False mask is functionally equivalent to no mask."""
+        bg = np.full((4, 4, 3), 100, dtype=np.uint8)
+        frame = np.full((4, 4, 3), 200, dtype=np.uint8)
+        mask = np.zeros((4, 4), dtype=bool)
+        BackgroundUpdater(alpha=0.5).apply(bg, frame, person_mask=mask)
+        np.testing.assert_array_equal(bg, 150)
+
+    def test_apply_raises_on_dtype_mismatch(self):
+        """Float frame must raise ValueError (not pass silently)."""
+        bg = np.zeros((4, 4, 3), dtype=np.uint8)
+        frame = np.zeros((4, 4, 3), dtype=np.float32)
+        with pytest.raises(ValueError, match="uint8"):
+            BackgroundUpdater(alpha=0.5).apply(bg, frame, person_mask=None)
+
+    def test_apply_raises_on_shape_mismatch(self):
+        """Mismatched shapes must raise ValueError."""
+        bg = np.zeros((4, 4, 3), dtype=np.uint8)
+        frame = np.zeros((8, 8, 3), dtype=np.uint8)
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            BackgroundUpdater(alpha=0.5).apply(bg, frame, person_mask=None)
