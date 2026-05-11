@@ -13,6 +13,7 @@ from hailo_apps.python.core.common.parser import get_pipeline_parser
 from hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation_pipeline import (
     GStreamerInstanceSegmentationApp,
 )
+from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,13 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
         self.vampire_bg_shm_idx: str = ""
         self.vampire_bg_w: int = 0
         self.vampire_bg_h: int = 0
+
+        # Mirror crop parameters — set after super().__init__() so that
+        # options_menu (parsed CLI args) is available.  Defaults used until then.
+        self.mirror_crop_left: int = 0
+        self.mirror_crop_right: int = 0
+        self.mirror_crop_top: int = 0
+        self.mirror_crop_bottom: int = 0
 
         # Suppress the automatic create_pipeline() call inside
         # GStreamerInstanceSegmentationApp.__init__().  We defer pipeline creation
@@ -106,6 +114,32 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
         )
 
         super().__init__(app_callback_fn, user_data, parser)
+
+        # Compute portrait center-crop coordinates from CLI args.
+        # vertical_pad=0 assumes a standard camera (no letterboxing). The
+        # callback's detect_vertical_padding is still invoked for the
+        # is_in_mirror() check but no longer drives the displayed crop.
+        width = self.options_menu.width if self.options_menu.width else 1280
+        height = self.options_menu.height if self.options_menu.height else 720
+        ratio_parts = self.options_menu.mirror_ratio.split(":")
+        mirror_ratio = (int(ratio_parts[0]), int(ratio_parts[1]))
+        geometry = FrameGeometry(
+            width, height,
+            mirror_ratio=mirror_ratio,
+            vertical_pad=0,
+            vertical_margin=5,
+        )
+        self.mirror_crop_left   = geometry.crop_x1
+        self.mirror_crop_right  = width - geometry.crop_x2
+        self.mirror_crop_top    = geometry.crop_y1
+        self.mirror_crop_bottom = height - geometry.crop_y2
+        logger.info(
+            "Mirror crop: source=%dx%d, mirror=%dx%d, "
+            "videocrop left=%d right=%d top=%d bottom=%d",
+            width, height, geometry.mirror_width, geometry.mirror_height,
+            self.mirror_crop_left, self.mirror_crop_right,
+            self.mirror_crop_top, self.mirror_crop_bottom,
+        )
 
         # Callback still needs the numpy frame view (to build person_mask and
         # forward to bg_service), but we do NOT use the framework's
@@ -180,6 +214,35 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
                     "identity_callback element not found in pipeline string; "
                     "vampire overlay not inserted"
                 )
+
+        # Mirror crop splice — applied AFTER the vampire overlay (if any) so the
+        # crop is on the C++-painted frame.  Applied unconditionally: portrait crop
+        # is a product feature regardless of whether the C++ overlay is active.
+        # Order matters: vampire splice MUST run first so "name=vampire_fx" is present
+        # in the string when we decide the crop_marker below.
+        crop_fragment = (
+            f" ! videocrop name=mirror_crop "
+            f"left={self.mirror_crop_left} right={self.mirror_crop_right} "
+            f"top={self.mirror_crop_top} bottom={self.mirror_crop_bottom}"
+        )
+        # Prefer to splice right after vampire_fx (if inserted); fall back to
+        # identity_callback so the --no-bg-process path still gets the crop.
+        crop_marker = "name=vampire_fx" if "name=vampire_fx" in pipeline_str else "identity name=identity_callback"
+        if crop_marker in pipeline_str:
+            idx = pipeline_str.index(crop_marker)
+            end = pipeline_str.find(" ! ", idx)
+            if end >= 0:
+                pipeline_str = pipeline_str[:end] + crop_fragment + pipeline_str[end:]
+                logger.info(
+                    "Inserted videocrop into pipeline (%s)",
+                    "after vampire_fx" if "vampire_fx" in crop_marker else "after identity_callback",
+                )
+            else:
+                logger.warning(
+                    "Could not find ' ! ' after %s; videocrop not inserted", crop_marker
+                )
+        else:
+            logger.warning("No splice marker found for videocrop; portrait crop not applied")
 
         logger.debug("Pipeline string after vampire splice:\n%s", pipeline_str)
         return pipeline_str
