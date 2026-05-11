@@ -30,8 +30,8 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_display import (
 )
 from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import GStreamerLPRApp, LPR_PIPELINE
 from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
+    DISPLAY_PLATE_LOG_MAX,
     MIN_LENGTH,
-    MIN_OCR_CONFIDENCE,
     MIN_VEHICLE_AREA_PX,
     ROI_Y_END,
     ROI_Y_START,
@@ -40,6 +40,7 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
     ctc_decode_paddle,
     detect_lps_gstreamer,
     letterbox_resize,
+    min_ocr_confidence_for,
 )
 
 
@@ -51,6 +52,7 @@ class user_app_callback_class(app_callback_class):
         self.last_summary_time = time.time()
         self.ocr_engine = ocr_engine
         self.decode_fn = ctc_decode_lprnet if ocr_engine == "lprnet" else ctc_decode_paddle
+        self.min_ocr_confidence = min_ocr_confidence_for(ocr_engine)
         # Plate log for display panel: list of (crop_bgr, text, conf, track_id)
         self.plate_log = []
         self.plate_log_lock = threading.Lock()
@@ -91,7 +93,7 @@ def app_callback(element, buffer, user_data):
         print(
             f"--- Summary ({SUMMARY_INTERVAL}s) | "
             f"Vehicles detected: {total} | "
-            f"Plates recognized (>{MIN_OCR_CONFIDENCE:.0%}): {recognized} ---"
+            f"Plates recognized (>{user_data.min_ocr_confidence:.0%}): {recognized} ---"
         )
         user_data.last_summary_time = now
 
@@ -193,7 +195,7 @@ def app_callback(element, buffer, user_data):
             if len(text) < MIN_LENGTH:
                 continue
 
-            if ocr_conf < MIN_OCR_CONFIDENCE:
+            if ocr_conf < user_data.min_ocr_confidence:
                 continue
 
             print(
@@ -205,10 +207,13 @@ def app_callback(element, buffer, user_data):
 
             # Store — first successful OCR per vehicle, skip future frames
             user_data.seen_plates[track_id] = text
-            # Add to display log (convert RGB crop to BGR for OpenCV display)
+            # Add to display log (convert RGB crop to BGR for OpenCV display).
+            # Trim oldest entries to keep memory bounded over long sessions.
             crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
             with user_data.plate_log_lock:
                 user_data.plate_log.insert(0, (crop_bgr, text, ocr_conf, track_id))
+                if len(user_data.plate_log) > DISPLAY_PLATE_LOG_MAX:
+                    del user_data.plate_log[DISPLAY_PLATE_LOG_MAX:]
 
     # Remove LP sub-detections so hailooverlay only draws vehicle boxes
     for detection in detections:

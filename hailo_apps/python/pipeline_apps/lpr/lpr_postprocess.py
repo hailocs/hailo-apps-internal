@@ -36,9 +36,33 @@ PADDLE_BLANK_IDX = 0
 # ---------------------------------------------------------------------------
 # OCR and detection thresholds / constants
 # ---------------------------------------------------------------------------
-MIN_OCR_CONFIDENCE = 0.78
+# Engine-specific OCR confidence thresholds. LPRNet's CTC head outputs over a
+# tiny vocabulary (11 or 37 classes) so per-character confidence concentrates
+# sharply on the right class — 0.78 is a meaningful "high confidence" cutoff.
+# PaddleOCR's head outputs over 97-18,385 classes so confidence is naturally
+# diffuse even when the read is correct — the same 0.78 cutoff rejects nearly
+# every read. The 0.30 cutoff for Paddle is consistent with the confidences
+# observed on the Hailo `ocr.mp4` text demo, where correct decodes land in
+# the 0.18-0.37 range.
+MIN_OCR_CONFIDENCE_LPRNET = 0.78
+MIN_OCR_CONFIDENCE_PADDLE = 0.30
+# Back-compat alias for callers that don't know the engine.
+MIN_OCR_CONFIDENCE = MIN_OCR_CONFIDENCE_LPRNET
+
 MIN_LENGTH = 4
 SUMMARY_INTERVAL = 30  # seconds
+
+# Cap the number of plates kept in the display panel so a long-running session
+# doesn't grow the list unbounded. TAPPAS uses MAP_LIMIT=5; we keep more so
+# the UI shows useful recent history.
+DISPLAY_PLATE_LOG_MAX = 50
+
+
+def min_ocr_confidence_for(engine: str) -> float:
+    """Return the confidence threshold appropriate to the given OCR engine."""
+    if engine == "paddle":
+        return MIN_OCR_CONFIDENCE_PADDLE
+    return MIN_OCR_CONFIDENCE_LPRNET
 
 # Minimum plate crop size in pixels for reliable OCR.
 MIN_LP_WIDTH_PIXELS = 20
