@@ -41,12 +41,14 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-from typing import Optional
 
 import numpy as np
 
 from community.apps.pipeline_apps.vampire_mirror.background_manager import BackgroundUpdater
 from community.apps.pipeline_apps.vampire_mirror.bg_shm import AtomicUint8, ShmNdarray
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def _run_bg_process(
@@ -60,6 +62,8 @@ def _run_bg_process(
     stop_event: mp.Event,
 ) -> None:
     """Subprocess entry — owns the EMA loop."""
+    logger.info("Background subprocess started — capturing %d frames", capture_frames)
+
     frame_shm  = ShmNdarray.attach(f"{shm_prefix}frame", (height, width, channels), np.uint8)
     mask_shm   = ShmNdarray.attach(f"{shm_prefix}mask",  (height, width),           np.uint8)
     bg_a_shm   = ShmNdarray.attach(f"{shm_prefix}bg_a",  (height, width, channels), np.uint8)
@@ -77,28 +81,33 @@ def _run_bg_process(
                 continue
             frame_ready.clear()
 
-            current_idx = idx_atom.get()
-            write_idx = 1 - current_idx
-            bg_write = bg_b_shm.ndarray if write_idx == 1 else bg_a_shm.ndarray
-            bg_read  = bg_a_shm.ndarray if current_idx == 0 else bg_b_shm.ndarray
+            try:
+                current_idx = idx_atom.get()
+                write_idx = 1 - current_idx
+                bg_write = bg_b_shm.ndarray if write_idx == 1 else bg_a_shm.ndarray
+                bg_read  = bg_a_shm.ndarray if current_idx == 0 else bg_b_shm.ndarray
 
-            frame    = frame_shm.ndarray
-            mask_u8  = mask_shm.ndarray
-            has_mask = bool(mask_u8.any())
-            person_mask = mask_u8.astype(bool) if has_mask else None
+                frame    = frame_shm.ndarray
+                mask_u8  = mask_shm.ndarray
+                has_mask = bool(mask_u8.any())
+                person_mask = mask_u8.astype(bool) if has_mask else None
 
-            if frames_seen < capture_frames:
-                accumulator += frame
-                frames_seen += 1
-                if frames_seen == capture_frames:
-                    avg = (accumulator / capture_frames).astype(np.uint8)
-                    bg_write[:] = avg
+                if frames_seen < capture_frames:
+                    accumulator += frame
+                    frames_seen += 1
+                    if frames_seen == capture_frames:
+                        avg = (accumulator / capture_frames).astype(np.uint8)
+                        bg_write[:] = avg
+                        idx_atom.set(write_idx)
+                        ready_atom.set(1)
+                        logger.info("Background capture complete, ready")
+                else:
+                    bg_write[:] = bg_read
+                    updater.apply(bg_write, frame, person_mask=person_mask)
                     idx_atom.set(write_idx)
-                    ready_atom.set(1)
-            else:
-                bg_write[:] = bg_read
-                updater.apply(bg_write, frame, person_mask=person_mask)
-                idx_atom.set(write_idx)
+            except Exception:
+                logger.exception("Background subprocess error")
+                break
     finally:
         for s in (frame_shm, mask_shm, bg_a_shm, bg_b_shm):
             s.close()
@@ -137,16 +146,17 @@ class BackgroundService:
         self._prefix = f"{shm_prefix}{os.getpid()}_"
         self._cap = capture_frames
         self._alpha = alpha
+        self._running: bool = False
 
-        self._frame_shm: Optional[ShmNdarray] = None
-        self._mask_shm:  Optional[ShmNdarray] = None
-        self._bg_a_shm:  Optional[ShmNdarray] = None
-        self._bg_b_shm:  Optional[ShmNdarray] = None
-        self._idx:   Optional[AtomicUint8] = None
-        self._ready: Optional[AtomicUint8] = None
-        self._proc:  Optional[mp.Process] = None
-        self._frame_ready: Optional[mp.Event] = None
-        self._stop:        Optional[mp.Event] = None
+        self._frame_shm: ShmNdarray | None = None
+        self._mask_shm:  ShmNdarray | None = None
+        self._bg_a_shm:  ShmNdarray | None = None
+        self._bg_b_shm:  ShmNdarray | None = None
+        self._idx:   AtomicUint8 | None = None
+        self._ready: AtomicUint8 | None = None
+        self._proc:  mp.Process | None = None
+        self._frame_ready: mp.Event | None = None
+        self._stop:        mp.Event | None = None
 
     @property
     def shm_prefix(self) -> str:
@@ -155,25 +165,39 @@ class BackgroundService:
 
     def start(self) -> None:
         """Allocate shared memory and spawn the background subprocess."""
-        self._frame_shm = ShmNdarray.create(f"{self._prefix}frame", (self._h, self._w, self._c), np.uint8)
-        self._mask_shm  = ShmNdarray.create(f"{self._prefix}mask",  (self._h, self._w),          np.uint8)
-        self._bg_a_shm  = ShmNdarray.create(f"{self._prefix}bg_a",  (self._h, self._w, self._c), np.uint8)
-        self._bg_b_shm  = ShmNdarray.create(f"{self._prefix}bg_b",  (self._h, self._w, self._c), np.uint8)
-        self._idx   = AtomicUint8.create(f"{self._prefix}idx")
-        self._ready = AtomicUint8.create(f"{self._prefix}ready")
+        try:
+            self._frame_shm = ShmNdarray.create(
+                f"{self._prefix}frame", (self._h, self._w, self._c), np.uint8
+            )
+            self._mask_shm = ShmNdarray.create(
+                f"{self._prefix}mask", (self._h, self._w), np.uint8
+            )
+            self._bg_a_shm = ShmNdarray.create(
+                f"{self._prefix}bg_a", (self._h, self._w, self._c), np.uint8
+            )
+            self._bg_b_shm = ShmNdarray.create(
+                f"{self._prefix}bg_b", (self._h, self._w, self._c), np.uint8
+            )
+            self._idx   = AtomicUint8.create(f"{self._prefix}idx")
+            self._ready = AtomicUint8.create(f"{self._prefix}ready")
 
-        self._frame_ready = mp.Event()
-        self._stop = mp.Event()
-        self._proc = mp.Process(
-            target=_run_bg_process,
-            args=(
-                self._prefix, self._w, self._h, self._c,
-                self._cap, self._alpha,
-                self._frame_ready, self._stop,
-            ),
-            daemon=True,
-        )
-        self._proc.start()
+            self._frame_ready = mp.Event()
+            self._stop = mp.Event()
+            self._proc = mp.Process(
+                target=_run_bg_process,
+                args=(
+                    self._prefix, self._w, self._h, self._c,
+                    self._cap, self._alpha,
+                    self._frame_ready, self._stop,
+                ),
+                daemon=True,
+            )
+            self._proc.start()
+        except Exception:
+            self.stop()
+            raise
+
+        self._running = True
 
     def submit_frame(self, frame: np.ndarray, person_mask: np.ndarray | None) -> None:
         """Copy ``frame`` (and optional mask) into shm, then signal the subprocess.
@@ -182,6 +206,10 @@ class BackgroundService:
         consumed the previous frame, the new frame overwrites it — this is
         intentional; freshness beats backpressure in a live video pipeline.
         """
+        if not self._running:
+            raise RuntimeError(
+                "BackgroundService.start() has not been called (or stop() was called)"
+            )
         assert frame.shape == (self._h, self._w, self._c)
         assert frame.dtype == np.uint8
         self._frame_shm.ndarray[:] = frame
@@ -194,6 +222,8 @@ class BackgroundService:
 
     def is_ready(self) -> bool:
         """Return True once the capture phase is complete and a bg is available."""
+        if not self._running:
+            return False
         return self._ready is not None and self._ready.get() == 1
 
     def get_background_view(self) -> np.ndarray | None:
@@ -232,3 +262,16 @@ class BackgroundService:
         for a in (self._idx, self._ready):
             if a is not None:
                 a.close_and_unlink()
+
+        # Leave the service in a clean post-stop state so introspection is safe
+        # and a second stop() call does not crash.
+        self._frame_shm = None
+        self._mask_shm = None
+        self._bg_a_shm = None
+        self._bg_b_shm = None
+        self._idx = None
+        self._ready = None
+        self._proc = None
+        self._frame_ready = None
+        self._stop = None
+        self._running = False

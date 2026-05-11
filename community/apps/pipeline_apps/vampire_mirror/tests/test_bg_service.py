@@ -72,3 +72,38 @@ class TestBackgroundService:
             np.testing.assert_array_equal(bg[4:, :], 255)
         finally:
             svc.stop()
+
+    def test_submit_frame_wrong_shape_raises(self, shm_prefix):
+        """submit_frame must reject frames of the wrong shape."""
+        svc = BackgroundService(
+            width=8, height=8, channels=3,
+            capture_frames=1, alpha=0.5,
+            shm_prefix=shm_prefix,
+        )
+        svc.start()
+        try:
+            bad = np.zeros((4, 4, 3), dtype=np.uint8)
+            with pytest.raises((AssertionError, ValueError)):
+                svc.submit_frame(bad, person_mask=None)
+        finally:
+            svc.stop()
+
+    def test_submit_frame_before_start_raises(self, shm_prefix):
+        """Calling submit_frame before start() raises RuntimeError, not AttributeError."""
+        svc = BackgroundService(
+            width=8, height=8, channels=3,
+            shm_prefix=shm_prefix,
+        )
+        f = np.zeros((8, 8, 3), dtype=np.uint8)
+        with pytest.raises(RuntimeError, match="start"):
+            svc.submit_frame(f, person_mask=None)
+
+    def test_stop_is_idempotent(self, shm_prefix):
+        """stop() can be called twice without raising."""
+        svc = BackgroundService(
+            width=8, height=8, channels=3,
+            shm_prefix=shm_prefix,
+        )
+        svc.start()
+        svc.stop()
+        svc.stop()  # must not raise
