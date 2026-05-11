@@ -11,10 +11,7 @@
 #include "vampire_draw.hpp"
 
 #include <algorithm>
-#include <memory>
 #include <opencv2/imgproc.hpp>
-
-#include "hailo_common.hpp"
 
 namespace {
 

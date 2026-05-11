@@ -2,9 +2,9 @@
  * Copyright (c) 2026 Hailo Technologies Ltd. All rights reserved.
  * Distributed under the LGPL license.
  *
- * hailovampire_overlay - GStreamer element.
- * Task 7: opens shared-memory background buffers lazily on first frame.
- * Task 8 will add the actual vampire-mask drawing on top.
+ * hailovampire_overlay - GStreamer element that paints "vampire"-tagged
+ * detection mask regions with pixels from a shared-memory background
+ * buffer maintained by an external BackgroundService.
  **/
 #include <gst/gst.h>
 #include <gst/video/video.h>
