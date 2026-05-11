@@ -9,8 +9,12 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <memory>
+#include <opencv2/core.hpp>
 #include "gsthailovampire_overlay.hpp"
 #include "bg_shm_reader.hpp"
+#include "gst_hailo_meta.hpp"
+#include "hailo_common.hpp"
+#include "vampire_draw.hpp"
 
 /* ---------------------------------------------------------------------------
  * File-static shared-memory readers (s_ prefix = file-static convention).
@@ -341,16 +345,57 @@ gst_hailovampire_overlay_transform_ip(GstBaseTransform *trans, GstBuffer *buffer
 {
     GstHailoVampireOverlay *self = GST_HAILO_VAMPIRE_OVERLAY(trans);
     if (!ensure_shm_open(self)) {
-        // No shm configured — keep passing buffers through.
         return GST_FLOW_OK;
     }
 
-    // Task 8 will read s_idx->data()[0] here, pick s_bg_a or s_bg_b,
-    // and call draw_vampires(...). For now, just verify the shm is alive.
+    GstCaps *caps = gst_pad_get_current_caps(trans->sinkpad);
+    if (!caps) {
+        return GST_FLOW_OK;
+    }
+    GstVideoInfo info;
+    gst_video_info_init(&info);
+    const bool caps_ok = gst_video_info_from_caps(&info, caps);
+    gst_caps_unref(caps);
+    if (!caps_ok) return GST_FLOW_OK;
+
+    const int frame_w = GST_VIDEO_INFO_WIDTH(&info);
+    const int frame_h = GST_VIDEO_INFO_HEIGHT(&info);
+
+    // The background buffer must match the frame dimensions exactly.
+    if (frame_w != self->bg_width || frame_h != self->bg_height) {
+        GST_WARNING_OBJECT(self,
+            "Frame %dx%d != bg %dx%d; skipping vampire draw",
+            frame_w, frame_h, self->bg_width, self->bg_height);
+        return GST_FLOW_OK;
+    }
+
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READWRITE)) {
+        return GST_FLOW_OK;
+    }
+
+    cv::Mat frame(frame_h, frame_w, CV_8UC3, map.data,
+                  GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
+
     const uint8_t current_idx = s_idx->data()[0];
-    GST_LOG_OBJECT(self,
-        "transform_ip: shm open, idx=%u, bg_bytes=%zu",
-        current_idx, self->bg_bytes);
+    const uint8_t *bg_data = (current_idx == 0) ? s_bg_a->data() : s_bg_b->data();
+    cv::Mat bg(self->bg_height, self->bg_width, CV_8UC3,
+               const_cast<uint8_t*>(bg_data));
+
+    VampireDrawParams params{};
+    params.bg = &bg;
+    params.vampire_classification_type =
+        self->vampire_classification_type ? self->vampire_classification_type : "vampire";
+    params.dilate_radius = self->dilate_radius;
+    params.dilate_iterations = self->dilate_iterations;
+
+    HailoROIPtr roi = get_hailo_main_roi(buffer, true);
+    if (roi) {
+        const int drawn = draw_vampires(frame, roi, params);
+        GST_LOG_OBJECT(self, "draw_vampires: %d detections drawn", drawn);
+    }
+
+    gst_buffer_unmap(buffer, &map);
     return GST_FLOW_OK;
 }
 
