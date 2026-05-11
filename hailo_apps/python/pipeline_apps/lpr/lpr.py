@@ -32,12 +32,14 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import GStreamerLPRApp, LP
 from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
     MIN_LENGTH,
     MIN_OCR_CONFIDENCE,
+    MIN_VEHICLE_AREA_PX,
     ROI_Y_END,
     ROI_Y_START,
     SUMMARY_INTERVAL,
     ctc_decode_lprnet,
     ctc_decode_paddle,
     detect_lps_gstreamer,
+    letterbox_resize,
 )
 
 
@@ -125,6 +127,16 @@ def app_callback(element, buffer, user_data):
         if vehicle_center_y < ROI_Y_START or vehicle_center_y > ROI_Y_END:
             continue
 
+        # Drop vehicles too small to yield a readable plate after cropping.
+        # The bbox-in-frame check from the TAPPAS reference is intentionally
+        # *not* applied here: the center-1/3 ROI gate already restricts to the
+        # well-framed band, and on highway footage vehicles often clip the
+        # frame edges briefly while still producing readable plates.
+        if frame_w is not None and frame_h is not None:
+            v_area = int(vbox.width() * frame_w) * int(vbox.height() * frame_h)
+            if v_area < MIN_VEHICLE_AREA_PX:
+                continue
+
         # Skip entirely for vehicles already recognized
         if track_id in user_data.seen_plates:
             continue
@@ -149,9 +161,21 @@ def app_callback(element, buffer, user_data):
                 cv2.imwrite(crop_path, lp_crop_bgr)
                 user_data.crop_counter += 1
 
-            lp_resized = cv2.resize(
-                lp_crop_bgr, (user_data.ocr_w, user_data.ocr_h)
-            )
+            # Engine-aware preprocessing.
+            # LPRNet was trained on plates stretched to 300x75; the deformation
+            # is part of its expected input distribution.
+            # PaddleOCR rec was trained with aspect-ratio-preserving resize and
+            # right-padding to the target width — feeding it stretched crops
+            # collapses character widths and degrades accuracy.
+            if user_data.ocr_engine == "paddle":
+                lp_resized = letterbox_resize(
+                    lp_crop_bgr, user_data.ocr_w, user_data.ocr_h
+                )
+            else:
+                lp_resized = cv2.resize(
+                    lp_crop_bgr, (user_data.ocr_w, user_data.ocr_h),
+                    interpolation=cv2.INTER_AREA,
+                )
 
             # Run OCR inference
             user_data.ocr_result = None

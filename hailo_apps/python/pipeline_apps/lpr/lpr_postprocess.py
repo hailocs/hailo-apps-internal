@@ -1,9 +1,13 @@
 """LPR postprocessing: CTC decoding for OCR engines and LP crop extraction."""
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
 import hailo
+
+from hailo_apps.python.core.common.defines import RESOURCES_ROOT_PATH_DEFAULT
 
 # ---------------------------------------------------------------------------
 # LPRNet character sets (CTC blank is always the last character '-')
@@ -47,6 +51,23 @@ MAX_LP_HEIGHT_PIXELS = 200
 # ROI zone: only process vehicles whose center falls in the center 1/3 of the frame.
 ROI_Y_START = 1.0 / 3.0
 ROI_Y_END = 2.0 / 3.0
+
+# Sharpness gate: variance of Laplacian on the central 80% of the LP crop.
+# Plates below this variance are rejected as too blurry to OCR reliably.
+# Threshold matches the TAPPAS reference (core/hailo/libs/croppers/lpr).
+SHARPNESS_MIN_VARIANCE = 100.0
+SHARPNESS_INNER_TRIM = 0.1  # trim 10% from each side before measuring
+
+# Minimum vehicle bounding-box area in pixels — vehicles smaller than this
+# produce sub-OCR-resolution plate crops even after upscaling. Set lower than
+# TAPPAS's reference (40000) because highway footage has more distant vehicles
+# than the close-camera scenarios that reference targets.
+MIN_VEHICLE_AREA_PX = 10000  # ~100x100
+
+# Output-class counts for the supported PaddleOCR variants.
+PADDLE_V3V4_NUM_CLASSES = 97       # legacy "simplified" PaddleOCR (v3/v4 era)
+PADDLE_V5_NUM_CLASSES = 18385      # PP-OCRv5 mobile recognition (v2.18 model zoo)
+PADDLE_V5_DICT_FILENAME = "ppocrv5_char_dict.npz"
 
 
 # ---------------------------------------------------------------------------
@@ -98,28 +119,121 @@ def ctc_decode_lprnet(output_data):
     return text, conf
 
 
+_PADDLE_V5_CHARS = None  # lazy-loaded list of 18382 dictionary characters
+
+
+def _load_paddle_v5_dict():
+    """Load the PP-OCRv5 character dictionary from the resources tree.
+
+    Returned list contains the 18,382 dictionary characters in index order
+    (no special tokens). The CTC blank, space, and pad live outside the dict
+    at fixed positions in the model output.
+    """
+    global _PADDLE_V5_CHARS
+    if _PADDLE_V5_CHARS is not None:
+        return _PADDLE_V5_CHARS
+    candidates = [
+        Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / PADDLE_V5_DICT_FILENAME
+        for arch in ("hailo8", "hailo8l", "hailo10h")
+    ]
+    for path in candidates:
+        if path.exists():
+            data = np.load(str(path), allow_pickle=True)
+            _PADDLE_V5_CHARS = data["dictionary"].tolist()
+            return _PADDLE_V5_CHARS
+    return None
+
+
 def ctc_decode_paddle(output_data):
-    """Decode PaddleOCR recognition output (1,40,97) to text (full charset)."""
+    """Decode PaddleOCR recognition output to text via greedy CTC.
+
+    Auto-detects the model variant from the class count:
+      - 97 classes  → legacy "simplified" PaddleOCR (v3/v4 era), full ASCII
+      - 18385 classes → PP-OCRv5 mobile (multi-language); requires dict file
+    """
     data = np.array(output_data, dtype=np.float32)
     if data.ndim == 2:
         data = np.expand_dims(data, axis=0)
+    num_classes = data.shape[-1]
+
+    if num_classes == PADDLE_V3V4_NUM_CLASSES:
+        characters = PADDLE_CHARACTERS
+        blank_idx = PADDLE_BLANK_IDX
+    elif num_classes == PADDLE_V5_NUM_CLASSES:
+        chars_list = _load_paddle_v5_dict()
+        if chars_list is None:
+            return "", 0.0
+        # PP-OCRv5 layout: index 0 = CTC blank, indices 1..18382 = dictionary,
+        # remaining indices (18383..) = special tokens we treat as no-output.
+        characters = ["", *chars_list]
+        characters.extend([""] * (num_classes - len(characters)))
+        blank_idx = 0
+    else:
+        return "", 0.0
+
     text_index = data.argmax(axis=2)
     text_prob = data.max(axis=2)
-
     indices = text_index[0]
     probs = text_prob[0]
+
     chars, confs = [], []
-    prev = PADDLE_BLANK_IDX
+    prev = blank_idx
     for i, idx in enumerate(indices):
-        if idx != prev and idx != PADDLE_BLANK_IDX:
-            if idx < len(PADDLE_CHARACTERS):
-                chars.append(PADDLE_CHARACTERS[idx])
+        if idx != prev and idx != blank_idx and idx < len(characters):
+            ch = characters[idx]
+            if ch:
+                chars.append(ch)
                 confs.append(float(probs[i]))
         prev = idx
 
     text = "".join(chars)
     conf = float(np.mean(confs)) if confs else 0.0
     return text, conf
+
+
+def laplacian_variance(crop_bgr):
+    """TAPPAS-style sharpness metric: variance of Laplacian on the central 80%.
+
+    Higher values = sharper edges. Plates with motion blur or poor focus
+    produce low values. The threshold (~100) was chosen to match the
+    `quality_estimation` helper in TAPPAS's LPR cropper.
+    """
+    if crop_bgr is None or crop_bgr.size == 0:
+        return 0.0
+    h, w = crop_bgr.shape[:2]
+    x_off = int(SHARPNESS_INNER_TRIM * w)
+    y_off = int(SHARPNESS_INNER_TRIM * h)
+    inner = crop_bgr[y_off:max(y_off + 1, h - y_off), x_off:max(x_off + 1, w - x_off)]
+    if inner.size == 0:
+        return 0.0
+    canon = cv2.resize(inner, (200, 40), interpolation=cv2.INTER_AREA)
+    blurred = cv2.GaussianBlur(canon, (3, 3), 0)
+    gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+    gray_n = cv2.normalize(gray, None, alpha=255, beta=0, norm_type=cv2.NORM_INF)
+    lap = cv2.Laplacian(gray_n, cv2.CV_64F)
+    _mean, stddev = cv2.meanStdDev(lap)
+    return float(stddev[0][0] ** 2)
+
+
+def letterbox_resize(img_bgr, target_w, target_h, pad_value=0):
+    """Resize keeping aspect ratio with right-padding, matching PaddleOCR rec preprocessing.
+
+    PaddleOCR recognition models expect input that preserves the source
+    aspect ratio scaled to the target height, then right-padded with zeros
+    to the target width. A plain cv2.resize would distort character widths
+    and degrade accuracy.
+    """
+    if img_bgr is None or img_bgr.size == 0:
+        return np.full((target_h, target_w, 3), pad_value, dtype=np.uint8)
+    src_h, src_w = img_bgr.shape[:2]
+    scale = target_h / max(1, src_h)
+    new_w = max(1, min(target_w, int(round(src_w * scale))))
+    resized = cv2.resize(img_bgr, (new_w, target_h), interpolation=cv2.INTER_AREA)
+    if new_w == target_w:
+        return resized
+    out = np.full((target_h, target_w, 3), pad_value, dtype=img_bgr.dtype)
+    out[:, :new_w] = resized
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +245,10 @@ def detect_lps_gstreamer(detection, frame, frame_w, frame_h):
     LP detections are added by the custom libyolov4_lp_postprocess.so running
     inside the hailocropper element. Works on all architectures (H8/H8L/H10H).
 
+    Crops failing the size or sharpness gates are dropped here so they never
+    reach OCR. The sharpness gate runs on the BGR crop using a Laplacian
+    variance check (TAPPAS-style).
+
     Returns list of (lp_crop, x1, y1, x2, y2) tuples.
     """
     vbox = detection.get_bbox()
@@ -138,6 +256,7 @@ def detect_lps_gstreamer(detection, frame, frame_w, frame_h):
     for lp in detection.get_objects_typed(hailo.HAILO_DETECTION):
         if lp.get_label() != "license_plate":
             continue
+        
         lpbox = lp.get_bbox()
         x1 = max(0, int((vbox.xmin() + lpbox.xmin() * vbox.width()) * frame_w))
         y1 = max(0, int((vbox.ymin() + lpbox.ymin() * vbox.height()) * frame_h))
@@ -158,5 +277,12 @@ def detect_lps_gstreamer(detection, frame, frame_w, frame_h):
         lp_crop = frame[y1:y2, x1:x2]
         if lp_crop.size == 0:
             continue
+        
+        # Sharpness gate: a blurry plate produces garbage OCR even when
+        # detection confidence is high.
+        lp_crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
+        if laplacian_variance(lp_crop_bgr) < SHARPNESS_MIN_VARIANCE:
+            continue
+
         results.append((lp_crop, x1, y1, x2, y2))
     return results
