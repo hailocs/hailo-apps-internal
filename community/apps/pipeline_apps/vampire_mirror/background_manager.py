@@ -15,6 +15,7 @@ Phase 2 — Dynamic EMA update:
 """
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 
@@ -31,7 +32,7 @@ class BackgroundManager:
         self._capture_frames: int = capture_frames
         self._alpha: float = float(alpha)
 
-        self.background: np.ndarray | None = None   # float32, set once ready
+        self.background: np.ndarray | None = None   # uint8, set once ready
         self._accumulator: np.ndarray | None = None  # float64, used during capture
         self._frame_count: int = 0                   # frames seen so far
 
@@ -82,32 +83,31 @@ class BackgroundManager:
         self._frame_count += 1
 
         if self.is_ready:
-            # Compute mean and convert to float32; free the accumulator.
-            self.background = (self._accumulator / self._capture_frames).astype(np.float32)
+            # Compute mean and convert directly to uint8 — keeps later EMA
+            # updates SIMD-friendly via cv2.addWeighted.
+            self.background = (self._accumulator / self._capture_frames).astype(np.uint8)
             self._accumulator = None
 
     def _ema_update(self, frame: np.ndarray, vampire_mask: np.ndarray | None) -> None:
-        """Apply EMA blend on non-vampire pixels."""
+        """Apply EMA blend on non-vampire pixels (in-place, uint8, SIMD)."""
         assert self.background is not None  # guaranteed by is_ready
 
-        frame_f = frame.astype(np.float32)
+        alpha = self._alpha
 
         if vampire_mask is None:
-            # Update every pixel
-            update_mask = np.ones(frame.shape[:2], dtype=bool)
-        else:
-            # Only update pixels NOT covered by the vampire
-            update_mask = ~vampire_mask
+            # Hot path: blend every pixel in-place. cv2.addWeighted runs
+            # SIMD on uint8 and writes back to `dst` without allocation.
+            cv2.addWeighted(
+                frame, alpha, self.background, 1.0 - alpha, 0.0,
+                dst=self.background,
+            )
+            return
 
-        # Expand mask to match (H, W, C) if the frame has a channel dimension
-        if frame_f.ndim == 3:
-            update_mask_3d = update_mask[:, :, np.newaxis]
-        else:
-            update_mask_3d = update_mask
-
-        alpha = self._alpha
-        self.background = np.where(
-            update_mask_3d,
-            alpha * frame_f + (1.0 - alpha) * self.background,
-            self.background,
+        # Mask path: blend everywhere, then restore vampire pixels from the
+        # pre-blend background so they aren't poisoned by the vampire.
+        saved = self.background[vampire_mask].copy()  # (N, C) flat copy
+        cv2.addWeighted(
+            frame, alpha, self.background, 1.0 - alpha, 0.0,
+            dst=self.background,
         )
+        self.background[vampire_mask] = saved

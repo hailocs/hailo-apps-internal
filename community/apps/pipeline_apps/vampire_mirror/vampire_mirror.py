@@ -24,10 +24,14 @@ if _REPO_ROOT not in sys.path:
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
+import multiprocessing
+
 import cv2
 import hailo
-import multiprocessing
 import numpy as np
+
+# Precomputed once — used for every per-detection mask dilation.
+_DILATION_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
 
 from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
@@ -49,7 +53,10 @@ class VampireMirrorCallback(app_callback_class):
 
     def __init__(self):
         super().__init__()
-        self.frame_queue = multiprocessing.Queue(maxsize=5)
+        # Display runs in a separate process, so the queue must be a
+        # multiprocessing.Queue (queue.Queue does not cross processes).
+        # maxsize=1 + drain-on-set keeps display latency minimal.
+        self.frame_queue = multiprocessing.Queue(maxsize=1)
 
         # Modules — initialized after pipeline construction
         self.frame_geometry: FrameGeometry | None = None
@@ -128,9 +135,12 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
         return 1
 
     # --- Phase 2: Vampire logic ---
-    background = bg_manager.background.astype(np.uint8)  # float32 → uint8
-    output = frame.copy()
-    combined_vampire_mask = np.zeros((height, width), dtype=bool)
+    # Background is already uint8 in-place; no per-frame conversion needed.
+    background = bg_manager.background
+    # output/combined_vampire_mask are allocated lazily — the common case
+    # (no vampires) avoids a 1280x720x3 copy and an HxW bool alloc.
+    output = frame
+    combined_vampire_mask = None
 
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
@@ -162,6 +172,11 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
 
         if state != TrackState.VAMPIRE:
             continue
+
+        # Lazy alloc — only pay the cost on frames with at least one vampire.
+        if combined_vampire_mask is None:
+            output = frame.copy()
+            combined_vampire_mask = np.zeros((height, width), dtype=bool)
 
         # --- Replace vampire pixels with background ---
         px1 = max(int(bbox.xmin() * width), 0)
@@ -202,14 +217,17 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
 
         roi_mask = resized_mask[my1:my2, mx1:mx2]
         binary_mask = (roi_mask > 0.5).astype(np.uint8)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-        binary_mask = cv2.dilate(binary_mask, kernel, iterations=2).astype(bool)
+        binary_mask = cv2.dilate(binary_mask, _DILATION_KERNEL, iterations=2).astype(bool)
 
         output[y1:y2, x1:x2][binary_mask] = background[y1:y2, x1:x2][binary_mask]
         combined_vampire_mask[y1:y2, x1:x2] |= binary_mask
 
     # --- Update dynamic background ---
-    vampire_mask = combined_vampire_mask if combined_vampire_mask.any() else None
+    vampire_mask = (
+        combined_vampire_mask
+        if combined_vampire_mask is not None and combined_vampire_mask.any()
+        else None
+    )
     bg_manager.update(frame, vampire_mask=vampire_mask)
 
     # --- Center crop and display ---
