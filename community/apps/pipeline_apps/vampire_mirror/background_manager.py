@@ -19,6 +19,37 @@ import cv2
 import numpy as np
 
 
+class BackgroundUpdater:
+    """Pure EMA blend logic — no IPC, no state besides alpha.
+
+    Operates in-place on a uint8 background buffer using cv2.addWeighted
+    (SIMD). When ``person_mask`` is provided, pixels under the mask are
+    preserved (the background does not adapt where a person is segmented).
+    """
+
+    def __init__(self, alpha: float) -> None:
+        self._alpha = float(alpha)
+
+    def apply(
+        self,
+        bg: np.ndarray,
+        frame: np.ndarray,
+        person_mask: np.ndarray | None,
+    ) -> None:
+        """Update ``bg`` in-place with one EMA step from ``frame``."""
+        assert bg.dtype == np.uint8 and frame.dtype == np.uint8
+        assert bg.shape == frame.shape
+        alpha = self._alpha
+
+        if person_mask is None:
+            cv2.addWeighted(frame, alpha, bg, 1.0 - alpha, 0.0, dst=bg)
+            return
+
+        saved = bg[person_mask].copy()
+        cv2.addWeighted(frame, alpha, bg, 1.0 - alpha, 0.0, dst=bg)
+        bg[person_mask] = saved
+
+
 class BackgroundManager:
     """Manages a dynamically-updated background for the vampire mirror effect.
 
@@ -90,24 +121,7 @@ class BackgroundManager:
 
     def _ema_update(self, frame: np.ndarray, vampire_mask: np.ndarray | None) -> None:
         """Apply EMA blend on non-vampire pixels (in-place, uint8, SIMD)."""
-        assert self.background is not None  # guaranteed by is_ready
-
-        alpha = self._alpha
-
-        if vampire_mask is None:
-            # Hot path: blend every pixel in-place. cv2.addWeighted runs
-            # SIMD on uint8 and writes back to `dst` without allocation.
-            cv2.addWeighted(
-                frame, alpha, self.background, 1.0 - alpha, 0.0,
-                dst=self.background,
-            )
-            return
-
-        # Mask path: blend everywhere, then restore vampire pixels from the
-        # pre-blend background so they aren't poisoned by the vampire.
-        saved = self.background[vampire_mask].copy()  # (N, C) flat copy
-        cv2.addWeighted(
-            frame, alpha, self.background, 1.0 - alpha, 0.0,
-            dst=self.background,
-        )
-        self.background[vampire_mask] = saved
+        assert self.background is not None
+        if not hasattr(self, "_updater"):
+            self._updater = BackgroundUpdater(alpha=self._alpha)
+        self._updater.apply(self.background, frame, person_mask=vampire_mask)
