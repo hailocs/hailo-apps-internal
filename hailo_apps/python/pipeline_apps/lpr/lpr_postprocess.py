@@ -93,6 +93,15 @@ PADDLE_V3V4_NUM_CLASSES = 97       # legacy "simplified" PaddleOCR (v3/v4 era)
 PADDLE_V5_NUM_CLASSES = 18385      # PP-OCRv5 mobile recognition (v2.18 model zoo)
 PADDLE_V5_DICT_FILENAME = "ppocrv5_char_dict.npz"
 
+# Number of ignored tokens at the start of each PaddleOCR output. Both indices
+# get skipped during CTC decode and don't map to any dictionary entry.
+# Mirrors hailo-media-library/hailo-postprocess/.../ocr_post.cpp:
+#   v3/v4 simplified: blank only → 1 ignored token
+#   v5 mobile:        blank + padding → 2 ignored tokens
+# Without this, every v5 prediction is off by one position in the dict.
+PADDLE_V3V4_NUM_IGNORED = 1
+PADDLE_V5_NUM_IGNORED = 2
+
 
 # ---------------------------------------------------------------------------
 # CTC decoders
@@ -171,9 +180,11 @@ def _load_paddle_v5_dict():
 def ctc_decode_paddle(output_data):
     """Decode PaddleOCR recognition output to text via greedy CTC.
 
-    Auto-detects the model variant from the class count:
-      - 97 classes  → legacy "simplified" PaddleOCR (v3/v4 era), full ASCII
-      - 18385 classes → PP-OCRv5 mobile (multi-language); requires dict file
+    Auto-detects the model variant from the class count and uses the
+    appropriate number of ignored leading tokens (matching the media
+    library's ocr_post.cpp reference implementation):
+      - 97 classes  → v3/v4 "simplified", 1 ignored token (blank)
+      - 18385 classes → PP-OCRv5 mobile, 2 ignored tokens (blank + padding)
     """
     data = np.array(output_data, dtype=np.float32)
     if data.ndim == 2:
@@ -181,17 +192,20 @@ def ctc_decode_paddle(output_data):
     num_classes = data.shape[-1]
 
     if num_classes == PADDLE_V3V4_NUM_CLASSES:
-        characters = PADDLE_CHARACTERS
-        blank_idx = PADDLE_BLANK_IDX
+        # v3/v4 keeps the legacy "blank at index 0, characters at 1..96" layout.
+        characters = PADDLE_CHARACTERS  # blank at [0], chars at [1..96]
+        num_ignored = PADDLE_V3V4_NUM_IGNORED
     elif num_classes == PADDLE_V5_NUM_CLASSES:
         chars_list = _load_paddle_v5_dict()
         if chars_list is None:
             return "", 0.0
-        # PP-OCRv5 layout: index 0 = CTC blank, indices 1..18382 = dictionary,
-        # remaining indices (18383..) = special tokens we treat as no-output.
-        characters = ["", *chars_list]
+        # v5 layout per ocr_post.cpp: classes [0,1] = blank + padding (ignored),
+        # classes [2..18383] = dict[0..18381], classes [18384..] = no-output.
+        # Build a lookup table aligned to class index so we can keep the
+        # decode loop branch-free below.
+        characters = ["", ""] + list(chars_list)
         characters.extend([""] * (num_classes - len(characters)))
-        blank_idx = 0
+        num_ignored = PADDLE_V5_NUM_IGNORED
     else:
         return "", 0.0
 
@@ -201,14 +215,22 @@ def ctc_decode_paddle(output_data):
     probs = text_prob[0]
 
     chars, confs = [], []
-    prev = blank_idx
+    prev = -1
     for i, idx in enumerate(indices):
-        if idx != prev and idx != blank_idx and idx < len(characters):
+        idx = int(idx)
+        # Skip ignored leading tokens (blank, padding, etc.).
+        if idx < num_ignored:
+            prev = idx
+            continue
+        # CTC collapse: skip consecutive duplicates of the same emission.
+        if idx == prev:
+            continue
+        prev = idx
+        if idx < len(characters):
             ch = characters[idx]
             if ch:
                 chars.append(ch)
                 confs.append(float(probs[i]))
-        prev = idx
 
     text = "".join(chars)
     conf = float(np.mean(confs)) if confs else 0.0
