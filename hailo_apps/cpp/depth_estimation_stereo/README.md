@@ -56,7 +56,7 @@ Usage
 3. Run the example:
 
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --net <hef_path> --left <image_or_video_or_camera_path> --right <image_or_video_or_camera_path>
+    ./build/stereo_depth_estimation --net <hef_path> --left <image_or_video_or_camera_path> --right <image_or_video_or_camera_path>
     ```
 
 Arguments
@@ -79,35 +79,35 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --list-nets
+    ./build/stereo_depth_estimation --list-nets
     ```
 
 - List available input resources:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --list-inputs
+    ./build/stereo_depth_estimation --list-inputs
     ```
 
 - For a video:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --net stereonet.hef --left video_left.mp4 --right video_right.mp4 --batch-size 16
+    ./build/stereo_depth_estimation --net stereonet.hef --left video_left.mp4 --right video_right.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation -n stereonet.hef --left left.jpg --right right.jpg
+    ./build/stereo_depth_estimation -n stereonet.hef --left left.jpg --right right.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation -n stereonet.hef --left left_images --right right_images -b 4
+    ./build/stereo_depth_estimation -n stereonet.hef --left left_images --right right_images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --net stereonet.hef --left /dev/video0 --right /dev/video1  -s
+    ./build/stereo_depth_estimation --net stereonet.hef --left /dev/video0 --right /dev/video1  -s
     ```
     Output video is saved as processed_video.mp4
 

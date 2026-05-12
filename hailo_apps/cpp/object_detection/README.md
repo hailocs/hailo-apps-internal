@@ -109,33 +109,33 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/object_detection --list-nets
+    ./build/object_detection --list-nets
     ```
 - List available input resources:
     ```shell script
-    ./build/x86_64/object_detection --list-inputs
+    ./build/object_detection --list-inputs
     ```
 - For a video:
     ```shell script
-	./build/x86_64/object_detection --net yolov8n.hef --input full_mov_slow.mp4 --batch-size 16
+	./build/object_detection --net yolov8n.hef --input full_mov_slow.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/object_detection -n yolov8n.hef -i bus.jpg
+    ./build/object_detection -n yolov8n.hef -i bus.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/object_detection -n yolov8n.hef -i images -b 4
+    ./build/object_detection -n yolov8n.hef -i images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/object_detection --net yolov8n.hef --input /dev/video0 --batch-size 2 -s
+    ./build/object_detection --net yolov8n.hef --input /dev/video0 --batch-size 2 -s
     ```
     Output video is saved as processed_video.mp4
 

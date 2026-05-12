@@ -74,33 +74,33 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/semantic_segmentation --list-nets
+    ./build/semantic_segmentation --list-nets
     ```
 - List available input resources:
     ```shell script
-    ./build/x86_64/semantic_segmentation --list-inputs
+    ./build/semantic_segmentation --list-inputs
     ```
 - For a video:
     ```shell script
-    ./build/x86_64/semantic_segmentation -n fcn8_resnet_v1_18.hef -i full_mov_slow.mp4 --batch-size 16
+    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef -i full_mov_slow.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/semantic_segmentation -n fcn8_resnet_v1_18.hef -i zidane.jpg
+    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef -i zidane.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/semantic_segmentation -n fcn8_resnet_v1_18.hef -i images -b 4
+    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef -i images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/semantic_segmentation -n fcn8_resnet_v1_18.hef --input /dev/video0 --batch-size 2 -s
+    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef --input /dev/video0 --batch-size 2 -s
     ```
     Output video is saved as processed_video.mp4
 

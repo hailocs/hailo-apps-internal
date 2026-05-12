@@ -47,7 +47,7 @@ Usage
 3. Run the example:
 
     ```shell script
-    ./build/x86_64/pose_estimation --net <hef_path> --input <image_or_video_or_camera_path>
+    ./build/pose_estimation --net <hef_path> --input <image_or_video_or_camera_path>
     ```
 
 Arguments
@@ -75,33 +75,33 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/pose_estimation --list-nets
+    ./build/pose_estimation --list-nets
     ```
 - List available input resources:
     ```shell script
-    ./build/x86_64/pose_estimation --list-inputs
+    ./build/pose_estimation --list-inputs
     ```
 - For a video:
     ```shell script
-    ./build/x86_64/pose_estimation --net yolov8m_pose.hef --input full_mov_slow.mp4 --batch-size 16
+    ./build/pose_estimation --net yolov8m_pose.hef --input full_mov_slow.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/pose_estimation -n yolov8m_pose.hef -i zidane.jpg
+    ./build/pose_estimation -n yolov8m_pose.hef -i zidane.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/pose_estimation -n yolov8m_pose.hef -i images -b 4
+    ./build/pose_estimation -n yolov8m_pose.hef -i images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/pose_estimation --net yolov8m_pose.hef --input /dev/video0 --batch-size 2 -s
+    ./build/pose_estimation --net yolov8m_pose.hef --input /dev/video0 --batch-size 2 -s
     ```
     Output video is saved as processed_video.mp4
 
