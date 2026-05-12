@@ -98,7 +98,9 @@ namespace hailo_utils {
                                 double &org_width,
                                 size_t &frame_count,
                                 size_t batch_size,
-                                const std::string &camera_resolution);
+                                const std::string &camera_resolution,
+                                int model_w = 0,
+                                int model_h = 0);
 
     // CLI
     std::string getCmdOption(int argc, char *argv[], const std::string &option);
@@ -136,7 +138,9 @@ namespace hailo_utils {
         double &org_width,
         size_t &frame_count,
         bool is_camera,
-        const std::string &camera_resolution = "");
+        const std::string &camera_resolution = "",
+        int model_w = 0,
+        int model_h = 0);
 
     template<typename T>
     class BoundedTSQueue {

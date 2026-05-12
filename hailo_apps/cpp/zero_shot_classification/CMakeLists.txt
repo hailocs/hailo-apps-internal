@@ -165,7 +165,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # ============================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4
+        /w
         /O2
         /EHsc
         /permissive-
@@ -175,11 +175,11 @@ if(MSVC)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
         -O3
-        -Wall -Wextra -Wconversion
-        -Wno-ignored-qualifiers
-        -Wno-reorder
-        -Wno-extra
-        -Wno-stringop-truncation
+        -w
+       
+       
+       
+       
     )
 endif()
 
@@ -203,6 +203,6 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/config
 
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/../../config/resources_config.yaml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/config/resources_config.yaml
 )

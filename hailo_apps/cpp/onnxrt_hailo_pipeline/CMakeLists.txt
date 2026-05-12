@@ -230,7 +230,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # ============================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4 /O2
+        /w /O2
         /EHsc
         /permissive-
         /Zc:__cplusplus
@@ -238,11 +238,11 @@ if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -O3 -DNDEBUG -Wall -Wextra
-        -Wno-reorder -Wno-ignored-qualifiers -Wno-unused-local-typedefs
-        -Wno-parentheses -Wno-array-bounds -Wno-unused-value
-        -Wno-conversion -Wno-unused-parameter -Wno-missing-field-initializers
-        -Wno-sign-compare -Wno-uninitialized
+        -O3 -DNDEBUG -w
+       
+       
+       
+       
     )
 endif()
 
@@ -263,7 +263,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # <exe_dir>/config/resources_config.yaml
 # ============================================================
 set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # onnxrt_hailo_pipeline -> cpp -> hailo_apps
-set(RESOURCES_YAML_SRC "${HAILO_APPS_ROOT}/config/resources_config.yaml")
+set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml")
 
 if(NOT EXISTS "${RESOURCES_YAML_SRC}")
     message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")

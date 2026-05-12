@@ -135,7 +135,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # ============================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4 /O2
+        /w /O2
         /permissive-
         /Zc:__cplusplus
         /EHsc
@@ -145,12 +145,12 @@ if(MSVC)
 else()
     # Base compilation options (portable on GCC/Clang)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -O3
-        -Wno-ignored-qualifiers
-        -Wno-extra
-        -Wno-stringop-truncation
-        -Wno-reorder
-        -Wno-unused-parameter
+        -w -O3
+       
+       
+       
+       
+       
         -fopenmp
     )
 
@@ -182,7 +182,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # <exe_dir>/config/resources_config.yaml
 # ============================================================
 set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # oriented_object_detection -> cpp -> hailo_apps
-set(RESOURCES_YAML_SRC "${HAILO_APPS_ROOT}/config/resources_config.yaml")
+set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml")
 
 if(NOT EXISTS "${RESOURCES_YAML_SRC}")
     message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")

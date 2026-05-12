@@ -117,13 +117,16 @@ int main(int argc, char** argv)
                                  std::placeholders::_2,
                                  std::cref(vis_param));
 
+        auto model_shape = model.get_model_shape();
         input_type = determine_input_type(args.input,
                                         std::ref(capture),
                                         std::ref(org_height),
                                         std::ref(org_width),
                                         std::ref(frame_count),
                                         std::ref(args.batch_size),
-                                        std::ref(args.camera_resolution));
+                                        std::ref(args.camera_resolution),
+                                        static_cast<int>(model_shape.width),
+                                        static_cast<int>(model_shape.height));
 
         auto preprocess_thread = std::async(run_preprocess,
                                             std::ref(args.input),

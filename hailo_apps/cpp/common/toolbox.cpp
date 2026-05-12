@@ -46,15 +46,35 @@ const std::unordered_map<std::string, std::pair<int,int>> RESOLUTION_MAP = {
     {"fhd", {1920, 1080}}
 };
 
+fs::path get_executable_dir()
+{
+#ifdef _WIN32
+    char buf[MAX_PATH];
+    DWORD len = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (len == 0 || len == MAX_PATH)
+        throw std::runtime_error("GetModuleFileNameA failed");
+    return fs::path(std::string(buf, len)).parent_path();
+#else
+    char buf[4096];
+    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (len <= 0)
+        throw std::runtime_error("readlink(/proc/self/exe) failed");
+    buf[len] = '\0';
+    return fs::path(buf).parent_path();
+#endif
+}
+
 VisualizationParams load_visualization_params(const std::string &path)
 {
     YAML::Node root;
 
+    fs::path resolved = get_executable_dir() / "config" / fs::path(path).filename();
+
     try {
-        root = YAML::LoadFile(path);
+        root = YAML::LoadFile(resolved.string());
     } catch (const std::exception &e) {
         throw std::runtime_error(
-            "Failed to load visualization config file: " + path +
+            "Failed to load visualization config file: " + resolved.string() +
             " | " + e.what());
     }
 
@@ -506,7 +526,9 @@ InputType determine_input_type(const std::string& input_path,
                                double &org_width,
                                size_t &frame_count,
                                size_t batch_size,
-                               const std::string &camera_resolution)
+                               const std::string &camera_resolution,
+                               int model_w,
+                               int model_h)
 {
     InputType input_type;
 
@@ -523,7 +545,7 @@ InputType determine_input_type(const std::string& input_path,
     } else if (is_video(input_path)) {
         input_type.is_video = true;
         capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
-                                     false /*is_camera*/);
+                                     false /*is_camera*/, "", model_w, model_h);
     // --------------------------------------------
     // 2) Camera inputs
     // --------------------------------------------
@@ -593,6 +615,10 @@ InputType determine_input_type(const std::string& input_path,
 
 void show_progress_helper(size_t current, size_t total)
 {
+    if (total == 0) {
+        std::cout << "\rProcessed: " << (current + 1) << " frames" << std::flush;
+        return;
+    }
     int progress = static_cast<int>((static_cast<float>(current + 1) / static_cast<float>(total)) * 100);
     int bar_width = 50; 
     int pos = static_cast<int>(bar_width * (current + 1) / total);
@@ -676,7 +702,9 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     double &org_width,
     size_t &frame_count,
     bool is_camera,
-    const std::string &camera_resolution) 
+    const std::string &camera_resolution,
+    int model_w,
+    int model_h)
     {
     const bool is_rpi_input = (input_path == "rpi");
     // Validate platform
@@ -722,7 +750,7 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
             // Windows: open camera by index (e.g. "0"), not by a device path
             int idx = 0;
             try { idx = std::stoi(input_path); } catch (...) { idx = 0; }
-    
+
             // Prefer DirectShow; if it fails on some machines you can try MSMF
             capture.open(idx, cv::CAP_DSHOW);
         } else {
@@ -730,11 +758,58 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
             capture.open(input_path, cv::CAP_ANY);
         }
     #else
-        // Linux: camera can be /dev/video0, or file path
-        capture.open(input_path, cv::CAP_ANY);
+        if (!is_camera && has_gstreamer_element("v4l2h264dec") &&
+            has_gstreamer_element("imxvideoconvert_g2d")) {
+            // On NXP i.MX8: VPU decode + G2D GPU scale/convert.
+            // Key fix: decodebin's internal multiqueue defaults to max-size-bytes=1MB,
+            // which only fits ~1 decoded NV12 frame (614KB for 640x640).
+            // We add an explicit queue after the decoder (max-size-bytes=0 = unlimited,
+            // max-size-buffers=15) so the VPU can stay 15 frames ahead of consumption,
+            // matching the throughput seen with the USB camera path.
+            // Output BGRx (4 channels) directly - no software videoconvert needed.
+            // preprocess_callback handles BGRA2RGB in one pass.
+            std::string size_caps = "";
+            if (model_w > 0 && model_h > 0)
+                size_caps = ",width=" + std::to_string(model_w) + ",height=" + std::to_string(model_h);
+
+            // Strategy 1: explicit qtdemux+h264parse+v4l2h264dec with large pre/post-decode queues
+            std::string pipeline =
+                "filesrc location=" + input_path +
+                " ! qtdemux"
+                " ! queue max-size-buffers=200 max-size-bytes=0 max-size-time=0"
+                " ! h264parse"
+                " ! v4l2h264dec"
+                " ! queue max-size-buffers=15 max-size-bytes=0 max-size-time=0"
+                " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx" + size_caps +
+                " ! appsink name=appsink0 sync=false async=false";
+            capture.open(pipeline, cv::CAP_GSTREAMER);
+
+            if (!capture.isOpened()) {
+                // Strategy 2: decodebin with explicit queue to work around the 1MB buffer limit
+                std::string pipeline2 =
+                    "filesrc location=" + input_path +
+                    " ! decodebin"
+                    " ! queue max-size-buffers=15 max-size-bytes=0 max-size-time=0"
+                    " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx" + size_caps +
+                    " ! appsink name=appsink0 sync=false async=false";
+                capture.open(pipeline2, cv::CAP_GSTREAMER);
+            }
+
+            if (!capture.isOpened()) {
+                std::cerr << "-W- HW G2D pipeline failed, falling back to software decode\n";
+                capture.open(input_path, cv::CAP_ANY);
+            }
+        } else {
+            // Linux: camera or platform without HW decoder
+            capture.open(input_path, cv::CAP_ANY);
+        }
     #endif
-    
+
         if (is_camera) { // apply camera settings
+            // Force MJPG: camera sends compressed JPEG (~50KB/frame) instead of raw YUYV
+            // (~614KB/frame for 640x480), dramatically reducing USB bandwidth and allowing
+            // stable 30 FPS. OpenCV's V4L2 backend decompresses automatically.
+            capture.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));
             capture.set(cv::CAP_PROP_FRAME_WIDTH,  width);
             capture.set(cv::CAP_PROP_FRAME_HEIGHT, height);
             capture.set(cv::CAP_PROP_FPS, fps);
@@ -751,6 +826,14 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     }
 
     frame_count = is_camera ? 0 : static_cast<size_t>(capture.get(cv::CAP_PROP_FRAME_COUNT));
+    // GStreamer custom pipelines may return 0 — fall back to querying the file directly
+    if (!is_camera && frame_count == 0) {
+        cv::VideoCapture tmp(input_path, cv::CAP_ANY);
+        if (tmp.isOpened()) {
+            frame_count = static_cast<size_t>(tmp.get(cv::CAP_PROP_FRAME_COUNT));
+            tmp.release();
+        }
+    }
     return capture;
 }
 

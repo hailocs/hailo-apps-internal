@@ -36,6 +36,7 @@ videos:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - semantic_segmentation
@@ -53,6 +54,7 @@ videos:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - semantic_segmentation
@@ -127,6 +129,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -139,6 +142,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -151,6 +155,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -163,6 +168,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier

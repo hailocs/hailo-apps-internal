@@ -77,6 +77,38 @@ int main(int argc, char** argv)
                                         std::ref(args.batch_size),
                                         std::ref(args.camera_resolution));
 
+        // Letterbox preprocess: scale to fit (preserve aspect ratio), pad right/bottom.
+        // Must match compute_letterbox() in onnx_decode.cpp so coordinate inversion is correct.
+        auto letterbox_preprocess = [](const std::vector<cv::Mat>& org_frames,
+                                       std::vector<cv::Mat>& out_frames,
+                                       uint32_t target_w, uint32_t target_h) {
+            out_frames.clear();
+            out_frames.reserve(org_frames.size());
+            for (const auto& src : org_frames) {
+                if (src.empty()) { out_frames.emplace_back(); continue; }
+                cv::Mat rgb;
+                switch (src.channels()) {
+                    case 4:  cv::cvtColor(src, rgb, cv::COLOR_BGRA2RGB); break;
+                    case 1:  cv::cvtColor(src, rgb, cv::COLOR_GRAY2RGB); break;
+                    default: cv::cvtColor(src, rgb, cv::COLOR_BGR2RGB);  break;
+                }
+                const float scale = std::min(
+                    static_cast<float>(target_w) / rgb.cols,
+                    static_cast<float>(target_h) / rgb.rows);
+                const int new_w = static_cast<int>(std::round(rgb.cols * scale));
+                const int new_h = static_cast<int>(std::round(rgb.rows * scale));
+                cv::Mat scaled;
+                cv::resize(rgb, scaled, cv::Size(new_w, new_h));
+                cv::Mat fitted;
+                cv::copyMakeBorder(scaled, fitted,
+                                   0, static_cast<int>(target_h) - new_h,
+                                   0, static_cast<int>(target_w) - new_w,
+                                   cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+                if (!fitted.isContinuous()) fitted = fitted.clone();
+                out_frames.push_back(std::move(fitted));
+            }
+        };
+
         auto preprocess_thread = std::async(run_preprocess,
                                             std::ref(args.input),
                                             std::ref(args.net),
@@ -86,7 +118,7 @@ int main(int argc, char** argv)
                                             std::ref(args.batch_size),
                                             std::ref(args.framerate),
                                             preprocessed_batch_queue,
-                                            preprocess_frames);
+                                            letterbox_preprocess);
 
         ModelInputQueuesMap input_queues = {
             { model.get_infer_model()->get_input_names().at(0), preprocessed_batch_queue }
