@@ -19,6 +19,8 @@ for mod_name in [
 sys.modules["gi"].require_version = lambda *a, **kw: None
 
 from community.apps.pipeline_apps.gesture_mouse.gesture_mouse import (
+    PALM_ANCHOR_LANDMARKS,
+    _palm_center_position,
     map_index_to_screen,
 )
 
@@ -96,6 +98,110 @@ class TestMapIndexToScreenDegenerate:
         px, py = map_index_to_screen(0.5, 0.5, 0.0, SCREEN_W, SCREEN_H)
         assert px == pytest.approx(SCREEN_W * 0.5)
         assert py == pytest.approx(SCREEN_H * 0.5)
+
+
+class _MockPoint:
+    def __init__(self, x, y):
+        self._x = x
+        self._y = y
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+
+class _MockLandmarks:
+    def __init__(self, points):
+        self._points = points
+
+    def get_points(self):
+        return self._points
+
+
+class _MockBbox:
+    def __init__(self, xmin=0.0, ymin=0.0, width=1.0, height=1.0):
+        self._xmin = xmin
+        self._ymin = ymin
+        self._w = width
+        self._h = height
+
+    def xmin(self):
+        return self._xmin
+
+    def ymin(self):
+        return self._ymin
+
+    def width(self):
+        return self._w
+
+    def height(self):
+        return self._h
+
+
+class _MockDetection:
+    """Mimics enough of a HailoDetection interface for landmark math tests."""
+
+    def __init__(self, landmark_positions, bbox=None):
+        self._landmarks = [_MockLandmarks([_MockPoint(x, y) for x, y in landmark_positions])]
+        self._bbox = bbox or _MockBbox()
+
+    def get_objects_typed(self, _type):
+        # The real impl filters by type id; here we always return landmarks.
+        return self._landmarks
+
+    def get_bbox(self):
+        return self._bbox
+
+
+class TestPalmCenterPosition:
+    """The palm anchor is the average of WRIST + 4 MCP joints. Moving the
+    thumb or finger TIPs should not change the result."""
+
+    def _make_hand(self, mcp_positions, tip_positions=None):
+        """Build 21 landmarks. mcp_positions is dict {landmark_idx: (x, y)}."""
+        if tip_positions is None:
+            tip_positions = {}
+        # Default everything to (0.5, 0.5) then overwrite specifics.
+        points = [(0.5, 0.5)] * 21
+        for idx, pos in mcp_positions.items():
+            points[idx] = pos
+        for idx, pos in tip_positions.items():
+            points[idx] = pos
+        return _MockDetection(points, bbox=_MockBbox(0.0, 0.0, 1.0, 1.0))
+
+    def test_palm_anchor_landmarks_count(self):
+        assert len(PALM_ANCHOR_LANDMARKS) == 5
+
+    def test_palm_center_is_average_of_anchors(self):
+        # Place each of the 5 anchor landmarks at distinct positions.
+        positions = {
+            0: (0.10, 0.20),   # WRIST
+            5: (0.30, 0.40),   # INDEX_MCP
+            9: (0.50, 0.60),   # MIDDLE_MCP
+            13: (0.70, 0.40),  # RING_MCP
+            17: (0.90, 0.20),  # PINKY_MCP
+        }
+        det = self._make_hand(positions)
+        # Frame is 1000x1000 so pixel = normalized * 1000
+        px, py = _palm_center_position(det, 1000, 1000)
+        expected_x = sum(p[0] for p in positions.values()) / 5 * 1000
+        expected_y = sum(p[1] for p in positions.values()) / 5 * 1000
+        assert px == pytest.approx(expected_x)
+        assert py == pytest.approx(expected_y)
+
+    def test_palm_center_unchanged_when_index_tip_moves(self):
+        """The critical property: pinching (moving INDEX_TIP toward THUMB_TIP)
+        must NOT shift the cursor anchor."""
+        mcp = {0: (0.5, 0.5), 5: (0.5, 0.5), 9: (0.5, 0.5), 13: (0.5, 0.5), 17: (0.5, 0.5)}
+        det_open = self._make_hand(mcp, tip_positions={8: (0.5, 0.1), 4: (0.1, 0.5)})
+        det_pinched = self._make_hand(mcp, tip_positions={8: (0.3, 0.3), 4: (0.3, 0.3)})
+
+        open_x, open_y = _palm_center_position(det_open, 1000, 1000)
+        pinched_x, pinched_y = _palm_center_position(det_pinched, 1000, 1000)
+        assert open_x == pytest.approx(pinched_x)
+        assert open_y == pytest.approx(pinched_y)
 
 
 class TestClampOutputRange:

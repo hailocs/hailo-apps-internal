@@ -31,9 +31,19 @@ from community.apps.pipeline_apps.gesture_mouse.gesture_mouse_pipeline import (
 
 hailo_logger = get_logger(__name__)
 
-# Hand landmark indices (MediaPipe)
-INDEX_TIP = 8
+# Hand landmark indices (MediaPipe — 21-keypoint hand model)
+WRIST = 0
+INDEX_MCP = 5
+MIDDLE_MCP = 9
+RING_MCP = 13
+PINKY_MCP = 17
 THUMB_TIP = 4
+INDEX_TIP = 8
+
+# Anchor landmarks for the palm center — the average of these 5 points stays
+# put when the thumb or fingers move, so the cursor doesn't jerk during the
+# pinch click. The wrist + 4 MCP joints define the rigid palm.
+PALM_ANCHOR_LANDMARKS = (WRIST, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP)
 
 
 class GestureMouseCallback(app_callback_class):
@@ -113,6 +123,24 @@ def _get_landmark_position(detection, landmark_idx, frame_w, frame_h):
     return px, py
 
 
+def _palm_center_position(detection, frame_w, frame_h):
+    """Return the average pixel position of the palm anchor landmarks.
+
+    Uses the wrist + 4 MCP joints — these define the rigid palm and stay put
+    when the thumb or fingers move (e.g., during a pinch click).
+    Returns (px, py) in frame pixels, or None if any landmark is unavailable.
+    """
+    xs = []
+    ys = []
+    for idx in PALM_ANCHOR_LANDMARKS:
+        pos = _get_landmark_position(detection, idx, frame_w, frame_h)
+        if pos is None:
+            return None
+        xs.append(pos[0])
+        ys.append(pos[1])
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
 def _pinch_distance(detection, frame_w, frame_h):
     """Compute normalized distance between thumb tip and index tip."""
     thumb = _get_landmark_position(detection, THUMB_TIP, frame_w, frame_h)
@@ -182,14 +210,15 @@ def app_callback(element, buffer, user_data):
 
     user_data.frames_without_hand = 0
 
-    # Get index fingertip position for cursor
-    index_pos = _get_landmark_position(hand_det, INDEX_TIP, width, height)
-    if index_pos is None:
+    # Anchor cursor on the palm center (rigid: wrist + 4 MCP joints) rather
+    # than the index fingertip, so the pinch click doesn't pull the cursor.
+    palm_pos = _palm_center_position(hand_det, width, height)
+    if palm_pos is None:
         return
 
     # Map camera coordinates to screen coordinates via the pure helper.
-    norm_x = index_pos[0] / width
-    norm_y = index_pos[1] / height
+    norm_x = palm_pos[0] / width
+    norm_y = palm_pos[1] / height
     target_px, target_py = map_index_to_screen(
         norm_x, norm_y, user_data.speed, user_data.screen_w, user_data.screen_h,
     )
