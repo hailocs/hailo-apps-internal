@@ -109,12 +109,14 @@ ANGLE_TOLERANCE = 30
 
 def compute_arm_angle(shoulder_x, shoulder_y, wrist_x, wrist_y):
     """
-    Compute the angle of an arm from shoulder to wrist.
-    Returns angle in degrees (0-360), where:
-      0 = straight down
-      90 = pointing right (in image coordinates)
+    Compute the angle of an arm from shoulder to wrist in SIGNALER coords.
+    Returns angle in degrees (0-360), measured clockwise from straight down
+    from the SIGNALER's perspective (the camera mirrors the signaler), where:
+      0   = straight down
+      90  = signaler's right (wrist on image LEFT side of shoulder)
       180 = straight up
-      270 = pointing left (in image coordinates)
+      270 = signaler's left  (wrist on image RIGHT side of shoulder)
+    See the SEMAPHORE_ALPHABET note above for why we use signaler frame.
     """
     dx = wrist_x - shoulder_x
     dy = wrist_y - shoulder_y  # positive = downward in image coords
