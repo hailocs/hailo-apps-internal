@@ -1,12 +1,90 @@
+"""Hailo LPR — License Plate Recognition app.
+
+Two orthogonal choices control the pipeline:
+
+  --backbone : which detector finds license plates in the frame
+  --ocr      : which network reads the characters off each plate crop
+
+Backbones
+=========
+
+  cascade        Two cascaded detectors. Vehicle detection (yolov5m_vehicles)
+                 finds cars in the full frame; each car crop is then sent
+                 through a small tiny_yolov4 license-plate detector. This is
+                 the legacy default and is the lightest on memory, but it
+                 misses plates whose vehicles weren't detected (or were
+                 cropped to a patch too small for the LP head to work on).
+                 ~34 fps end-to-end on a Hailo-8 driving 3 HD clips.
+
+  yolov8n        A single yolov8n_384x640 (4 classes: person/vehicle/face/
+                 license_plate) run once per full frame. We filter for the
+                 license_plate class and crop directly. Replaces the cascade
+                 with one inference and skips the vehicle dependency.
+                 ~218 fps on the same machine.
+
+  yolov8n_tiled  Same network, but each video frame is split into 5 tiles
+                 (4 quadrants from a 2x2 grid + 1 full frame) which are
+                 inferred together (batch=5) and aggregated. Each plate
+                 lands in a quadrant at roughly 2x the pixels per plate
+                 compared to the full-frame view, recovering small plates
+                 that a single 384x640 inference would miss.
+                 ~151 fps. Recommended for FHD (1920x1080) and 4K input;
+                 the win shrinks below ~720p where the full-frame inference
+                 already has enough pixels per plate.
+
+OCR engines
+===========
+
+  lprnet         Compact CTC head trained on synthetic plates. Tight
+                 alphanumeric vocabulary (10 or 37 chars depending on the
+                 HEF), high per-character confidence. Default choice when
+                 you only need Western alphanumeric plates and you want
+                 the tightest possible OCR pipeline.
+
+  paddle         paddle_ocr_v5_mobile_recognition. Large multilingual
+                 vocabulary (18,385 classes). Reads non-Latin scripts and
+                 handles formatting (hyphens, dots) more gracefully. Slower
+                 per-character confidence and a lower exact-match rate on
+                 ASCII-only plates than a plate-specialised model. Use this
+                 when you need multilingual support or richer formatting.
+
+End-to-end accuracy (paddle OCR, BR+EU+US GT clips, 444 plates total)
+=====================================================================
+
+                  exact-match    F1     within-2-edits    FPS
+  cascade            3.6 %     6.5 %       9 %             ~34
+  yolov8n           31.1 %    35.1 %      72 %            ~218
+  yolov8n_tiled     35.4 %    39.3 %      72 %            ~151
+
+The within-2-edits rate (72 %) is a useful OCR ceiling indicator: it shows
+how often the OCR is producing a *close-to-correct* read. The gap between
+exact-match and within-2 narrows in proportion to how plate-specialised
+the OCR is — paddle's multilingual vocabulary makes O/0, I/1, S/5
+substitutions cost an edit each, while a retrained LPRNet that knows the
+plate-character distribution closes most of that gap.
+
+Run examples
+============
+
+  # Recommended for HD+ video: tiled yolov8n + paddle OCR
+  hailo-lpr --backbone yolov8n_tiled --ocr paddle --input clip.mp4
+
+  # Lightweight: single full-frame yolov8n + LPRNet (Western alphanumeric only)
+  hailo-lpr --backbone yolov8n --ocr lprnet --input clip.mp4
+
+  # Legacy cascade (kept for compatibility / lowest-memory scenarios)
+  hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
+"""
+
 import os
+import threading
+import time
 from pathlib import Path
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 import cv2
 import numpy as np
-import time
-import threading
 
 import hailo
 
@@ -15,7 +93,6 @@ from hailo_apps.python.core.common.buffer_utils import (
     get_numpy_from_buffer_efficient,
 )
 from hailo_apps.python.core.common.core import (
-    configure_multi_model_hef_path,
     detect_hailo_arch,
     get_pipeline_parser,
     handle_list_models_flag,
@@ -28,68 +105,237 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_display import (
     PANEL_WIDTH,
     lpr_display_thread,
 )
-from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import GStreamerLPRApp, LPR_PIPELINE
+from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import (
+    BACKBONE_CASCADE,
+    BACKBONE_YOLOV8N,
+    BACKBONE_YOLOV8N_TILED,
+    BACKBONES,
+    GStreamerLPRApp,
+    LPR_PIPELINE,
+)
 from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
     DISPLAY_PLATE_LOG_MAX,
+    MAX_LP_HEIGHT_PIXELS,
+    MAX_LP_WIDTH_PIXELS,
     MIN_LENGTH,
+    MIN_LP_HEIGHT_PIXELS,
+    MIN_LP_WIDTH_PIXELS,
     MIN_VEHICLE_AREA_PX,
     ROI_Y_END,
     ROI_Y_START,
+    SHARPNESS_MIN_VARIANCE,
     SUMMARY_INTERVAL,
     ctc_decode_lprnet,
     ctc_decode_paddle,
     detect_lps_gstreamer,
+    laplacian_variance,
     letterbox_resize,
     min_ocr_confidence_for,
 )
 
+# Label used by the yolov8n 4-class detector for the license-plate class
+# (matches resources/json/hailo_4_classes.json).
+LP_LABEL = "license_plate"
+
 
 class user_app_callback_class(app_callback_class):
-    def __init__(self, ocr_hef_path, ocr_engine="lprnet", save_crops_dir=None):
+    def __init__(self, ocr_hef_path, ocr="lprnet",
+                 backbone=BACKBONE_CASCADE,
+                 save_ocr_inputs_dir=None):
         super().__init__()
-        self.seen_plates = {}  # track_id -> plate text (OCR >= threshold)
-        self.vehicles_seen = set()  # all unique vehicle track IDs seen
+        self.backbone = backbone
+        self.ocr = ocr
+        self.seen_plates = {}     # track_id → plate text (after OCR gate)
+        self.vehicles_seen = set()
         self.last_summary_time = time.time()
-        self.ocr_engine = ocr_engine
-        self.decode_fn = ctc_decode_lprnet if ocr_engine == "lprnet" else ctc_decode_paddle
-        self.min_ocr_confidence = min_ocr_confidence_for(ocr_engine)
+        self.decode_fn = ctc_decode_lprnet if ocr == "lprnet" else ctc_decode_paddle
+        self.min_ocr_confidence = min_ocr_confidence_for(ocr)
         # Plate log for display panel: list of (crop_bgr, text, conf, track_id)
         self.plate_log = []
         self.plate_log_lock = threading.Lock()
-        self.save_crops_dir = save_crops_dir
-        self.crop_counter = 0
+        # Diagnostic: dump every array fed to the OCR network (post-letterbox /
+        # post-resize) plus the decoded text + confidence, for visual review.
+        self.save_ocr_inputs_dir = save_ocr_inputs_dir
+        self.ocr_input_counter = 0
 
         # Initialize OCR inference via HailoRT
         self.ocr_infer = HailoInfer(ocr_hef_path, batch_size=1, output_type="FLOAT32")
         self.ocr_input_shape = self.ocr_infer.get_input_shape()
         self.ocr_h = self.ocr_input_shape[0]
         self.ocr_w = self.ocr_input_shape[1]
-        self.ocr_result = None  # stores latest inference result
+        self.ocr_result = None
 
     def ocr_callback(self, completion_info, bindings_list):
         """Called when OCR async inference completes."""
         if bindings_list:
             buf = bindings_list[0].output().get_buffer()
             if isinstance(buf, dict):
-                for key in buf.keys():
-                    self.ocr_result = buf[key]
-                    break
+                self.ocr_result = next(iter(buf.values()))
             elif isinstance(buf, np.ndarray):
                 self.ocr_result = buf
             else:
                 self.ocr_result = buf
 
 
+def _run_ocr_on_crop(user_data, lp_crop_rgb, track_id):
+    """Resize → OCR → length/conf gate → print + log. Returns True if accepted.
+
+    Shared between the cascade and yolov8n callback branches; both pass an
+    RGB plate crop in source-frame pixels.
+    """
+    lp_crop_bgr = cv2.cvtColor(lp_crop_rgb, cv2.COLOR_RGB2BGR)
+
+    # Engine-aware preprocessing.
+    # LPRNet is trained on plates stretched to 300x75; the deformation is part
+    # of its expected input distribution. PaddleOCR rec is trained with
+    # aspect-ratio-preserving resize + right-padding to the target width.
+    if user_data.ocr == "paddle":
+        lp_resized = letterbox_resize(
+            lp_crop_bgr, user_data.ocr_w, user_data.ocr_h
+        )
+    else:
+        lp_resized = cv2.resize(
+            lp_crop_bgr, (user_data.ocr_w, user_data.ocr_h),
+            interpolation=cv2.INTER_AREA,
+        )
+
+    user_data.ocr_result = None
+    user_data.ocr_infer.run([lp_resized], user_data.ocr_callback)
+    if user_data.ocr_infer.last_infer_job:
+        user_data.ocr_infer.last_infer_job.wait(5000)
+    if user_data.ocr_result is None:
+        return False
+
+    text, ocr_conf = user_data.decode_fn(user_data.ocr_result)
+
+    if user_data.save_ocr_inputs_dir:
+        safe_text = "".join(c if c.isalnum() else "_" for c in text)[:24] or "empty"
+        fname = (
+            f"{user_data.ocr_input_counter:06d}_t{track_id:04d}_"
+            f"c{int(round(ocr_conf*100)):03d}_{safe_text}.png"
+        )
+        cv2.imwrite(os.path.join(user_data.save_ocr_inputs_dir, fname), lp_resized)
+        user_data.ocr_input_counter += 1
+
+    if len(text) < MIN_LENGTH:
+        return False
+    if ocr_conf < user_data.min_ocr_confidence:
+        return False
+
+    print(
+        f"Vehicle #{track_id:<4d}"
+        f" | {text:<10s}"
+        f" | conf {ocr_conf:>4.0%}"
+        f" | len {len(text)}"
+    )
+
+    user_data.seen_plates[track_id] = text
+    with user_data.plate_log_lock:
+        user_data.plate_log.insert(0, (lp_crop_bgr, text, ocr_conf, track_id))
+        if len(user_data.plate_log) > DISPLAY_PLATE_LOG_MAX:
+            del user_data.plate_log[DISPLAY_PLATE_LOG_MAX:]
+    return True
+
+
+def _cascade_callback(buffer, user_data, frame, frame_w, frame_h, roi):
+    """Original cascade callback: iterate 'car' detections from the vehicle
+    detector, extract LP sub-detections produced by the vehicle-cropper
+    cascaded LP detector, and OCR each one."""
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    for detection in detections:
+        if detection.get_label() != "car":
+            continue
+
+        track_id = 0
+        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        if len(track) == 1:
+            track_id = track[0].get_id()
+        user_data.vehicles_seen.add(track_id)
+
+        # Center-1/3 ROI gate so we only OCR vehicles well-framed by the camera.
+        vbox = detection.get_bbox()
+        vehicle_center_y = vbox.ymin() + vbox.height() / 2.0
+        if vehicle_center_y < ROI_Y_START or vehicle_center_y > ROI_Y_END:
+            continue
+
+        # Drop vehicles too small to yield a readable plate after cropping.
+        if frame_w is not None and frame_h is not None:
+            v_area = int(vbox.width() * frame_w) * int(vbox.height() * frame_h)
+            if v_area < MIN_VEHICLE_AREA_PX:
+                continue
+
+        if track_id in user_data.seen_plates:
+            continue
+        if frame is None:
+            continue
+
+        lp_crops = detect_lps_gstreamer(detection, frame, frame_w, frame_h)
+        for lp_crop, _x1, _y1, _x2, _y2 in lp_crops:
+            _run_ocr_on_crop(user_data, lp_crop, track_id)
+
+    # Remove LP sub-detections so hailooverlay only draws vehicle boxes
+    for detection in detections:
+        for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
+            detection.remove_object(sub)
+
+
+def _yolov8n_callback(buffer, user_data, frame, frame_w, frame_h, roi):
+    """yolov8n / yolov8n_tiled callback: iterate top-level detections, keep
+    those labelled license_plate, crop from the source frame, OCR."""
+    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    for det in detections:
+        if det.get_label() != LP_LABEL:
+            continue
+
+        track_id = 0
+        track = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        if len(track) == 1:
+            track_id = track[0].get_id()
+        user_data.vehicles_seen.add(track_id)
+
+        if track_id in user_data.seen_plates:
+            continue
+        if frame is None or frame_w is None or frame_h is None:
+            continue
+
+        bbox = det.get_bbox()
+        x1 = max(0, int(bbox.xmin() * frame_w))
+        y1 = max(0, int(bbox.ymin() * frame_h))
+        x2 = min(frame_w, int((bbox.xmin() + bbox.width()) * frame_w))
+        y2 = min(frame_h, int((bbox.ymin() + bbox.height()) * frame_h))
+        crop_w, crop_h = x2 - x1, y2 - y1
+        if crop_w < MIN_LP_WIDTH_PIXELS or crop_h < MIN_LP_HEIGHT_PIXELS:
+            continue
+        if crop_w > MAX_LP_WIDTH_PIXELS or crop_h > MAX_LP_HEIGHT_PIXELS:
+            continue
+
+        lp_crop = frame[y1:y2, x1:x2]
+        if lp_crop.size == 0:
+            continue
+        # Sharpness gate (same threshold as the cascade variant).
+        if laplacian_variance(cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)) \
+                < SHARPNESS_MIN_VARIANCE:
+            continue
+
+        _run_ocr_on_crop(user_data, lp_crop, track_id)
+
+
 def app_callback(element, buffer, user_data):
-    """Called by GStreamer for each frame buffer. Runs LP detection + OCR."""
+    """Single entry point called by GStreamer for every output buffer.
+
+    Dispatches to the cascade- or yolov8n-shaped handler based on which
+    backbone the pipeline is built around (`user_data.backbone`).
+    """
     if buffer is None:
         return
 
-    # Print summary every 30 seconds
     now = time.time()
     if now - user_data.last_summary_time >= SUMMARY_INTERVAL:
         total = len(user_data.vehicles_seen)
         recognized = len(user_data.seen_plates)
+        # In the yolov8n backbones, `vehicles_seen` actually holds plate
+        # track IDs — the label in the summary line stays "Vehicles
+        # detected" for backward compat with test_lpr_end_to_end.py parsing.
         print(
             f"--- Summary ({SUMMARY_INTERVAL}s) | "
             f"Vehicles detected: {total} | "
@@ -101,187 +347,96 @@ def app_callback(element, buffer, user_data):
         roi = hailo.get_roi_from_buffer(buffer)
     except Exception:
         return
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
-    frame = None
     pad = element.get_static_pad("src")
     frame_format, frame_w, frame_h = get_caps_from_pad(pad)
+    frame = None
     if frame_format is not None:
         frame = get_numpy_from_buffer_efficient(
             buffer, frame_format, frame_w, frame_h
         )
 
-    for detection in detections:
-        label = detection.get_label()
-        if label != "car":
-            continue
-
-        track_id = 0
-        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
-        if len(track) == 1:
-            track_id = track[0].get_id()
-
-        user_data.vehicles_seen.add(track_id)
-
-        # Only process vehicles whose center is inside the ROI zone (center 1/3)
-        vbox = detection.get_bbox()
-        vehicle_center_y = vbox.ymin() + vbox.height() / 2.0
-        if vehicle_center_y < ROI_Y_START or vehicle_center_y > ROI_Y_END:
-            continue
-
-        # Drop vehicles too small to yield a readable plate after cropping.
-        # The bbox-in-frame check from the TAPPAS reference is intentionally
-        # *not* applied here: the center-1/3 ROI gate already restricts to the
-        # well-framed band, and on highway footage vehicles often clip the
-        # frame edges briefly while still producing readable plates.
-        if frame_w is not None and frame_h is not None:
-            v_area = int(vbox.width() * frame_w) * int(vbox.height() * frame_h)
-            if v_area < MIN_VEHICLE_AREA_PX:
-                continue
-
-        # Skip entirely for vehicles already recognized
-        if track_id in user_data.seen_plates:
-            continue
-
-        if frame is None:
-            continue
-
-        # LP sub-detections come from GStreamer cropper pipeline (all archs)
-        lp_crops = detect_lps_gstreamer(detection, frame, frame_w, frame_h)
-
-        # --- Stage 3: OCR on each detected license plate ---
-        for lp_crop, lp_x1, lp_y1, lp_x2, lp_y2 in lp_crops:
-            # Convert RGB (from GStreamer) to BGR (model trained on cv2.imread BGR images)
-            lp_crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
-
-            # Save crop to disk if --save-crops is enabled
-            if user_data.save_crops_dir:
-                crop_path = os.path.join(
-                    user_data.save_crops_dir,
-                    f"vehicle_{track_id}_plate_{user_data.crop_counter}.png",
-                )
-                cv2.imwrite(crop_path, lp_crop_bgr)
-                user_data.crop_counter += 1
-
-            # Engine-aware preprocessing.
-            # LPRNet was trained on plates stretched to 300x75; the deformation
-            # is part of its expected input distribution.
-            # PaddleOCR rec was trained with aspect-ratio-preserving resize and
-            # right-padding to the target width — feeding it stretched crops
-            # collapses character widths and degrades accuracy.
-            if user_data.ocr_engine == "paddle":
-                lp_resized = letterbox_resize(
-                    lp_crop_bgr, user_data.ocr_w, user_data.ocr_h
-                )
-            else:
-                lp_resized = cv2.resize(
-                    lp_crop_bgr, (user_data.ocr_w, user_data.ocr_h),
-                    interpolation=cv2.INTER_AREA,
-                )
-
-            # Run OCR inference
-            user_data.ocr_result = None
-            user_data.ocr_infer.run(
-                [lp_resized], user_data.ocr_callback
-            )
-            if user_data.ocr_infer.last_infer_job:
-                user_data.ocr_infer.last_infer_job.wait(5000)
-
-            if user_data.ocr_result is None:
-                continue
-
-            text, ocr_conf = user_data.decode_fn(user_data.ocr_result)
-
-            if len(text) < MIN_LENGTH:
-                continue
-
-            if ocr_conf < user_data.min_ocr_confidence:
-                continue
-
-            print(
-                f"Vehicle #{track_id:<4d}"
-                f" | {text:<10s}"
-                f" | conf {ocr_conf:>4.0%}"
-                f" | len {len(text)}"
-            )
-
-            # Store — first successful OCR per vehicle, skip future frames
-            user_data.seen_plates[track_id] = text
-            # Add to display log (convert RGB crop to BGR for OpenCV display).
-            # Trim oldest entries to keep memory bounded over long sessions.
-            crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
-            with user_data.plate_log_lock:
-                user_data.plate_log.insert(0, (crop_bgr, text, ocr_conf, track_id))
-                if len(user_data.plate_log) > DISPLAY_PLATE_LOG_MAX:
-                    del user_data.plate_log[DISPLAY_PLATE_LOG_MAX:]
-
-    # Remove LP sub-detections so hailooverlay only draws vehicle boxes
-    for detection in detections:
-        for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
-            detection.remove_object(sub)
+    if user_data.backbone == BACKBONE_CASCADE:
+        _cascade_callback(buffer, user_data, frame, frame_w, frame_h, roi)
+    else:
+        _yolov8n_callback(buffer, user_data, frame, frame_w, frame_h, roi)
 
 
 def main():
     parser = get_pipeline_parser()
-    configure_multi_model_hef_path(parser)
     parser.add_argument(
-        "--ocr-engine",
-        type=str,
-        choices=["lprnet", "paddle"],
-        default="lprnet",
-        help="OCR engine: 'lprnet' (digits only, default) or 'paddle' (full charset)",
+        "--backbone", type=str, choices=BACKBONES, default=BACKBONE_CASCADE,
+        help=(
+            "Detector backbone (default: cascade). "
+            "'cascade' = vehicle + LP detector chain (legacy, lowest memory). "
+            "'yolov8n' = single yolov8n_384x640 with direct license_plate class. "
+            "'yolov8n_tiled' = same network with 5-tile preprocessing "
+            "(4 quadrants + full frame); recommended for FHD/4K input."
+        ),
     )
     parser.add_argument(
-        "--save-crops",
-        type=str,
-        default=None,
-        nargs="?",
-        const="/tmp/lpr_crops",
-        help="Save LP crops to directory (default: /tmp/lpr_crops)",
+        "--ocr", type=str, choices=["lprnet", "paddle"], default="lprnet",
+        help=(
+            "OCR engine (default: lprnet). "
+            "'lprnet' = compact CTC head, alphanumeric only, fastest. "
+            "'paddle' = paddle_ocr_v5 multilingual, broader script support."
+        ),
+    )
+    parser.add_argument(
+        "--save-ocr-inputs", type=str, default=None, nargs="?",
+        const="/tmp/lpr_ocr_inputs",
+        help="Save exact OCR-network inputs to directory "
+             "(default: /tmp/lpr_ocr_inputs). Filenames encode track id, "
+             "OCR confidence, and decoded text — useful for visually "
+             "verifying preprocessing on failure cases.",
     )
     handle_list_models_flag(parser, LPR_PIPELINE)
     args, _ = parser.parse_known_args()
+
     arch = detect_hailo_arch()
-    models = resolve_hef_paths(
-        hef_paths=args.hef_path if hasattr(args, "hef_path") else None,
-        app_name=LPR_PIPELINE,
-        arch=arch,
-    )
 
-    ocr_engine = args.ocr_engine
-    if ocr_engine == "lprnet":
-        ocr_hef = models[2].path  # 3rd model from resources_config (lprnet)
-    else:
-        # PaddleOCR recognition model — resolve from standard resources path
+    # Resolve OCR HEF (orthogonal to backbone).
+    if args.ocr == "lprnet":
+        # The cascade backbone exposes lprnet via resources_config (3rd model).
+        # The yolov8n backbones don't load the cascade resources file, so we
+        # resolve lprnet from the standard resources path instead.
+        if args.backbone == BACKBONE_CASCADE:
+            models = resolve_hef_paths(
+                hef_paths=getattr(args, "hef_path", None),
+                app_name=LPR_PIPELINE, arch=arch,
+            )
+            ocr_hef = models[2].path
+        else:
+            ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "lprnet.hef")
+    else:  # paddle
         ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "ocr.hef")
-        if not Path(ocr_hef).exists():
-            print(f"ERROR: PaddleOCR model not found at {ocr_hef}")
+    if not Path(ocr_hef).exists():
+        print(f"ERROR: OCR HEF not found at {ocr_hef}")
+        if args.ocr == "paddle":
             print("Run: sudo ./install.sh to download paddle_ocr resources")
-            return
+        return
 
-    print(f"LPR using OCR engine: {ocr_engine}")
+    print(f"LPR backbone: {args.backbone}   OCR: {args.ocr}")
+    print(f"OCR HEF: {ocr_hef}")
 
-    # Handle --save-crops
-    save_crops_dir = args.save_crops
-    if save_crops_dir:
-        os.makedirs(save_crops_dir, exist_ok=True)
-        print(f"Saving LP crops to: {save_crops_dir}")
+    save_ocr_inputs_dir = args.save_ocr_inputs
+    if save_ocr_inputs_dir:
+        os.makedirs(save_ocr_inputs_dir, exist_ok=True)
+        print(f"Saving OCR-network inputs to: {save_ocr_inputs_dir}")
 
-    # LP detection runs in the GStreamer pipeline on all architectures
-    # via our custom libyolov4_lp_postprocess.so.
     user_data = user_app_callback_class(
-        ocr_hef, ocr_engine=ocr_engine, save_crops_dir=save_crops_dir
+        ocr_hef, ocr=args.ocr, backbone=args.backbone,
+        save_ocr_inputs_dir=save_ocr_inputs_dir,
     )
 
-    # Create display window on main thread to avoid Qt threading warnings
     cv2.namedWindow("LPR Panel", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("LPR Panel", PANEL_WIDTH, 700)
-
-    # Start display panel thread
-    panel_thread = threading.Thread(target=lpr_display_thread, args=(user_data,), daemon=True)
+    panel_thread = threading.Thread(
+        target=lpr_display_thread, args=(user_data,), daemon=True)
     panel_thread.start()
 
-    app = GStreamerLPRApp(app_callback, user_data, parser=parser)
+    app = GStreamerLPRApp(app_callback, user_data, parser=parser,
+                          backbone=args.backbone)
     app.run()
 
 

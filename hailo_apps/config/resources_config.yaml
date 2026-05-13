@@ -601,6 +601,12 @@ face_recognition: &face_recognition_app
           source: mz
 
 lpr: &lpr_app
+  # The cascade backbone (default) uses the legacy three-stage flow:
+  #   yolov5m_vehicles → tiny_yolov4_license_plates → lprnet
+  # The yolov8n / yolov8n_tiled backbones replace the first two stages with a
+  # single 4-class yolov8n detector. Its HEF is listed under `extra` so the
+  # install only fetches it when explicitly requested; users who never need
+  # the new backbones aren't paying the download cost.
   models:
     hailo8:
       default:
@@ -610,6 +616,9 @@ lpr: &lpr_app
           source: mz
         - name: lprnet
           source: mz
+      extra:
+        - name: hailo_yolov8n_384_640
+          source: s3
     hailo8l:
       default:
         - name: yolov5m_vehicles
@@ -618,6 +627,9 @@ lpr: &lpr_app
           source: mz
         - name: lprnet
           source: mz
+      extra:
+        - name: hailo_yolov8n_384_640
+          source: s3
     hailo10h:
       default:
         - name: yolov5m_vehicles
@@ -626,6 +638,9 @@ lpr: &lpr_app
           source: mz
         - name: lprnet
           source: mz
+      extra:
+        - name: hailo_yolov8n_384_640
+          source: s3
 
 instance_segmentation: &instance_segmentation_app
   models:

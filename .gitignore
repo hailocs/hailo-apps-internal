@@ -59,3 +59,9 @@ resources
 .cursor/
 .vscode/
 docs/superpowers/
+
+# Local-only LPR regression workspace (lives outside the app repo)
+tests/lpr_regression/
+
+# gst-shark traces
+gstshark_*/
