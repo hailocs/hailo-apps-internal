@@ -11,8 +11,10 @@ find_package(HailoRT REQUIRED)
 
 set(COMPILE_OPTIONS_CPP -Wall -Werror -O3)
 
-# Path to the common utilities from hailo-apps (read-only submodule)
-set(HAILO_APPS_CPP_COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../../../../hailo-apps/hailo_apps/cpp/common)
+# Path to the common utilities from hailo-apps. The community directory now
+# lives inside the hailo-apps repo, so go up four levels to reach the repo
+# root and then into hailo_apps/cpp/common (no extra hailo-apps/ segment).
+set(HAILO_APPS_CPP_COMMON ${CMAKE_CURRENT_SOURCE_DIR}/../../../../hailo_apps/cpp/common)
 
 set(SOURCES
     ${PROJECT_NAME}.cpp

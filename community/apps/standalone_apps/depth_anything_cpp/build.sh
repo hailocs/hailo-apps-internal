@@ -6,7 +6,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-HAILO_APPS_CONFIG="$REPO_ROOT/hailo-apps/hailo_apps/config"
+# community/ lives inside the hailo-apps repo, so config is at the repo root
+# under hailo_apps/config (no extra hailo-apps/ segment).
+HAILO_APPS_CONFIG="$REPO_ROOT/hailo_apps/config"
 
 echo "-I- Building depth_anything for $(uname -m)"
 mkdir -p build/$(uname -m)
