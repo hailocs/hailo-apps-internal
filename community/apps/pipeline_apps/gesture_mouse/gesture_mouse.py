@@ -125,6 +125,32 @@ def _pinch_distance(detection, frame_w, frame_h):
     return math.sqrt(dx * dx + dy * dy)
 
 
+def map_index_to_screen(norm_x, norm_y, speed, screen_w, screen_h):
+    """Map normalized camera coords (index fingertip) to target screen pixel.
+
+    - Mirrors X so camera-left becomes user-right (natural mirror behaviour).
+    - 'speed' defines a centered zone inside the camera frame that, when the
+      fingertip is fully traversed, covers the full screen:
+        speed=1.0 -> full frame maps to full screen.
+        speed=2.0 -> inner 50% of frame maps to full screen.
+        speed<1.0 is degenerate (margin clamped to 0).
+    - Output is clamped to [0, screen_w] x [0, screen_h].
+    """
+    norm_x = 1.0 - norm_x
+    margin = max(0.0, (1.0 - 1.0 / speed) / 2.0) if speed > 0 else 0.0
+    zone_size = 1.0 - 2.0 * margin
+    if zone_size <= 0:
+        # Degenerate speed; fall back to identity mapping
+        target_x = norm_x
+        target_y = norm_y
+    else:
+        target_x = (norm_x - margin) / zone_size
+        target_y = (norm_y - margin) / zone_size
+    target_x = max(0.0, min(1.0, target_x))
+    target_y = max(0.0, min(1.0, target_y))
+    return target_x * screen_w, target_y * screen_h
+
+
 def app_callback(element, buffer, user_data):
     """Process each frame: extract hand position and control mouse."""
     if buffer is None:
@@ -161,28 +187,12 @@ def app_callback(element, buffer, user_data):
     if index_pos is None:
         return
 
-    # Map camera coordinates to screen coordinates.
+    # Map camera coordinates to screen coordinates via the pure helper.
     norm_x = index_pos[0] / width
     norm_y = index_pos[1] / height
-
-    # Mirror horizontally: camera left = your right, so flip for natural control
-    norm_x = 1.0 - norm_x
-
-    # Speed controls what fraction of the frame covers the full screen.
-    # speed=1.0 → full frame, speed=1.5 → inner 67%, speed=2.0 → inner 50%.
-    # This avoids separate dead zones from a stacked multiplier.
-    margin = max(0.0, (1.0 - 1.0 / user_data.speed) / 2.0)
-    zone_size = 1.0 - 2.0 * margin
-    target_x = (norm_x - margin) / zone_size
-    target_y = (norm_y - margin) / zone_size
-
-    # Clamp to [0,1]
-    target_x = max(0.0, min(1.0, target_x))
-    target_y = max(0.0, min(1.0, target_y))
-
-    # Scale to screen pixels
-    target_px = target_x * user_data.screen_w
-    target_py = target_y * user_data.screen_h
+    target_px, target_py = map_index_to_screen(
+        norm_x, norm_y, user_data.speed, user_data.screen_w, user_data.screen_h,
+    )
 
     # Apply exponential smoothing
     alpha = 1.0 - user_data.smoothing
