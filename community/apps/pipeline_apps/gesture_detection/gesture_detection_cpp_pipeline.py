@@ -149,6 +149,11 @@ class GStreamerGestureCppApp(GStreamerApp):
             f"hailonet name=hand_landmark_hailonet "
             f"hef-path={self.hand_hef} "
             f"batch-size=1 "
+            # Hand landmark sits inside palm_cropper: crops per frame are
+            # variable (0..N hands). Without a scheduler timeout, the
+            # scheduler can wait indefinitely for crops that never arrive.
+            # 33ms ~= one 30fps frame.
+            f"scheduler-timeout-ms=33 "
             f"vdevice-group-id={SHARED_VDEVICE_GROUP_ID} "
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "

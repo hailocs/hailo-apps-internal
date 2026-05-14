@@ -256,6 +256,10 @@ class GStreamerRoomSecurityMonitorApp(GStreamerApp):
             batch_size=self.batch_size,
             config_json=None,
             name='face_recognition_inference',
+            # Face recognition sits inside the cropper: crops per frame vary
+            # (0..N faces). Force scheduler to fire on empty batches so the
+            # inference pipeline doesn't stall waiting for crops.
+            scheduler_timeout_ms=33,
         )
         cropper_pipeline = CROPPER_PIPELINE(
             inner_pipeline=(

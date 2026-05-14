@@ -224,6 +224,10 @@ class GStreamerFaceLandmarksApp(GStreamerApp):
                 post_function_name="filter",
                 batch_size=1,
                 name="face_landmarks_inference",
+                # hailonet sits inside the cropper: crop count varies per frame
+                # (0..N faces). With batch=1 + no timeout, the scheduler can
+                # still wait on empty frames. 33ms ~= one 30fps frame budget.
+                scheduler_timeout_ms=33,
             )
 
             # face_mesh_align: rotation-aware warp using SCRFD eye keypoints.

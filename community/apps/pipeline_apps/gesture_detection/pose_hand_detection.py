@@ -286,6 +286,10 @@ class GStreamerPoseHandApp(GStreamerApp):
             f"hailonet name=hand_landmark_hailonet "
             f"hef-path={self.hand_hef} "
             f"batch-size=2 "
+            # Hand-landmark sits inside palm_cropper: crop count per frame is
+            # variable (0..2 hands). Without a timeout, batch-size=2 stalls
+            # waiting for a second crop. 33ms == one 30fps frame.
+            f"scheduler-timeout-ms=33 "
             f"vdevice-group-id={SHARED_VDEVICE_GROUP_ID} "
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "
