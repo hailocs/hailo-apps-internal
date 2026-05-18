@@ -601,46 +601,59 @@ face_recognition: &face_recognition_app
           source: mz
 
 lpr: &lpr_app
-  # The cascade backbone (default) uses the legacy three-stage flow:
-  #   yolov5m_vehicles → tiny_yolov4_license_plates → lprnet
-  # The yolov8n / yolov8n_tiled backbones replace the first two stages with a
-  # single 4-class yolov8n detector. Its HEF is listed under `extra` so the
-  # install only fetches it when explicitly requested; users who never need
-  # the new backbones aren't paying the download cost.
+  # Default backbone is yolov8n: a single 4-class yolov8n_384_640 detector
+  # paired with the locally-retrained 37-class lprnet_intl OCR. These two
+  # HEFs are what a plain `sudo ./install.sh` (download_group: default)
+  # pulls per arch — enough to run `hailo-lpr` out of the box.
+  #
+  # The legacy cascade backbone (yolov5m_vehicles → tiny_yolov4_license_plates
+  # → bundled lprnet) is listed under `extra` and only fetched with
+  # `sudo ./install.sh --all`. Cascade is kept for low-memory scenarios and
+  # may be removed in a future release.
+  #
+  # The paddle OCR engine lives in the separate `paddle_ocr` group (also
+  # `default`), so `--ocr paddle` works out of the box too without
+  # cross-listing here.
   models:
     hailo8:
       default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+        - name: lprnet_intl
+          source: s3
+      extra:
         - name: yolov5m_vehicles
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
         - name: lprnet
           source: mz
-      extra:
-        - name: hailo_yolov8n_384_640
-          source: s3
     hailo8l:
       default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+        - name: lprnet_intl
+          source: s3
+      extra:
         - name: yolov5m_vehicles
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
         - name: lprnet
           source: mz
-      extra:
-        - name: hailo_yolov8n_384_640
-          source: s3
     hailo10h:
       default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+        - name: lprnet_intl
+          source: s3
+      extra:
         - name: yolov5m_vehicles
           source: mz
         - name: tiny_yolov4_license_plates
           source: mz
         - name: lprnet
           source: mz
-      extra:
-        - name: hailo_yolov8n_384_640
-          source: s3
 
 instance_segmentation: &instance_segmentation_app
   models:
@@ -864,6 +877,9 @@ tiling: &tiling_app
           source: s3
 
 paddle_ocr: &paddle_ocr_app
+  # `ocr` carries a sidecar dictionary (ppocrv5_char_dict.npz) needed for
+  # PaddleOCR v5 CTC decoding. The sidecar is fetched verbatim from the same
+  # per-arch S3 prefix as the HEF and lands next to it under models/<arch>/.
   models:
     hailo8:
       default:
@@ -871,18 +887,24 @@ paddle_ocr: &paddle_ocr_app
           source: s3
         - name: ocr
           source: s3
+          extras:
+            - ppocrv5_char_dict.npz
     hailo8l:
       default:
         - name: ocr_det
           source: s3
         - name: ocr
           source: s3
+          extras:
+            - ppocrv5_char_dict.npz
     hailo10h:
       default:
         - name: ocr_det
           source: s3
         - name: ocr
           source: s3
+          extras:
+            - ppocrv5_char_dict.npz
 
 lane_detection: &lane_detection_app
   models:

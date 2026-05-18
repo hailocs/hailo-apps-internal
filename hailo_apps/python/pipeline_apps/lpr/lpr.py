@@ -35,11 +35,15 @@ Backbones
 OCR engines
 ===========
 
-  lprnet         Compact CTC head trained on synthetic plates. Tight
-                 alphanumeric vocabulary (10 or 37 chars depending on the
-                 HEF), high per-character confidence. Default choice when
-                 you only need Western alphanumeric plates and you want
-                 the tightest possible OCR pipeline.
+  lprnet         Compact CTC head, 37 classes (digits + A–Z + CTC blank),
+                 locally retrained on a Latin-alphanumeric plate corpus.
+                 HEF resolves from a separate file (`lprnet_intl.hef`) so
+                 it doesn't conflict with the bundled Hailo `lprnet.hef`
+                 (11-class digits-only) sitting at the same install path.
+                 See pipeline_apps/lpr/README.md for training / accuracy
+                 details. Lower confidence threshold (0.50) than the old
+                 bundled 11-class HEF (0.78) because 37-class softmax is
+                 spread over a wider vocab.
 
   paddle         paddle_ocr_v5_mobile_recognition. Large multilingual
                  vocabulary (18,385 classes). Reads non-Latin scripts and
@@ -50,29 +54,27 @@ OCR engines
 
 End-to-end accuracy (paddle OCR, BR+EU+US GT clips, 444 plates total)
 =====================================================================
+[historical with paddle — accuracy on the new retrained lprnet is in
+the LPR app README and will be updated after the full 30-epoch retrain.]
 
                   exact-match    F1     within-2-edits    FPS
   cascade            3.6 %     6.5 %       9 %             ~34
   yolov8n           31.1 %    35.1 %      72 %            ~218
   yolov8n_tiled     35.4 %    39.3 %      72 %            ~151
 
-The within-2-edits rate (72 %) is a useful OCR ceiling indicator: it shows
-how often the OCR is producing a *close-to-correct* read. The gap between
-exact-match and within-2 narrows in proportion to how plate-specialised
-the OCR is — paddle's multilingual vocabulary makes O/0, I/1, S/5
-substitutions cost an edit each, while a retrained LPRNet that knows the
-plate-character distribution closes most of that gap.
-
 Run examples
 ============
 
-  # Recommended for HD+ video: tiled yolov8n + paddle OCR
+  # Recommended for HD+ video: tiled yolov8n + retrained Latin LPRNet
+  hailo-lpr --backbone yolov8n_tiled --ocr lprnet --input clip.mp4
+
+  # Default: full-frame yolov8n + retrained Latin LPRNet
+  hailo-lpr --ocr lprnet --input clip.mp4
+
+  # Multilingual OCR
   hailo-lpr --backbone yolov8n_tiled --ocr paddle --input clip.mp4
 
-  # Lightweight: single full-frame yolov8n + LPRNet (Western alphanumeric only)
-  hailo-lpr --backbone yolov8n --ocr lprnet --input clip.mp4
-
-  # Legacy cascade (kept for compatibility / lowest-memory scenarios)
+  # Legacy two-stage cascade (kept for low-memory scenarios)
   hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
 """
 
@@ -96,7 +98,6 @@ from hailo_apps.python.core.common.core import (
     detect_hailo_arch,
     get_pipeline_parser,
     handle_list_models_flag,
-    resolve_hef_paths,
 )
 from hailo_apps.python.core.common.defines import RESOURCES_ROOT_PATH_DEFAULT
 from hailo_apps.python.core.common.hailo_inference import HailoInfer
@@ -365,20 +366,22 @@ def app_callback(element, buffer, user_data):
 def main():
     parser = get_pipeline_parser()
     parser.add_argument(
-        "--backbone", type=str, choices=BACKBONES, default=BACKBONE_CASCADE,
+        "--backbone", type=str, choices=BACKBONES, default=BACKBONE_YOLOV8N,
         help=(
-            "Detector backbone (default: cascade). "
-            "'cascade' = vehicle + LP detector chain (legacy, lowest memory). "
+            "Detector backbone (default: yolov8n). "
             "'yolov8n' = single yolov8n_384x640 with direct license_plate class. "
             "'yolov8n_tiled' = same network with 5-tile preprocessing "
-            "(4 quadrants + full frame); recommended for FHD/4K input."
+            "(4 quadrants + full frame); recommended for FHD/4K input. "
+            "'cascade' = legacy vehicle + LP detector chain (kept for "
+            "low-memory scenarios; may be removed in a future release)."
         ),
     )
     parser.add_argument(
         "--ocr", type=str, choices=["lprnet", "paddle"], default="lprnet",
         help=(
             "OCR engine (default: lprnet). "
-            "'lprnet' = compact CTC head, alphanumeric only, fastest. "
+            "'lprnet' = locally-retrained 37-class Latin alphanumeric LPRNet "
+            "(file: lprnet_intl.hef — separate from the bundled Hailo lprnet.hef). "
             "'paddle' = paddle_ocr_v5 multilingual, broader script support."
         ),
     )
@@ -395,25 +398,17 @@ def main():
 
     arch = detect_hailo_arch()
 
-    # Resolve OCR HEF (orthogonal to backbone).
+    # Resolve OCR HEF (orthogonal to backbone). Both engines live at
+    # standard install-time paths under <resources>/models/<arch>/. We use a
+    # dedicated filename for the retrained LPRNet (lprnet_intl.hef) so it
+    # never collides with the bundled Hailo lprnet.hef on disk.
     if args.ocr == "lprnet":
-        # The cascade backbone exposes lprnet via resources_config (3rd model).
-        # The yolov8n backbones don't load the cascade resources file, so we
-        # resolve lprnet from the standard resources path instead.
-        if args.backbone == BACKBONE_CASCADE:
-            models = resolve_hef_paths(
-                hef_paths=getattr(args, "hef_path", None),
-                app_name=LPR_PIPELINE, arch=arch,
-            )
-            ocr_hef = models[2].path
-        else:
-            ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "lprnet.hef")
+        ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "lprnet_intl.hef")
     else:  # paddle
         ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "ocr.hef")
     if not Path(ocr_hef).exists():
         print(f"ERROR: OCR HEF not found at {ocr_hef}")
-        if args.ocr == "paddle":
-            print("Run: sudo ./install.sh to download paddle_ocr resources")
+        print("Run: sudo ./install.sh to download LPR + paddle_ocr resources")
         return
 
     print(f"LPR backbone: {args.backbone}   OCR: {args.ocr}")

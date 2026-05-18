@@ -1,229 +1,138 @@
-License Plate Recognition (LPR)
-================================
-Real-time license plate recognition using Hailo-8, Hailo-8L, or Hailo-10H.<br>
-Three-stage pipeline: vehicle detection → LP detection → OCR, with tracker-based deduplication, center-frame ROI gate, and a live display panel.
+# Hailo LPR App
 
-![LPR Demo](../../../../doc/images/lpr.gif)
+License Plate Recognition pipeline. Two orthogonal choices control behaviour:
 
-Requirements
-------------
-- hailo_platform:
-    - 4.23.0 (for Hailo-8 devices)
-    - 5.1.1 (for Hailo-10H devices)
-- opencv-python
-- Custom postprocess SO (`libyolov4_lp_postprocess.so`) — built automatically during installation
+| Flag         | Values                                  | Default    |
+|--------------|-----------------------------------------|------------|
+| `--backbone` | `yolov8n` / `yolov8n_tiled` / `cascade` | `yolov8n`  |
+| `--ocr`      | `lprnet` / `paddle`                     | `lprnet`   |
 
-Supported Models
-----------------
-| Stage | Model | Input Size |
+Backbone picks the detector(s) that find license plates in the frame; OCR
+picks the recognition network that reads characters off each plate crop.
+
+## Backbones
+
+| Backbone         | Detection chain                                                            | Typical use |
+|------------------|----------------------------------------------------------------------------|-------------|
+| `yolov8n` (default) | one `hailo_yolov8n_384_640` (4 classes: person/vehicle/face/license_plate) | most workloads |
+| `yolov8n_tiled`  | same network, fed 5 tiles per frame (2×2 quadrants + 1 full-frame), aggregated | FHD / 4K input where small plates need higher per-plate pixel density |
+| `cascade`        | yolov5m_vehicles → tracker → cropper(tiny_yolov4_license_plates) (legacy)  | lowest-memory; kept for compatibility, may be removed |
+
+We default to `yolov8n` because it's a clear accuracy + speed win over the
+cascade on every workload we've measured, and stays light-weight enough
+to run on H8L. `yolov8n_tiled` trades ~30 % FPS for a meaningful accuracy
+lift on HD-and-up source video; opt-in when needed.
+
+## OCR engines
+
+### `lprnet` — retrained 37-class Latin alphanumeric LPRNet  *(default)*
+
+A new locally-retrained LPRNet HEF that **replaces the bundled 11-class
+Chinese-plate LPRNet** for our use cases. The new HEF lives at a
+*separate* filename so the bundled `lprnet.hef` from the Hailo Model Zoo
+stays untouched on disk if `install.sh` placed it there.
+
+| | Bundled `lprnet.hef`               | Retrained `lprnet_intl.hef`            |
 |---|---|---|
-| Vehicle detection | `yolov5m_vehicles` | 640×640 |
-| LP detection | `tiny_yolov4_license_plates` | 416×416 |
-| OCR (default) | LPRNet | 300×75 |
-| OCR (alternative) | PaddleOCR | 320×48 |
+| Filename at install root | `lprnet.hef`                       | **`lprnet_intl.hef`**                  |
+| Classes                  | 11 (digits + CTC blank) or 37 international | **37** (digits + A–Z + CTC blank)     |
+| Charset                  | `0-9 + blank` (Chinese-plate convention) | `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-` |
+| Chinese province chars   | yes (in some MZ builds)            | no                                     |
+| `I` / `O` letters        | omitted (Chinese-plate convention) | **present**                            |
+| Confidence threshold     | 0.78                               | **0.50** (37-class softmax spread thinner) |
 
-## Installation and Usage
+#### Training details
 
-Run this app in one of two ways:
-1. Standalone installation in a clean virtual environment (no TAPPAS required) — see [Option 1](#option-1-standalone-installation)
-2. From an installed `hailo-apps` repository — see [Option 2](#option-2-inside-an-installed-hailo-apps-repository)
+| | |
+|---|---|
+| Base architecture        | Hailo's LPRNet (`hailo-ai/LPRNet_Pytorch` fork) |
+| Training docker          | `license_plate_recognition:v0` from `hailo_models/license_plate_recognition/Dockerfile`; built by `setup_lprnet_retrain_env.sh` in the LPR regression workspace |
+| Optional torch upgrade   | `license_plate_recognition:torch2` — torch 2.4.1+cu121 + onnx 1.17 + tensorboard 2.14, layered on top of `v0`, used to export ONNX at opset ≥ 20 |
+| Model Zoo version        | **2.17.1** (paired with Dataflow Compiler 3.32.0) |
+| Compile docker           | `lprnet_dfc:v4` — Ubuntu 22.04 / Py 3.10 / DFC 3.32.0 / MZ 2.17.1 / a one-line patch to `hailo_sdk_common/paths_manager/paths.py` so `dist-packages` installs are detected as "release" |
+| Compile optimization     | level 0 (insufficient calibration data + no GPU on the DFC docker's nvidia path); revisit when full retrain runs |
+| Calibration set          | 256 plate images at 75×300, sampled from val |
+| Input dimensions         | `1×3×75×300` (NCHW), BGR, normalised `(x − 127.5) / 128` |
+| Output dimensions        | `1×37×19` (CTC: 37 classes × 19 time-steps) |
+| Dataset                  | 48,638 train + 2,355 val ≈ 51 k plates; synthetic + CCPD + OpenALPR endtoend & seg_and_ocr, plus 996 cropped Israeli plates (digit-only, 7–8 char) added before the full retrain (full provenance in `tests/lpr_regression/README.md`) |
+| Status                   | **Full 30-epoch retrain complete (2026-05-17)**; HEFs for H8 / H8L compiled and installed |
 
-## Option 1: Standalone Installation
+#### Accuracy
 
-To avoid compatibility issues, it's recommended to use a clean virtual environment.
+| Phase                                    | val exact-match | Notes |
+|---|---:|---|
+| 3-epoch trial — torch 1.7 (peak / final) | 73.2 % / 79.95 % | proof-of-concept |
+| 3-epoch trial — torch 2.4 (peak / final) | 77.6 % / 68.9 %  | same loop, newer torch; numbers are run-to-run noise at 3 epochs |
+| **Full retrain — torch 2.4 (peak / final)** | **80.2 % / 79.4 %** | 30 epochs, batch 64, LR 1e-3, RMSprop; best checkpoint at iter 12,000 (Levenshtein-similarity criterion) |
+| **End-to-end with `yolov8n_tiled`**      | **83.1 %**       | 358 / 444 exact matches across BR + EU + US ground-truth clips; F1 = 87.2, ≤d2 = 90 %, ~150 FPS |
 
-0. Install PCIe driver and PyHailoRT
-    - Download and install the PCIe driver and PyHailoRT from the Hailo website
-    - To install the PyHailoRT whl:
-    ```shell script
-    pip install hailort-X.X.X-cpXX-cpXX-linux_x86_64.whl
-    ```
+### `paddle` — paddle_ocr_v5_mobile_recognition
 
-1. Clone the repository:
-    ```shell script
-    git clone https://github.com/hailo-ai/hailo-apps.git
-    cd hailo-apps/python/pipeline_apps/lpr
-    ```
+The multilingual route, unchanged. Use when you need broader script
+support (non-Latin) or richer formatting tolerance (hyphens, dots,
+spaces). A 18,385-class CTC head, so per-character confidence is
+naturally diffuse — the confidence gate is 0.30 (vs 0.50 on the new
+lprnet, 0.78 on the bundled lprnet).
 
-2. Install dependencies:
-    ```shell script
-    pip install -r requirements.txt
-    ```
+Future direction: we may apply the same fine-tune treatment to paddle
+that we just did to LPRNet — retraining on the plate-specific corpus.
+For now, paddle is left as-is.
 
-## Option 2: Inside an Installed hailo-apps Repository
-If you installed the full repository:
-```shell script
-git clone https://github.com/hailo-ai/hailo-apps.git
-cd hailo-apps
-sudo ./install.sh
-source setup_env.sh
-```
+## Installation
 
-Then the app is already ready for usage:
-```shell script
-cd hailo-apps/python/pipeline_apps/lpr
-```
-
-## Run
-
-After completing either installation option, run:
-```shell script
-# Default (LPRNet, digits only)
-hailo-lpr --input /path/to/video.mp4
-
-# PaddleOCR (full alphanumeric charset)
-hailo-lpr --input /path/to/video.mp4 --ocr-engine paddle
-
-# Higher resolution for better LP crops on highway footage
-hailo-lpr --input /path/to/video.mp4 --width 1920 --height 1080
-
-# Disable display sync for faster throughput (no frame-rate cap)
-hailo-lpr --input /path/to/video.mp4 --disable-sync --show-fps
-```
-
-Arguments
----------
-All standard pipeline arguments (`--input`, `--width`, `--height`, `--show-fps`, `--sync`, etc.) are supported. Additional LPR-specific arguments:
-
-| Argument | Default | Description |
-|---|---|---|
-| `--ocr-engine` | `lprnet` | OCR backend: `lprnet` (digits 0-9, fast) or `paddle` (full ASCII charset) |
-| `--input, -i` | — | Input source: a video file path, `usb` for USB camera, or `rpi` for Raspberry Pi camera. Use `--list-inputs` to see predefined inputs. |
-| `--width` | `1280` | Input width in pixels |
-| `--height` | `720` | Input height in pixels |
-| `--show-fps` | — | Display FPS performance metrics |
-| `--disable-sync` | — | Disable display sync for maximum throughput |
-| `--list-models` | — | Print all supported models for this application and exit |
-| `--list-inputs` | — | Print available predefined input resources and exit |
-
-For more information:
-```shell script
-hailo-lpr -h
-```
-
-## Pipeline Architecture
-
-The pipeline is **unified across all Hailo architectures** (H8, H8L, H10H). There are no architecture-specific code paths or conditional logic.
+A plain `sudo ./install.sh` (default `download_group`) fetches everything
+the OOB LPR path needs for the detected architecture:
 
 ```
-Source → Vehicle Detection (YOLOv5m) → Tracker → Crop Vehicles → LP Detection (Tiny-YOLOv4) → User Callback (OCR) → Overlay → Display
+/usr/local/hailo/resources/models/<arch>/
+├── hailo_yolov8n_384_640.hef    # default backbone
+├── lprnet_intl.hef              # default OCR (retrained 37-class)
+├── ocr.hef                      # paddle OCR v5 mobile recognition
+├── ocr_det.hef                  # paddle text detector
+└── ppocrv5_char_dict.npz        # paddle v5 character dictionary
 ```
 
-| Stage | Model | Implementation | Runs On |
-|---|---|---|---|
-| Vehicle detection | `yolov5m_vehicles` (640×640) | GStreamer `hailonet` | Hailo device |
-| LP detection | `tiny_yolov4_license_plates` (416×416) | GStreamer `hailonet` + custom `libyolov4_lp_postprocess.so` | Hailo device |
-| OCR | LPRNet (300×75) or PaddleOCR (320×48) | Python `HailoInfer` in callback | Hailo device |
+`lprnet_intl` and `hailo_yolov8n_384_640` are listed under `lpr → default`
+in [`resources_config.yaml`](../../../config/resources_config.yaml); the
+paddle artifacts live under `paddle_ocr → default` and the character
+dictionary rides along as a sidecar of the `ocr` entry.
 
-All three stages run on the Hailo device via the GStreamer pipeline. LP detection runs inside a `hailocropper` element that crops each tracked vehicle and infers on the cropped region.
+The legacy cascade backbone (`yolov5m_vehicles`, `tiny_yolov4_license_plates`,
+bundled `lprnet`) sits under `lpr → extra` and is only fetched with:
 
-### Custom LP Postprocess SO
-
-The `libyolov4_lp_postprocess.so` shared object replaces the TAPPAS `libyolo_post.so` for LP detection. It was written to solve a **cross-architecture compatibility issue** where the TAPPAS SO failed on Hailo-8/8L (details in the [Development History](#development-history) section below).
-
-**Key features:**
-- Handles UINT8, UINT16, and FLOAT32 tensor data types
-- Detects per-channel quantization (invalid single-QP sentinel `qp_scale=0`) and reads data as float32
-- Full YOLOv4 decode: sigmoid activation, anchor-based box regression, NMS
-- Works on all Hailo architectures without any conditional logic
-
-**Source:** `hailo_apps/postprocess/cpp/yolov4_lp_postprocess.cpp`<br>
-**Build:** `cd hailo_apps/postprocess && ./compile_postprocess.sh`<br>
-**Install location:** `/usr/local/hailo/resources/so/libyolov4_lp_postprocess.so`
-
-## OCR Engines
-
-### LPRNet (default)
-- **Input**: 300×75 RGB, UINT8
-- **Output**: (1, 19, 11) FLOAT32 — 19 time steps, 11 classes (digits 0-9 + CTC blank)
-- **Best for**: Plates with digits only (e.g., Israeli plates)
-- **Model source**: `resources_config.yaml` → 3rd model in the `lpr` app entry
-
-### PaddleOCR
-- **Input**: 320×48 RGB, UINT8
-- **Output**: (1, 40, 97) FLOAT32 — 40 time steps, 97 ASCII classes
-- **Best for**: Plates with letters and digits (worldwide)
-- **Model path**: `$RESOURCES_ROOT/models/<arch>/ocr.hef`
-
-Both engines use CTC greedy decoding (collapse repeated characters, remove blanks).
-
-🔧 Configuration and Tuning
-----------------------------
-
-#### Center 1/3 ROI Gate
-
-Only vehicles whose **vertical center** falls within the **middle third** of the frame (Y 33%–66%) are processed for LP detection and OCR. This focuses recognition on the zone where plates are large enough for reliable reads and filters out distant or very close vehicles.
-
-```python
-ROI_Y_START = 1.0 / 3.0   # top of ROI zone (normalized)
-ROI_Y_END   = 2.0 / 3.0   # bottom of ROI zone (normalized)
+```bash
+sudo ./install.sh --all
 ```
 
-Vehicles outside this band are still detected and tracked (bounding boxes visible), but OCR is not attempted.
+If you've compiled a fresh `lprnet_intl.hef` locally and want to test it
+before it's published to S3, drop it in place manually:
 
-#### 78% Confidence Threshold
-
-Only plates with **OCR confidence ≥ 78%** are accepted. Below this threshold, the result is discarded and the vehicle will be retried on subsequent frames until either:
-- A read exceeds 78%, or
-- The vehicle leaves the frame
-
-This is the key quality gate. A minimum text length of **4 characters** is also enforced.
-
-```python
-MIN_OCR_CONFIDENCE = 0.78
+```bash
+sudo cp /path/to/your/lprnet_intl.hef \
+        /usr/local/hailo/resources/models/<arch>/lprnet_intl.hef
 ```
 
-#### Tracker Deduplication
+## Run examples
 
-The pipeline uses `hailotracker` to assign persistent IDs to vehicles. Once a plate is recognized with ≥ 78% confidence for a given track ID, that vehicle is never re-processed — OCR inference is skipped entirely on future frames.
+```bash
+# Default — yolov8n backbone + retrained LPRNet
+hailo-lpr --input clip.mp4
 
-Each unique vehicle is recognized **at most once**, keeping compute usage proportional to unique vehicles rather than total frames.
+# Best accuracy on HD / 4K
+hailo-lpr --backbone yolov8n_tiled --ocr lprnet --input clip.mp4
 
-## Display Panel
+# Multilingual OCR
+hailo-lpr --backbone yolov8n_tiled --ocr paddle --input clip.mp4
 
-A separate OpenCV window ("LPR Panel") shows all recognized plates in real time:
-
-- Each row contains the LP crop image and decoded text (bold)
-- Newest plates appear at the top
-- **Scroll**: Mouse wheel, `j`/`k` keys, or arrow keys
-- **Close panel**: `ESC` (pipeline continues running)
-
-## Console Output
-
-**Per-Plate Output:**
-```
-Vehicle #42   | ABC12345   | conf  92% | len 8
+# Legacy cascade
+hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
 ```
 
-**30-Second Summary:**
-```
---- Summary (30s) | Vehicles detected: 127 | Plates recognized (>78%): 43 ---
-```
+## Regression tests
 
-Example
--------
-
-**List supported networks:**
-```shell script
-hailo-lpr --list-models
-```
-
-**List available input resources:**
-```shell script
-hailo-lpr --list-inputs
-```
-
-**LPR with default OCR engine (LPRNet):**
-```shell script
-hailo-lpr --input /path/to/video.mp4
-```
-
-**LPR with PaddleOCR (full charset):**
-```shell script
-hailo-lpr --input /path/to/video.mp4 --ocr-engine paddle
-```
-
-**LPR on USB camera with 1080p input:**
-```shell script
-hailo-lpr --input usb --width 1920 --height 1080
-```
+End-to-end and OCR-only test suites live under
+[`tests/lpr_regression/`](../../../../tests/lpr_regression/). They are
+ignored by `.gitignore` because the test fixtures are derived from
+licence-restricted source datasets (CCPD, OpenALPR). The runners stay
+checked in; the image fixtures and ground-truth crops are rebuilt
+locally with `prepare_fixtures.py`.

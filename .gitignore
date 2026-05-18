@@ -65,3 +65,6 @@ tests/lpr_regression/
 
 # gst-shark traces
 gstshark_*/
+
+# Local-only S3 publication staging
+s3_staging/

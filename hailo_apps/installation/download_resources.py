@@ -576,6 +576,28 @@ class ResourceDownloader:
         )
         self._tasks.add(task)
 
+        # Per-model sidecars (e.g. dictionaries, label maps) listed verbatim by
+        # filename. Fetched from the same per-arch S3 prefix as the HEF and
+        # written next to it under models/<arch>/, preserving the original
+        # extension (no .hef coercion).
+        if isinstance(model_entry, dict):
+            for sidecar in model_entry.get("extras") or []:
+                if isinstance(sidecar, str) and sidecar:
+                    self._add_model_sidecar_task(sidecar)
+
+    def _add_model_sidecar_task(self, filename: str):
+        """Add a verbatim-filename sidecar download task next to a model HEF."""
+        s3_arch = map_arch_to_s3_path(self.hailo_arch)
+        url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{filename}"
+        dest = self.resource_root / RESOURCES_MODELS_DIR_NAME / self.hailo_arch / filename
+        task = DownloadTask(
+            url=url,
+            dest_path=dest,
+            resource_type="model",
+            name=filename,
+        )
+        self._tasks.add(task)
+
     def _add_onnx_task(self, onnx_name: str):
         """Add an ONNX sidecar download task by filename."""
         s3_arch = map_arch_to_s3_path(self.hailo_arch)

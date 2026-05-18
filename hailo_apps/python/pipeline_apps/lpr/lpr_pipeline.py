@@ -174,7 +174,7 @@ class GStreamerLPRApp(GStreamerApp):
     def _setup_yolov8n_models(self):
         # --hef-path wins; else resolve via the standard install-time path that
         # install.sh writes to when resources_config.yaml lists this model
-        # under lpr → extra. Same convention the paddle OCR HEF uses.
+        # under lpr → default. Same convention the paddle OCR HEF uses.
         cli_hef = getattr(self.options_menu, "hef_path", None)
         if cli_hef:
             self.yolov8n_hef = (
@@ -188,9 +188,9 @@ class GStreamerLPRApp(GStreamerApp):
         if not Path(self.yolov8n_hef).exists():
             raise FileNotFoundError(
                 f"yolov8n LP detector HEF not found: {self.yolov8n_hef}.\n"
-                f"  - Re-run install.sh to download it from S3, or\n"
+                f"  - Run sudo ./install.sh to download it from S3, or\n"
                 f"  - pass --hef-path <path-to-hef>, or\n"
-                f"  - fall back to --backbone cascade (no extra HEF needed)."
+                f"  - fall back to --backbone cascade (requires --all install)."
             )
 
         self.yolov8n_post_so = get_resource_path(
