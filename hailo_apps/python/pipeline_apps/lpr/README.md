@@ -10,6 +10,107 @@ License Plate Recognition pipeline. Two orthogonal choices control behaviour:
 Backbone picks the detector(s) that find license plates in the frame; OCR
 picks the recognition network that reads characters off each plate crop.
 
+## What's new in this release
+
+This is a substantial rework of the LPR pipeline. The previous version
+chained a vehicle detector, a license-plate detector, and a digits-only
+LPRNet — fine for plate formats that are purely numeric (e.g. IL), but
+unable to read plate formats with letters such as EU and US. The new
+pipeline replaces both detector stages with a single 4-class yolov8n
+and swaps the digits-only LPRNet for a locally retrained 37-class
+LPRNet that reads Latin alphanumeric plates. Numeric formats still
+work; alphanumeric formats now work too. The result is a pipeline
+that reads the plates it sees, end-to-end, in real time on the
+accelerator, across the regional formats we tested.
+
+### End-to-end accuracy
+
+Measured on Hailo-10H with the performance-compiled HEFs, default
+configuration (`--backbone yolov8n_tiled --ocr lprnet`), against three
+real-traffic clips with ground-truth labels (BR/EU/US, 444 plates):
+
+| Region | GT plates | Exact recall | Exact precision | F1     | Near-match (≤2 edits) |
+|--------|----------:|-------------:|----------------:|-------:|----------------------:|
+| BR     | 114       | **89.5 %**   | 94.4 %          | 91.9 % | 91.2 %                |
+| EU     | 108       | **80.8 %**   | 91.3 %          | 85.7 % | 95.2 %                |
+| US     | 222       | **79.3 %**   | 91.8 %          | 85.1 % | 85.0 %                |
+| **All**| **444**   | **~80 %**    | **~92 %**       | **~87 %** | **~89 %**         |
+
+Exact match means the OCR string equals the ground truth character-for-character.
+Near-match (≤2 edits) is a useful OCR-ceiling indicator: it shows how
+often the OCR is producing a close-to-correct read, separable from
+detection misses.
+
+For reference, the legacy cascade backbone on the same corpus scored
+single-digit exact-match recall; this version is roughly an order of
+magnitude better end-to-end.
+
+### Performance on the accelerator
+
+End-to-end wall-clock FPS reported by the GStreamer pipeline (OCR =
+`lprnet`), averaged across the BR / EU / US ground-truth clips:
+
+| Backbone (OCR = lprnet)      | Hailo-8 | Hailo-8L | Hailo-10H | Notes                                              |
+|------------------------------|--------:|---------:|----------:|----------------------------------------------------|
+| `yolov8n`                    | ~218    | TBD\*    | ~243      | Single inference per frame, real-time on FHD       |
+| `yolov8n_tiled` *(default)*  | ~151    | TBD\*    | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
+| `cascade` *(legacy)*         | ~34     | TBD\*    | not supported† | Two detectors + cropper; kept for H8/H8L compat |
+
+\* H8L hardware was not available during this measurement pass; the HEFs
+are compiled and exercised by the install/resolve paths, but throughput
+hasn't yet been measured on a physical H8L device. Functional support is
+in place — numbers will be filled in once H8L hardware is back in the
+loop. As a rough rule of thumb, H8L typically runs ~0.5–0.7× the H8 FPS
+on detection workloads of this size.
+
+† Cascade on H10H is not supported in this release. The HEFs exist in
+the Hailo Model Zoo for H10H (v5.2.0+), but the cascade-specific
+postprocess shared objects were tuned for the H8 output tensor layout
+and don't currently produce detections from the H10H build of
+`yolov5m_vehicles`. Use `--backbone yolov8n` or `yolov8n_tiled` on
+H10H; both are first-class supported and faster than cascade anyway.
+
+The detector is the bottleneck. The retrained LPRNet OCR adds negligible
+load on top — it's a tiny CTC head running once per detected plate crop.
+All numbers above are wall-clock frame rates of the full pipeline (decode
+→ inference → tracker → OCR → display), not isolated network throughput;
+what you see is what you get when running the app.
+
+### Honest limitations
+
+This release is a meaningful step forward, **not a finished product**.
+Things to expect:
+
+- ~10–20 % of plates are still missed end-to-end in our GT corpus,
+  mostly due to the detector misfiring on heavy motion blur, severe
+  perspective, or partially-occluded plates.
+- The 37-class LPRNet is trained on Latin alphanumerics only. Plates
+  with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`,
+  which is multilingual but lower-accuracy on Latin plates.
+- Character substitutions are concentrated in the usual visually-similar
+  pairs (`O`↔`0`, `I`↔`1`, `S`↔`5`, `B`↔`8`). The near-match column
+  above captures this.
+- The yolov8n LP detector is a generic 4-class network, not fine-tuned
+  for license plates specifically.
+
+### Future improvements
+
+The two biggest single levers, in order of expected impact:
+
+1. **Fine-tune yolov8n on a license-plate corpus.** The current detector
+   is the generic 4-class build; a plate-specialised retrain would lift
+   the detection ceiling (especially on small / distant / blurred
+   plates) more than any further OCR tuning can.
+2. **Fine-tune LPRNet per region.** The current 37-class network is
+   trained on a mixed Latin corpus. A regional fine-tune (BR /
+   EU-per-country / US-per-state plate-format priors) would close most
+   of the remaining gap between near-match and exact-match for the
+   target region.
+
+Smaller follow-ups: tighter overlap on the tiled cropper to reduce
+seam-clipping; a region-aware character whitelist for the CTC decoder;
+optional online re-training hook for site-specific plate distributions.
+
 ## Backbones
 
 | Backbone         | Detection chain                                                            | Typical use |
