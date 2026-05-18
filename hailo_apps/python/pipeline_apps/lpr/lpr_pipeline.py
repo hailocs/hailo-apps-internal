@@ -18,7 +18,6 @@ from hailo_apps.python.core.common.core import (
     get_pipeline_parser,
     get_resource_path,
     handle_list_models_flag,
-    resolve_hef_paths,
 )
 from hailo_apps.python.core.common.defines import (
     ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
@@ -151,12 +150,44 @@ class GStreamerLPRApp(GStreamerApp):
 
     # ----- model setup ------------------------------------------------------
     def _setup_cascade_models(self):
-        models = resolve_hef_paths(
-            hef_paths=self.options_menu.hef_path,
-            app_name=LPR_PIPELINE, arch=self.arch,
-        )
-        self.vehicle_detection_hef = models[0].path
-        self.lp_detection_hef = models[1].path
+        # Cascade HEFs live under `lpr → extra` in resources_config.yaml
+        # (cascade is legacy, opt-in via `sudo ./install.sh --all`).
+        # resolve_hef_paths only walks the `default:` list, so we resolve
+        # cascade HEFs by filename at the standard install-time path —
+        # same pattern as the yolov8n branch below.
+        #
+        # The cascade parser uses configure_multi_model_hef_path
+        # (action='append'), so --hef-path arrives as None or list[str].
+        # Cascade needs exactly two HEFs: [vehicle_detector, lp_detector].
+        REQUIRED_HEF_COUNT = 2
+        cli_hef = getattr(self.options_menu, "hef_path", None)
+        if cli_hef:
+            # Normalize: a stray single-value caller could pass a str instead
+            # of a list. Treat both the same and validate count.
+            if isinstance(cli_hef, str):
+                cli_hef = [cli_hef]
+            if len(cli_hef) != REQUIRED_HEF_COUNT:
+                raise ValueError(
+                    f"--backbone cascade requires exactly {REQUIRED_HEF_COUNT} "
+                    f"HEFs (vehicle detector + LP detector); got {len(cli_hef)}. "
+                    f"Pass them as: "
+                    f"--hef-path <vehicles.hef> --hef-path <lp.hef>"
+                )
+            self.vehicle_detection_hef = cli_hef[0]
+            self.lp_detection_hef = cli_hef[1]
+        else:
+            models_dir = Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / self.arch
+            self.vehicle_detection_hef = str(models_dir / "yolov5m_vehicles.hef")
+            self.lp_detection_hef = str(models_dir / "tiny_yolov4_license_plates.hef")
+        for hef in (self.vehicle_detection_hef, self.lp_detection_hef):
+            if not Path(hef).exists():
+                raise FileNotFoundError(
+                    f"Cascade HEF not found: {hef}\n"
+                    f"  - Run `sudo ./install.sh --all` to fetch the legacy "
+                    f"cascade HEFs (yolov5m_vehicles + tiny_yolov4_license_plates), or\n"
+                    f"  - pass --hef-path <vehicles.hef> --hef-path <lp.hef>, or\n"
+                    f"  - use --backbone yolov8n (the default, no extra install)."
+                )
 
         self.vehicle_detection_post_so = get_resource_path(
             pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
