@@ -49,7 +49,12 @@ from hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_pipeline im
 
 from community.apps.pipeline_apps.rhythm_royale.audio_source import AudioSource
 from community.apps.pipeline_apps.rhythm_royale.beat_extractor import BeatExtractor
-from community.apps.pipeline_apps.rhythm_royale.motion_analyzer import MotionAnalyzer
+from community.apps.pipeline_apps.rhythm_royale.motion_analyzer import (
+    MotionAnalyzer, TrackScore,
+)
+from community.apps.pipeline_apps.rhythm_royale.player_ranker import (
+    Bbox, PlayerRanker,
+)
 from community.apps.pipeline_apps.rhythm_royale import overlay
 
 
@@ -65,12 +70,13 @@ KEYPOINT_NAMES = [
 
 
 class RhythmRoyaleCallback(app_callback_class):
-    def __init__(self):
+    def __init__(self, max_players: int = 4):
         super().__init__()
         self.use_frame = True
         self.audio_source: AudioSource | None = None
         self.beat_extractor: BeatExtractor | None = None
         self.motion: MotionAnalyzer = MotionAnalyzer(fps_hint=30.0)
+        self.ranker: PlayerRanker = PlayerRanker(max_players=max_players)
         self.t0: float = time.monotonic()
         self.latest_scores: Dict[int, float] = {}
 
@@ -120,8 +126,13 @@ def app_callback(element, buffer, user_data: RhythmRoyaleCallback):
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
 
     beat = user_data.beat_extractor.latest() if user_data.beat_extractor else None
-    scores: Dict[int, Tuple[float, Dict[str, Tuple[float, float]]]] = {}
 
+    # Pass 1 — collect all valid detections (still pose-tracked, valid kp).
+    # We update every track's motion buffer (cheap appends) regardless of
+    # ranking, so a dancer entering the top-K already has a warm window.
+    candidates: Dict[int, Tuple[Dict[str, Tuple[float, float]],
+                                 Dict[str, float],
+                                 Bbox]] = {}
     for det in detections:
         if det.get_label() != "person":
             continue
@@ -132,24 +143,47 @@ def app_callback(element, buffer, user_data: RhythmRoyaleCallback):
         if not kp:
             continue
         user_data.motion.update_track(track_id, kp, t_now, confidences=kp_conf)
-        score = user_data.motion.compute_score(track_id, beat, t_now)
-        value = score.value if score is not None else 0.0
-        scores[track_id] = (value, kp)
-        user_data.latest_scores[track_id] = value
+        bbox = det.get_bbox()
+        candidates[track_id] = (kp, kp_conf, Bbox(
+            xmin=bbox.xmin(), ymin=bbox.ymin(),
+            width=bbox.width(), height=bbox.height(),
+        ))
+
+    # Pass 2 — rank and score only the top-K.
+    selected = user_data.ranker.select(
+        [(tid, b) for tid, (_, _, b) in candidates.items()]
+    )
+    scored: Dict[int, Tuple[TrackScore, Dict[str, Tuple[float, float]],
+                            Dict[str, float]]] = {}
+    for tid in selected:
+        kp, kp_conf, _ = candidates[tid]
+        score = user_data.motion.compute_score(tid, beat, t_now)
+        if score is None:
+            continue
+        scored[tid] = (score, kp, kp_conf)
+        user_data.latest_scores[tid] = score.value
 
     user_data.motion.prune_stale(t_now)
 
     rockstar_id = None
-    if scores:
-        best_id, (best_v, _) = max(scores.items(), key=lambda kv: kv[1][0])
-        if best_v >= 0.15:
-            rockstar_id = best_id
+    if scored:
+        rockstar_id, (best_score, _, _) = max(
+            scored.items(), key=lambda kv: kv[1][0].value,
+        )
+        if best_score.value < 0.15:
+            rockstar_id = None
 
-    for track_id, (value, kp) in scores.items():
-        color = (0, 200, 255) if track_id == rockstar_id else (200, 200, 200)
+    # Draw skeletons for every detection (including non-scored ones so the
+    # operator still sees who's in frame), score tags only for scored ones.
+    for tid, (kp, kp_conf, _bbox) in candidates.items():
+        if tid in scored:
+            color = (0, 200, 255) if tid == rockstar_id else (200, 200, 200)
+        else:
+            color = (110, 110, 110)  # dim — present but unranked
         overlay.draw_skeleton(frame, kp, color)
-        overlay.draw_score_tag(frame, kp, track_id, value,
-                               is_rockstar=(track_id == rockstar_id))
+    for tid, (score, kp, _kp_conf) in scored.items():
+        overlay.draw_score_tag(frame, kp, tid, score.value,
+                               is_rockstar=(tid == rockstar_id))
 
     if beat is not None:
         overlay.draw_beat_pulse(frame, beat.f_beat_hz, beat.phase_rad,
