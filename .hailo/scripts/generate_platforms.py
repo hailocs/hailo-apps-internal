@@ -360,6 +360,7 @@ def generate_copilot():
             "hl-model-management.md",
             "hl-plan-and-execute.md",
             "hl-validate.md",
+            "hl-profile-pipeline.md",
         ]
         for skill_name in utility_skills:
             src_file = skills_src / skill_name
@@ -412,12 +413,14 @@ def generate_copilot():
             out_path = GITHUB_DIR / "prompts" / out_name
             generated_files[out_path] = content
 
-    # 7. Scripts — copy to .github/scripts/ (including the generator itself)
+    # 7. Scripts — copy to .github/scripts/ (including the generator itself).
+    # Recurses one level so script bundles (e.g. profile_pipeline/) are mirrored.
     scripts_src = HAILO_DIR / "scripts"
     if scripts_src.is_dir():
-        for src_file in sorted(scripts_src.glob("*.py")):
+        for src_file in sorted(scripts_src.rglob("*.py")):
+            rel = src_file.relative_to(scripts_src)
             content = read_file(src_file)
-            out_path = GITHUB_DIR / "scripts" / src_file.name
+            out_path = GITHUB_DIR / "scripts" / rel
             generated_files[out_path] = content
 
     # 8. .copilotignore — prevent Copilot from scanning .claude/ (which it now
@@ -626,23 +629,37 @@ Persistent knowledge in `.hailo/memory/`. Read at task start, update when learni
         "- `.hailo/memory/hailo_platform_api.md` — SDK usage patterns\n"
     )
 
-    # 6. Claude utility skills — thin wrappers pointing to .hailo/
+    # 6. Claude utility skills — thin wrappers pointing to .hailo/.
+    # Each entry: (skill_name, description, optional extra YAML fields dict).
     utility_skills = [
-        ("hl-monitoring", "Continuous monitoring patterns for Hailo apps."),
-        ("hl-event-detection", "Detect and report events from video streams."),
-        ("hl-camera", "Camera setup, USB/RPi configuration, and troubleshooting."),
-        ("hl-model-management", "HEF resolution, model download, and config management."),
-        ("hl-plan-and-execute", "Plan-and-execute loop pattern for complex builds."),
-        ("hl-validate", "Validation at every phase gate."),
+        ("hl-monitoring", "Continuous monitoring patterns for Hailo apps.", None),
+        ("hl-event-detection", "Detect and report events from video streams.", None),
+        ("hl-camera", "Camera setup, USB/RPi configuration, and troubleshooting.", None),
+        ("hl-model-management", "HEF resolution, model download, and config management.", None),
+        ("hl-plan-and-execute", "Plan-and-execute loop pattern for complex builds.", None),
+        ("hl-validate", "Validation at every phase gate.", None),
+        (
+            "hl-profile-pipeline",
+            "Profile GStreamer pipeline performance: auto-setup GST-Shark, profile, analyze bottlenecks, suggest & apply optimizations, run experiments, and learn from results. Single command — guides the user through everything.",
+            {
+                "argument-hint": "[app-path-or-trace-dir] [options]",
+                "allowed-tools": "Bash(python *), Bash(gst-*), Bash(sudo *), Bash(cd *), Read, Write, Edit, Grep, Glob, Agent, AskUserQuestion",
+            },
+        ),
     ]
     if skills_src.is_dir():
-        for skill_name, desc in utility_skills:
+        for skill_name, desc, extra in utility_skills:
             src_file = skills_src / f"{skill_name}.md"
             if src_file.exists():
+                extra_lines = ""
+                if extra:
+                    extra_lines = "".join(f'{k}: "{v}"\n' if k != "allowed-tools" else f'{k}: {v}\n'
+                                          for k, v in extra.items())
                 out_content = (
                     f"---\n"
                     f'name: {skill_name}\n'
                     f'description: "{desc}"\n'
+                    f"{extra_lines}"
                     f"---\n\n"
                     f"<!-- Thin wrapper — canonical doc lives in .hailo/ -->\n\n"
                     f"Read `.hailo/skills/{skill_name}.md` for the complete skill documentation.\n"
@@ -783,6 +800,7 @@ def generate_cursor():
     utility_skills = [
         "hl-monitoring.md", "hl-event-detection.md", "hl-camera.md",
         "hl-model-management.md", "hl-plan-and-execute.md", "hl-validate.md",
+        "hl-profile-pipeline.md",
     ]
     if skills_src.is_dir():
         for skill_name in utility_skills:
