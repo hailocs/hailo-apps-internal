@@ -69,8 +69,23 @@ KEYPOINT_NAMES = [
 ]
 
 
+DEBUG_VIZ_CHOICES = ("off", "standard", "full")
+
+
+# Dancer-tag colors used on the phase clock so the operator can tie a dot
+# to a specific dancer. Picked from a short cycle.
+_DANCER_PALETTE = [
+    (255, 110, 110), (110, 220, 255), (255, 220, 80),
+    (140, 255, 140), (255, 160, 220), (180, 180, 255),
+]
+
+
+def _dancer_color(track_id: int) -> Tuple[int, int, int]:
+    return _DANCER_PALETTE[track_id % len(_DANCER_PALETTE)]
+
+
 class RhythmRoyaleCallback(app_callback_class):
-    def __init__(self, max_players: int = 4):
+    def __init__(self, max_players: int = 4, debug_viz: str = "full"):
         super().__init__()
         self.use_frame = True
         self.audio_source: AudioSource | None = None
@@ -79,6 +94,7 @@ class RhythmRoyaleCallback(app_callback_class):
         self.ranker: PlayerRanker = PlayerRanker(max_players=max_players)
         self.t0: float = time.monotonic()
         self.latest_scores: Dict[int, float] = {}
+        self.debug_viz: str = debug_viz  # "off" | "standard" | "full"
 
 
 def _extract_keypoints(detection, width: int, height: int
@@ -173,23 +189,45 @@ def app_callback(element, buffer, user_data: RhythmRoyaleCallback):
         if best_score.value < 0.15:
             rockstar_id = None
 
+    show_glow = user_data.debug_viz in ("standard", "full")
+    show_ladder = user_data.debug_viz in ("standard", "full")
+    show_tape = user_data.debug_viz in ("standard", "full")
+    show_clock = user_data.debug_viz == "full"
+
     # Draw skeletons for every detection (including non-scored ones so the
     # operator still sees who's in frame), score tags only for scored ones.
     for tid, (kp, kp_conf, _bbox) in candidates.items():
         if tid in scored:
             color = (0, 200, 255) if tid == rockstar_id else (200, 200, 200)
+            glow = (overlay.per_kp_glow_colors(scored[tid][0].per_kp)
+                    if show_glow else None)
         else:
             color = (110, 110, 110)  # dim — present but unranked
-        overlay.draw_skeleton(frame, kp, color)
+            glow = None
+        overlay.draw_skeleton(frame, kp, color, kp_conf=kp_conf, kp_colors=glow)
     for tid, (score, kp, _kp_conf) in scored.items():
         overlay.draw_score_tag(frame, kp, tid, score.value,
                                is_rockstar=(tid == rockstar_id))
+        if show_ladder:
+            overlay.draw_harmonic_ladder(frame, kp, score)
 
     if beat is not None:
         overlay.draw_beat_pulse(frame, beat.f_beat_hz, beat.phase_rad,
                                 t_now, beat.confidence)
     else:
         overlay.draw_beat_pulse(frame, None, 0.0, t_now, 0.0)
+
+    if show_tape and user_data.beat_extractor is not None:
+        envelope = user_data.beat_extractor.latest_envelope()
+        overlay.draw_beat_tape(frame, envelope, beat, t_now)
+
+    if show_clock:
+        dancer_colors = {tid: _dancer_color(tid) for tid in scored}
+        overlay.draw_phase_clock(
+            frame, beat,
+            [(tid, s) for tid, (s, _, _) in scored.items()],
+            t_now=t_now, dancer_colors=dancer_colors,
+        )
 
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     user_data.set_frame(frame)
@@ -226,6 +264,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-playback", action="store_true",
         help="Disable playback when using --audio-file (just analyze).",
     )
+    group.add_argument(
+        "--debug-viz", choices=DEBUG_VIZ_CHOICES, default="full",
+        help="Overlay verbosity. 'off' keeps only score tags + beat badge; "
+             "'standard' adds beat tape, harmonic ladder, per-kp glow; "
+             "'full' also adds phase clock.",
+    )
+    group.add_argument(
+        "--max-players", type=int, default=4,
+        help="Hard cap on the number of dancers scored per frame (others "
+             "still get their skeleton drawn).",
+    )
     return parser
 
 
@@ -233,7 +282,10 @@ def main():
     parser = _build_parser()
     args, _ = parser.parse_known_args()
 
-    user_data = RhythmRoyaleCallback()
+    user_data = RhythmRoyaleCallback(
+        max_players=args.max_players,
+        debug_viz=args.debug_viz,
+    )
 
     if args.audio_file:
         logger.info("Audio: file %s (playback=%s)",
