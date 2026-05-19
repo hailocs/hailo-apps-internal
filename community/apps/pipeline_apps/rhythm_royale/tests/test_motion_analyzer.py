@@ -34,7 +34,8 @@ def _make_dancer(t_seconds, f_dance_hz=2.0, phase=0.0, amp_px=30.0):
 
 def test_dancer_in_sync_scores_high():
     analyzer = MotionAnalyzer(fps_hint=30.0)
-    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, confidence=10.0, timestamp=0.0)
+    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, phase_abs_rad=0.0,
+                     t_window_start=0.0, confidence=10.0, timestamp=0.0)
     dt = 1 / 30
     score = None
     for i in range(int(4.0 * 30)):
@@ -49,7 +50,8 @@ def test_dancer_in_sync_scores_high():
 def test_dancer_out_of_phase_scores_lower_than_in_phase():
     a1 = MotionAnalyzer(fps_hint=30.0)
     a2 = MotionAnalyzer(fps_hint=30.0)
-    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, confidence=10.0, timestamp=0.0)
+    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, phase_abs_rad=0.0,
+                     t_window_start=0.0, confidence=10.0, timestamp=0.0)
     dt = 1 / 30
     s1 = s2 = None
     for i in range(int(4.0 * 30)):
@@ -64,7 +66,8 @@ def test_dancer_out_of_phase_scores_lower_than_in_phase():
 
 def test_still_person_scores_zero():
     analyzer = MotionAnalyzer(fps_hint=30.0)
-    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, confidence=10.0, timestamp=0.0)
+    beat = BeatState(f_beat_hz=2.0, phase_rad=0.0, phase_abs_rad=0.0,
+                     t_window_start=0.0, confidence=10.0, timestamp=0.0)
     dt = 1 / 30
     score = None
     still = _make_dancer(0.0, f_dance_hz=2.0, phase=0.0, amp_px=0.0)

@@ -65,6 +65,50 @@ def test_mp3_beat_track_yields_correct_beat_freq(tmp_path, bpm, expected_hz):
     )
 
 
+def test_absolute_phase_is_invariant_to_window_start(tmp_path):
+    """Same synthetic beat track, two different t_window_start values:
+    BeatState.phase_abs_rad must be the same (mod 2π).
+
+    This is the bug-fix anchor for phase alignment — without time-origin
+    correction, the bin phase shifts by 2π·f·Δt as the window slides, and
+    any phase comparison between audio and motion picks up that drift.
+    """
+    p = _write_beat_mp3(tmp_path / "beat_120.mp3", bpm=120.0, duration_s=8.0)
+    audio, sr = sf.read(p, dtype="float32", always_2d=False)
+    if audio.ndim == 2:
+        audio = audio.mean(axis=1)
+    audio = audio.astype(np.float32)
+
+    win_n = int(4.0 * sr)
+    win_a = audio[:win_n]
+    win_b = audio[int(1.0 * sr):int(1.0 * sr) + win_n]  # same content shifted +1.0 s
+
+    state_a = compute_beat_state(win_a, sample_rate=int(sr), t_window_start=0.0)
+    state_b = compute_beat_state(win_b, sample_rate=int(sr), t_window_start=1.0)
+    assert state_a is not None and state_b is not None
+    # Same music content -> same beat frequency (within bin resolution).
+    assert abs(state_a.f_beat_hz - state_b.f_beat_hz) < 0.3
+    # And same ABSOLUTE phase, modulo 2π. Compare via cos of difference
+    # (avoids wrap-around comparison headaches).
+    cos_diff = np.cos(state_a.phase_abs_rad - state_b.phase_abs_rad)
+    assert cos_diff > 0.9, (
+        f"phase_abs drifted with window: a={state_a.phase_abs_rad:.3f}, "
+        f"b={state_b.phase_abs_rad:.3f}, cos(Δ)={cos_diff:.3f}"
+    )
+
+
+def test_beat_state_exposes_window_start(tmp_path):
+    """BeatState.t_window_start is the t_window_start argument we passed in."""
+    p = _write_beat_mp3(tmp_path / "beat_120.mp3", bpm=120.0)
+    audio, sr = sf.read(p, dtype="float32", always_2d=False)
+    if audio.ndim == 2:
+        audio = audio.mean(axis=1)
+    state = compute_beat_state(audio.astype(np.float32), sample_rate=int(sr),
+                               t_window_start=3.5)
+    assert state is not None
+    assert state.t_window_start == 3.5
+
+
 def test_silence_mp3_yields_none(tmp_path):
     p = tmp_path / "silence.mp3"
     sr = 44100

@@ -29,13 +29,32 @@ MIN_INPUT_RMS = 1e-3   # silence floor (linear)
 @dataclass
 class BeatState:
     f_beat_hz: float
-    phase_rad: float
+    phase_rad: float          # FFT bin phase, relative to window start
+    phase_abs_rad: float      # absolute phase at t_ref=0 (AudioSource origin)
+    t_window_start: float     # absolute timestamp of window's first sample
     confidence: float
     timestamp: float
 
 
+def _to_absolute_phase(phase_window_rad: float, freq_hz: float,
+                       t_window_start: float) -> float:
+    """Convert an FFT bin phase to absolute phase at t_ref = 0.
+
+    The FFT bin at frequency f models the windowed signal as
+        s(t_local) = |A| cos(2π f t_local + phase_window),    t_local ∈ [0, T_win].
+    In absolute time t_abs = t_local + t_window_start:
+        s(t_abs)   = |A| cos(2π f t_abs - 2π f t_window_start + phase_window).
+    So the absolute phase, in convention cos(2π f t_abs + phase_abs), is:
+        phase_abs = phase_window - 2π f t_window_start    (mod 2π).
+    """
+    phi = phase_window_rad - 2.0 * np.pi * freq_hz * t_window_start
+    # Wrap into (-π, π] for stable comparisons.
+    return float(np.angle(np.exp(1j * phi)))
+
+
 def compute_beat_state(audio: np.ndarray, sample_rate: int,
-                       timestamp: Optional[float] = None) -> Optional[BeatState]:
+                       timestamp: Optional[float] = None,
+                       t_window_start: float = 0.0) -> Optional[BeatState]:
     if audio is None or len(audio) < int(0.5 * sample_rate):
         return None
 
@@ -101,9 +120,12 @@ def compute_beat_state(audio: np.ndarray, sample_rate: int,
 
     f_beat = float(freqs[peak_global])
     phase = float(np.angle(spec[peak_global]))
+    phase_abs = _to_absolute_phase(phase, f_beat, t_window_start)
     return BeatState(
         f_beat_hz=f_beat,
         phase_rad=phase,
+        phase_abs_rad=phase_abs,
+        t_window_start=t_window_start,
         confidence=conf,
         timestamp=timestamp if timestamp is not None else time.monotonic(),
     )
@@ -137,9 +159,12 @@ class BeatExtractor:
         while not self._stop.is_set():
             result = self.audio_source.read_latest(WIN_AUDIO_S)
             if result is not None:
-                buf, _t_window_start = result
+                buf, t_window_start = result
                 try:
-                    state = compute_beat_state(buf, self.audio_source.sample_rate)
+                    state = compute_beat_state(
+                        buf, self.audio_source.sample_rate,
+                        t_window_start=t_window_start,
+                    )
                 except Exception:
                     state = None
                 with self._lock:
