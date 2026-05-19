@@ -90,15 +90,20 @@ Things to expect:
 
 ### Future improvements
 
-**Fine-tune LPRNet per region.** The current 37-class network is
-trained on a mixed Latin corpus. A regional fine-tune (BR /
-EU-per-country / US-per-state plate-format priors) would close most
-of the remaining gap between near-match and exact-match for the
-target region.
+**Fine-tune LPRNet for your regional plates.** The shipped 37-class
+LPRNet is trained on a mixed Latin corpus, so a single-region deployment
+(e.g. one country's plates, or one US state's plate format) inherits a
+generality cost it doesn't need to pay. Retraining the OCR head on a
+narrower corpus closes most of the remaining gap between near-match
+and exact-match in that region.
 
-Smaller follow-ups: tighter overlap on the tiled cropper to reduce
-seam-clipping; a region-aware character whitelist for the CTC decoder;
-optional online re-training hook for site-specific plate distributions.
+This is intentionally easy to do: LPRNet is small, the architecture
+ships unchanged, and a few thousand labeled plate crops from the
+target region is enough to move the needle. The same training loop
+that produced `lprnet_intl.hef` accepts a region-specific dataset
+with no code changes — fine-tune from the checkpoint, recompile, and
+drop the new HEF in at `/usr/local/hailo/resources/models/<arch>/lprnet_intl.hef`.
+No pipeline changes needed.
 
 ## Backbones
 
