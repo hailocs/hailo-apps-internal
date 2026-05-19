@@ -185,15 +185,15 @@ def map_arch_to_s3_path(hailo_arch: str) -> str:
 
 def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
     """Get Model Zoo version and download architecture for a given Hailo architecture.
-    
+
     For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0)
-    For H8/H8L: Uses static mapping v2.17.0
+    For H8/H8L: Uses the config-defined default (first entry in VALID_H8_MODEL_ZOO_VERSION)
     """
     download_arch = hailo_arch
-    
+
     # First check if explicitly set via environment
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY)
-    
+
     if model_zoo_version is None:
         # Auto-select default model zoo version based on device architecture
         if hailo_arch == HAILO10H_ARCH:
@@ -213,15 +213,15 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
                 # For newer versions, use the exact HailoRT version
                 model_zoo_version = f"v{hailort_version}"
         else:
-            # H8/H8L uses the fixed Model Zoo release
-            model_zoo_version = "v2.17.0"
-    
-    # Validate the version
+            # H8/H8L: use the first (newest) valid version from the config
+            model_zoo_version = VALID_H8_MODEL_ZOO_VERSION[0]
+
+    # Validate the version; fall back to the config default if invalid
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
-        model_zoo_version = "v5.1.0"
+        model_zoo_version = VALID_H10_MODEL_ZOO_VERSION[0]
     if hailo_arch in (HAILO8_ARCH, HAILO8L_ARCH) and model_zoo_version not in VALID_H8_MODEL_ZOO_VERSION:
-        model_zoo_version = "v2.17.0"
-    
+        model_zoo_version = VALID_H8_MODEL_ZOO_VERSION[0]
+
     return model_zoo_version, download_arch
 
 
@@ -1388,7 +1388,7 @@ def download_resources(
 ):
     """
     Download resources based on the specified options.
-    
+
     Args:
         resource_config_path: Path to resources config file
         arch: Hailo architecture override (hailo8, hailo8l, hailo10h)
@@ -1401,7 +1401,8 @@ def download_resources(
         parallel: If True, download files in parallel
         include_gen_ai: If True, include gen-ai models in downloads
     """
-    
+    load_environment()
+
     # ------------------------------------------------------------
     # Targeted mode:
     # Download exactly ONE resource (model OR image OR video).

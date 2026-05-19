@@ -77,34 +77,34 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/mono_depth_estimation --list-nets
+    ./build/mono_depth_estimation --list-nets
     ```
 
 - List available input resources:
     ```shell script
-    ./build/x86_64/mono_depth_estimation --list-inputs
+    ./build/mono_depth_estimation --list-inputs
     ```
 - For a video:
     ```shell script
-    ./build/x86_64/mono_depth_estimation --net scdepthv3.hef --input input_video.mp4 --batch-size 16
+    ./build/mono_depth_estimation --net scdepthv3.hef --input input_video.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/mono_depth_estimation -n scdepthv3.hef -i image.jpg
+    ./build/mono_depth_estimation -n scdepthv3.hef -i image.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/mono_depth_estimation -n scdepthv3.hef -i images -b 4
+    ./build/mono_depth_estimation -n scdepthv3.hef -i images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/mono_depth_estimation --net scdepthv3.hef --input /dev/video0 --batch-size 2 -s
+    ./build/mono_depth_estimation --net scdepthv3.hef --input /dev/video0 --batch-size 2 -s
     ```
     Output video is saved as processed_video.mp4
 

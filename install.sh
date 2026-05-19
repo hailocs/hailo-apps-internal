@@ -864,10 +864,10 @@ check_prerequisites() {
     if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_version" == "-1" ]]; then
         missing_components+=("TAPPAS Core (.deb)")
     fi
-    if [[ "$pyhailort_version" == "-1" ]]; then
+    if [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]]; then
         missing_components+=("HailoRT Python binding (.whl)")
     fi
-    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" ]]; then
+    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" && -z "${PYTAPPAS_PATH}" ]]; then
         missing_components+=("TAPPAS Core Python binding (.whl)")
     fi
 
