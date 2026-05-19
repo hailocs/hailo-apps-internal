@@ -613,11 +613,15 @@ lpr: &lpr_app
   # disk regardless — only the S3 source location differs from the legacy
   # flat layout.
   #
-  # `lprnet_intl` carries the PaddleOCR-v5 character dictionary as a
-  # sidecar (extras: [ppocrv5_char_dict.npz]). The dict is only used by
-  # the paddle OCR path — it sits with LPR because it was published to
-  # the same LPR/ subdirectory and the standalone paddle_ocr group still
-  # serves the older v3/v4 build that doesn't need it.
+  # The LPR app's `--ocr paddle` path uses the PaddleOCR-v5 build that
+  # was published under hefs/<arch>/LPR/ocr.hef on S3. To avoid colliding
+  # with the legacy `paddle_ocr` group's v3/v4 build at the flat
+  # hefs/<arch>/ocr.hef path, the v5 build is renamed locally to
+  # `paddle_ocr_v5.hef` via `local_name`. Both can coexist on disk; the
+  # LPR app prefers v5 when present, falling back to v3/v4 with a
+  # warning when only the legacy file is installed.
+  # The PaddleOCR-v5 character dictionary rides along as a sidecar of
+  # the `ocr` entry — same S3 subdirectory, same download path.
   #
   # The legacy cascade backbone (yolov5m_vehicles → tiny_yolov4_license_plates
   # → bundled lprnet) is listed under `extra` and only fetched with
@@ -632,6 +636,10 @@ lpr: &lpr_app
         - name: lprnet_intl
           source: s3
           subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
       extra:
@@ -649,6 +657,10 @@ lpr: &lpr_app
         - name: lprnet_intl
           source: s3
           subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
       extra:
@@ -666,6 +678,10 @@ lpr: &lpr_app
         - name: lprnet_intl
           source: s3
           subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
       extra:

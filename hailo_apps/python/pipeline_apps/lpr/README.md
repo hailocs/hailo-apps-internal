@@ -23,27 +23,50 @@ work; alphanumeric formats now work too. The result is a pipeline
 that reads the plates it sees, end-to-end, in real time on the
 accelerator, across the regional formats we tested.
 
-### End-to-end accuracy
+### Accuracy
 
-Measured on Hailo-10H with the performance-compiled HEFs, default
-configuration (`--backbone yolov8n_tiled --ocr lprnet`), against three
-real-traffic clips with ground-truth labels (BR/EU/US, 444 plates):
+Measured on Hailo-10H with the performance-compiled HEFs and the
+default configuration (`--backbone yolov8n_tiled --ocr lprnet`).
+The detector is benchmarked against a 5,000-image plate-detection val
+corpus; the OCR is benchmarked against curated per-region crop sets
+(real US/EU plates with verified text labels, plus an Israeli synthetic
+val split as the "rest of world" sample). The two sub-tests are
+independent — different HEFs, different IoU vs. text-match criteria —
+so they're presented separately.
 
-| Region | GT plates | Exact recall | Exact precision | F1     | Near-match (≤2 edits) |
-|--------|----------:|-------------:|----------------:|-------:|----------------------:|
-| BR     | 114       | **89.5 %**   | 94.4 %          | 91.9 % | 91.2 %                |
-| EU     | 108       | **80.8 %**   | 91.3 %          | 85.7 % | 95.2 %                |
-| US     | 222       | **79.3 %**   | 91.8 %          | 85.1 % | 85.0 %                |
-| **All**| **444**   | **~80 %**    | **~92 %**       | **~87 %** | **~89 %**         |
+#### Detector
 
-Exact match means the OCR string equals the ground truth character-for-character.
-Near-match (≤2 edits) is a useful OCR-ceiling indicator: it shows how
-often the OCR is producing a close-to-correct read, separable from
-detection misses.
+`yolov8n_384_640`, license_plate class, score threshold 0.25, IoU ≥ 0.5
+on the 5,000-image plate-detection val corpus.
 
-For reference, the legacy cascade backbone on the same corpus scored
-single-digit exact-match recall; this version is roughly an order of
-magnitude better end-to-end.
+| Metric                          | Value      |
+|---------------------------------|-----------:|
+| GT plates                       | 5,014      |
+| **Recall**                      | **98.9 %** |
+| **Miss rate**                   | **1.1 %**  |
+| Precision                       | 99.3 %     |
+| Mean IoU on matched plates      | 0.855      |
+| Throughput on H10H              | 80 img/s   |
+
+#### OCR (per region group)
+
+37-class `lprnet_intl.hef`, run on real labeled plate crops:
+
+| Group                          | N       | **Exact** | **Miss**  | ≤d2     | char-acc | OCR FPS |
+|--------------------------------|--------:|----------:|----------:|--------:|---------:|--------:|
+| **US** *(PaddleOCR val, real)* | 148     | **96.6 %** | **3.4 %** | 100.0 % | 99.3 %   | 71      |
+| **EU** *(PaddleOCR val, real)* | 22      | **95.5 %** | **4.5 %** | 100.0 % | 99.4 %   | 86      |
+| Rest of world *(IL val)*       | 996     | 78.2 %    | 21.8 %    | 96.3 %  | 95.0 %   | 81      |
+
+Exact-match recall is the strict metric — the OCR string equals the
+ground-truth text character-for-character. `≤d2` (within 2 edits) is the
+OCR-ceiling indicator: it shows how often the read is close-to-correct,
+which separates OCR quality from character substitutions on
+visually-similar pairs (`I`↔`1`, `O`↔`0`, `S`↔`5`, `B`↔`8`).
+
+For reference, the legacy cascade backbone on a smaller earlier corpus
+scored single-digit exact-match recall; this version is more than an
+order of magnitude better end-to-end.
 
 ### Performance on the accelerator
 
@@ -188,15 +211,29 @@ the OOB LPR path needs for the detected architecture:
 /usr/local/hailo/resources/models/<arch>/
 ├── hailo_yolov8n_384_640.hef    # default backbone
 ├── lprnet_intl.hef              # default OCR (retrained 37-class)
-├── ocr.hef                      # paddle OCR v5 mobile recognition
-├── ocr_det.hef                  # paddle text detector
-└── ppocrv5_char_dict.npz        # paddle v5 character dictionary
+├── paddle_ocr_v5.hef            # paddle OCR v5 mobile recognition (LPR-app build)
+├── ppocrv5_char_dict.npz        # paddle v5 character dictionary (sidecar)
+├── ocr.hef                      # legacy paddle OCR v3/v4 (standalone paddle_ocr)
+└── ocr_det.hef                  # paddle text detector
 ```
 
-`lprnet_intl` and `hailo_yolov8n_384_640` are listed under `lpr → default`
-in [`resources_config.yaml`](../../../config/resources_config.yaml); the
-paddle artifacts live under `paddle_ocr → default` and the character
-dictionary rides along as a sidecar of the `ocr` entry.
+`lprnet_intl`, `hailo_yolov8n_384_640`, and `paddle_ocr_v5` are listed
+under `lpr → default` in
+[`resources_config.yaml`](../../../config/resources_config.yaml) and
+fetched from the `LPR/` subdirectory on S3 (`hefs/<arch>/LPR/…`). The
+PaddleOCR-v5 character dictionary rides along as a sidecar of the
+`ocr` entry.
+
+> **Side note — paddle OCR HEF naming.** The LPR app's `--ocr paddle`
+> path uses **`paddle_ocr_v5.hef`** (PP-OCRv5 mobile recognition,
+> distinguished from the legacy `ocr.hef` by filename). The standalone
+> `paddle_ocr` apps continue to use the legacy `ocr.hef` (v3/v4 build)
+> served at the original flat S3 path, so anyone consuming that file
+> from `paddle_ocr → default` keeps receiving v3/v4 — no behaviour
+> change for those users. If `paddle_ocr_v5.hef` isn't on disk (e.g.
+> upgrade from a pre-rework install), the LPR app falls back to
+> `ocr.hef` with a warning; the postprocess layer auto-detects v3/v4
+> vs v5 by class count.
 
 The legacy cascade backbone (`yolov5m_vehicles`, `tiny_yolov4_license_plates`,
 bundled `lprnet`) sits under `lpr → extra` and is only fetched with:

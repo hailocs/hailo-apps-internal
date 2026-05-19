@@ -399,13 +399,34 @@ def main():
     arch = detect_hailo_arch()
 
     # Resolve OCR HEF (orthogonal to backbone). Both engines live at
-    # standard install-time paths under <resources>/models/<arch>/. We use a
-    # dedicated filename for the retrained LPRNet (lprnet_intl.hef) so it
-    # never collides with the bundled Hailo lprnet.hef on disk.
+    # standard install-time paths under <resources>/models/<arch>/.
+    #
+    # - lprnet  → lprnet_intl.hef (the retrained 37-class build; distinct
+    #             filename so it never collides with the bundled Hailo
+    #             lprnet.hef from the legacy cascade install).
+    # - paddle  → paddle_ocr_v5.hef (the v5 build the LPR app's `install.sh`
+    #             pulls from hefs/<arch>/LPR/ocr.hef). If that file isn't
+    #             present (e.g. older install or paddle_ocr-only install
+    #             that only laid down the legacy v3/v4 ocr.hef), fall back
+    #             to the legacy filename with a warning — postprocess
+    #             auto-detects v3/v4 vs v5 by class count.
+    models_dir = Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch
     if args.ocr == "lprnet":
-        ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "lprnet_intl.hef")
+        ocr_hef = str(models_dir / "lprnet_intl.hef")
     else:  # paddle
-        ocr_hef = str(Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / arch / "ocr.hef")
+        v5 = models_dir / "paddle_ocr_v5.hef"
+        legacy = models_dir / "ocr.hef"
+        if v5.exists():
+            ocr_hef = str(v5)
+        elif legacy.exists():
+            ocr_hef = str(legacy)
+            print(
+                "WARNING: paddle_ocr_v5.hef not found; falling back to legacy "
+                f"{legacy.name} (v3/v4). Run `sudo ./install.sh` to fetch the "
+                "v5 build for better accuracy."
+            )
+        else:
+            ocr_hef = str(v5)  # use v5 path in the error so the install hint is correct
     if not Path(ocr_hef).exists():
         print(f"ERROR: OCR HEF not found at {ocr_hef}")
         print("Run: sudo ./install.sh to download LPR + paddle_ocr resources")

@@ -564,19 +564,29 @@ class ResourceDownloader:
         url = self._build_model_url(model_entry, source)
         if not url:
             return
-        
+
+        # Local filename defaults to the S3 `name` but can be overridden via
+        # `local_name` — needed when two entries publish HEFs at distinct S3
+        # locations that would otherwise collide at the same on-disk path
+        # (e.g. legacy paddle_ocr's flat-path ocr.hef vs the LPR app's v5
+        # build at hefs/<arch>/LPR/ocr.hef).
+        dest_filename = (
+            model_entry.get("local_name", name)
+            if isinstance(model_entry, dict)
+            else name
+        )
         dest = (
             self.resource_root
             / RESOURCES_MODELS_DIR_NAME
             / self.hailo_arch
-            / f"{name}{HAILO_FILE_EXTENSION}"
+            / f"{dest_filename}{HAILO_FILE_EXTENSION}"
         )
-        
+
         task = DownloadTask(
             url=url,
             dest_path=dest,
             resource_type="model",
-            name=name
+            name=dest_filename,
         )
         self._tasks.add(task)
 
