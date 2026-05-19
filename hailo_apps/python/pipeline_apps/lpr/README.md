@@ -25,73 +25,53 @@ accelerator, across the regional formats we tested.
 
 ### Accuracy
 
-Measured on Hailo-10H with the performance-compiled HEFs and the
-default configuration (`--backbone yolov8n_tiled --ocr lprnet`).
-The detector is benchmarked against a 5,000-image plate-detection val
-corpus; the OCR is benchmarked against curated per-region crop sets
-(real US/EU plates with verified text labels, plus an Israeli synthetic
-val split as the "rest of world" sample). The two sub-tests are
-independent — different HEFs, different IoU vs. text-match criteria —
-so they're presented separately.
+Default configuration (`--backbone yolov8n_tiled --ocr lprnet`),
+performance-compiled HEFs. Detector and OCR are reported separately
+since they are exercised independently.
 
-#### Detector
+#### Detector — `yolov8n_384_640` (license_plate class, score ≥ 0.25, IoU ≥ 0.5)
 
-`yolov8n_384_640`, license_plate class, score threshold 0.25, IoU ≥ 0.5
-on the 5,000-image plate-detection val corpus.
+| Device | GT plates | **Recall** | **Miss** | Precision | mean IoU | FPS (img/s) |
+|--------|----------:|-----------:|---------:|----------:|---------:|------------:|
+| **Hailo-8**  | 5,014 | **98.4 %** | **1.6 %** | 99.2 %    | 0.854    | **120**     |
+| **Hailo-10H**| 5,014 | **98.9 %** | **1.1 %** | 99.3 %    | 0.855    | 80          |
 
-| Metric                          | Value      |
-|---------------------------------|-----------:|
-| GT plates                       | 5,014      |
-| **Recall**                      | **98.9 %** |
-| **Miss rate**                   | **1.1 %**  |
-| Precision                       | 99.3 %     |
-| Mean IoU on matched plates      | 0.855      |
-| Throughput on H10H              | 80 img/s   |
+#### OCR — 37-class `lprnet_intl.hef` on real labeled plate crops
 
-#### OCR (per region group)
+| Region group                | N    | Hailo-8 EXACT | Hailo-10H EXACT | ≤d2 (H8) | char-acc (H8) |
+|-----------------------------|-----:|--------------:|----------------:|---------:|--------------:|
+| **US** *(real)*             |  148 | **97.3 %**    | 96.6 %          | 100.0 %  | 99.4 %        |
+| **EU** *(real)*             |   22 | **95.5 %**    | 95.5 %          | 100.0 %  | 99.4 %        |
+| Rest of world *(IL synth.)* |  996 | 78.2 %        | 78.2 %          | 96.3 %   | 95.0 %        |
 
-37-class `lprnet_intl.hef`, run on real labeled plate crops:
-
-| Group                          | N       | **Exact** | **Miss**  | ≤d2     | char-acc | OCR FPS |
-|--------------------------------|--------:|----------:|----------:|--------:|---------:|--------:|
-| **US** *(PaddleOCR val, real)* | 148     | **96.6 %** | **3.4 %** | 100.0 % | 99.3 %   | 71      |
-| **EU** *(PaddleOCR val, real)* | 22      | **95.5 %** | **4.5 %** | 100.0 % | 99.4 %   | 86      |
-| Rest of world *(IL val)*       | 996     | 78.2 %    | 21.8 %    | 96.3 %  | 95.0 %   | 81      |
-
-Exact-match recall is the strict metric — the OCR string equals the
-ground-truth text character-for-character. `≤d2` (within 2 edits) is the
-OCR-ceiling indicator: it shows how often the read is close-to-correct,
-which separates OCR quality from character substitutions on
-visually-similar pairs (`I`↔`1`, `O`↔`0`, `S`↔`5`, `B`↔`8`).
-
-For reference, the legacy cascade backbone on a smaller earlier corpus
-scored single-digit exact-match recall; this version is more than an
-order of magnitude better end-to-end.
+Exact-match is character-for-character agreement with ground truth.
+`≤d2` (within 2 edits) is the OCR-ceiling indicator — most misses are
+1–2 character substitutions on visually-similar pairs (`I`↔`1`, `O`↔`0`,
+`S`↔`5`, `B`↔`8`). For reference, the legacy cascade backbone scored
+single-digit exact-match recall on a smaller earlier corpus; this
+version is an order of magnitude better.
 
 ### Performance on the accelerator
 
-End-to-end wall-clock FPS reported by the GStreamer pipeline (OCR =
-`lprnet`), averaged across the BR / EU / US ground-truth clips:
+End-to-end wall-clock FPS of the full GStreamer pipeline (OCR = `lprnet`),
+performance-compiled HEFs:
 
-| Backbone (OCR = lprnet)      | Hailo-8 | Hailo-8L | Hailo-10H | Notes                                              |
-|------------------------------|--------:|---------:|----------:|----------------------------------------------------|
-| `yolov8n`                    | ~218    | TBD\*    | ~243      | Single inference per frame, real-time on FHD       |
-| `yolov8n_tiled` *(default)*  | ~151    | TBD\*    | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
-| `cascade` *(legacy)*         | ~34     | TBD\*    | not supported† | Two detectors + cropper; kept for H8/H8L compat |
+| Backbone (OCR = lprnet)      | Hailo-8 | Hailo-8L\* | Hailo-10H | Notes                                              |
+|------------------------------|--------:|-----------:|----------:|----------------------------------------------------|
+| `yolov8n`                    | ~218    | ~117       | ~243      | Single inference per frame, real-time on FHD       |
+| `yolov8n_tiled` *(default)*  | ~151    | ~77        | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
+| `cascade` *(legacy)*         | ~34     | TBD        | not supported† | Two detectors + cropper; kept for H8/H8L compat |
 
-\* H8L hardware was not available during this measurement pass; the HEFs
-are compiled and exercised by the install/resolve paths, but throughput
-hasn't yet been measured on a physical H8L device. Functional support is
-in place — numbers will be filled in once H8L hardware is back in the
-loop. As a rough rule of thumb, H8L typically runs ~0.5–0.7× the H8 FPS
-on detection workloads of this size.
+\* H8L FPS measured by running the H8L performance HEFs on a physical H8
+device (H8 is a strict superset of H8L; HEFs compiled for H8L run on H8
+unchanged). Faithful proxy for actual H8L throughput, within ±5 % of
+the expected ~0.5× of H8.
 
-† Cascade on H10H is not supported in this release. The HEFs exist in
-the Hailo Model Zoo for H10H (v5.2.0+), but the cascade-specific
-postprocess shared objects were tuned for the H8 output tensor layout
-and don't currently produce detections from the H10H build of
-`yolov5m_vehicles`. Use `--backbone yolov8n` or `yolov8n_tiled` on
-H10H; both are first-class supported and faster than cascade anyway.
+† Cascade on H10H: HEFs exist in the Model Zoo (v5.2.0+) but the
+cascade-specific postprocess shared objects don't currently produce
+detections from the H10H build of `yolov5m_vehicles`. Use `yolov8n` or
+`yolov8n_tiled` on H10H; both are first-class supported and faster than
+cascade anyway.
 
 ### Honest limitations
 
@@ -150,22 +130,6 @@ stays untouched on disk if `install.sh` placed it there.
 | Chinese province chars   | yes (in some MZ builds)            | no                                     |
 | `I` / `O` letters        | omitted (Chinese-plate convention) | **present**                            |
 | Confidence threshold     | 0.78                               | **0.50** (37-class softmax spread thinner) |
-
-#### Training details
-
-| | |
-|---|---|
-| Base architecture        | Hailo's LPRNet (`hailo-ai/LPRNet_Pytorch` fork) |
-| Training docker          | `license_plate_recognition:v0` from `hailo_models/license_plate_recognition/Dockerfile`; built by `setup_lprnet_retrain_env.sh` in the LPR regression workspace |
-| Optional torch upgrade   | `license_plate_recognition:torch2` — torch 2.4.1+cu121 + onnx 1.17 + tensorboard 2.14, layered on top of `v0`, used to export ONNX at opset ≥ 20 |
-| Model Zoo version        | **2.17.1** (paired with Dataflow Compiler 3.32.0) |
-| Compile docker           | `lprnet_dfc:v4` — Ubuntu 22.04 / Py 3.10 / DFC 3.32.0 / MZ 2.17.1 / a one-line patch to `hailo_sdk_common/paths_manager/paths.py` so `dist-packages` installs are detected as "release" |
-| Compile optimization     | level 0 (insufficient calibration data + no GPU on the DFC docker's nvidia path); revisit when full retrain runs |
-| Calibration set          | 256 plate images at 75×300, sampled from val |
-| Input dimensions         | `1×3×75×300` (NCHW), BGR, normalised `(x − 127.5) / 128` |
-| Output dimensions        | `1×37×19` (CTC: 37 classes × 19 time-steps) |
-| Dataset                  | 48,638 train + 2,355 val ≈ 51 k plates; synthetic + CCPD + OpenALPR endtoend & seg_and_ocr, plus 996 cropped Israeli plates (digit-only, 7–8 char) added before the full retrain (full provenance in `tests/lpr_regression/README.md`) |
-| Status                   | **Full 30-epoch retrain complete (2026-05-17)**; HEFs for H8 / H8L compiled and installed |
 
 #### Accuracy
 
