@@ -23,6 +23,14 @@ work; alphanumeric formats now work too. The result is a pipeline
 that reads the plates it sees, end-to-end, in real time on the
 accelerator, across the regional formats we tested.
 
+### Operational thresholds
+
+| Component       | Threshold | Effect                                                                |
+|-----------------|----------:|-----------------------------------------------------------------------|
+| Detector score  | **0.25**  | Plates with detection score ≥ 0.25 are forwarded to OCR               |
+| OCR (`lprnet`)  | **0.50**  | OCR reads with per-character softmax mean ≥ 0.50 are accepted         |
+| OCR (`paddle`)  | 0.30      | Paddle softmax is spread over 18 k classes — lower gate by design     |
+
 ### Accuracy
 
 Default configuration (`--backbone yolov8n_tiled --ocr lprnet`),
@@ -58,8 +66,8 @@ performance-compiled HEFs:
 
 | Backbone (OCR = lprnet)      | Hailo-8 | Hailo-8L\* | Hailo-10H | Notes                                              |
 |------------------------------|--------:|-----------:|----------:|----------------------------------------------------|
-| `yolov8n`                    | ~218    | ~117       | ~243      | Single inference per frame, real-time on FHD       |
-| `yolov8n_tiled` *(default)*  | ~151    | ~77        | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
+| `yolov8n`                    | ~254    | ~117       | ~243      | Single inference per frame, real-time on FHD       |
+| `yolov8n_tiled` *(default)*  | ~171    | ~77        | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
 | `cascade` *(legacy)*         | ~34     | TBD        | not supported† | Two detectors + cropper; kept for H8/H8L compat |
 
 \* H8L FPS measured by running the H8L performance HEFs on a physical H8
@@ -78,15 +86,18 @@ cascade anyway.
 This release is a meaningful step forward, **not a finished product**.
 Things to expect:
 
-- ~10–20 % of plates are still missed end-to-end in our GT corpus,
-  mostly due to the detector misfiring on heavy motion blur, severe
-  perspective, or partially-occluded plates.
+- A small percentage of plates is still missed end-to-end. Detector
+  miss rate is ~1 % on the real plate-detection corpus; OCR miss rate
+  on real US/EU plates is ~3–5 %, on synthetic IL plates ~22 %. Most
+  remaining failures come from motion blur, severe perspective, or
+  partially-occluded plates.
 - The 37-class LPRNet is trained on Latin alphanumerics only. Plates
   with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`,
   which is multilingual but lower-accuracy on Latin plates.
 - Character substitutions are concentrated in the usual visually-similar
-  pairs (`O`↔`0`, `I`↔`1`, `S`↔`5`, `B`↔`8`). The near-match column
-  above captures this.
+  pairs (`O`↔`0`, `I`↔`1`, `S`↔`5`, `B`↔`8`) — the `≤d2` column in the
+  accuracy table separates these "almost-right" reads from outright
+  misses.
 
 ### Future improvements
 
@@ -127,31 +138,22 @@ Chinese-plate LPRNet** for our use cases. The new HEF lives at a
 *separate* filename so the bundled `lprnet.hef` from the Hailo Model Zoo
 stays untouched on disk if `install.sh` placed it there.
 
-| | Bundled `lprnet.hef`               | Retrained `lprnet_intl.hef`            |
+| | Bundled `lprnet.hef`           | Retrained `lprnet_intl.hef`            |
 |---|---|---|
-| Filename at install root | `lprnet.hef`                       | **`lprnet_intl.hef`**                  |
-| Classes                  | 11 (digits + CTC blank) or 37 international | **37** (digits + A–Z + CTC blank)     |
-| Charset                  | `0-9 + blank` (Chinese-plate convention) | `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-` |
-| Chinese province chars   | yes (in some MZ builds)            | no                                     |
-| `I` / `O` letters        | omitted (Chinese-plate convention) | **present**                            |
-| Confidence threshold     | 0.78                               | **0.50** (37-class softmax spread thinner) |
+| Filename at install root | `lprnet.hef`                   | **`lprnet_intl.hef`**                  |
+| Classes                  | 11 (digits + CTC blank)        | **37** (digits + A–Z + CTC blank)      |
+| Charset                  | `0-9 + blank`                  | `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-`|
+| Training corpus          | Chinese plates (CCPD-style)    | Mixed Latin (synthetic + OpenALPR + curated US/EU + IL augmentation) |
 
-#### Accuracy
-
-| Phase                                    | val exact-match | Notes |
-|---|---:|---|
-| 3-epoch trial — torch 1.7 (peak / final) | 73.2 % / 79.95 % | proof-of-concept |
-| 3-epoch trial — torch 2.4 (peak / final) | 77.6 % / 68.9 %  | same loop, newer torch; numbers are run-to-run noise at 3 epochs |
-| **Full retrain — torch 2.4 (peak / final)** | **80.2 % / 79.4 %** | 30 epochs, batch 64, LR 1e-3, RMSprop; best checkpoint at iter 12,000 (Levenshtein-similarity criterion) |
-| **End-to-end with `yolov8n_tiled`**      | **83.1 %**       | 358 / 444 exact matches across BR + EU + US ground-truth clips; F1 = 87.2, ≤d2 = 90 %, ~150 FPS |
+Headline accuracy numbers for the retrained HEF are in the
+[Accuracy table above](#ocr--37-class-lprnet_intlhef-on-real-labeled-plate-crops).
 
 ### `paddle` — paddle_ocr_v5_mobile_recognition
 
 The multilingual route, unchanged. Use when you need broader script
 support (non-Latin) or richer formatting tolerance (hyphens, dots,
-spaces). A 18,385-class CTC head, so per-character confidence is
-naturally diffuse — the confidence gate is 0.30 (vs 0.50 on the new
-lprnet, 0.78 on the bundled lprnet).
+spaces). 18,385-class CTC head, so per-character confidence is
+naturally diffuse — the confidence gate is 0.30 (vs 0.50 on lprnet).
 
 Future direction: we may apply the same fine-tune treatment to paddle
 that we just did to LPRNet — retraining on the plate-specific corpus.
