@@ -93,12 +93,6 @@ and don't currently produce detections from the H10H build of
 `yolov5m_vehicles`. Use `--backbone yolov8n` or `yolov8n_tiled` on
 H10H; both are first-class supported and faster than cascade anyway.
 
-The detector is the bottleneck. The retrained LPRNet OCR adds negligible
-load on top — it's a tiny CTC head running once per detected plate crop.
-All numbers above are wall-clock frame rates of the full pipeline (decode
-→ inference → tracker → OCR → display), not isolated network throughput;
-what you see is what you get when running the app.
-
 ### Honest limitations
 
 This release is a meaningful step forward, **not a finished product**.
@@ -113,22 +107,14 @@ Things to expect:
 - Character substitutions are concentrated in the usual visually-similar
   pairs (`O`↔`0`, `I`↔`1`, `S`↔`5`, `B`↔`8`). The near-match column
   above captures this.
-- The yolov8n LP detector is a generic 4-class network, not fine-tuned
-  for license plates specifically.
 
 ### Future improvements
 
-The two biggest single levers, in order of expected impact:
-
-1. **Fine-tune yolov8n on a license-plate corpus.** The current detector
-   is the generic 4-class build; a plate-specialised retrain would lift
-   the detection ceiling (especially on small / distant / blurred
-   plates) more than any further OCR tuning can.
-2. **Fine-tune LPRNet per region.** The current 37-class network is
-   trained on a mixed Latin corpus. A regional fine-tune (BR /
-   EU-per-country / US-per-state plate-format priors) would close most
-   of the remaining gap between near-match and exact-match for the
-   target region.
+**Fine-tune LPRNet per region.** The current 37-class network is
+trained on a mixed Latin corpus. A regional fine-tune (BR /
+EU-per-country / US-per-state plate-format priors) would close most
+of the remaining gap between near-match and exact-match for the
+target region.
 
 Smaller follow-ups: tighter overlap on the tiled cropper to reduce
 seam-clipping; a region-aware character whitelist for the CTC decoder;
