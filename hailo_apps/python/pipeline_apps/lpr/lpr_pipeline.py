@@ -131,7 +131,7 @@ class GStreamerLPRApp(GStreamerApp):
         if self.arch == HAILO8L_ARCH:
             self.frame_rate = min(self.frame_rate, 17)
 
-        nms_score_threshold = 0.3
+        nms_score_threshold = 0.25
         nms_iou_threshold = 0.45
         self.thresholds_str = (
             f"nms-score-threshold={nms_score_threshold} "
