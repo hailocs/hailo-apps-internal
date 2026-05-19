@@ -231,9 +231,5 @@ hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
 
 ## Regression tests
 
-End-to-end and OCR-only test suites live under
-[`tests/lpr_regression/`](../../../../tests/lpr_regression/). They are
-ignored by `.gitignore` because the test fixtures are derived from
-licence-restricted source datasets (CCPD, OpenALPR). The runners stay
-checked in; the image fixtures and ground-truth crops are rebuilt
-locally with `prepare_fixtures.py`.
+Regression tests were run locally against open-source ground-truth
+datasets (CCPD, OpenALPR) to produce the accuracy numbers above.
