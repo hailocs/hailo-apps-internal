@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -19,6 +19,7 @@ class _RingBuffer:
     data: np.ndarray
     write_idx: int = 0
     filled: int = 0
+    total_written: int = 0  # monotonic count of all samples ever written
     lock: threading.Lock = None
 
     @classmethod
@@ -43,19 +44,26 @@ class _RingBuffer:
                 self.data[: n - first] = chunk[first:]
             self.write_idx = (self.write_idx + n) % self.capacity
             self.filled = min(self.capacity, self.filled + n)
+            self.total_written += n
 
-    def read_latest(self, n: int) -> Optional[np.ndarray]:
+    def read_latest(self, n: int) -> Optional[Tuple[np.ndarray, int]]:
+        """Return (latest n samples, sample_index_of_first_sample) or None.
+
+        sample_index is the absolute index since the first write, so dividing
+        by the sample rate gives an absolute timestamp.
+        """
         with self.lock:
             if self.filled < n:
                 return None
             start = (self.write_idx - n) % self.capacity
+            sample_start_index = self.total_written - n
             if start + n <= self.capacity:
-                return self.data[start:start + n].copy()
+                return self.data[start:start + n].copy(), sample_start_index
             first = self.capacity - start
             out = np.empty(n, dtype=np.float32)
             out[:first] = self.data[start:]
             out[first:] = self.data[: n - first]
-            return out
+            return out, sample_start_index
 
 
 class AudioSource:
@@ -101,9 +109,21 @@ class AudioSource:
         if self._thread is not None:
             self._thread.join(timeout=1.0)
 
-    def read_latest(self, seconds: float) -> Optional[np.ndarray]:
+    def read_latest(self, seconds: float) -> Optional[Tuple[np.ndarray, float]]:
+        """Return (samples, t_start_abs_seconds) or None when buffer is short.
+
+        t_start_abs_seconds is the absolute timestamp (seconds since this
+        AudioSource's first sample) of the *first* sample in the returned
+        window. The audio thread is the time-origin authority; ENV/motion
+        timestamps must be expressed in this same reference.
+        """
         n = int(seconds * self.sample_rate)
-        return self._buf.read_latest(n)
+        result = self._buf.read_latest(n)
+        if result is None:
+            return None
+        samples, sample_start_index = result
+        t_start_abs = sample_start_index / float(self.sample_rate)
+        return samples, t_start_abs
 
     def _run_file(self) -> None:
         try:

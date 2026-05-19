@@ -135,8 +135,9 @@ class BeatExtractor:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            buf = self.audio_source.read_latest(WIN_AUDIO_S)
-            if buf is not None:
+            result = self.audio_source.read_latest(WIN_AUDIO_S)
+            if result is not None:
+                buf, _t_window_start = result
                 try:
                     state = compute_beat_state(buf, self.audio_source.sample_rate)
                 except Exception:
