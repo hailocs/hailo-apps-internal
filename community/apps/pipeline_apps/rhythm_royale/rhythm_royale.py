@@ -75,21 +75,25 @@ class RhythmRoyaleCallback(app_callback_class):
         self.latest_scores: Dict[int, float] = {}
 
 
-def _extract_keypoints(detection, width: int, height: int) -> Dict[str, Tuple[float, float]]:
+def _extract_keypoints(detection, width: int, height: int
+                       ) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, float]]:
+    """Return (kp_xy, kp_confidence). Both keyed by KEYPOINT_NAMES."""
     landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
     if not landmarks:
-        return {}
+        return {}, {}
     points = landmarks[0].get_points()
     bbox = detection.get_bbox()
-    out: Dict[str, Tuple[float, float]] = {}
+    kp_xy: Dict[str, Tuple[float, float]] = {}
+    kp_conf: Dict[str, float] = {}
     for i, name in enumerate(KEYPOINT_NAMES):
         if i >= len(points):
             break
         p = points[i]
         x = (p.x() * bbox.width() + bbox.xmin()) * width
         y = (p.y() * bbox.height() + bbox.ymin()) * height
-        out[name] = (x, y)
-    return out
+        kp_xy[name] = (x, y)
+        kp_conf[name] = float(p.confidence())
+    return kp_xy, kp_conf
 
 
 def _get_track_id(detection) -> int:
@@ -124,10 +128,10 @@ def app_callback(element, buffer, user_data: RhythmRoyaleCallback):
         track_id = _get_track_id(det)
         if track_id == 0:
             continue
-        kp = _extract_keypoints(det, width, height)
+        kp, kp_conf = _extract_keypoints(det, width, height)
         if not kp:
             continue
-        user_data.motion.update_track(track_id, kp, t_now)
+        user_data.motion.update_track(track_id, kp, t_now, confidences=kp_conf)
         score = user_data.motion.compute_score(track_id, beat, t_now)
         value = score.value if score is not None else 0.0
         scores[track_id] = (value, kp)
