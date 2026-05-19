@@ -15,10 +15,10 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt, hilbert, decimate
 
 
-BEAT_LO_HZ = 0.5       # filter passband lower edge
-BEAT_HI_HZ = 4.0       # filter passband upper edge
-PEAK_LO_HZ = 0.75      # peak search lower bound (skip filter-edge bin)
-PEAK_HI_HZ = 3.8       # peak search upper bound
+BEAT_LO_HZ = 0.4       # filter passband lower edge (24 BPM)
+BEAT_HI_HZ = 6.0       # filter passband upper edge (360 BPM)
+PEAK_LO_HZ = 0.6       # peak search lower bound (skip filter-edge bin)
+PEAK_HI_HZ = 5.8       # peak search upper bound
 ENV_SR = 100           # Hz — envelope sample rate
 WIN_AUDIO_S = 4.0
 PEAK_EXCL_HZ = 0.5     # exclude ±0.5 Hz around peak when computing noise floor

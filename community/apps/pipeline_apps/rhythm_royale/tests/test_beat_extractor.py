@@ -41,7 +41,16 @@ def _write_beat_mp3(path: Path, bpm: float, duration_s: float = 4.0,
     return path
 
 
-@pytest.mark.parametrize("bpm,expected_hz", [(60.0, 1.0), (120.0, 2.0), (180.0, 3.0)])
+@pytest.mark.parametrize("bpm,expected_hz", [
+    (60.0, 1.0),
+    (120.0, 2.0),
+    (180.0, 3.0),
+    # New-bandpass coverage: BPMs whose fundamental sits *outside* the legacy
+    # peak-search window [0.75, 3.8] Hz but inside the new [0.6, 5.8] Hz one.
+    # 40 BPM = 0.67 Hz (very slow ballad), 270 BPM = 4.5 Hz (footwork / dnb).
+    (40.0, 0.67),
+    (270.0, 4.5),
+])
 def test_mp3_beat_track_yields_correct_beat_freq(tmp_path, bpm, expected_hz):
     p = _write_beat_mp3(tmp_path / f"beat_{int(bpm)}.mp3", bpm=bpm)
     audio, sr = sf.read(p, dtype="float32", always_2d=False)
