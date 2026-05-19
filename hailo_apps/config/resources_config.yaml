@@ -606,21 +606,34 @@ lpr: &lpr_app
   # HEFs are what a plain `sudo ./install.sh` (download_group: default)
   # pulls per arch — enough to run `hailo-lpr` out of the box.
   #
+  # The LPR-specific artifacts live under hefs/<arch>/LPR/ on S3 (the
+  # `subdir: LPR` field below tells the downloader to insert that prefix
+  # between the arch directory and the filename). They land at the
+  # standard install path /usr/local/hailo/resources/models/<arch>/ on
+  # disk regardless — only the S3 source location differs from the legacy
+  # flat layout.
+  #
+  # `lprnet_intl` carries the PaddleOCR-v5 character dictionary as a
+  # sidecar (extras: [ppocrv5_char_dict.npz]). The dict is only used by
+  # the paddle OCR path — it sits with LPR because it was published to
+  # the same LPR/ subdirectory and the standalone paddle_ocr group still
+  # serves the older v3/v4 build that doesn't need it.
+  #
   # The legacy cascade backbone (yolov5m_vehicles → tiny_yolov4_license_plates
   # → bundled lprnet) is listed under `extra` and only fetched with
   # `sudo ./install.sh --all`. Cascade is kept for low-memory scenarios and
   # may be removed in a future release.
-  #
-  # The paddle OCR engine lives in the separate `paddle_ocr` group (also
-  # `default`), so `--ocr paddle` works out of the box too without
-  # cross-listing here.
   models:
     hailo8:
       default:
         - name: hailo_yolov8n_384_640
           source: s3
+          subdir: LPR
         - name: lprnet_intl
           source: s3
+          subdir: LPR
+          extras:
+            - ppocrv5_char_dict.npz
       extra:
         - name: yolov5m_vehicles
           source: mz
@@ -632,8 +645,12 @@ lpr: &lpr_app
       default:
         - name: hailo_yolov8n_384_640
           source: s3
+          subdir: LPR
         - name: lprnet_intl
           source: s3
+          subdir: LPR
+          extras:
+            - ppocrv5_char_dict.npz
       extra:
         - name: yolov5m_vehicles
           source: mz
@@ -645,8 +662,12 @@ lpr: &lpr_app
       default:
         - name: hailo_yolov8n_384_640
           source: s3
+          subdir: LPR
         - name: lprnet_intl
           source: s3
+          subdir: LPR
+          extras:
+            - ppocrv5_char_dict.npz
       extra:
         - name: yolov5m_vehicles
           source: mz
@@ -877,9 +898,10 @@ tiling: &tiling_app
           source: s3
 
 paddle_ocr: &paddle_ocr_app
-  # `ocr` carries a sidecar dictionary (ppocrv5_char_dict.npz) needed for
-  # PaddleOCR v5 CTC decoding. The sidecar is fetched verbatim from the same
-  # per-arch S3 prefix as the HEF and lands next to it under models/<arch>/.
+  # Standalone paddle_ocr app continues to fetch from the legacy flat
+  # path hefs/<arch>/, which still serves the v3/v4 build. The v5 build
+  # used by the LPR app lives under hefs/<arch>/LPR/ and is wired in
+  # via the `lpr` group above (with its char-dict sidecar).
   models:
     hailo8:
       default:
@@ -887,24 +909,18 @@ paddle_ocr: &paddle_ocr_app
           source: s3
         - name: ocr
           source: s3
-          extras:
-            - ppocrv5_char_dict.npz
     hailo8l:
       default:
         - name: ocr_det
           source: s3
         - name: ocr
           source: s3
-          extras:
-            - ppocrv5_char_dict.npz
     hailo10h:
       default:
         - name: ocr_det
           source: s3
         - name: ocr
           source: s3
-          extras:
-            - ppocrv5_char_dict.npz
 
 lane_detection: &lane_detection_app
   models:
