@@ -117,10 +117,12 @@ videos:
       - depth_estimation_stereo
   - name: clip1.mp4
     source: s3
+    subdir: lpr
     tag:
       - lpr
   - name: clip2.mp4
     source: s3
+    subdir: lpr
     tag:
       - lpr
 

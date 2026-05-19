@@ -643,9 +643,14 @@ class ResourceDownloader:
                 return
             
             dest = self.resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
-            
+
+            # Optional per-entry subdirectory under video/. Mirrors the
+            # `subdir` field on model entries — e.g. subdir: lpr →
+            # video/lpr/<name>. On-disk path is unchanged.
+            subdir = (video_entry.get("subdir") or "").strip("/")
+            prefix = f"video" + (f"/{subdir}" if subdir else "")
             if source == "s3":
-                url = video_url or f"{S3_RESOURCES_BASE_URL}/video/{video_name}"
+                url = video_url or f"{S3_RESOURCES_BASE_URL}/{prefix}/{video_name}"
             elif video_url:
                 url = video_url
             else:
