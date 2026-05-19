@@ -98,9 +98,7 @@ namespace hailo_utils {
                                 double &org_width,
                                 size_t &frame_count,
                                 size_t batch_size,
-                                const std::string &camera_resolution,
-                                int model_w = 0,
-                                int model_h = 0);
+                                const std::string &camera_resolution);
 
     // CLI
     std::string getCmdOption(int argc, char *argv[], const std::string &option);
@@ -138,15 +136,13 @@ namespace hailo_utils {
         double &org_width,
         size_t &frame_count,
         bool is_camera,
-        const std::string &camera_resolution = "",
-        int model_w = 0,
-        int model_h = 0);
+        const std::string &camera_resolution = "");
 
     template<typename T>
     class BoundedTSQueue {
     private:
         std::queue<T> m_queue;
-        std::mutex m_mutex;
+        mutable std::mutex m_mutex;
         std::condition_variable m_cond_not_empty;
         std::condition_variable m_cond_not_full;
         const size_t m_max_size;
@@ -193,6 +189,11 @@ namespace hailo_utils {
         bool empty() const {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_queue.empty();
+        }
+
+        bool is_stopped() const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_stopped;
         }
     };
 
@@ -251,6 +252,7 @@ namespace hailo_utils {
         const std::string &output_dir,
         const std::string &output_resolution,
         std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
+        ModelInputQueuesMap preprocess_queues,
         PostprocessCallback postprocess_callback);
 
     hailo_status run_inference_async(

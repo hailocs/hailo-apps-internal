@@ -526,9 +526,7 @@ InputType determine_input_type(const std::string& input_path,
                                double &org_width,
                                size_t &frame_count,
                                size_t batch_size,
-                               const std::string &camera_resolution,
-                               int model_w,
-                               int model_h)
+                               const std::string &camera_resolution)
 {
     InputType input_type;
 
@@ -545,7 +543,7 @@ InputType determine_input_type(const std::string& input_path,
     } else if (is_video(input_path)) {
         input_type.is_video = true;
         capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
-                                     false /*is_camera*/, "", model_w, model_h);
+                                     false /*is_camera*/, "");
     // --------------------------------------------
     // 2) Camera inputs
     // --------------------------------------------
@@ -681,9 +679,14 @@ void print_net_banner(const std::string &detection_model_name,
 }
 
 void init_video_writer(const std::string &output_path, cv::VideoWriter &video, double framerate, int org_width, int org_height) {
-    video.open(output_path, cv::VideoWriter::fourcc('m', 'p', '4', 'v'), framerate, cv::Size(org_width, org_height));
+    cv::Size sz(org_width, org_height);
+    video.open(output_path, cv::VideoWriter::fourcc('m','p','4','v'), framerate, sz);
     if (!video.isOpened()) {
-        throw std::runtime_error("Error when writing video");
+        std::string avi_path = output_path.substr(0, output_path.rfind('.')) + ".avi";
+        video.open(avi_path, cv::VideoWriter::fourcc('M','J','P','G'), framerate, sz);
+        if (!video.isOpened()) {
+            std::cerr << "-W- VideoWriter failed to open (tried mp4v + MJPG). Output will not be saved.\n";
+        }
     }
 }
 
@@ -702,9 +705,7 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     double &org_width,
     size_t &frame_count,
     bool is_camera,
-    const std::string &camera_resolution,
-    int model_w,
-    int model_h)
+    const std::string &camera_resolution)
     {
     const bool is_rpi_input = (input_path == "rpi");
     // Validate platform
@@ -768,11 +769,9 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
             // matching the throughput seen with the USB camera path.
             // Output BGRx (4 channels) directly - no software videoconvert needed.
             // preprocess_callback handles BGRA2RGB in one pass.
-            std::string size_caps = "";
-            if (model_w > 0 && model_h > 0)
-                size_caps = ",width=" + std::to_string(model_w) + ",height=" + std::to_string(model_h);
-
             // Strategy 1: explicit qtdemux+h264parse+v4l2h264dec with large pre/post-decode queues
+            // G2D converts format only (NV12→BGRx); preprocess_callback handles resize to model size.
+            // This preserves original video resolution in org_frames for proper display output.
             std::string pipeline =
                 "filesrc location=" + input_path +
                 " ! qtdemux"
@@ -780,7 +779,7 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
                 " ! h264parse"
                 " ! v4l2h264dec"
                 " ! queue max-size-buffers=15 max-size-bytes=0 max-size-time=0"
-                " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx" + size_caps +
+                " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx"
                 " ! appsink name=appsink0 sync=false async=false";
             capture.open(pipeline, cv::CAP_GSTREAMER);
 
@@ -790,7 +789,7 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
                     "filesrc location=" + input_path +
                     " ! decodebin"
                     " ! queue max-size-buffers=15 max-size-bytes=0 max-size-time=0"
-                    " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx" + size_caps +
+                    " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx"
                     " ! appsink name=appsink0 sync=false async=false";
                 capture.open(pipeline2, cv::CAP_GSTREAMER);
             }
@@ -823,6 +822,14 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     if (!is_rpi_input) {
         org_width  = capture.get(cv::CAP_PROP_FRAME_WIDTH);
         org_height = capture.get(cv::CAP_PROP_FRAME_HEIGHT);
+        // GStreamer pipelines without explicit size caps return 0 — probe with one frame
+        if ((org_width == 0 || org_height == 0) && !is_camera) {
+            cv::Mat probe;
+            if (capture.read(probe) && !probe.empty()) {
+                org_width  = probe.cols;
+                org_height = probe.rows;
+            }
+        }
     }
 
     frame_count = is_camera ? 0 : static_cast<size_t>(capture.get(cv::CAP_PROP_FRAME_COUNT));
@@ -883,6 +890,7 @@ void preprocess_video_frames(cv::VideoCapture &capture,
             preprocessed_frames.clear();
             preprocess_callback(org_frames, preprocessed_frames, width, height);
             preprocessed_batch_queue->push(std::make_pair(org_frames, preprocessed_frames));
+            if (preprocessed_batch_queue->is_stopped()) break;
             org_frames.clear();
         }
 
@@ -976,6 +984,7 @@ static inline cv::Mat pad_crop_to_target(const cv::Mat &img,
     return padded(roi).clone();
 }
 
+cv::Mat resize_with_letterbox(const cv::Mat &src, int target_w, int target_h);
 
 void preprocess_frames(const std::vector<cv::Mat>& org_frames,
                          std::vector<cv::Mat>& preprocessed_frames,
@@ -1004,8 +1013,8 @@ void preprocess_frames(const std::vector<cv::Mat>& org_frames,
             } break;
         }
 
-        // 2) Geometry-preserving fit: pad (bottom/right) then crop (top-left) to target
-        cv::Mat fitted = pad_crop_to_target(rgb, static_cast<int>(target_height), static_cast<int>(target_width));
+        // 2) Letterbox-scale to target: preserve full frame, pad with black to fill
+        cv::Mat fitted = resize_with_letterbox(rgb, static_cast<int>(target_width), static_cast<int>(target_height));
         
         // 3) Ensure contiguous buffer
         if (!fitted.isContinuous()) {
@@ -1059,6 +1068,7 @@ hailo_status run_post_process(
     const std::string &output_dir,
     const std::string &output_resolution,
     std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
+    ModelInputQueuesMap preprocess_queues,
     PostprocessCallback postprocess_callback)
 {
     size_t i = 0;
@@ -1095,20 +1105,11 @@ hailo_status run_post_process(
         std::cout << "-I- Using output resolution: "  << out_w << "x" << out_h << "\n";
     }
 
-    // Only init writer if we’re actually saving a stream
+    std::string video_path;
     if (save_stream_output && is_stream) {
-        std::string video_path =
-            output_dir.empty()
-                ? "processed_video.mp4"
-                : (output_dir + "/processed_video.mp4");
-
-        int base_w = static_cast<int>(org_width);
-        int base_h = static_cast<int>(org_height);
-
-        int writer_w = have_output_res ? out_w : base_w;
-        int writer_h = have_output_res ? out_h : base_h;
-
-        init_video_writer(video_path, video, framerate, writer_w, writer_h);
+        video_path = output_dir.empty()
+            ? "processed_video.mp4"
+            : (output_dir + "/processed_video.mp4");
         std::cout << "-I- Saving processed video to: " << video_path << "\n";
     }
 
@@ -1124,12 +1125,29 @@ hailo_status run_post_process(
             const int key = cv::waitKey(1);
             if (key == 'q' || key == 27) {
                 std::cout << "\nUser requested stop.\n";
+                for (auto &[name, q] : preprocess_queues) q->stop();
                 return false;
             }
         }
 
         if (save_stream_output) {
-            video.write(frame);
+            if (!video.isOpened() && !frame.empty()) {
+                int writer_w = have_output_res ? out_w : frame.cols;
+                int writer_h = have_output_res ? out_h : frame.rows;
+                try {
+                    init_video_writer(video_path, video, framerate, writer_w, writer_h);
+                } catch (const std::exception &e) {
+                    std::cerr << "-W- VideoWriter init failed: " << e.what() << "\n";
+                }
+            }
+            if (video.isOpened()) {
+                cv::Mat write_frame;
+                if (frame.channels() == 4)
+                    cv::cvtColor(frame, write_frame, cv::COLOR_BGRA2BGR);
+                else
+                    write_frame = frame;
+                video.write(write_frame);
+            }
         }
 
         return true;
@@ -1162,11 +1180,14 @@ hailo_status run_post_process(
 
             cv::imwrite(img_path, frame_to_save);
             if (i + 1 == frame_count) {
-                break; // stop after writing the last image
+                break;
             }
         }
         i++;
     }
+
+    if (input_type.is_video)
+        frame_count = i;
 
     release_resources(capture, video, input_type, no_display, nullptr, results_queue);
     return HAILO_SUCCESS;
@@ -1228,6 +1249,9 @@ hailo_status run_inference_async(HailoInfer& model,
         );
 
         jobs_submitted = true;
+        for (const auto &[name, q] : named_input_queues) {
+            if (q->is_stopped()) goto done;
+        }
     }
 
 done:
@@ -1269,7 +1293,6 @@ void release_resources(cv::VideoCapture &capture, cv::VideoWriter &video, InputT
                       std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue) {
 
     if (input_type.is_video || input_type.is_camera) {
-        capture.release();
         video.release();
 
         if (!no_display) {

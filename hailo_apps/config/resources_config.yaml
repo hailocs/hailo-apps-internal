@@ -406,10 +406,10 @@ detection: &detection_app
   models:
     hailo8:
       default:
-        - name: yolov8m
+        - name: yolov5m_wo_spp
           source: mz
       extra:
-        - name: yolov5m_wo_spp
+        - name: yolov8m
           source: mz
         - name: yolov8s
           source: mz
@@ -465,9 +465,11 @@ detection: &detection_app
           app_type: [standalone]
     hailo8l:
       default:
-        - name: yolov8s
+        - name: yolov5m_wo_spp
           source: mz
       extra:
+        - name: yolov8s
+          source: mz
         - name: yolov5s
           source: mz
         - name: yolov5m
@@ -520,10 +522,10 @@ detection: &detection_app
           app_type: [standalone]
     hailo10h:
       default:
-        - name: yolov8m
+        - name: yolov5m_wo_spp
           source: mz
       extra:
-        - name: yolov5m_wo_spp
+        - name: yolov8m
           source: mz
         - name: yolov5s
           source: mz

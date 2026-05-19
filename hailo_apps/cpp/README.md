@@ -17,6 +17,7 @@ A collection of standalone C++ inference applications for Hailo AI accelerators.
 - [Input Sources](#input-sources)
 - [Visualization Configuration](#visualization-configuration)
 - [Using Multiple Models on the Same Device](#using-multiple-models-on-the-same-device)
+- [Platform Notes](#platform-notes)
 
 ---
 
@@ -248,6 +249,21 @@ AsyncModelInfer model2("classifier.hef", group_id);
 ```
 
 Models in the same group share the device's virtual device context, improving resource utilization when running inference pipelines that involve more than one network.
+
+---
+
+## Platform Notes
+
+### Astrial / NXP i.MX8MP
+
+- **Video input format:** Input video files must be H.264-encoded with **YUV 4:2:0** chroma subsampling. The hardware video decoder (`v4l2h264dec`) on the i.MX8MP VPU only accepts this format. Videos encoded with 4:4:4 subsampling or other codecs will not decode correctly with hardware acceleration.
+
+  To re-encode a video to the correct format:
+  ```bash
+  ffmpeg -i input.mp4 -c:v libx264 -pix_fmt yuv420p -profile:v baseline output.mp4
+  ```
+
+- **Video saving (`-s`):** When saving a processed video stream (`-s`/`--save-stream-output`), FPS may drop when decoding from a video file due to VPU contention between the hardware decoder and encoder. This does not affect camera input.
 
 ---
 
