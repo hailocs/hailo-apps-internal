@@ -45,7 +45,7 @@ Usage
 3. Run the example:
 
 	```shell script
-    ./build/x86_64/zero_shot_classification  -te=<text-encoder-hef> -ie=<image-encoder-hef> -t=<path-to-tokenized-prompt> -i=<input-image-or-video> -n=<number-of-frames>
+    ./build/zero_shot_classification  -te=<text-encoder-hef> -ie=<image-encoder-hef> -t=<path-to-tokenized-prompt> -i=<input-image-or-video> -n=<number-of-frames>
     ```
 	
 Arguments
@@ -61,7 +61,7 @@ Example
 ---------------
 
 ```shell script
-./build/x86_64/zero_shot_classification  -te=clip_text_encoder_vit_l_14_laion2B.hef -ie=clip_vit_l_14_laion2B_image_encoder.hef -p="a bird","a bus","a boat" -i=bus.jpg -n=30
+./build/zero_shot_classification  -te=clip_text_encoder_vit_l_14_laion2B.hef -ie=clip_vit_l_14_laion2B_image_encoder.hef -p="a bird","a bus","a boat" -i=bus.jpg -n=30
 ```
 
 Notes

@@ -52,6 +52,7 @@ fi
 #===============================================================================
 
 DRY_RUN=false
+FORCE_CLEANUP=false
 NO_INSTALL=false
 NO_SYSTEM_PYTHON=false
 NO_TAPPAS_REQUIRED=false
@@ -614,6 +615,8 @@ ${BOLD}OPTIONS:${NC}
     --no-tappas-required        Skip TAPPAS checks, Python TAPPAS install, compile, and post_install
                                 (downloads resources directly, no C++ compilation)
     --dry-run                   Show what would be done without executing
+    --force-cleanup             Run cleanup script before installation (removes venv,
+                                build caches, and resources — useful for upgrades)
     -h, --help                  Show this help message
 
 ${BOLD}CONFIGURATION:${NC}
@@ -621,11 +624,12 @@ ${BOLD}CONFIGURATION:${NC}
     CLI arguments override config file values.
 
 ${BOLD}EXAMPLES:${NC}
-    sudo $SCRIPT_NAME                     # Standard installation
-    sudo $SCRIPT_NAME --dry-run           # Preview what would be done
-    sudo $SCRIPT_NAME --all               # Install with all models
-    sudo $SCRIPT_NAME -x                  # Skip Python package installation
-    sudo $SCRIPT_NAME -n my_venv --all    # Custom venv name + all models
+    sudo $SCRIPT_NAME                          # Standard installation
+    sudo $SCRIPT_NAME --dry-run                # Preview what would be done
+    sudo $SCRIPT_NAME --all                    # Install with all models
+    sudo $SCRIPT_NAME -x                       # Skip Python package installation
+    sudo $SCRIPT_NAME -n my_venv --all         # Custom venv name + all models
+    sudo $SCRIPT_NAME --force-cleanup          # Clean stale artifacts then install
 
 ${BOLD}LOG FILES:${NC}
     Installation logs: ${LOG_DIR}/
@@ -679,6 +683,10 @@ parse_arguments() {
                 ;;
             --no-tappas-required)
                 NO_TAPPAS_REQUIRED=true
+                shift
+                ;;
+            --force-cleanup)
+                FORCE_CLEANUP=true
                 shift
                 ;;
             --dry-run)
@@ -856,10 +864,10 @@ check_prerequisites() {
     if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_version" == "-1" ]]; then
         missing_components+=("TAPPAS Core (.deb)")
     fi
-    if [[ "$pyhailort_version" == "-1" ]]; then
+    if [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]]; then
         missing_components+=("HailoRT Python binding (.whl)")
     fi
-    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" ]]; then
+    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" && -z "${PYTAPPAS_PATH}" ]]; then
         missing_components+=("TAPPAS Core Python binding (.whl)")
     fi
 
@@ -1293,6 +1301,7 @@ run_post_install() {
         log_error "Post-installation failed (exit code: ${post_install_exit})"
         echo ""
         log_info "Common causes and solutions:"
+        log_info "  • Stale build cache (upgrade/downgrade): Re-run with: sudo $SCRIPT_NAME --force-cleanup"
         log_info "  • Network issues: Check internet connection for resource downloads"
         log_info "  • Permission issues: Try running: sudo chown -R ${ORIGINAL_USER}:${ORIGINAL_GROUP} ${SCRIPT_DIR}"
         log_info "  • C++ compilation: Ensure meson and ninja-build are installed"
@@ -1535,6 +1544,26 @@ main() {
     fi
     if [[ -n "${MODEL_ZOO_MAPPING:-}" ]]; then
         log_debug "Model Zoo mapping: ${MODEL_ZOO_MAPPING}"
+    fi
+
+    # Force cleanup before installation if requested
+    if [[ "${FORCE_CLEANUP}" == true ]]; then
+        local cleanup_script="${SCRIPT_DIR}/scripts/cleanup_installation.sh"
+        log_info "Running cleanup before installation (--force-cleanup)..."
+        if [[ ! -x "${cleanup_script}" ]]; then
+            log_error "Cleanup script not found or not executable: ${cleanup_script}"
+            exit 1
+        fi
+        if [[ "${DRY_RUN}" == true ]]; then
+            log_dry_run "sudo ${cleanup_script}"
+        else
+            if ! bash "${cleanup_script}" > /dev/null; then
+                log_error "Cleanup script failed. Aborting installation."
+                exit 1
+            fi
+            log_success "Cleanup completed"
+        fi
+        echo ""
     fi
 
     # Run installation steps

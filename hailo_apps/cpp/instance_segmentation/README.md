@@ -66,7 +66,7 @@ Usage
 3. Run the example:
 
 	```shell script
-    ./build/x86_64/instance_segmentation --net <hef_path> --input <image_or_video_or_camera_path>
+    ./build/instance_segmentation --net <hef_path> --input <image_or_video_or_camera_path>
     ```
 
 Arguments
@@ -94,33 +94,33 @@ Example
 -------------------
 - List supported networks:
     ```shell script
-    ./build/x86_64/stereo_depth_estimation --list-nets
+    ./build/stereo_depth_estimation --list-nets
     ```
 - List available input resources:
     ```shell script
-    ./build/x86_64/instance_segmentation --list-inputs
+    ./build/instance_segmentation --list-inputs
     ```
 - For a video:
     ```shell script
-	./build/x86_64/instance_segmentation --net yolov5m-seg.hef --input full_mov_slow.mp4 --batch-size 16
+	./build/instance_segmentation --net yolov5m-seg.hef --input full_mov_slow.mp4 --batch-size 16
     ```
     Output video is saved as processed_video.mp4
 
 - For a single image:
     ```shell script
-    ./build/x86_64/instance_segmentation -n yolov5m-seg.hef -i image.jpg
+    ./build/instance_segmentation -n yolov5m-seg.hef -i image.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
 - For a directory of images:
     ```shell script
-    ./build/x86_64/instance_segmentation -n yolov5m-seg.hef -i images -b 4
+    ./build/instance_segmentation -n yolov5m-seg.hef -i images -b 4
     ````
     Each image is saved as processed_image_i.jpg
     
 - For camera, enabling saving the output:
     ```shell script
-    ./build/x86_64/instance_segmentation --net yolov5m-seg.hef --input /dev/video0 --batch-size 2 -s
+    ./build/instance_segmentation --net yolov5m-seg.hef --input /dev/video0 --batch-size 2 -s
     ```
     Output video is saved as processed_video.mp4
 

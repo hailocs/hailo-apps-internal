@@ -448,6 +448,15 @@ detection: &detection_app
         - name: yolov8s-hailo8-barcode
           url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
           source: s3
+        - name: yolo26m
+          source: mz
+          app_type: [standalone]
+        - name: yolo26n
+          source: mz
+          app_type: [standalone]
+        - name: yolo26s
+          source: mz
+          app_type: [standalone]
     hailo8l:
       default:
         - name: yolov8s
@@ -494,6 +503,15 @@ detection: &detection_app
         - name: yolov8s-hailo8l-barcode
           url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/hefs/h8l_rpi/yolov8s-hailo8l-barcode.hef
           source: s3
+        - name: yolo26m
+          source: mz
+          app_type: [standalone]
+        - name: yolo26n
+          source: mz
+          app_type: [standalone]
+        - name: yolo26s
+          source: mz
+          app_type: [standalone]
     hailo10h:
       default:
         - name: yolov8m
@@ -539,6 +557,15 @@ detection: &detection_app
           source: mz
         - name: yolov11x
           source: mz
+        - name: yolo26m
+          source: mz
+          app_type: [standalone]
+        - name: yolo26n
+          source: mz
+          app_type: [standalone]
+        - name: yolo26s
+          source: mz
+          app_type: [standalone]
 
 # Standalone app uses the same model set and defaults as the pipeline app
 object_detection: *detection_app
@@ -548,12 +575,12 @@ object_detection_onnx_postproc:
     hailo8:
       default:
         - name: yolo26n
-          source: s3
+          source: mz
           app_type: [standalone]
     hailo8l:
       default:
         - name: yolo26n
-          source: s3
+          source: mz
           app_type: [standalone]
 
 simple_detection: &simple_detection_app
@@ -748,13 +775,13 @@ depth_estimation_stereo: &depth_estimation_stereo_app
     hailo8:
       default:
         - name: stereonet
-          source: s3
+          source: mz
     hailo8l:
       default: None
     hailo10h:
       default:
         - name: stereonet
-          source: s3
+          source: mz
 
 onnxrt_hailo_pipeline: &onnxrt_hailo_pipeline_app
   models:
@@ -1072,6 +1099,6 @@ metadata:
 
   # Model Zoo version mapping
   model_zoo_versions:
-    hailo8: "v2.17.0"
-    hailo8l: "v2.17.0"
-    hailo10h: "v5.2.0"
+    hailo8: "v2.18.0"
+    hailo8l: "v2.18.0"
+    hailo10h: "v5.3.0"
