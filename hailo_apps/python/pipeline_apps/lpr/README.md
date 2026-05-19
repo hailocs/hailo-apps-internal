@@ -88,9 +88,24 @@ Things to expect:
 
 - A small percentage of plates is still missed end-to-end. Detector
   miss rate is ~1 % on the real plate-detection corpus; OCR miss rate
-  on real US/EU plates is ~3–5 %, on synthetic IL plates ~22 %. Most
-  remaining failures come from motion blur, severe perspective, or
-  partially-occluded plates.
+  on real US/EU plates is ~3–5 %. Most remaining failures come from
+  motion blur, severe perspective, or partially-occluded plates.
+- **Israeli plates are a known weak spot.** Set expectations
+  accordingly — the shipped LPRNet performs noticeably worse on real IL
+  footage than on US / EU. Two reasons:
+  1. **Format.** IL plates are 7–8 digits with no letters, but the
+     shipped LPRNet is trained as a 37-class Latin-alphanumeric head;
+     the model has no IL-specific format prior, so a digit-only plate
+     can decode as e.g. `1L47471` or `B8870B` instead of `1147471`.
+  2. **Data.** The IL training corpus we had access to is
+     **synthetic** (not real-camera) — measured exact-match on synthetic
+     IL is ~78 %, but on the real IL clips shipped under
+     `clip1.mp4` / `clip2.mp4` accuracy is materially lower. We do not
+     have a labeled real-IL eval corpus to quantify it precisely yet.
+  If you need high accuracy on Israeli plates, the right move is a
+  region-specific LPRNet fine-tune (see *Future improvements* below) on
+  a few thousand labeled real IL crops — the loop is the same as for
+  the shipped model, the dataset just needs to be IL-only.
 - The 37-class LPRNet is trained on Latin alphanumerics only. Plates
   with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`,
   which is multilingual but lower-accuracy on Latin plates.
@@ -209,18 +224,28 @@ sudo cp /path/to/your/lprnet_intl.hef \
 
 ## Run examples
 
+`sudo ./install.sh` lays down two demo clips at
+`/usr/local/hailo/resources/videos/`:
+
+- `clip1.mp4` — short EU / US traffic sample; the **default** when
+  `--input` is omitted.
+- `clip2.mp4` — longer mixed-traffic sample.
+
 ```bash
-# Default — yolov8n backbone + retrained LPRNet
-hailo-lpr --input clip.mp4
+# Default — yolov8n backbone + retrained LPRNet, runs against clip1.mp4
+hailo-lpr
+
+# Same defaults, but explicit input (or any clip of your own)
+hailo-lpr --input /usr/local/hailo/resources/videos/clip2.mp4
 
 # Best accuracy on HD / 4K
-hailo-lpr --backbone yolov8n_tiled --ocr lprnet --input clip.mp4
+hailo-lpr --backbone yolov8n_tiled --ocr lprnet --input <your-clip.mp4>
 
 # Multilingual OCR
-hailo-lpr --backbone yolov8n_tiled --ocr paddle --input clip.mp4
+hailo-lpr --backbone yolov8n_tiled --ocr paddle --input <your-clip.mp4>
 
 # Legacy cascade
-hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
+hailo-lpr --backbone cascade --ocr lprnet --input <your-clip.mp4>
 ```
 
 ## Regression tests

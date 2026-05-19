@@ -115,7 +115,11 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
-  - name: lpr_ayalon.mp4
+  - name: clip1.mp4
+    source: s3
+    tag:
+      - lpr
+  - name: clip2.mp4
     source: s3
     tag:
       - lpr
