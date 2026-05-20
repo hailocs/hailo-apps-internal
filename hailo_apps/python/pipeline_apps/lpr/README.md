@@ -90,8 +90,8 @@ Things to expect:
   miss rate is ~1 % on the real plate-detection corpus; OCR miss rate
   on real US/EU plates is ~3–5 %. Most remaining failures come from
   motion blur, severe perspective, or partially-occluded plates.
-- **Numeric-only plate formats are a weak spot.** The 37-class LPRNet
-  has no format prior, so digit-only plates (e.g. IL) tend to pick up
+- Numeric-only plate formats are a weak spot. The 37-class LPRNet has
+  no format prior, so digit-only plates (e.g. IL) tend to pick up
   spurious letter substitutions. A region-specific fine-tune is the
   right fix — see *Future improvements*.
 - The 37-class LPRNet is trained on Latin alphanumerics only. Plates
@@ -121,31 +121,43 @@ No pipeline changes needed.
 
 ## Pipeline overview
 
-```mermaid
-flowchart LR
-    src([source]) --> dec([decode])
-    dec --> det["detector<br/><sub>cascade / yolov8n / yolov8n_tiled</sub>"]
-    det --> trk["tracker<br/><sub>hailo_tracker</sub>"]
-    trk --> qg{{"quality gates<br/><sub>ROI · size · sharpness</sub>"}}
-    qg -->|pass| crop([crop])
-    crop --> ocr["OCR<br/><sub>lprnet / paddle</sub>"]
-    ocr --> cg{{"confidence + length<br/><sub>lprnet ≥ 0.50 · paddle ≥ 0.30</sub>"}}
-    cg -->|pass| dd([dedupe per track])
-    dd --> out([display / log])
-    qg -.->|reject| rj1[/"off-center · over/undersized<br/>motion-blurred"/]
-    cg -.->|reject| rj2[/"low confidence · too short"/]
-
-    classDef reject fill:#fee,stroke:#c33,color:#933
-    class rj1,rj2 reject
+```text
+   source
+     │
+     ▼
+   decode
+     │
+     ▼
+   detector              ← --backbone:  cascade │ yolov8n │ yolov8n_tiled
+     │
+     ▼
+   tracker               ← hailo_tracker (Kalman + IoU)
+     │
+     ▼
+   quality gates  ───►   reject: off-center · over-/undersized · motion-blurred
+     │ (pass)
+     ▼
+   crop
+     │
+     ▼
+   OCR                   ← --ocr:  lprnet │ paddle
+     │
+     ▼
+   confidence + length  ───►   reject: low confidence · too short
+     │ (pass)
+     ▼
+   dedupe per track      ← one stable read per track_id
+     │
+     ▼
+   display / log
 ```
 
-Backbone choice (`--backbone`) swaps the detector only; everything
-downstream is invariant. The tracker (GStreamer `hailo_tracker`,
-Kalman + IoU) is doing the heavy lifting on deduplication — without it
-every frame would emit the same plate. The quality gates trade some
-recall for precision: blurred / off-center / oversize detections never
-reach the OCR network, and OCR reads below the confidence gate never
-reach the display.
+Backbone choice swaps the detector only; everything downstream is
+invariant. The tracker is doing the heavy lifting on deduplication —
+without it, every frame would emit the same plate. Quality gates trade
+some recall for precision: blurred / off-center / oversize detections
+never reach the OCR network, and low-confidence OCR reads never reach
+the display.
 
 ## Backbones
 
@@ -263,8 +275,3 @@ hailo-lpr --backbone yolov8n_tiled --ocr paddle --input <your-clip.mp4>
 # Legacy cascade
 hailo-lpr --backbone cascade --ocr lprnet --input <your-clip.mp4>
 ```
-
-## Regression tests
-
-Regression tests were run locally against open-source ground-truth
-datasets (CCPD, OpenALPR) to produce the accuracy numbers above.
