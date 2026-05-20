@@ -131,6 +131,28 @@ with no code changes — fine-tune from the checkpoint, recompile, and
 drop the new HEF in at `/usr/local/hailo/resources/models/<arch>/lprnet_intl.hef`.
 No pipeline changes needed.
 
+## Pipeline overview
+
+```
+                                                                              ┌─ rejected: off-center
+                                                                              ├─ rejected: too small / too large
+                                                                              ├─ rejected: motion-blurred (Laplacian)
+                                                                              ▼
+  source ─► decode ─► detector ─► tracker ─► quality gates ─► crop ─► OCR ─► confidence + length gates ─► dedupe (per track) ─► display / log
+                          ▲                                                         ▲                              ▲
+                          │                                                         │                              │
+                cascade / yolov8n /                                       lprnet ≥ 0.50                  one stable read per
+                yolov8n_tiled                                             paddle  ≥ 0.30                 tracker track_id
+```
+
+Backbone choice (`--backbone`) swaps the detector only; everything
+downstream is invariant. The tracker (GStreamer `hailo_tracker`,
+Kalman + IoU) is doing the heavy lifting on deduplication — without it
+every frame would emit the same plate. The quality gates trade some
+recall for precision: blurred / off-center / oversize detections never
+reach the OCR network, and OCR reads below the confidence gate never
+reach the display.
+
 ## Backbones
 
 | Backbone         | Detection chain                                                            | Typical use |

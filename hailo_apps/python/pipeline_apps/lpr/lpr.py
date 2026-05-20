@@ -52,16 +52,6 @@ OCR engines
                  ASCII-only plates than a plate-specialised model. Use this
                  when you need multilingual support or richer formatting.
 
-End-to-end accuracy (paddle OCR, BR+EU+US GT clips, 444 plates total)
-=====================================================================
-[historical with paddle — accuracy on the new retrained lprnet is in
-the LPR app README and will be updated after the full 30-epoch retrain.]
-
-                  exact-match    F1     within-2-edits    FPS
-  cascade            3.6 %     6.5 %       9 %             ~34
-  yolov8n           31.1 %    35.1 %      72 %            ~218
-  yolov8n_tiled     35.4 %    39.3 %      72 %            ~151
-
 Run examples
 ============
 
@@ -83,7 +73,11 @@ import threading
 import time
 from pathlib import Path
 
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+_existing_gst_rank = os.environ.get("GST_PLUGIN_FEATURE_RANK", "")
+_lpr_gst_rank = "vaapidecodebin:NONE"
+os.environ["GST_PLUGIN_FEATURE_RANK"] = (
+    f"{_existing_gst_rank},{_lpr_gst_rank}" if _existing_gst_rank else _lpr_gst_rank
+)
 
 import cv2
 import numpy as np
