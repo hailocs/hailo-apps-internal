@@ -102,6 +102,15 @@ PADDLE_V5_DICT_FILENAME = "ppocrv5_char_dict.npz"
 PADDLE_V3V4_NUM_IGNORED = 1
 PADDLE_V5_NUM_IGNORED = 2
 
+# Per-timestep probability floor for PaddleOCR CTC emissions. The aggregate
+# MIN_OCR_CONFIDENCE_PADDLE rejects whole-plate noise but lets through
+# isolated low-confidence characters that get inserted between well-read
+# characters (e.g. a spurious '0' at prob 0.31 inside an otherwise correct
+# FF2C9E read, producing FF20C9E). Dropping per-timestep emissions below
+# this floor removes that class of insertion noise while leaving confident
+# reads untouched.
+PADDLE_PER_CHAR_MIN_PROB = 0.35
+
 
 # ---------------------------------------------------------------------------
 # CTC decoders
@@ -228,9 +237,10 @@ def ctc_decode_paddle(output_data):
         prev = idx
         if idx < len(characters):
             ch = characters[idx]
-            if ch:
+            p = float(probs[i])
+            if ch and p >= PADDLE_PER_CHAR_MIN_PROB:
                 chars.append(ch)
-                confs.append(float(probs[i]))
+                confs.append(p)
 
     text = "".join(chars)
     conf = float(np.mean(confs)) if confs else 0.0
