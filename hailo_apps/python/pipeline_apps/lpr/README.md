@@ -90,22 +90,10 @@ Things to expect:
   miss rate is ~1 % on the real plate-detection corpus; OCR miss rate
   on real US/EU plates is ~3–5 %. Most remaining failures come from
   motion blur, severe perspective, or partially-occluded plates.
-- **Israeli plates are a known weak spot.** Set expectations
-  accordingly — the shipped LPRNet performs noticeably worse on real IL
-  footage than on US / EU. Two reasons:
-  1. **Format.** IL plates are 7–8 digits with no letters, but the
-     shipped LPRNet is trained as a 37-class Latin-alphanumeric head;
-     the model has no IL-specific format prior, so a digit-only plate
-     can decode as e.g. `1L47471` or `B8870B` instead of `1147471`.
-  2. **Data.** The IL training corpus we had access to is
-     **synthetic** (not real-camera) — measured exact-match on synthetic
-     IL is ~78 %, but on the real IL clips shipped under
-     `clip1.mp4` / `clip2.mp4` accuracy is materially lower. We do not
-     have a labeled real-IL eval corpus to quantify it precisely yet.
-  If you need high accuracy on Israeli plates, the right move is a
-  region-specific LPRNet fine-tune (see *Future improvements* below) on
-  a few thousand labeled real IL crops — the loop is the same as for
-  the shipped model, the dataset just needs to be IL-only.
+- **Numeric-only plate formats are a weak spot.** The 37-class LPRNet
+  has no format prior, so digit-only plates (e.g. IL) tend to pick up
+  spurious letter substitutions. A region-specific fine-tune is the
+  right fix — see *Future improvements*.
 - The 37-class LPRNet is trained on Latin alphanumerics only. Plates
   with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`,
   which is multilingual but lower-accuracy on Latin plates.
@@ -133,16 +121,22 @@ No pipeline changes needed.
 
 ## Pipeline overview
 
-```
-                                                                              ┌─ rejected: off-center
-                                                                              ├─ rejected: too small / too large
-                                                                              ├─ rejected: motion-blurred (Laplacian)
-                                                                              ▼
-  source ─► decode ─► detector ─► tracker ─► quality gates ─► crop ─► OCR ─► confidence + length gates ─► dedupe (per track) ─► display / log
-                          ▲                                                         ▲                              ▲
-                          │                                                         │                              │
-                cascade / yolov8n /                                       lprnet ≥ 0.50                  one stable read per
-                yolov8n_tiled                                             paddle  ≥ 0.30                 tracker track_id
+```mermaid
+flowchart LR
+    src([source]) --> dec([decode])
+    dec --> det["detector<br/><sub>cascade / yolov8n / yolov8n_tiled</sub>"]
+    det --> trk["tracker<br/><sub>hailo_tracker</sub>"]
+    trk --> qg{{"quality gates<br/><sub>ROI · size · sharpness</sub>"}}
+    qg -->|pass| crop([crop])
+    crop --> ocr["OCR<br/><sub>lprnet / paddle</sub>"]
+    ocr --> cg{{"confidence + length<br/><sub>lprnet ≥ 0.50 · paddle ≥ 0.30</sub>"}}
+    cg -->|pass| dd([dedupe per track])
+    dd --> out([display / log])
+    qg -.->|reject| rj1[/"off-center · over/undersized<br/>motion-blurred"/]
+    cg -.->|reject| rj2[/"low confidence · too short"/]
+
+    classDef reject fill:#fee,stroke:#c33,color:#933
+    class rj1,rj2 reject
 ```
 
 Backbone choice (`--backbone`) swaps the detector only; everything
