@@ -305,7 +305,13 @@ if yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_vid
         cpp_args : ['-DPACKAGE="hailooverlay_community"'],
         gnu_symbol_visibility : 'default',
         install: true,
-        install_dir: gst_plugins_dir,
+        # Install alongside the other postprocess SOs into the repo-owned
+        # resources tree (writable by the post-install user). setup_env.sh
+        # adds this dir to GST_PLUGIN_PATH so GStreamer discovers it.
+        # Avoids the privilege escalation that the system gst_plugins_dir
+        # (/usr/lib/.../gstreamer-1.0) would require during a user-mode
+        # post-install.
+        install_dir: '/usr/local/hailo/resources/so',
     )
 else
     message('Skipping hailooverlay_community (missing yaml-cpp or GStreamer dependencies)')

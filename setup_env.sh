@@ -77,6 +77,15 @@ else
     return 1
 fi
 
+# Add the Hailo postprocess SO directory to GStreamer's plugin search path.
+# install.sh installs community plugins (e.g. hailooverlay_community) into
+# /usr/local/hailo/resources/so/ — a repo-owned, user-writable directory.
+# Prepending here so GStreamer discovers them without touching system paths.
+HAILO_SO_DIR="/usr/local/hailo/resources/so"
+if [ -d "$HAILO_SO_DIR" ]; then
+    export GST_PLUGIN_PATH="${HAILO_SO_DIR}:${GST_PLUGIN_PATH}"
+fi
+
 # Load environment variables from .env file
 ENV_FILE="/usr/local/hailo/resources/.env"
 if [ -f "$ENV_FILE" ]; then
