@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/MEMORY.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Hailo Apps — Persistent Memory Index
 
 > Cross-session knowledge base. AI agents should read relevant files before starting tasks and update them when discovering new patterns.

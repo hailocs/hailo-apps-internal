@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/common_pitfalls.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Common Pitfalls — Memory
 
 > Bugs found, anti-patterns encountered, and lessons learned. Check before writing new code.
