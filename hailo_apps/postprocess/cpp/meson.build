@@ -270,29 +270,44 @@ shared_library('ocr_postprocess',
 
 ################################################
 # HAILOOVERLAY_COMMUNITY (custom overlay GStreamer element)
-# Only built when yaml-cpp and GStreamer dependencies are available.
 ################################################
-yaml_cpp_dep = dependency('yaml-cpp', required : false)
-overlay_community_enabled = true
+overlay_community_inc = include_directories('overlay_community')
 
-if overlay_community_enabled and yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_video_dep.found()
-    overlay_community_inc = include_directories('overlay_community')
+yaml_cpp_dep = dependency('yaml-cpp', required : true)
 
-    overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
-    if opencv_dep.found()
-        overlay_community_deps += opencv_dep
-    endif
-
-    shared_library('gsthailooverlay_community',
-        ['overlay_community/gsthailooverlay_community.cpp',
-         'overlay_community/overlay.cpp'],
-        include_directories : [rapidjson_inc, overlay_community_inc],
-        dependencies : overlay_community_deps,
-        cpp_args : ['-DPACKAGE="hailooverlay_community"'],
-        gnu_symbol_visibility : 'default',
-        install: true,
-        install_dir: gst_plugins_dir,
-    )
-else
-    message('Skipping hailooverlay_community (missing yaml-cpp or GStreamer dependencies)')
+overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
+if opencv_dep.found()
+    overlay_community_deps += opencv_dep
 endif
+
+shared_library('gsthailooverlay_community',
+    ['overlay_community/gsthailooverlay_community.cpp',
+     'overlay_community/overlay.cpp'],
+    include_directories : [rapidjson_inc, overlay_community_inc],
+    dependencies : overlay_community_deps,
+    cpp_args : ['-DPACKAGE="hailooverlay_community"'],
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: gst_plugins_dir,
+)
+
+################################################
+# HAILOVAMPIRE_OVERLAY (vampire-effect overlay using shared-memory background)
+################################################
+vampire_overlay_inc = include_directories('vampire_overlay')
+
+vampire_overlay_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    vampire_overlay_deps += opencv_dep
+endif
+
+shared_library('gsthailovampire_overlay',
+    ['vampire_overlay/gsthailovampire_overlay.cpp',
+     'vampire_overlay/vampire_draw.cpp'],
+    include_directories : [vampire_overlay_inc],
+    dependencies : vampire_overlay_deps,
+    cpp_args : ['-DPACKAGE="hailovampire_overlay"'],
+    gnu_symbol_visibility : 'default',
+    install: true,
+    install_dir: gst_plugins_dir,
+)

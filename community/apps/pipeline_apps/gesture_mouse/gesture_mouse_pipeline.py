@@ -125,6 +125,9 @@ class GStreamerGestureMouseApp(GStreamerApp):
             f"hailonet name=hand_landmark_hailonet "
             f"hef-path={self.hand_hef} "
             f"batch-size=1 "
+            # Inside palm_cropper: crops per frame vary (0..N hands).
+            # Force the scheduler to fire after 33ms even on empty batches.
+            f"scheduler-timeout-ms=33 "
             f"vdevice-group-id={SHARED_VDEVICE_GROUP_ID} "
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "

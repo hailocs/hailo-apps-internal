@@ -31,9 +31,19 @@ from community.apps.pipeline_apps.gesture_mouse.gesture_mouse_pipeline import (
 
 hailo_logger = get_logger(__name__)
 
-# Hand landmark indices (MediaPipe)
-INDEX_TIP = 8
+# Hand landmark indices (MediaPipe — 21-keypoint hand model)
+WRIST = 0
+INDEX_MCP = 5
+MIDDLE_MCP = 9
+RING_MCP = 13
+PINKY_MCP = 17
 THUMB_TIP = 4
+INDEX_TIP = 8
+
+# Anchor landmarks for the palm center — the average of these 5 points stays
+# put when the thumb or fingers move, so the cursor doesn't jerk during the
+# pinch click. The wrist + 4 MCP joints define the rigid palm.
+PALM_ANCHOR_LANDMARKS = (WRIST, INDEX_MCP, MIDDLE_MCP, RING_MCP, PINKY_MCP)
 
 
 class GestureMouseCallback(app_callback_class):
@@ -113,6 +123,24 @@ def _get_landmark_position(detection, landmark_idx, frame_w, frame_h):
     return px, py
 
 
+def _palm_center_position(detection, frame_w, frame_h):
+    """Return the average pixel position of the palm anchor landmarks.
+
+    Uses the wrist + 4 MCP joints — these define the rigid palm and stay put
+    when the thumb or fingers move (e.g., during a pinch click).
+    Returns (px, py) in frame pixels, or None if any landmark is unavailable.
+    """
+    xs = []
+    ys = []
+    for idx in PALM_ANCHOR_LANDMARKS:
+        pos = _get_landmark_position(detection, idx, frame_w, frame_h)
+        if pos is None:
+            return None
+        xs.append(pos[0])
+        ys.append(pos[1])
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
 def _pinch_distance(detection, frame_w, frame_h):
     """Compute normalized distance between thumb tip and index tip."""
     thumb = _get_landmark_position(detection, THUMB_TIP, frame_w, frame_h)
@@ -123,6 +151,32 @@ def _pinch_distance(detection, frame_w, frame_h):
     dx = (thumb[0] - index[0]) / frame_w
     dy = (thumb[1] - index[1]) / frame_h
     return math.sqrt(dx * dx + dy * dy)
+
+
+def map_index_to_screen(norm_x, norm_y, speed, screen_w, screen_h):
+    """Map normalized camera coords (index fingertip) to target screen pixel.
+
+    - Mirrors X so camera-left becomes user-right (natural mirror behaviour).
+    - 'speed' defines a centered zone inside the camera frame that, when the
+      fingertip is fully traversed, covers the full screen:
+        speed=1.0 -> full frame maps to full screen.
+        speed=2.0 -> inner 50% of frame maps to full screen.
+        speed<1.0 is degenerate (margin clamped to 0).
+    - Output is clamped to [0, screen_w] x [0, screen_h].
+    """
+    norm_x = 1.0 - norm_x
+    margin = max(0.0, (1.0 - 1.0 / speed) / 2.0) if speed > 0 else 0.0
+    zone_size = 1.0 - 2.0 * margin
+    if zone_size <= 0:
+        # Degenerate speed; fall back to identity mapping
+        target_x = norm_x
+        target_y = norm_y
+    else:
+        target_x = (norm_x - margin) / zone_size
+        target_y = (norm_y - margin) / zone_size
+    target_x = max(0.0, min(1.0, target_x))
+    target_y = max(0.0, min(1.0, target_y))
+    return target_x * screen_w, target_y * screen_h
 
 
 def app_callback(element, buffer, user_data):
@@ -156,33 +210,18 @@ def app_callback(element, buffer, user_data):
 
     user_data.frames_without_hand = 0
 
-    # Get index fingertip position for cursor
-    index_pos = _get_landmark_position(hand_det, INDEX_TIP, width, height)
-    if index_pos is None:
+    # Anchor cursor on the palm center (rigid: wrist + 4 MCP joints) rather
+    # than the index fingertip, so the pinch click doesn't pull the cursor.
+    palm_pos = _palm_center_position(hand_det, width, height)
+    if palm_pos is None:
         return
 
-    # Map camera coordinates to screen coordinates.
-    norm_x = index_pos[0] / width
-    norm_y = index_pos[1] / height
-
-    # Mirror horizontally: camera left = your right, so flip for natural control
-    norm_x = 1.0 - norm_x
-
-    # Speed controls what fraction of the frame covers the full screen.
-    # speed=1.0 → full frame, speed=1.5 → inner 67%, speed=2.0 → inner 50%.
-    # This avoids separate dead zones from a stacked multiplier.
-    margin = max(0.0, (1.0 - 1.0 / user_data.speed) / 2.0)
-    zone_size = 1.0 - 2.0 * margin
-    target_x = (norm_x - margin) / zone_size
-    target_y = (norm_y - margin) / zone_size
-
-    # Clamp to [0,1]
-    target_x = max(0.0, min(1.0, target_x))
-    target_y = max(0.0, min(1.0, target_y))
-
-    # Scale to screen pixels
-    target_px = target_x * user_data.screen_w
-    target_py = target_y * user_data.screen_h
+    # Map camera coordinates to screen coordinates via the pure helper.
+    norm_x = palm_pos[0] / width
+    norm_y = palm_pos[1] / height
+    target_px, target_py = map_index_to_screen(
+        norm_x, norm_y, user_data.speed, user_data.screen_w, user_data.screen_h,
+    )
 
     # Apply exponential smoothing
     alpha = 1.0 - user_data.smoothing

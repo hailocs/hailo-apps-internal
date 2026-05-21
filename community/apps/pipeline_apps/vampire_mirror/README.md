@@ -25,13 +25,17 @@ A real-time "mirror" where vampires are invisible. Uses instance segmentation wi
 python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
     --input usb --width 1280 --height 720
 
-# Custom mirror aspect ratio (3:4 instead of 9:16)
+# Custom mirror aspect ratio (e.g. 9:16 instead of the default 3:4)
 python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
-    --input usb --mirror-ratio 3:4
+    --input usb --mirror-ratio 9:16
 
 # Faster background adaptation
 python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
     --input usb --bg-alpha 0.1
+
+# Debug: show bounding boxes + segmentation contours over the mirror view
+python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
+    --input usb --show-overlay
 
 # Use a video file
 python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py \
@@ -44,9 +48,13 @@ All standard pipeline arguments are supported (`--input`, `--arch`, `--show-fps`
 
 | Argument | Default | Description |
 |---|---|---|
-| `--mirror-ratio` | `9:16` | Portrait mirror aspect ratio as W:H |
+| `--mirror-ratio` | `3:4` | Portrait mirror aspect ratio as W:H |
 | `--bg-alpha` | `0.05` | Background EMA blending factor. Higher = faster adaptation |
 | `--bg-capture-frames` | `30` | Number of initial frames for background capture |
+| `--bg-process` / `--no-bg-process` | on | Run the background EMA in a subprocess and draw vampires via the `hailovampire_overlay` C++ element. `--no-bg-process` is a debug fallback that runs the EMA in-process and disables the vampire-invisibility effect |
+| `--show-overlay` / `--no-show-overlay` | off | Draw the `hailooverlay` bounding-box / segmentation overlay on the displayed frame. Off by default so the mirror has no debug graphics; enable for debugging |
+| `--dilate-radius` | `25` | Dilation kernel radius (px) applied to each vampire mask before background compositing. Bigger = wider invisibility halo around the body |
+| `--dilate-iterations` | `3` | Dilation iterations for the vampire mask. Combine with `--dilate-radius` to control halo size |
 | `--no-face-recognition` | off | Disable face recognition (everyone visible) |
 
 ## Tips
@@ -58,18 +66,41 @@ All standard pipeline arguments are supported (`--input`, `--arch`, `--show-fps`
 ## Architecture
 
 ```
-USB Camera (landscape) --> SOURCE_PIPELINE --> INFERENCE_PIPELINE (yolov5m_seg)
-  --> TRACKER_PIPELINE (ByteTrack) --> USER_CALLBACK_PIPELINE:
-      [VampireEngine decides] --> [mask replacement with dynamic background]
-      --> [center crop to portrait] --> DISPLAY_PIPELINE
+USB Camera (landscape 1280x720)
+  --> SOURCE_PIPELINE --> INFERENCE_PIPELINE (yolov5m_seg, letterboxed to 640x640)
+  --> TRACKER_PIPELINE (ByteTrack)
+  --> USER_CALLBACK_PIPELINE (Python):
+      submits person_mask to BackgroundService, runs VampireEngine per track,
+      tags vampires with a HailoClassification("vampire") metadata
+  --> hailovampire_overlay (C++ in-place transform):
+      reads bg buffer from shared memory, paints vampire pixels onto the full
+      1280x720 frame
+  --> hailooverlay (bbox + segmentation contours — bypassed unless --show-overlay)
+  --> videocrop (portrait center crop, e.g. 532x710 for 3:4)
+  --> DISPLAY_PIPELINE (videoconvert -> fpsdisplaysink)
 ```
+
+The background EMA runs in a separate Python subprocess (`bg_service.py`) and
+publishes the live background through a double-buffered POSIX shared-memory
+segment. The C++ overlay element reads it lock-free via an index byte that the
+service flips between the two buffers.
+
+`videocrop` is placed **after** `hailooverlay` so that any debug overlay
+drawing happens at full source resolution before the portrait crop — otherwise
+the normalized bbox metadata would be misaligned against the cropped frame's
+new aspect ratio.
 
 ### Module Structure
 
 | File | Purpose |
 |------|---------|
-| `vampire_mirror.py` | Entry point, callback, main() |
-| `vampire_mirror_pipeline.py` | GStreamerApp subclass with CLI args |
-| `frame_geometry.py` | Center crop and buffer zone math |
-| `background_manager.py` | Dynamic background with EMA |
-| `vampire_engine.py` | Vampire/human decision engine |
+| `vampire_mirror.py` | Entry point, per-frame callback, main() |
+| `vampire_mirror_pipeline.py` | `GStreamerInstanceSegmentationApp` subclass — CLI args, vampire/crop pipeline splices |
+| `frame_geometry.py` | Portrait crop coordinates and buffer-zone math |
+| `background_manager.py` | In-process dynamic background EMA (used by `--no-bg-process`) |
+| `bg_service.py` | Background-EMA subprocess + double-buffered shm publisher |
+| `bg_shm.py` | POSIX shared-memory helpers |
+| `vampire_engine.py` | Vampire / human decision engine |
+
+The C++ `hailovampire_overlay` element lives under
+`hailo_apps/postprocess/cpp/vampire_overlay/`.
