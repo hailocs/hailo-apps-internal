@@ -273,8 +273,9 @@ shared_library('ocr_postprocess',
 # Only built when yaml-cpp and GStreamer dependencies are available.
 ################################################
 yaml_cpp_dep = dependency('yaml-cpp', required : false)
+overlay_community_enabled = true
 
-if yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_video_dep.found()
+if overlay_community_enabled and yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_video_dep.found()
     overlay_community_inc = include_directories('overlay_community')
 
     overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
