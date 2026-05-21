@@ -113,6 +113,33 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
             ),
         )
 
+        parser.add_argument(
+            "--show-overlay",
+            action=argparse.BooleanOptionalAction,
+            default=False,
+            help=(
+                "Draw the hailooverlay bounding-box / segmentation overlay on the "
+                "displayed frame (default: off — a real mirror has no debug graphics). "
+                "Use --show-overlay to re-enable for debugging."
+            ),
+        )
+
+        # Vampire mask buffer (dilation of the segmentation mask before background
+        # compositing). Bigger values = wider invisibility halo around vampires —
+        # useful for hiding segmentation jitter at the body outline.
+        parser.add_argument(
+            "--dilate-radius",
+            type=int,
+            default=25,
+            help="Vampire mask dilation kernel radius in px (default: 25).",
+        )
+        parser.add_argument(
+            "--dilate-iterations",
+            type=int,
+            default=3,
+            help="Vampire mask dilation iterations (default: 3).",
+        )
+
         super().__init__(app_callback_fn, user_data, parser)
 
         # Compute portrait center-crop coordinates from CLI args.
@@ -191,7 +218,9 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
                 f"bg-shm-a-name={self.vampire_bg_shm_a} "
                 f"bg-shm-b-name={self.vampire_bg_shm_b} "
                 f"bg-idx-shm-name={self.vampire_bg_shm_idx} "
-                f"bg-width={self.vampire_bg_w} bg-height={self.vampire_bg_h}"
+                f"bg-width={self.vampire_bg_w} bg-height={self.vampire_bg_h} "
+                f"dilate-radius={self.options_menu.dilate_radius} "
+                f"dilate-iterations={self.options_menu.dilate_iterations}"
             )
             # The parent pipeline puts identity_callback before the display fragment.
             # We splice the overlay AFTER identity_callback so it sees the vampire
@@ -215,34 +244,48 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
                     "vampire overlay not inserted"
                 )
 
-        # Mirror crop splice — applied AFTER the vampire overlay (if any) so the
-        # crop is on the C++-painted frame.  Applied unconditionally: portrait crop
-        # is a product feature regardless of whether the C++ overlay is active.
-        # Order matters: vampire splice MUST run first so "name=vampire_fx" is present
-        # in the string when we decide the crop_marker below.
+        # Mirror crop splice — applied AFTER hailooverlay so that bbox drawing
+        # happens at full source resolution (1280x720) while the normalized bbox
+        # coords still match that aspect ratio. videocrop does not rewrite the
+        # bbox metadata, so any downstream consumer of normalized coords would
+        # be misaligned if videocrop ran first. Bboxes in the buffer zones get
+        # cropped away with the buffer pixels — the intended behavior.
         crop_fragment = (
             f" ! videocrop name=mirror_crop "
             f"left={self.mirror_crop_left} right={self.mirror_crop_right} "
             f"top={self.mirror_crop_top} bottom={self.mirror_crop_bottom}"
         )
-        # Prefer to splice right after vampire_fx (if inserted); fall back to
-        # identity_callback so the --no-bg-process path still gets the crop.
-        crop_marker = "name=vampire_fx" if "name=vampire_fx" in pipeline_str else "identity name=identity_callback"
+        crop_marker = "hailooverlay name=hailo_display_overlay"
         if crop_marker in pipeline_str:
             idx = pipeline_str.index(crop_marker)
             end = pipeline_str.find(" ! ", idx)
             if end >= 0:
                 pipeline_str = pipeline_str[:end] + crop_fragment + pipeline_str[end:]
-                logger.info(
-                    "Inserted videocrop into pipeline (%s)",
-                    "after vampire_fx" if "vampire_fx" in crop_marker else "after identity_callback",
-                )
+                logger.info("Inserted videocrop into pipeline (after hailooverlay)")
             else:
                 logger.warning(
                     "Could not find ' ! ' after %s; videocrop not inserted", crop_marker
                 )
         else:
             logger.warning("No splice marker found for videocrop; portrait crop not applied")
+
+        # Bypass the hailooverlay bbox / segmentation drawing by swapping it for a
+        # passthrough identity element. Done after the videocrop splice so the
+        # original element name is still available as a splice marker above.
+        if not self.options_menu.show_overlay:
+            new_str = pipeline_str.replace(
+                "hailooverlay name=hailo_display_overlay",
+                "identity name=hailo_display_overlay",
+                1,
+            )
+            if new_str != pipeline_str:
+                pipeline_str = new_str
+                logger.info("Bypassed hailooverlay (overlay drawing disabled)")
+            else:
+                logger.warning(
+                    "hailooverlay element not found in pipeline string; "
+                    "overlay bypass had no effect"
+                )
 
         logger.debug("Pipeline string after vampire splice:\n%s", pipeline_str)
         return pipeline_str

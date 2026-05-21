@@ -148,7 +148,19 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
         )
 
     roi = hailo.get_roi_from_buffer(buffer)
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+    all_detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+
+    # Vampire mirror is a person-only app: drop every non-person detection from
+    # the ROI before any downstream logic runs. This guarantees the C++ overlay
+    # (hailovampire_overlay), the bbox/segmentation overlay (hailooverlay), and
+    # the bg-update mask never accidentally treat a chair/cup/etc. as a person.
+    detections = []
+    for det in all_detections:
+        if det.get_label() == "person":
+            detections.append(det)
+        else:
+            roi.remove_object(det)
+
     person_mask = _build_person_mask(detections, width, height)
 
     # --- Service path (preferred) ---
