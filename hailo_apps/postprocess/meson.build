@@ -75,10 +75,25 @@ if postprocess_dep.found()
         endif
     endif
     
-    # Check if libhailo_opencv_utils.so exists (it may be missing on some systems like RPi)
-    libhailo_opencv_utils_path = '/usr/lib/aarch64-linux-gnu/libhailo_opencv_utils.so'
-    libhailo_opencv_utils_exists = run_command('test', '-f', libhailo_opencv_utils_path, check: false).returncode() == 0
-    
+    # Check if libhailo_opencv_utils.so exists (it may be missing on some systems like RPi).
+    # Use the C++ compiler's library search so the check is architecture-portable —
+    # the previous hardcoded /usr/lib/aarch64-linux-gnu path falsely reported the lib
+    # missing on x86_64 even when present at /usr/lib/x86_64-linux-gnu.
+    cpp_compiler = meson.get_compiler('cpp')
+    libhailo_opencv_utils_dep = cpp_compiler.find_library('hailo_opencv_utils', required: false)
+    libhailo_opencv_utils_exists = libhailo_opencv_utils_dep.found()
+
+    # When present, attach libhailo_opencv_utils to postprocess_dep so every downstream
+    # target inherits the link. TAPPAS 5.3 moved HailoMat::width/height/native_width/
+    # native_height definitions into this library; without an explicit link, targets
+    # like vms_croppers and ocr_postprocess fail with undefined references even though
+    # pkg-config advertises -lhailo_opencv_utils (meson's dep resolution drops it).
+    if libhailo_opencv_utils_exists
+        postprocess_dep = declare_dependency(
+            dependencies: [postprocess_dep, libhailo_opencv_utils_dep]
+        )
+    endif
+
     if not libhailo_opencv_utils_exists
         message('⚠️  libhailo_opencv_utils.so not found, filtering it out from linker command')
         # Extract libraries from pkg-config and filter out libhailo_opencv_utils.so
