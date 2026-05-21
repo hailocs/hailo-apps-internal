@@ -632,8 +632,10 @@ class AgentApp:
                 raw_response=raw_response,
             )
 
-        # Log tool call for debugging
-        logger.debug("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
+        # Surface the tool call to the user (not just debug logs). This is a
+        # significant agent event — the LLM parsed correctly and the tool is
+        # about to execute — and the regression test asserts on this line.
+        logger.info("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
         if self.debug:
             logger.debug("Parsed tool call: %s", json.dumps(tool_call, indent=2))
 
