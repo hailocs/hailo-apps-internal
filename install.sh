@@ -356,8 +356,7 @@ get_model_zoo_version() {
 
     case "$arch" in
         hailo8|hailo8l)
-            # H8/H8L always uses v2.17.0
-            mz_version="v2.17.0"
+            mz_version="v2.18.0"
             ;;
         hailo10h)
             # H10: Derive from HailoRT version
@@ -771,129 +770,259 @@ check_prerequisites() {
         return 0
     fi
 
-    log_info "Checking installed Hailo components..."
-
-    local summary_line
-    disable_error_trap
-    summary_line=$(as_original_user "$check_script" 2>&1 | sed -n 's/^SUMMARY: //p')
-    enable_error_trap
-
-    if [[ -z "$summary_line" ]]; then
-        log_error "Could not get package summary from check script"
-        log_debug "This usually means the check script failed or returned unexpected output"
-        record_step_result "FAILED" "No SUMMARY output"
-        return 1
-    fi
-
-    log_debug "SUMMARY line: $summary_line"
-
-    # Parse the summary line
-    local driver_version="-1"
+    # --- Get installed driver versions from dpkg (always available) ---
+    local pcie_driver_version="-1"
+    local usb_driver_version="-1"
     local hailort_version="-1"
     local pyhailort_version="-1"
     local tappas_version="-1"
     local tappas_python_version="-1"
 
-    # Parse key=value pairs
-    for pair in $summary_line; do
-        local key="${pair%%=*}"
-        local value="${pair#*=}"
-        case "$key" in
-            hailo_arch) HAILO_ARCH="$value" ;;
-            hailo_pci|hailo1x_pci) driver_version="$value" ;;
-            hailort) hailort_version="$value"; HAILORT_VERSION="$value" ;;
-            pyhailort) pyhailort_version="$value" ;;
-            tappas-core) tappas_version="$value" ;;
-            tappas-python) tappas_python_version="$value" ;;
-        esac
-    done
+    local _v
+    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-pcie-driver 2>/dev/null) || true
+    [[ "$_v" == install\ ok\ installed\ * ]] && pcie_driver_version="${_v##* }"
 
-    # Determine Model Zoo version based on architecture
-    if [[ -n "${HAILO_ARCH:-}" && "${HAILO_ARCH}" != "unknown" ]]; then
+    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-usb-driver 2>/dev/null) || true
+    [[ "$_v" == install\ ok\ installed\ * ]] && usb_driver_version="${_v##* }"
+
+    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+    if [[ "$_v" == install\ ok\ installed\ * ]]; then
+        hailort_version="${_v##* }"
+        HAILORT_VERSION="$hailort_version"
+    fi
+
+    # --- Check 1: hailortcli scan — is any Hailo device physically present? ---
+    log_info "Checking for connected Hailo device..."
+    local scan_pci_device=""
+    local scan_usb_device=""
+    disable_error_trap
+    if command -v hailortcli >/dev/null 2>&1; then
+        local scan_output=""
+        scan_output=$(hailortcli scan 2>/dev/null) || true
+        # HailoRT 5.x: "pci/0000:04:00.0" or "usb/002:016"
+        # HailoRT 4.x: "0000:04:00.0" (bare PCI BDF, no prefix)
+        scan_pci_device=$(echo "$scan_output" | grep -oE 'pci/[^ ]+' | head -1) || true
+        scan_usb_device=$(echo "$scan_output" | grep -oE 'usb/[^ ]+' | head -1) || true
+        if [[ -z "$scan_pci_device" ]]; then
+            scan_pci_device=$(echo "$scan_output" | grep -oE '[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9a-fA-F]' | head -1) || true
+        fi
+    fi
+    local device_on_bus=false
+    [[ -n "$scan_pci_device" || -n "$scan_usb_device" ]] && device_on_bus=true
+
+    # --- Check 2: hailortcli fw-control identify — can HailoRT communicate? ---
+    local identify_output=""
+    if [[ "$device_on_bus" == true ]] && command -v hailortcli >/dev/null 2>&1; then
+        identify_output=$(hailortcli fw-control identify 2>/dev/null | tr -d '\000') || true
+    fi
+
+    enable_error_trap
+
+    # =========================================================================
+    # CASE C: Device found by scan AND identify succeeded
+    # =========================================================================
+    if [[ -n "$identify_output" ]]; then
+        # Parse arch from identify output
+        if echo "$identify_output" | grep -qi "HAILO8L"; then
+            HAILO_ARCH="hailo8l"
+        elif echo "$identify_output" | grep -qi "HAILO8"; then
+            HAILO_ARCH="hailo8"
+        elif echo "$identify_output" | grep -qiE "HAILO10H|HAILO15H"; then
+            HAILO_ARCH="hailo10h"
+        fi
+
+        # Select arch-appropriate driver type and version
+        local driver_type="" driver_version="-1"
+        if [[ "$HAILO_ARCH" == "hailo10h" ]]; then
+            if [[ "$usb_driver_version" != "-1" ]]; then
+                driver_type="USB"; driver_version="$usb_driver_version"
+            elif [[ "$pcie_driver_version" != "-1" ]]; then
+                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            fi
+        else
+            if [[ "$pcie_driver_version" != "-1" ]]; then
+                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            elif [[ "$usb_driver_version" != "-1" ]]; then
+                driver_type="USB"; driver_version="$usb_driver_version"
+            fi
+        fi
+
+        log_success "Hailo device detected (scan: ${scan_usb_device:-$scan_pci_device})"
+        log_success "HailoRT ${hailort_version} identified device successfully"
+
+        # Get TAPPAS and Python binding versions from check script
+        local summary_line
+        disable_error_trap
+        summary_line=$(as_original_user "$check_script" 2>&1 | sed -n 's/^SUMMARY: //p')
+        enable_error_trap
+        for pair in $summary_line; do
+            local key="${pair%%=*}" value="${pair#*=}"
+            case "$key" in
+                tappas-core)   tappas_version="$value" ;;
+                pyhailort)     pyhailort_version="$value" ;;
+                tappas-python) tappas_python_version="$value" ;;
+            esac
+        done
+
+        # Load valid combinations for detected arch
         MODEL_ZOO_VER=$(get_model_zoo_version "${HAILO_ARCH}")
-        # Load valid combinations for detected architecture
         case "${HAILO_ARCH}" in
-            hailo8)  VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8:-}" ;;
-            hailo8l) VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8L:-}" ;;
+            hailo8)   VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8:-}" ;;
+            hailo8l)  VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO8L:-}" ;;
             hailo10h) VALID_COMBINATIONS="${VALID_COMBINATIONS_HAILO10H:-}" ;;
             *) VALID_COMBINATIONS="" ;;
         esac
-    fi
-    local model_zoo_version="${MODEL_ZOO_VER}"
 
-    log_info "Detected versions:"
-    log_info "  Hailo Architecture: ${HAILO_ARCH:-unknown}"
-    log_info "  Driver: ${driver_version}"
-    log_info "  HailoRT: ${hailort_version}"
-    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        log_info "  TAPPAS: skipped (--no-tappas-required)"
-    else
-        log_info "  TAPPAS: ${tappas_version}"
-    fi
-    if [[ -n "$model_zoo_version" ]]; then
-        log_info "  Model Zoo Version: ${model_zoo_version} (for ${HAILO_ARCH})"
-    fi
-
-    # Validate versions against config (including architecture)
-    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        if ! validate_versions "$hailort_version" "-1" "${HAILO_ARCH:-}"; then
-            record_step_result "FAILED" "Version validation failed"
-            return 1
+        log_info "Detected versions:"
+        log_info "  Driver: ${driver_type} ${driver_version}"
+        log_info "  HailoRT: ${hailort_version}"
+        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+            log_info "  TAPPAS: skipped (--no-tappas-required)"
+        else
+            log_info "  TAPPAS: ${tappas_version}"
         fi
-    else
-        if ! validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH:-}"; then
-            record_step_result "FAILED" "Version validation failed"
-            return 1
+        [[ -n "${MODEL_ZOO_VER}" ]] && log_info "  Model Zoo Version: ${MODEL_ZOO_VER} (for ${HAILO_ARCH})"
+
+        # Validate TAPPAS combo
+        local failed=false
+        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+            validate_versions "$hailort_version" "-1" "${HAILO_ARCH}" || failed=true
+        else
+            validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH}" || failed=true
         fi
-    fi
+        [[ -n "${MODEL_ZOO_VER}" ]] && validate_model_zoo_version "${HAILO_ARCH}" "${MODEL_ZOO_VER}" || true
 
-    # Validate Model Zoo version if we have both arch and MZ version
-    if [[ -n "$model_zoo_version" && -n "${HAILO_ARCH:-}" ]]; then
-        validate_model_zoo_version "${HAILO_ARCH}" "$model_zoo_version" || true
-    fi
-
-    # Check required components — all 5 packages must be pre-installed
-    local missing_components=()
-
-    if [[ "$driver_version" == "-1" ]]; then
-        missing_components+=("Hailo PCI driver (.deb)")
-    fi
-    if [[ "$hailort_version" == "-1" ]]; then
-        missing_components+=("HailoRT (.deb)")
-    fi
-    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_version" == "-1" ]]; then
-        missing_components+=("TAPPAS Core (.deb)")
-    fi
-    if [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]]; then
-        missing_components+=("HailoRT Python binding (.whl)")
-    fi
-    if [[ "${NO_TAPPAS_REQUIRED}" != true && "$tappas_python_version" == "-1" && -z "${PYTAPPAS_PATH}" ]]; then
-        missing_components+=("TAPPAS Core Python binding (.whl)")
-    fi
-
-    if [[ ${#missing_components[@]} -gt 0 ]]; then
-        log_error "Missing required components:"
-        for component in "${missing_components[@]}"; do
-            log_error "  • ${component}"
-        done
-        echo ""
-        log_info "Download and install missing packages from the Hailo Developer Zone:"
-        log_info "    https://hailo.ai/developer-zone/"
-        log_info ""
-        log_info "For system packages (.deb), install with: sudo dpkg -i <package>.deb"
-        log_info "For Python wheels (.whl), install with: pip install <package>.whl"
+        # Check required components
+        local missing_components=()
+        [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]] && missing_components+=("HailoRT Python binding (.whl)")
         if [[ "${NO_TAPPAS_REQUIRED}" != true ]]; then
-            log_info ""
-            log_info "If you only need standalone/gen-ai apps (no GStreamer pipelines),"
-            log_info "you can skip TAPPAS requirements with: sudo $SCRIPT_NAME --no-tappas-required"
+            [[ "$tappas_version" == "-1" ]] && missing_components+=("TAPPAS Core (.deb)")
+            [[ "$tappas_python_version" == "-1" && -z "${PYTAPPAS_PATH}" ]] && missing_components+=("TAPPAS Core Python binding (.whl)")
         fi
-        record_step_result "FAILED" "Missing: ${missing_components[*]}"
+        if [[ ${#missing_components[@]} -gt 0 ]]; then
+            log_error "Missing required components:"
+            for c in "${missing_components[@]}"; do log_error "  • ${c}"; done
+            failed=true
+        fi
+
+        if [[ "$failed" == true ]]; then
+            record_step_result "FAILED" "Version validation failed"
+            return 1
+        fi
+
+        log_success "Prerequisites check passed"
+        record_step_result "SUCCESS" "All required components found"
+        return 0
+    fi
+
+    # =========================================================================
+    # CASE N8: Device found by scan but identify failed
+    # =========================================================================
+    if [[ "$device_on_bus" == true ]]; then
+        local found_device found_type found_driver_ver
+        if [[ -n "$scan_usb_device" ]]; then
+            found_device="$scan_usb_device"; found_type="USB"; found_driver_ver="$usb_driver_version"
+        else
+            found_device="$scan_pci_device"; found_type="PCIe"; found_driver_ver="$pcie_driver_version"
+        fi
+
+        log_warning "Hailo ${found_type} device found (${found_device}) but not recognized by HailoRT"
+
+        if [[ "$found_driver_ver" != "-1" && "$hailort_version" != "-1" && \
+              "$found_driver_ver" != "$hailort_version" ]]; then
+            log_error "HailoRT ${hailort_version} does not match ${found_type} driver ${found_driver_ver}"
+            log_error "Reinstall matching packages"
+        else
+            log_error "Driver version matches but device not responding"
+            log_error "Reconnect device or reboot and retry"
+        fi
+
+        record_step_result "FAILED" "Device not recognized by HailoRT"
         return 1
     fi
 
-    log_success "Prerequisites check passed"
-    record_step_result "SUCCESS" "All required components found"
-    return 0
+    # =========================================================================
+    # CASE N: Scan found nothing — software check only
+    # =========================================================================
+    log_error "No Hailo device detected (scan found no devices)"
+    log_warning "Software check only:"
+
+    local any_driver_installed=false
+    local inferred_arch="" inferred_device_name=""
+
+    # Show driver status and infer arch
+    if [[ "$pcie_driver_version" != "-1" && "$usb_driver_version" != "-1" ]]; then
+        log_info "Driver: PCIe ${pcie_driver_version}, USB ${usb_driver_version}"
+        any_driver_installed=true
+        if [[ "$usb_driver_version" == "$hailort_version" ]]; then
+            inferred_arch=$(infer_arch_from_version "$usb_driver_version")
+        else
+            inferred_arch=$(infer_arch_from_version "$pcie_driver_version")
+        fi
+    elif [[ "$usb_driver_version" != "-1" ]]; then
+        log_success "Driver: USB ${usb_driver_version}"
+        any_driver_installed=true
+        inferred_arch=$(infer_arch_from_version "$usb_driver_version")
+    elif [[ "$pcie_driver_version" != "-1" ]]; then
+        log_success "Driver: PCIe ${pcie_driver_version}"
+        any_driver_installed=true
+        inferred_arch=$(infer_arch_from_version "$pcie_driver_version")
+    else
+        log_error "No Hailo driver installed"
+    fi
+
+    # Map inferred arch to friendly device name
+    case "$inferred_arch" in
+        hailo10h) inferred_device_name="Hailo-10H" ;;
+        hailo8l)  inferred_device_name="Hailo-8L" ;;
+        hailo8)   inferred_device_name="Hailo-8" ;;
+    esac
+
+    # Show HailoRT status and check version match against the matching driver
+    local matched_driver_type="" matched_driver_ver="-1"
+    if [[ "$usb_driver_version" != "-1" && "$hailort_version" == "$usb_driver_version" ]]; then
+        matched_driver_type="USB"; matched_driver_ver="$usb_driver_version"
+    elif [[ "$pcie_driver_version" != "-1" && "$hailort_version" == "$pcie_driver_version" ]]; then
+        matched_driver_type="PCIe"; matched_driver_ver="$pcie_driver_version"
+    fi
+
+    if [[ "$hailort_version" != "-1" ]]; then
+        if [[ "$any_driver_installed" == true && -z "$matched_driver_type" ]]; then
+            local mismatch_ver="${usb_driver_version}"
+            [[ "$mismatch_ver" == "-1" ]] && mismatch_ver="$pcie_driver_version"
+            log_error "HailoRT: ${hailort_version} (does not match driver ${mismatch_ver})"
+        else
+            log_success "HailoRT: ${hailort_version} (matches ${matched_driver_type} driver)"
+        fi
+    else
+        log_error "HailoRT not installed"
+    fi
+
+    # Final error message — include connection type if known
+    local connection_type=""
+    [[ "$matched_driver_type" == "USB" ]] && connection_type=" USB"
+    [[ "$matched_driver_type" == "PCIe" ]] && connection_type=" PCIe"
+
+    if [[ -n "$inferred_device_name" ]]; then
+        log_error "No ${inferred_device_name}${connection_type} device detected — reconnect device or reboot and retry"
+    else
+        log_error "Prerequisites check failed — missing required components"
+    fi
+
+    record_step_result "FAILED" "No Hailo device detected"
+    return 1
+}
+
+# Helper: infer Hailo arch from driver/hailort version string
+infer_arch_from_version() {
+    local ver="$1"
+    if [[ "$ver" == 4.22* || "$ver" == 4.23* ]]; then
+        echo "hailo8"
+    elif [[ "$ver" == 5.* ]]; then
+        echo "hailo10h"
+    else
+        echo ""
+    fi
 }
 
 #===============================================================================

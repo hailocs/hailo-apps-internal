@@ -355,6 +355,14 @@ check_kernel_module() {
     else
         echo "$module=$version"
     fi
+
+    # Also check for USB driver (Hailo-10H via USB)
+    local usb_version="-1"
+    if dpkg -l 2>/dev/null | grep "hailort-usb-driver" | grep -q "^ii"; then
+        usb_version=$(dpkg -l 2>/dev/null | grep "hailort-usb-driver" | grep "^ii" | awk '{print $3}')
+        echo "[OK]   hailort-usb-driver package installed, version: $usb_version"
+    fi
+    echo "hailo_usb_driver=$usb_version"
 }
 
 # Check for hailort installation
@@ -552,13 +560,16 @@ to_check() {
     local kernel_output_silent=$(check_kernel_module 2>/dev/null)
     local hailort_output_silent=$(check_hailort 2>/dev/null)
     local kernel_version_silent=$(echo "$kernel_output_silent" | grep -E "^(hailo_pci|hailo_pci_unified|hailo1x_pci)=" | cut -d'=' -f2)
+    local usb_version_silent=$(echo "$kernel_output_silent" | grep "^hailo_usb_driver=" | cut -d'=' -f2)
     local hailort_version_silent=$(echo "$hailort_output_silent" | grep "^hailort=" | cut -d'=' -f2)
-    
-    # Detect Hailo architecture (with version-based fallback if hailortcli fails)
-    echo "Hailo Architecture Detection:"
-    arch_output=$(detect_hailo_arch "$kernel_version_silent" "$hailort_version_silent")
+
+    # Use the driver version that matches HailoRT for arch inference; fallback to PCIe
+    local driver_for_arch="$kernel_version_silent"
+    [[ "$usb_version_silent" == "$hailort_version_silent" && "$usb_version_silent" != "-1" ]] && driver_for_arch="$usb_version_silent"
+
+    # Detect Hailo architecture
+    arch_output=$(detect_hailo_arch "$driver_for_arch" "$hailort_version_silent")
     local hailo_arch=$(echo "$arch_output" | grep "^hailo_arch=" | cut -d'=' -f2)
-    echo "$arch_output" | grep -v "^hailo_arch="
     echo ""
     
     # Display all check results for verbose output
@@ -570,7 +581,7 @@ to_check() {
     
     # Display all outputs (filtering out the key=value lines)
     echo "Kernel Module Check:"
-    echo "$kernel_output" | grep -vE "^(hailo_pci|hailo_pci_unified|hailo1x_pci)="
+    echo "$kernel_output" | grep -vE "^(hailo_pci|hailo_pci_unified|hailo1x_pci|hailo_usb_driver)="
     echo ""
     
     echo "HailoRT Check:"
@@ -591,21 +602,60 @@ to_check() {
     
     # Extract versions from the last line of each output
     local kernel_version=$(echo "$kernel_output" | grep -E "^(hailo_pci|hailo_pci_unified|hailo1x_pci)=" | cut -d'=' -f2)
+    local usb_driver_version=$(echo "$kernel_output" | grep "^hailo_usb_driver=" | cut -d'=' -f2)
     local hailort_version=$(echo "$hailort_output" | grep "^hailort=" | cut -d'=' -f2)
     local tappas_version=$(echo "$tappas_output" | grep "^tappas-core=" | cut -d'=' -f2)
     local pyhailort_version=$(echo "$pyhailort_output" | grep "^pyhailort=" | cut -d'=' -f2)
     local tappas_py_version=$(echo "$tappas_py_output" | grep "^tappas-python=" | cut -d'=' -f2)
-    
+
+    # Pick the driver version that is version-compatible with the detected arch.
+    # Both USB and PCIe can exist for any arch, so we match by version range, not connection type.
+    local driver_version="$kernel_version"
+    local _driver_matched=false
+    local _candidates=()
+    [[ "$kernel_version"     != "-1" && -n "$kernel_version"     ]] && _candidates+=("$kernel_version")
+    [[ "$usb_driver_version" != "-1" && -n "$usb_driver_version" ]] && _candidates+=("$usb_driver_version")
+
+    if [[ "$hailo_arch" == "hailo8" || "$hailo_arch" == "hailo8l" ]]; then
+        for _v in "${_candidates[@]}"; do
+            if [[ "$_v" == 4.23* ]]; then driver_version="$_v"; _driver_matched=true; break; fi
+        done
+    elif [[ "$hailo_arch" == "hailo10h" ]]; then
+        for _v in "${_candidates[@]}"; do
+            if compare_versions "$_v" "5.0.0"; then driver_version="$_v"; _driver_matched=true; break; fi
+        done
+    fi
+
+    if [[ "$_driver_matched" == false && ${#_candidates[@]} -gt 0 ]]; then
+        echo "[WARN] No installed driver is compatible with detected arch $hailo_arch"
+        echo "[WARN] Installed driver versions: ${_candidates[*]}"
+    fi
+
+    # Verify at least one installed driver matches HailoRT version
+    if [[ "$hailort_version" != "-1" && -n "$hailort_version" ]]; then
+        local _any_driver_matches=false
+        for _v in "${_candidates[@]}"; do
+            [[ "$_v" == "$hailort_version" ]] && _any_driver_matches=true && break
+        done
+        if [[ "$_any_driver_matches" == false && ${#_candidates[@]} -gt 0 ]]; then
+            local _driver_type_label=""
+            [[ "$driver_version" == "$usb_driver_version" ]] && _driver_type_label=" (USB)"
+            [[ "$driver_version" == "$kernel_version" ]]     && _driver_type_label=" (PCIe)"
+            echo "[ERROR] Driver version ($driver_version)${_driver_type_label} does not match HailoRT version ($hailort_version)"
+        fi
+    fi
+
     # Validate versions based on architecture
     if [[ "$hailo_arch" != "unknown" ]]; then
         echo "Version Validation for $hailo_arch:"
-        validate_versions_for_arch "$hailo_arch" "$kernel_version" "$hailort_version"
+        local _validation_rc=0
+        validate_versions_for_arch "$hailo_arch" "$driver_version" "$hailort_version" || _validation_rc=$?
         echo ""
     fi
-    
+
     # Print summary
     echo "================================"
-    echo "SUMMARY: hailo_arch=$hailo_arch hailo_pci=$kernel_version hailort=$hailort_version pyhailort=$pyhailort_version tappas-core=$tappas_version tappas-python=$tappas_py_version"
+    echo "SUMMARY: hailo_arch=$hailo_arch hailo_pci=$kernel_version hailo_usb_driver=$usb_driver_version driver=$driver_version hailort=$hailort_version pyhailort=$pyhailort_version tappas-core=$tappas_version tappas-python=$tappas_py_version"
 }
 
 # Execute the main function
