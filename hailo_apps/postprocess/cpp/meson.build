@@ -38,7 +38,7 @@ yolov8pose_postprocess_sources = [
 ]
 shared_library('yolov8pose_postprocess',
     yolov8pose_postprocess_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -53,7 +53,7 @@ yolov5seg_post_sources = [
 
 shared_library('yolov5seg_postprocess',
     yolov5seg_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -68,7 +68,7 @@ depth_postprocess_sources = [
 ]
 shared_library('depth_postprocess',
     depth_postprocess_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -107,7 +107,7 @@ scrfd_post_sources = [
 
 shared_library('scrfd',
     scrfd_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -122,7 +122,7 @@ arcface_post_sources = [
 
 shared_library('face_recognition_post',
     arcface_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -162,7 +162,7 @@ repvgg_reid_sources = [
 shared_library('repvgg_reid_postprocess',
     repvgg_reid_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -214,7 +214,7 @@ clip_sources = [
 shared_library('clip_postprocess',
     clip_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',

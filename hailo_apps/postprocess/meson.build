@@ -129,6 +129,29 @@ if postprocess_dep.found()
         endif
     endif
 
+    # TAPPAS 5.3.0 removed common:: utility functions (get_xtensor, softmax_2D,
+    # vector_normalization, iou_calc, etc.) from libhailo_opencv_utils.so.
+    # The implementations are now shipped as source files alongside the headers.
+    # Build them into a static convenience library for downstream targets.
+    fs = import('fs')
+    common_impl_dir = '/usr/include/hailo/tappas/common'
+    common_tensors_cpp = common_impl_dir / 'tensors.cpp'
+
+    if fs.is_file(common_tensors_cpp)
+        hailo_common_compat_lib = static_library('hailo_common_compat',
+            [common_impl_dir / 'tensors.cpp',
+             common_impl_dir / 'math.cpp',
+             common_impl_dir / 'nms.cpp'],
+            dependencies : postprocess_dep,
+        )
+        hailo_common_compat_dep = declare_dependency(link_with : hailo_common_compat_lib)
+        message('Built hailo_common_compat from TAPPAS source files (5.3.0+ compat)')
+    else
+        # TAPPAS 5.1.x — symbols are in libhailo_opencv_utils.so, no extra lib needed
+        hailo_common_compat_dep = declare_dependency()
+        message('common:: sources not found — symbols in libhailo_opencv_utils.so (5.1.x)')
+    endif
+
     subdir('cpp')
 else
     message('⚠️  No Hailo TAPPAS dependencies found — skipping C++ postprocess build.')
