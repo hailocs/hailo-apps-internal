@@ -75,9 +75,9 @@ if postprocess_dep.found()
         endif
     endif
     
-    # Check if libhailo_opencv_utils.so exists (it may be missing on some systems like RPi)
-    libhailo_opencv_utils_path = '/usr/lib/aarch64-linux-gnu/libhailo_opencv_utils.so'
-    libhailo_opencv_utils_exists = run_command('test', '-f', libhailo_opencv_utils_path, check: false).returncode() == 0
+    # Check if libhailo_opencv_utils.so exists (it may be missing on community installs)
+    cc = meson.get_compiler('c')
+    libhailo_opencv_utils_exists = cc.find_library('hailo_opencv_utils', required: false).found()
     
     if not libhailo_opencv_utils_exists
         message('⚠️  libhailo_opencv_utils.so not found, filtering it out from linker command')
