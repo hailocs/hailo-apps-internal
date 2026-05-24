@@ -147,9 +147,9 @@ if postprocess_dep.found()
         hailo_common_compat_dep = declare_dependency(link_with : hailo_common_compat_lib)
         message('Built hailo_common_compat from TAPPAS source files (5.3.0+ compat)')
     else
-        # TAPPAS 5.1.x — symbols are in libhailo_opencv_utils.so, no extra lib needed
+        # TAPPAS < 5.3.0 — symbols are in libhailo_opencv_utils.so, no extra lib needed
         hailo_common_compat_dep = declare_dependency()
-        message('common:: sources not found — symbols in libhailo_opencv_utils.so (5.1.x)')
+        message('common:: sources not found — symbols in libhailo_opencv_utils.so (< 5.3.0)')
     endif
 
     subdir('cpp')
