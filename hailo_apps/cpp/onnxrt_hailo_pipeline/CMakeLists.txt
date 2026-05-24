@@ -181,24 +181,48 @@ include(ExternalProject)
 # A single install prefix where headers will land:
 set(EXTERNAL_PREFIX ${CMAKE_BINARY_DIR}/external)
 
-ExternalProject_Add(xtl-test
-    GIT_REPOSITORY https://github.com/xtensor-stack/xtl
-    GIT_TAG 0.7.7
-    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    INSTALL_DIR ${EXTERNAL_PREFIX}
-)
+set(XTL_SOURCE_DIR_OVERRIDE   "" CACHE PATH "Pre-fetched xtl source — skips git clone (Yocto offline builds)")
+set(XTENSOR_SOURCE_DIR_OVERRIDE "" CACHE PATH "Pre-fetched xtensor source — skips git clone (Yocto offline builds)")
 
-ExternalProject_Add(xtensor-test
-    DEPENDS xtl-test
-    GIT_REPOSITORY https://github.com/xtensor-stack/xtensor
-    GIT_TAG 0.24.6
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
-        -Dxtl_DIR=${EXTERNAL_PREFIX}/share/cmake/xtl
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    INSTALL_DIR ${EXTERNAL_PREFIX}
-)
+if(XTL_SOURCE_DIR_OVERRIDE)
+    ExternalProject_Add(xtl-test
+        SOURCE_DIR "${XTL_SOURCE_DIR_OVERRIDE}"
+        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
+                   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        INSTALL_DIR ${EXTERNAL_PREFIX}
+    )
+else()
+    ExternalProject_Add(xtl-test
+        GIT_REPOSITORY https://github.com/xtensor-stack/xtl
+        GIT_TAG 0.7.7
+        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
+                   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        INSTALL_DIR ${EXTERNAL_PREFIX}
+    )
+endif()
+
+if(XTENSOR_SOURCE_DIR_OVERRIDE)
+    ExternalProject_Add(xtensor-test
+        DEPENDS xtl-test
+        SOURCE_DIR "${XTENSOR_SOURCE_DIR_OVERRIDE}"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
+            -Dxtl_DIR=${EXTERNAL_PREFIX}/share/cmake/xtl
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        INSTALL_DIR ${EXTERNAL_PREFIX}
+    )
+else()
+    ExternalProject_Add(xtensor-test
+        DEPENDS xtl-test
+        GIT_REPOSITORY https://github.com/xtensor-stack/xtensor
+        GIT_TAG 0.24.6
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=${EXTERNAL_PREFIX}
+            -Dxtl_DIR=${EXTERNAL_PREFIX}/share/cmake/xtl
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        INSTALL_DIR ${EXTERNAL_PREFIX}
+    )
+endif()
 
 # xtensor include path (after external install)
 set(XTENSOR_INCLUDE_DIR ${EXTERNAL_PREFIX}/include)
