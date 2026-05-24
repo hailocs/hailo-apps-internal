@@ -290,7 +290,7 @@ if yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_vid
         cpp_args : ['-DPACKAGE="hailooverlay_community"'],
         gnu_symbol_visibility : 'default',
         install: true,
-        install_dir: gst_plugins_dir,
+        install_dir: '/usr/local/hailo/resources/so',
     )
 else
     message('Skipping hailooverlay_community (missing yaml-cpp or GStreamer dependencies)')
