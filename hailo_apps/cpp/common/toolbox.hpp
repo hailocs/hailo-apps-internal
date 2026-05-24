@@ -252,8 +252,8 @@ namespace hailo_utils {
         const std::string &output_dir,
         const std::string &output_resolution,
         std::shared_ptr<BoundedTSQueue<InferenceResult>> results_queue,
-        ModelInputQueuesMap preprocess_queues,
-        PostprocessCallback postprocess_callback);
+        ModelInputQueuesMap preprocess_queues = {},
+        PostprocessCallback postprocess_callback = nullptr);
 
     hailo_status run_inference_async(
         HailoInfer &model,

@@ -182,7 +182,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # <exe_dir>/config/resources_config.yaml
 # ============================================================
 set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # oriented_object_detection -> cpp -> hailo_apps
-set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml")
+set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../config/resources_config.yaml")
 
 if(NOT EXISTS "${RESOURCES_YAML_SRC}")
     message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")

@@ -159,6 +159,7 @@ if (ONNXRUNTIME_DIR)
     find_path(ONNXRUNTIME_INCLUDE_DIR
         NAMES onnxruntime_cxx_api.h
         HINTS "${ONNXRUNTIME_DIR}/include"
+              "${ONNXRUNTIME_DIR}/include/onnxruntime/core/session"
         REQUIRED
     )
 
@@ -263,7 +264,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # <exe_dir>/config/resources_config.yaml
 # ============================================================
 set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # onnxrt_hailo_pipeline -> cpp -> hailo_apps
-set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml")
+set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../config/resources_config.yaml")
 
 if(NOT EXISTS "${RESOURCES_YAML_SRC}")
     message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")

@@ -116,7 +116,7 @@ set(HAILO_APPS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/../resources_config.yaml"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../config/resources_config.yaml"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/resources_config.yaml"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/visualization_config.yaml"

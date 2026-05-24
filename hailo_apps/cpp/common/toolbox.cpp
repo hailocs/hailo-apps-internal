@@ -805,10 +805,14 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     #endif
 
         if (is_camera) { // apply camera settings
-            // Force MJPG: camera sends compressed JPEG (~50KB/frame) instead of raw YUYV
-            // (~614KB/frame for 640x480), dramatically reducing USB bandwidth and allowing
-            // stable 30 FPS. OpenCV's V4L2 backend decompresses automatically.
-            capture.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M','J','P','G'));
+            // Request MJPG to reduce USB bandwidth vs raw YUYV; industrial/CSI cameras may
+            // not support it, so we check whether the driver actually accepted the fourcc
+            // and fall back silently rather than aborting.
+            double mjpg = cv::VideoWriter::fourcc('M','J','P','G');
+            capture.set(cv::CAP_PROP_FOURCC, mjpg);
+            if (capture.get(cv::CAP_PROP_FOURCC) != mjpg) {
+                std::cerr << "-W- Camera did not accept MJPG fourcc, using default format\n";
+            }
             capture.set(cv::CAP_PROP_FRAME_WIDTH,  width);
             capture.set(cv::CAP_PROP_FRAME_HEIGHT, height);
             capture.set(cv::CAP_PROP_FPS, fps);
