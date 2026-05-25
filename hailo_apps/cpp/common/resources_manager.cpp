@@ -496,7 +496,7 @@ static std::string modelzoo_version_for(const std::string &hw_arch, const std::s
 
     // hailo8/8l: 4.x -> v2.xx
     static const std::unordered_map<std::string,std::string> compat_8 = {
-        {"4.23.0","v2.17.0"},
+        {"4.23.0","v2.18.0"},
         {"4.22.0","v2.16.0"},
         {"4.21.0","v2.15.0"},
         {"4.20.0","v2.14.0"},
