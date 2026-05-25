@@ -76,6 +76,13 @@ if pkg-config --exists libcurl 2>/dev/null; then
 elif [ -f "$DEPS_INSTALL_DIR/lib/libcurl.a" ] || [ -f "$DEPS_INSTALL_DIR/lib/libcurl.so" ]; then
     echo "-I- curl: already built, skipping"
 else
+    if ! pkg-config --exists openssl 2>/dev/null && [ ! -f /usr/include/openssl/ssl.h ]; then
+        echo ""
+        echo "ERROR: OpenSSL development headers not found (required to build curl)."
+        echo "  Run: sudo apt-get install -y libssl-dev"
+        echo ""
+        exit 1
+    fi
     echo "=========================================="
     echo " Building curl (one-time)"
     echo "=========================================="
