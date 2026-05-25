@@ -34,6 +34,13 @@ fi
 
 DEPS_INSTALL_DIR="$SCRIPT_DIR/deps"
 YAML_CPP_SUBMODULE="$SCRIPT_DIR/external/yaml-cpp"
+if [ ! -f "$YAML_CPP_SUBMODULE/CMakeLists.txt" ]; then
+    echo ""
+    echo "ERROR: yaml-cpp submodule is not initialized."
+    echo "  Run: git submodule update --init --recursive"
+    echo ""
+    exit 1
+fi
 
 # Build yaml-cpp once into hailo_apps/cpp/deps/ (skipped if system or already built)
 if pkg-config --exists yaml-cpp 2>/dev/null; then
@@ -57,6 +64,13 @@ else
 fi
 
 CURL_SUBMODULE="$SCRIPT_DIR/external/curl"
+if [ ! -f "$CURL_SUBMODULE/CMakeLists.txt" ]; then
+    echo ""
+    echo "ERROR: curl submodule is not initialized."
+    echo "  Run: git submodule update --init --recursive"
+    echo ""
+    exit 1
+fi
 if pkg-config --exists libcurl 2>/dev/null; then
     echo "-I- curl: system ($(pkg-config --modversion libcurl)), skipping"
 elif [ -f "$DEPS_INSTALL_DIR/lib/libcurl.a" ] || [ -f "$DEPS_INSTALL_DIR/lib/libcurl.so" ]; then
