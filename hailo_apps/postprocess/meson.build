@@ -75,9 +75,9 @@ if postprocess_dep.found()
         endif
     endif
     
-    # Check if libhailo_opencv_utils.so exists (it may be missing on some systems like RPi)
-    libhailo_opencv_utils_path = '/usr/lib/aarch64-linux-gnu/libhailo_opencv_utils.so'
-    libhailo_opencv_utils_exists = run_command('test', '-f', libhailo_opencv_utils_path, check: false).returncode() == 0
+    # Check if libhailo_opencv_utils.so exists (it may be missing on community installs)
+    cc = meson.get_compiler('c')
+    libhailo_opencv_utils_exists = cc.find_library('hailo_opencv_utils', required: false).found()
     
     if not libhailo_opencv_utils_exists
         message('⚠️  libhailo_opencv_utils.so not found, filtering it out from linker command')
@@ -127,6 +127,29 @@ if postprocess_dep.found()
                 link_args: pkg_libs_list
             )
         endif
+    endif
+
+    # TAPPAS 5.3.0 removed common:: utility functions (get_xtensor, softmax_2D,
+    # vector_normalization, iou_calc, etc.) from libhailo_opencv_utils.so.
+    # The implementations are now shipped as source files alongside the headers.
+    # Build them into a static convenience library for downstream targets.
+    fs = import('fs')
+    common_impl_dir = '/usr/include/hailo/tappas/common'
+    common_tensors_cpp = common_impl_dir / 'tensors.cpp'
+
+    if fs.is_file(common_tensors_cpp)
+        hailo_common_compat_lib = static_library('hailo_common_compat',
+            [common_impl_dir / 'tensors.cpp',
+             common_impl_dir / 'math.cpp',
+             common_impl_dir / 'nms.cpp'],
+            dependencies : postprocess_dep,
+        )
+        hailo_common_compat_dep = declare_dependency(link_with : hailo_common_compat_lib)
+        message('Built hailo_common_compat from TAPPAS source files (5.3.0+ compat)')
+    else
+        # TAPPAS < 5.3.0 — symbols are in libhailo_opencv_utils.so, no extra lib needed
+        hailo_common_compat_dep = declare_dependency()
+        message('common:: sources not found — symbols in libhailo_opencv_utils.so (< 5.3.0)')
     endif
 
     subdir('cpp')

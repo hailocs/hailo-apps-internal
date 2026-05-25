@@ -16,6 +16,24 @@
 #include "sprite_cache.hpp"
 #include "style_config.hpp"
 
+// TAPPAS 5.3.0 decoupled OpenCV types from HailoMat draw API.
+// Provide inline shims so the same source compiles on both 5.1.x and 5.3.x.
+#if __has_include("hailomat_internal.hpp")
+#include "hailomat_internal.hpp"   // provides get_cv_matrices()
+static inline hailo_point_t to_h(const cv::Point &p) { return {p.x, p.y}; }
+static inline hailo_rect_t to_h(const cv::Rect &r) { return {r.x, r.y, r.width, r.height}; }
+static inline hailo_size_t to_h(const cv::Size &s) { return {s.width, s.height}; }
+static inline hailo_scalar_t to_h(const cv::Scalar &s) { return {s[0], s[1], s[2], s[3]}; }
+#define GET_CV_MAT(hmat) get_cv_matrices(hmat)[0]
+#else
+// TAPPAS 5.1.x — cv:: types pass directly to HailoMat methods
+static inline const cv::Point& to_h(const cv::Point &p) { return p; }
+static inline const cv::Rect& to_h(const cv::Rect &r) { return r; }
+static inline const cv::Size& to_h(const cv::Size &s) { return s; }
+static inline const cv::Scalar& to_h(const cv::Scalar &s) { return s; }
+#define GET_CV_MAT(hmat) (hmat).get_matrices()[0]
+#endif
+
 #define SPACE " "
 #define TEXT_CLS_FONT_SCALE_FACTOR (0.0025f)
 #define MINIMUM_TEXT_CLS_FONT_SCALE (0.5f)
@@ -80,7 +98,7 @@ static overlay_status_t draw_classification(HailoMat &mat, HailoROIPtr roi, std:
     auto text_position = cv::Point(roi_xmin, roi_ymin + (TEXT_DEFAULT_HEIGHT * number_of_classifications * roi_height) + log(roi_height));
     double font_scale = TEXT_CLS_FONT_SCALE_FACTOR * roi_width;
     font_scale = (font_scale < MINIMUM_TEXT_CLS_FONT_SCALE) ? MINIMUM_TEXT_CLS_FONT_SCALE : font_scale;
-    mat.draw_text(text, text_position, font_scale, get_color(color_id));
+    mat.draw_text(text, to_h(text_position), font_scale, to_h(get_color(color_id)));
     return OVERLAY_STATUS_OK;
 }
 
@@ -141,7 +159,7 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
             cv::Point joint2 = cv::Point(x2, y2);
 
             thickness = (bbox.width() < 0.05) ? 1 : 2;
-            hmat.draw_line(joint1, joint2, get_color(4), thickness, cv::LINE_4);
+            hmat.draw_line(to_h(joint1), to_h(joint2), to_h(get_color(4)), thickness, cv::LINE_4);
         }
     }
 
@@ -165,14 +183,14 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
                     // Center sprite on keypoint
                     cv::Rect sprite_rect(x - sprite->cols / 2, y - sprite->rows / 2,
                                          sprite->cols, sprite->rows);
-                    draw_sprite(hmat.get_matrices()[0], sprite_rect, *sprite);
+                    draw_sprite(GET_CV_MAT(hmat), sprite_rect, *sprite);
                     continue;  // skip default dot
                 }
             }
         }
 
         auto center = cv::Point(x, y);
-        hmat.draw_ellipse(center, {R, R}, 0, 0, 360, get_color(7), landmark_point_radius);
+        hmat.draw_ellipse(to_h(center), to_h(cv::Size(R, R)), 0, 0, 360, to_h(get_color(7)), landmark_point_radius);
     }
     return OVERLAY_STATUS_OK;
 }
@@ -220,7 +238,7 @@ static overlay_status_t draw_tile(HailoMat &mat, HailoTileROIPtr tile)
     else
         color = get_color(DEFAULT_TILE_COLOR);
 
-    mat.draw_rectangle(rect, color);
+    mat.draw_rectangle(to_h(rect), to_h(color));
 
     return OVERLAY_STATUS_OK;
 }
@@ -237,7 +255,7 @@ static overlay_status_t draw_id(HailoMat &mat, HailoUniqueIDPtr &hailo_id, Hailo
 
     double font_scale = TEXT_FONT_FACTOR * log(bbox_width);
     auto text_position = cv::Point(bbox_min.x + log(bbox_width), bbox_max.y - log(bbox_width));
-    mat.draw_text(id_text, text_position, font_scale, color);
+    mat.draw_text(id_text, to_h(text_position), font_scale, to_h(color));
     return OVERLAY_STATUS_OK;
 }
 
@@ -407,7 +425,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
 {
     overlay_status_t ret = OVERLAY_STATUS_UNINITIALIZED;
     uint number_of_classifications = 0;
-    cv::Mat &mat = hmat.get_matrices()[0];
+    cv::Mat &mat = GET_CV_MAT(hmat);
     for (auto obj : roi->get_objects())
     {
         switch (obj->get_type())
@@ -486,7 +504,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
 
             // Bbox
             if (draw_bbox && !bbox_replaced_by_sprite)
-                hmat.draw_rectangle(rect, color);
+                hmat.draw_rectangle(to_h(rect), to_h(color));
 
             // Detection text
             if (draw_label && !bbox_replaced_by_sprite && !text.empty()) {
@@ -505,10 +523,10 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
                         font_scale, 1, &baseline);
                     cv::Rect bg_rect(text_position.x, text_position.y - text_size.height,
                         text_size.width, text_size.height + baseline);
-                    cv::rectangle(hmat.get_matrices()[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+                    cv::rectangle(GET_CV_MAT(hmat), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
                 }
 
-                hmat.draw_text(text, text_position, font_scale, text_col);
+                hmat.draw_text(text, to_h(text_position), font_scale, to_h(text_col));
             }
 
             // Recurse into sub-objects (with landmark/keypoint sprite overrides)
@@ -657,8 +675,8 @@ void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
         font_scale, font_thickness, &baseline);
     cv::Point text_pos(10, 10 + text_size.height);
     cv::Rect bg_rect(8, 8, text_size.width + 4, text_size.height + baseline + 4);
-    cv::rectangle(hmat.get_matrices()[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
-    hmat.draw_text(text, text_pos, font_scale, cv::Scalar(255, 255, 255));
+    cv::rectangle(GET_CV_MAT(hmat), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+    hmat.draw_text(text, to_h(text_pos), font_scale, to_h(cv::Scalar(255, 255, 255)));
 }
 
 void face_blur(HailoMat &hmat, HailoROIPtr roi)
@@ -674,7 +692,7 @@ void face_blur(HailoMat &hmat, HailoROIPtr roi)
             auto xmax = std::clamp<int>(((detection_bbox.xmax() * roi_bbox.width()) + roi_bbox.xmin()) * hmat.native_width(), 0, hmat.native_width());
             auto ymax = std::clamp<int>(((detection_bbox.ymax() * roi_bbox.height()) + roi_bbox.ymin()) * hmat.native_height(), 0, hmat.native_height());
             auto rect = cv::Rect(cv::Point(xmin, ymin), cv::Point(xmax, ymax));
-            hmat.blur(rect, cv::Size(13, 13));
+            hmat.blur(to_h(rect), to_h(cv::Size(13, 13)));
 
             roi->remove_objects_typed(HAILO_LANDMARKS);
         }
@@ -707,7 +725,7 @@ static bool parse_kv_string(const std::string &label, const std::string &key, st
 
 void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi)
 {
-    cv::Mat &frame = hmat.get_matrices()[0];
+    cv::Mat &frame = GET_CV_MAT(hmat);
     int w = frame.cols;
     int h = frame.rows;
 
