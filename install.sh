@@ -905,6 +905,21 @@ check_prerequisites() {
             failed=true
         fi
 
+        # Cross-check: deb and Python wheel versions should match
+        if [[ "$hailort_version" != "-1" && "$pyhailort_version" != "-1" \
+           && "$hailort_version" != "$pyhailort_version" ]]; then
+            log_warning "HailoRT version mismatch: system package=$hailort_version, Python wheel=$pyhailort_version"
+            log_warning "The HailoRT deb and Python binding should have matching versions."
+            failed=true
+        fi
+        if [[ "${NO_TAPPAS_REQUIRED}" != true \
+           && "$tappas_version" != "-1" && "$tappas_python_version" != "-1" \
+           && "$tappas_version" != "$tappas_python_version" ]]; then
+            log_warning "TAPPAS version mismatch: system package=$tappas_version, Python wheel=$tappas_python_version"
+            log_warning "The tappas-core deb and Python binding should have matching versions."
+            failed=true
+        fi
+
         if [[ "$failed" == true ]]; then
             record_step_result "FAILED" "Version validation failed"
             return 1
