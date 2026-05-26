@@ -311,3 +311,27 @@ shared_library('gsthailovampire_overlay',
     install: true,
     install_dir: gst_plugins_dir,
 )
+
+################################################
+# HAILOTILECROPPER_DYNAMIC (dynamic-tile cropper for tiling pipelines).
+# Ported from community_plugins. Bundles its own GstHailoBaseCropperDyn base
+# class so it can be loaded in pipelines that don't bring in the system-wide
+# TAPPAS base cropper.
+################################################
+hailotilecropper_dynamic_inc = include_directories('hailotilecropper_dynamic')
+
+hailotilecropper_dynamic_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
+if opencv_dep.found()
+    hailotilecropper_dynamic_deps += opencv_dep
+endif
+
+shared_library('gsthailotilecropper_dynamic',
+    ['hailotilecropper_dynamic/gsthailobasecropper.cpp',
+     'hailotilecropper_dynamic/gsthailotilecropper_dynamic.cpp'],
+    include_directories : [hailotilecropper_dynamic_inc],
+    dependencies : hailotilecropper_dynamic_deps,
+    cpp_args : ['-DPACKAGE="hailotilecropper_dynamic"'],
+    gnu_symbol_visibility : 'default',
+    install : true,
+    install_dir : gst_plugins_dir,
+)
