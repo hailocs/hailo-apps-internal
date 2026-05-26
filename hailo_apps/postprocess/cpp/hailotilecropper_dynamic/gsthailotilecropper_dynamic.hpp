@@ -36,7 +36,15 @@ typedef struct _GstHailoTileCropperDynamic      GstHailoTileCropperDynamic;
 typedef struct _GstHailoTileCropperDynamicClass GstHailoTileCropperDynamicClass;
 
 /* One static tile parsed from the `tiles-static` property string.
- * All values are normalized [0.0, 1.0] (fraction of frame).
+ * Position values are normalized [0.0, 1.0] (fraction of frame).
+ *
+ * `mode_override` lets a single tile opt out of the cropper-level
+ * `tiling-mode` default:
+ *   -1 = no override; the cropper's `tiling-mode` property applies
+ *    0 = SINGLE_SCALE (force, regardless of cropper default)
+ *    1 = MULTI_SCALE  (force, regardless of cropper default)
+ * The value is the integer cast of hailo_tiling_mode_t. Keep this as a
+ * plain int (not the enum) so -1 is a legal sentinel.
  */
 struct StaticTile
 {
@@ -44,6 +52,7 @@ struct StaticTile
     float y;
     float w;
     float h;
+    int   mode_override;  /* -1 = use cropper default; else 0 / 1 */
 };
 
 struct _GstHailoTileCropperDynamic
@@ -52,6 +61,11 @@ struct _GstHailoTileCropperDynamic
     gchar              *tiles_static_str;  /* property: raw "x,y,w,h;..." */
     std::vector<StaticTile> static_tiles;  /* parsed cache */
     gboolean            allow_empty;       /* property: if FALSE, log a warning when no tiles produced */
+    hailo_tiling_mode_t tiling_mode;       /* property: SINGLE_SCALE or MULTI_SCALE.
+                                              MULTI_SCALE flags emitted tiles so the
+                                              downstream hailotileaggregator enables
+                                              remove_exceeded_bboxes (border_threshold)
+                                              and remove_large_landscape. */
 };
 
 struct _GstHailoTileCropperDynamicClass
