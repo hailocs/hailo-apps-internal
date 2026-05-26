@@ -26,11 +26,11 @@ class YoloWorldInference:
             hef_path: path to yolo_world_v2s.hef
             text_embeddings: numpy array (1, 80, 512) float32, L2-normalized
         """
-        self._hef_path = hef_path
+        self._hef_path = str(hef_path)
         self._text_embeddings = np.ascontiguousarray(text_embeddings, dtype=np.float32)
 
         # Introspect HEF to get layer names
-        hef = HEF(hef_path)
+        hef = HEF(self._hef_path)
         self._network_name = hef.get_network_group_names()[0]
         input_infos = hef.get_input_vstream_infos()
         output_infos = hef.get_output_vstream_infos()
@@ -44,9 +44,9 @@ class YoloWorldInference:
         self._text_input_name = None
         for info in input_infos:
             shape = tuple(info.shape)
-            if len(shape) == 4 and shape[-1] == 3:
+            if shape[-1] == 3:
                 self._image_input_name = info.name
-            elif len(shape) == 3 and shape[-1] == 512:
+            elif shape[-1] == 512:
                 self._text_input_name = info.name
 
         if not self._image_input_name or not self._text_input_name:
@@ -67,7 +67,7 @@ class YoloWorldInference:
         params.group_id = SHARED_VDEVICE_GROUP_ID
         self._vdevice = VDevice(params)
 
-        self._infer_model = self._vdevice.create_infer_model(hef_path)
+        self._infer_model = self._vdevice.create_infer_model(self._hef_path)
 
         # Set format types for inputs
         self._infer_model.input(self._image_input_name).set_format_type(FormatType.UINT8)
@@ -114,7 +114,7 @@ class YoloWorldInference:
             bindings.output(name).set_buffer(buf)
 
         # Run synchronous inference
-        self._configured_model.run([bindings], timeout_ms=10000)
+        self._configured_model.run([bindings], timeout=10000)
 
         # Collect outputs
         outputs = {}

@@ -61,8 +61,9 @@ class GStreamerYoloWorldApp(GStreamerApp):
             help="Watch prompts-file for changes and reload at runtime",
         )
 
-        # Default to use_frame=True since we render detections via OpenCV
-        parser.set_defaults(use_frame=True)
+        # Detections are attached to the buffer as Hailo metadata and drawn
+        # by hailooverlay → real video sink. No need for the user-frame path.
+        parser.set_defaults(use_frame=False)
 
         logger.info("Initializing GStreamer YOLO World App...")
 
@@ -80,8 +81,8 @@ class GStreamerYoloWorldApp(GStreamerApp):
             import sys
             sys.exit(1)
 
-        # Use fakesink — all visualization via OpenCV in callback
-        self.video_sink = "fakesink"
+        # Keep the base class default video_sink (autovideosink). hailooverlay
+        # in the pipeline draws detection metadata attached by the callback.
 
         # Resolve HEF path
         self.hef_path = resolve_hef_path(

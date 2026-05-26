@@ -73,41 +73,37 @@ Maximum 80 classes. Use bare class names (not "a photo of a cat").
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│ GStreamer Pipeline                           │
-│ USB Camera → videoscale(640x640) → callback  │
-│                                    ↓         │
-│              ┌─────────────────────┤         │
-│              │ Python Callback     │         │
-│              │  ┌────────────┐     │         │
-│              │  │ HailoRT    │     │         │
-│              │  │ VDevice    │     │         │
-│              │  │            │     │         │
-│              │  │ image ─────┤     │         │
-│              │  │ text_emb ──┤→ HEF│         │
-│              │  │            │     │         │
-│              │  └──────┬─────┘     │         │
-│              │         ↓           │         │
-│              │  postprocess (NMS)  │         │
-│              │         ↓           │         │
-│              │  OpenCV overlay     │         │
-│              └─────────────────────┤         │
-│                                    ↓         │
-│ fakesink ← ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘         │
-│ OpenCV window ← frame display               │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ GStreamer Pipeline                                   │
+│ USB Camera → videoscale(640x640) → identity_callback │
+│                                         ↓            │
+│         ┌───────────────────────────────┤            │
+│         │ Python Callback               │            │
+│         │   image, text_emb → HailoRT   │            │
+│         │   → HEF (yolo_world_v2s)      │            │
+│         │   → postprocess (DFL + NMS)   │            │
+│         │   → hailo.HailoDetection      │            │
+│         │     attached to buffer ROI    │            │
+│         └───────────────────────────────┤            │
+│                                         ↓            │
+│ hailooverlay (draws bboxes) → autovideosink         │
+└─────────────────────────────────────────────────────┘
 
 Text Embedding Manager (background):
   CLIP encoder (CPU) → embeddings.json → HailoRT input_layer2
   File watcher → re-encode on prompts change
 ```
 
+Detections are rendered natively by `hailooverlay` from `HailoDetection`
+metadata the callback attaches to the buffer — no Python/OpenCV drawing.
+
 ## Performance
 
 | Metric | Value |
 |---|---|
 | Model | YOLO World v2s (640x640) |
-| FPS | ~45 (batch=1) |
+| FPS | ~16 end-to-end (USB cam @ 30 fps, hailooverlay + autovideosink) |
+| Inference | ~45 fps standalone (batch=1) |
 | mAP (COCO) | 31.6 (quantized) |
 | Max classes | 80 |
 

@@ -6,6 +6,22 @@ logger = get_logger(__name__)
 
 STRIDES = [8, 16, 32]
 IMAGE_SIZE = 640
+DFL_BINS = 16  # YOLOv8/World reg head emits 4 sides × 16 bin distribution
+
+
+def _decode_dfl(reg_map):
+    """Decode 64-channel DFL distribution (H, W, 64) → (H, W, 4) distances.
+
+    Channels are grouped [left_bins(16), top_bins(16), right_bins(16), bottom_bins(16)].
+    """
+    h, w, _ = reg_map.shape
+    reshaped = reg_map.reshape(h, w, 4, DFL_BINS)
+    # softmax over bin axis
+    shifted = reshaped - reshaped.max(axis=-1, keepdims=True)
+    exp = np.exp(shifted)
+    probs = exp / exp.sum(axis=-1, keepdims=True)
+    bins = np.arange(DFL_BINS, dtype=np.float32)
+    return (probs * bins).sum(axis=-1)  # (H, W, 4)
 
 
 def postprocess(output_tensors, score_threshold=0.3, iou_threshold=0.7, num_classes=80):
@@ -43,6 +59,9 @@ def postprocess(output_tensors, score_threshold=0.3, iou_threshold=0.7, num_clas
             cls_tensors.append(tensor)
         elif c == 4:
             reg_tensors.append(tensor)
+        elif c == 4 * DFL_BINS:
+            # Raw DFL distribution — decode to 4-channel distances
+            reg_tensors.append(_decode_dfl(tensor))
         else:
             logger.warning("Unexpected channel count %d for %s", c, name)
 

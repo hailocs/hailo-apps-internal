@@ -1,7 +1,7 @@
 import os
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
-import cv2
+import hailo
 import numpy as np
 
 import gi
@@ -26,13 +26,6 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 logger = get_logger(__name__)
-
-# Colors for drawing bounding boxes (BGR for OpenCV)
-COLORS = [
-    (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0),
-    (255, 0, 255), (0, 255, 255), (128, 0, 0), (0, 128, 0),
-    (0, 0, 128), (128, 128, 0), (128, 0, 128), (0, 128, 128),
-]
 
 
 class YoloWorldCallbackData(app_callback_class):
@@ -81,39 +74,15 @@ def app_callback(element, buffer, user_data):
         num_classes=num_classes,
     )
 
-    # Draw detections on frame
-    if user_data.use_frame:
-        for det in detections:
-            x1, y1, x2, y2 = det["bbox"]
-            cls_id = det["class_id"]
-            score = det["score"]
-            label = labels[cls_id] if cls_id < len(labels) else f"class_{cls_id}"
-            color = COLORS[cls_id % len(COLORS)]
-
-            # Convert normalized coords to pixels
-            px1 = int(x1 * width)
-            py1 = int(y1 * height)
-            px2 = int(x2 * width)
-            py2 = int(y2 * height)
-
-            cv2.rectangle(frame, (px1, py1), (px2, py2), color, 2)
-            text = f"{label}: {score:.2f}"
-            cv2.putText(
-                frame, text, (px1, max(15, py1 - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1,
-            )
-
-        # Show active classes at top
-        active_text = f"Classes: {', '.join(labels[:5])}"
-        if len(labels) > 5:
-            active_text += f" +{len(labels) - 5} more"
-        cv2.putText(
-            frame, active_text, (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-        )
-
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        user_data.set_frame(frame)
+    # Attach detections as Hailo metadata; hailooverlay renders them downstream.
+    roi = hailo.get_roi_from_buffer(buffer)
+    for det in detections:
+        x1, y1, x2, y2 = det["bbox"]
+        cls_id = det["class_id"]
+        score = det["score"]
+        label = labels[cls_id] if cls_id < len(labels) else f"class_{cls_id}"
+        bbox = hailo.HailoBBox(float(x1), float(y1), float(x2 - x1), float(y2 - y1))
+        roi.add_object(hailo.HailoDetection(bbox, label, float(score)))
 
     # Log periodically
     frame_idx = user_data.get_count()
