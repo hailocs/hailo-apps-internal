@@ -65,6 +65,10 @@ PROJECT_ROOT=$(pwd)
 # This ensures our project's modules are found first.
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
 
+# Ensure GStreamer discovers the community overlay plugin installed to the
+# repo-owned directory (avoids requiring root to write to system plugin dir).
+export GST_PLUGIN_PATH="/usr/local/hailo/resources/so:${GST_PLUGIN_PATH}"
+
 echo "Project directory added to PYTHONPATH for this session:"
 echo "${PROJECT_ROOT}"
 
@@ -75,15 +79,6 @@ if [ -d "$VENV_NAME" ]; then
 else
     echo "Virtual environment directory '$VENV_NAME' not found. Please ensure it is created and try again."
     return 1
-fi
-
-# Add the Hailo postprocess SO directory to GStreamer's plugin search path.
-# install.sh installs community plugins (e.g. hailooverlay_community) into
-# /usr/local/hailo/resources/so/ — a repo-owned, user-writable directory.
-# Prepending here so GStreamer discovers them without touching system paths.
-HAILO_SO_DIR="/usr/local/hailo/resources/so"
-if [ -d "$HAILO_SO_DIR" ]; then
-    export GST_PLUGIN_PATH="${HAILO_SO_DIR}:${GST_PLUGIN_PATH}"
 fi
 
 # Load environment variables from .env file

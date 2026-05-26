@@ -13,18 +13,26 @@
 #include "overlay.hpp"
 #include "overlay_utils.hpp"
 #include "hailo_common.hpp"
-#include "hailomat_internal.hpp"   // TAPPAS >=5.3 — provides get_cv_matrices() compat shim
 #include "sprite_cache.hpp"
 #include "style_config.hpp"
 
-// TAPPAS >=5.3 refactored HailoMat::draw_*/blur to use OpenCV-independent
-// geometry types (hailo_point_t / hailo_rect_t / hailo_size_t / hailo_scalar_t).
-// These inline shims convert at the call site so the existing OpenCV-flavoured
-// code in this file remains compact and readable.
-static inline hailo_point_t  to_h(const cv::Point&  p) { return hailo_point_t {p.x, p.y}; }
-static inline hailo_rect_t   to_h(const cv::Rect&   r) { return hailo_rect_t  {r.x, r.y, r.width, r.height}; }
-static inline hailo_size_t   to_h(const cv::Size&   s) { return hailo_size_t  {s.width, s.height}; }
-static inline hailo_scalar_t to_h(const cv::Scalar& s) { return hailo_scalar_t{s[0], s[1], s[2], s[3]}; }
+// TAPPAS 5.3.0 decoupled OpenCV types from HailoMat draw API.
+// Provide inline shims so the same source compiles on both 5.1.x and 5.3.x.
+#if __has_include("hailomat_internal.hpp")
+#include "hailomat_internal.hpp"   // provides get_cv_matrices()
+static inline hailo_point_t to_h(const cv::Point &p) { return {p.x, p.y}; }
+static inline hailo_rect_t to_h(const cv::Rect &r) { return {r.x, r.y, r.width, r.height}; }
+static inline hailo_size_t to_h(const cv::Size &s) { return {s.width, s.height}; }
+static inline hailo_scalar_t to_h(const cv::Scalar &s) { return {s[0], s[1], s[2], s[3]}; }
+#define GET_CV_MAT(hmat) get_cv_matrices(hmat)[0]
+#else
+// TAPPAS 5.1.x — cv:: types pass directly to HailoMat methods
+static inline const cv::Point& to_h(const cv::Point &p) { return p; }
+static inline const cv::Rect& to_h(const cv::Rect &r) { return r; }
+static inline const cv::Size& to_h(const cv::Size &s) { return s; }
+static inline const cv::Scalar& to_h(const cv::Scalar &s) { return s; }
+#define GET_CV_MAT(hmat) (hmat).get_matrices()[0]
+#endif
 
 #define SPACE " "
 #define TEXT_CLS_FONT_SCALE_FACTOR (0.0025f)
@@ -175,14 +183,14 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
                     // Center sprite on keypoint
                     cv::Rect sprite_rect(x - sprite->cols / 2, y - sprite->rows / 2,
                                          sprite->cols, sprite->rows);
-                    draw_sprite(get_cv_matrices(hmat)[0], sprite_rect, *sprite);
+                    draw_sprite(GET_CV_MAT(hmat), sprite_rect, *sprite);
                     continue;  // skip default dot
                 }
             }
         }
 
         auto center = cv::Point(x, y);
-        hmat.draw_ellipse(to_h(center), hailo_size_t{R, R}, 0, 0, 360, to_h(get_color(7)), landmark_point_radius);
+        hmat.draw_ellipse(to_h(center), to_h(cv::Size(R, R)), 0, 0, 360, to_h(get_color(7)), landmark_point_radius);
     }
     return OVERLAY_STATUS_OK;
 }
@@ -417,7 +425,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
 {
     overlay_status_t ret = OVERLAY_STATUS_UNINITIALIZED;
     uint number_of_classifications = 0;
-    cv::Mat &mat = get_cv_matrices(hmat)[0];
+    cv::Mat &mat = GET_CV_MAT(hmat);
     for (auto obj : roi->get_objects())
     {
         switch (obj->get_type())
@@ -515,7 +523,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
                         font_scale, 1, &baseline);
                     cv::Rect bg_rect(text_position.x, text_position.y - text_size.height,
                         text_size.width, text_size.height + baseline);
-                    cv::rectangle(get_cv_matrices(hmat)[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+                    cv::rectangle(GET_CV_MAT(hmat), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
                 }
 
                 hmat.draw_text(text, to_h(text_position), font_scale, to_h(text_col));
@@ -667,7 +675,7 @@ void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
         font_scale, font_thickness, &baseline);
     cv::Point text_pos(10, 10 + text_size.height);
     cv::Rect bg_rect(8, 8, text_size.width + 4, text_size.height + baseline + 4);
-    cv::rectangle(get_cv_matrices(hmat)[0], bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+    cv::rectangle(GET_CV_MAT(hmat), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
     hmat.draw_text(text, to_h(text_pos), font_scale, to_h(cv::Scalar(255, 255, 255)));
 }
 
@@ -717,7 +725,7 @@ static bool parse_kv_string(const std::string &label, const std::string &key, st
 
 void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi)
 {
-    cv::Mat &frame = get_cv_matrices(hmat)[0];
+    cv::Mat &frame = GET_CV_MAT(hmat);
     int w = frame.cols;
     int h = frame.rows;
 

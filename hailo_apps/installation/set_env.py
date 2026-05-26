@@ -248,6 +248,10 @@ def configure_environment(config: Dict, env_path: Path) -> None:
     # Get log level from config (default: INFO)
     log_level = config.get('log_level', 'INFO').upper()
     
+    # GStreamer plugin path for community overlay and other plugins installed
+    # to the repo-owned directory (avoids requiring root for system plugin dir).
+    gst_plugin_path = f"{RESOURCES_ROOT_PATH_DEFAULT}/so"
+
     # Build environment variables dict
     env_vars = {
         HOST_ARCH_KEY: host_arch,
@@ -261,6 +265,7 @@ def configure_environment(config: Dict, env_path: Path) -> None:
         VIRTUAL_ENV_NAME_KEY: venv_config.get('name', VIRTUAL_ENV_NAME_DEFAULT),
         HAILO_APPS_PATH_KEY: repo_root,
         HAILO_LOG_LEVEL_KEY: log_level,
+        "GST_PLUGIN_PATH": gst_plugin_path,
     }
     
     # Update os.environ

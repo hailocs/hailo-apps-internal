@@ -38,7 +38,7 @@ yolov8pose_postprocess_sources = [
 ]
 shared_library('yolov8pose_postprocess',
     yolov8pose_postprocess_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -53,7 +53,7 @@ yolov5seg_post_sources = [
 
 shared_library('yolov5seg_postprocess',
     yolov5seg_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -68,7 +68,7 @@ depth_postprocess_sources = [
 ]
 shared_library('depth_postprocess',
     depth_postprocess_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -107,7 +107,7 @@ scrfd_post_sources = [
 
 shared_library('scrfd',
     scrfd_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -122,7 +122,7 @@ arcface_post_sources = [
 
 shared_library('face_recognition_post',
     arcface_post_sources,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -162,7 +162,7 @@ repvgg_reid_sources = [
 shared_library('repvgg_reid_postprocess',
     repvgg_reid_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -214,7 +214,7 @@ clip_sources = [
 shared_library('clip_postprocess',
     clip_sources,
     include_directories : rapidjson_inc,
-    dependencies : postprocess_dep,
+    dependencies : [postprocess_dep, hailo_common_compat_dep],
     gnu_symbol_visibility : 'default',
     install: true,
     install_dir: '/usr/local/hailo/resources/so',
@@ -269,21 +269,6 @@ shared_library('ocr_postprocess',
 )
 
 ################################################
-# YOLOV4 LP POSTPROCESS SOURCES
-################################################
-
-yolov4_lp_postprocess_sources = [
-    'yolov4_lp_postprocess.cpp'
-]
-shared_library('yolov4_lp_postprocess',
-    yolov4_lp_postprocess_sources,
-    dependencies : postprocess_dep,
-    gnu_symbol_visibility : 'default',
-    install: true,
-    install_dir: '/usr/local/hailo/resources/so',
-)
-
-################################################
 # HAILOOVERLAY_COMMUNITY (custom overlay GStreamer element)
 # Only built when yaml-cpp and GStreamer dependencies are available.
 ################################################
@@ -305,12 +290,6 @@ if yaml_cpp_dep.found() and gst_dep.found() and gst_base_dep.found() and gst_vid
         cpp_args : ['-DPACKAGE="hailooverlay_community"'],
         gnu_symbol_visibility : 'default',
         install: true,
-        # Install alongside the other postprocess SOs into the repo-owned
-        # resources tree (writable by the post-install user). setup_env.sh
-        # adds this dir to GST_PLUGIN_PATH so GStreamer discovers it.
-        # Avoids the privilege escalation that the system gst_plugins_dir
-        # (/usr/lib/.../gstreamer-1.0) would require during a user-mode
-        # post-install.
         install_dir: '/usr/local/hailo/resources/so',
     )
 else

@@ -487,6 +487,11 @@ class GStreamerApp:
             if getattr(self, "watchdog_paused", False):
                 hailo_logger.debug(f"Ignoring error during rebuild: {err}")
                 return True
+            # Ignore errors during shutdown — elements may emit transient
+            # errors while transitioning through PAUSED/READY/NULL.
+            if getattr(self, '_shutting_down', False):
+                hailo_logger.debug(f"Ignoring error during shutdown: {err}")
+                return True
             hailo_logger.error(f"GStreamer Error: {err}, debug: {debug}")
             self.error_occurred = True
             self.shutdown()
@@ -683,6 +688,11 @@ class GStreamerApp:
         return False
 
     def shutdown(self, signum=None, frame=None):
+        # Prevent re-entrant shutdown (e.g. bus ERROR during teardown)
+        if getattr(self, '_shutting_down', False):
+            return
+        self._shutting_down = True
+
         hailo_logger.warning("Shutdown initiated")
 
         # Stop watchdog first
@@ -697,11 +707,6 @@ class GStreamerApp:
         if threading.current_thread() is threading.main_thread():
             signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-        # Remove bus signal watch before state transitions to prevent
-        # callbacks firing during teardown
-        bus = self.pipeline.get_bus()
-        bus.remove_signal_watch()
-
         self.pipeline.set_state(Gst.State.PAUSED)
         self.pipeline.get_state(2 * Gst.SECOND)
 
@@ -712,6 +717,11 @@ class GStreamerApp:
         # Wait for NULL to complete so HailoRT device is fully released
         # before the process exits — prevents the std::system_error race
         self.pipeline.get_state(5 * Gst.SECOND)
+
+        # Remove bus signal watch after NULL — messages drain cleanly
+        # during state transitions, no "early exit" warnings
+        bus = self.pipeline.get_bus()
+        bus.remove_signal_watch()
 
         GLib.idle_add(self.loop.quit)
 
