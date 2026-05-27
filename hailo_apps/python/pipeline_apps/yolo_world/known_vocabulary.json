@@ -1,0 +1,22 @@
+[
+  "person", "man", "woman", "child", "face", "hand",
+  "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
+  "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+  "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",
+  "backpack", "umbrella", "handbag", "tie", "suitcase", "wallet",
+  "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+  "baseball glove", "skateboard", "surfboard", "tennis racket",
+  "bottle", "water bottle", "wine glass", "water glass", "cup", "coffee cup", "mug",
+  "fork", "knife", "spoon", "bowl", "plate",
+  "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog",
+  "pizza", "donut", "cake",
+  "chair", "office chair", "couch", "potted plant", "houseplant", "indoor plant",
+  "plant", "fern", "tree", "flower", "bed",
+  "dining table", "desk", "toilet", "tv", "monitor", "laptop", "computer",
+  "keyboard", "mouse", "remote", "cell phone", "smartphone", "tablet",
+  "microwave", "oven", "toaster", "sink", "refrigerator",
+  "book", "notebook", "clock", "vase", "scissors", "teddy bear",
+  "hair drier", "toothbrush", "soda can", "tin can", "headphones",
+  "glasses", "hat", "shoe", "watch", "lamp", "candle", "picture frame",
+  "whiteboard", "door", "window", "trash can", "box", "bag"
+]

@@ -1,0 +1,135 @@
+"""HailoRT inference wrapper for the YOLO World v2s dual-input HEF.
+
+`hailonet` does not support dual-input HEFs, so we drive HailoRT directly
+from a Python user-callback. The HEF takes a 640x640x3 image plus a
+(1, 80, 512) tensor of L2-normalized CLIP text embeddings and emits 6 raw
+tensors (3 classification maps + 3 regression maps at strides 8/16/32).
+
+Hot-path notes:
+- Bindings are created once at configure time and reused per frame.
+- Input/output buffers are pre-allocated; the image is copied into the
+  pre-allocated input slot instead of allocating a fresh buffer each frame.
+- Outputs are returned as views into the pre-allocated buffers — callers
+  must consume them synchronously before the next call to `run()` (the
+  GStreamer callback always does).
+"""
+import numpy as np
+from hailo_platform import HEF, FormatType, VDevice
+
+from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
+from hailo_apps.python.core.common.hailo_logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class YoloWorldInference:
+    """Runs YOLO World v2s inference on Hailo using the dual-input HEF."""
+
+    def __init__(self, hef_path, text_embeddings):
+        """Initialize inference engine.
+
+        Args:
+            hef_path: path to yolo_world_v2s HEF.
+            text_embeddings: numpy array (1, 80, 512) float32, L2-normalized.
+        """
+        self._hef_path = str(hef_path)
+        self._text_embeddings = np.ascontiguousarray(text_embeddings, dtype=np.float32)
+
+        hef = HEF(self._hef_path)
+        self._network_name = hef.get_network_group_names()[0]
+        input_infos = hef.get_input_vstream_infos()
+        output_infos = hef.get_output_vstream_infos()
+
+        logger.info("HEF network: %s", self._network_name)
+        logger.info("Inputs: %s", [(info.name, info.shape) for info in input_infos])
+        logger.info("Outputs: %s", [(info.name, info.shape) for info in output_infos])
+
+        # Identify the image vs text input by trailing dimension.
+        self._image_input_name = None
+        self._text_input_name = None
+        for info in input_infos:
+            shape = tuple(info.shape)
+            if shape[-1] == 3:
+                self._image_input_name = info.name
+            elif shape[-1] == 512:
+                self._text_input_name = info.name
+        if not self._image_input_name or not self._text_input_name:
+            raise ValueError(
+                f"Could not identify input layers. Found: "
+                f"{[(info.name, info.shape) for info in input_infos]}"
+            )
+        logger.info("Image input: %s", self._image_input_name)
+        logger.info("Text input: %s", self._text_input_name)
+
+        self._output_names = [info.name for info in output_infos]
+
+        params = VDevice.create_params()
+        params.group_id = SHARED_VDEVICE_GROUP_ID
+        self._vdevice = VDevice(params)
+        self._infer_model = self._vdevice.create_infer_model(self._hef_path)
+
+        self._infer_model.input(self._image_input_name).set_format_type(FormatType.UINT8)
+        self._infer_model.input(self._text_input_name).set_format_type(FormatType.FLOAT32)
+        for name in self._output_names:
+            self._infer_model.output(name).set_format_type(FormatType.FLOAT32)
+
+        self._config_ctx = self._infer_model.configure()
+        self._configured_model = self._config_ctx.__enter__()
+
+        # Pre-allocate input/output buffers (hot path mustn't allocate).
+        image_input_shape = self._infer_model.input(self._image_input_name).shape
+        self._image_input_buffer = np.empty(image_input_shape, dtype=np.uint8)
+        # Sanity check: should be (1, 640, 640, 3) or (640, 640, 3) — handled below.
+        logger.info("Image input buffer shape: %s", self._image_input_buffer.shape)
+
+        self._output_buffers = {
+            name: np.empty(self._infer_model.output(name).shape, dtype=np.float32)
+            for name in self._output_names
+        }
+
+        # Create bindings once; HailoRT lets us reuse them across runs as long
+        # as the buffer references stay valid.
+        self._bindings = self._configured_model.create_bindings()
+        self._bindings.input(self._image_input_name).set_buffer(self._image_input_buffer)
+        self._bindings.input(self._text_input_name).set_buffer(self._text_embeddings)
+        for name, buf in self._output_buffers.items():
+            self._bindings.output(name).set_buffer(buf)
+
+        logger.info("YOLO World inference engine initialized")
+
+    def run(self, image):
+        """Run inference on a single image frame.
+
+        Args:
+            image: numpy array (640, 640, 3) uint8 RGB.
+
+        Returns:
+            dict mapping output layer name to the corresponding pre-allocated
+            output buffer (caller must consume before the next call).
+        """
+        # Copy frame into the pre-allocated input slot. np.copyto handles the
+        # batch-dim mismatch via broadcasting where shapes are (1,H,W,3) vs (H,W,3).
+        if self._image_input_buffer.shape[0] == 1 and image.ndim == 3:
+            self._image_input_buffer[0] = image
+        else:
+            np.copyto(self._image_input_buffer, image)
+
+        self._configured_model.run([self._bindings], timeout=10000)
+        return self._output_buffers
+
+    def update_text_embeddings(self, text_embeddings):
+        """Swap the text embeddings tensor (zero-shot class change).
+
+        Rebinds the text input to point at the new (1, 80, 512) array. Safe to
+        call between frames from any thread (the file watcher uses this).
+        """
+        self._text_embeddings = np.ascontiguousarray(text_embeddings, dtype=np.float32)
+        self._bindings.input(self._text_input_name).set_buffer(self._text_embeddings)
+        logger.info("Text embeddings updated")
+
+    def close(self):
+        """Release HailoRT resources."""
+        if self._config_ctx:
+            self._config_ctx.__exit__(None, None, None)
+            self._config_ctx = None
+        logger.info("Inference engine closed")

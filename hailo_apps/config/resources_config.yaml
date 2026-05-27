@@ -1060,6 +1060,17 @@ v2a_demo:
         - name: all_minilm_l6_v2
           source: s3
 
+yolo_world: &yolo_world_app
+  models:
+    hailo8:
+      default: None
+    hailo8l:
+      default: None
+    hailo10h:
+      default:
+        - name: yolo_world_v2s
+          source: mz
+
 clip: &clip_app
   models:
     hailo8:

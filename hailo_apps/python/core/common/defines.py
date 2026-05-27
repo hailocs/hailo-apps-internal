@@ -237,6 +237,12 @@ CLIP_DETECTOR_TYPE_VEHICLE = 'vehicle'
 CLIP_DETECTOR_TYPE_FACE = 'face'
 CLIP_DETECTOR_TYPE_LICENSE_PLATE = 'license-plate'
 
+# YOLO World pipeline defaults
+YOLO_WORLD_PIPELINE = "yolo_world"
+YOLO_WORLD_APP_TITLE = "Hailo YOLO World App"
+YOLO_WORLD_MAX_CLASSES = 80
+YOLO_WORLD_EMBEDDING_DIM = 512
+
 # Multisource pipeline defaults
 MULTI_SOURCE_APP_TITLE = "Hailo Multisource App"
 TAPPAS_STREAM_ID_TOOL_SO_FILENAME = 'libstream_id_tool.so'
