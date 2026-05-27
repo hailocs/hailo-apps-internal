@@ -63,10 +63,14 @@ def main():
         put(f"l{i}.fc2_b", sd[p + "mlp.fc2.bias"])
 
     np.savez_compressed(out / "clip_text_vitb32_body_fp16.npz", **w)
+    # The big .npz is a downloaded resource (--out-dir → S3 resources/npy/).
+    # meta is tiny architecture config that ships in-package, so write it next
+    # to the encoder module to keep the committed copy in sync on regeneration.
     meta = dict(n_layers=model.config.num_hidden_layers, hidden=model.config.hidden_size,
                 heads=model.config.num_attention_heads, ln_eps=model.config.layer_norm_eps)
-    (out / "clip_text_vitb32_meta.json").write_text(json.dumps(meta))
-    print(f"wrote {out/'clip_text_vitb32_body_fp16.npz'} and meta.json; meta={meta}")
+    meta_dst = Path(__file__).parent / "clip_text_vitb32_meta.json"
+    meta_dst.write_text(json.dumps(meta))
+    print(f"wrote {out/'clip_text_vitb32_body_fp16.npz'} (upload to S3) and {meta_dst} (commit); meta={meta}")
 
 
 if __name__ == "__main__":

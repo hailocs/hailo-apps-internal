@@ -69,10 +69,8 @@ class NumpyClipTextEncoder:
                 arch=None, model=BODY_WEIGHTS_NAME,
             )
         if meta_path is None:
-            meta_path = get_resource_path(
-                pipeline_name=None, resource_type=RESOURCES_NPY_DIR_NAME,
-                arch=None, model=META_NAME,
-            )
+            # meta is tiny architecture config shipped in-package (not S3).
+            meta_path = str(Path(__file__).parent / META_NAME)
         if body_weights_path is None or not Path(body_weights_path).exists():
             raise FileNotFoundError(
                 f"CLIP text-encoder body weights not found ({BODY_WEIGHTS_NAME}). "

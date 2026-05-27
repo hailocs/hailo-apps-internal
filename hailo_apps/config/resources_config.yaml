@@ -230,6 +230,7 @@ json:
     source: s3
     tag:
       - clip
+      - yolo_world
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -238,10 +239,17 @@ npy:
     source: s3
     tag:
       - clip
+      - yolo_world
   - name: text_projection.npy
     source: s3
     tag:
       - clip
+      - yolo_world
+  # YOLO World pure-NumPy CLIP text-encoder body weights (~67 MB)
+  - name: clip_text_vitb32_body_fp16.npz
+    source: s3
+    tag:
+      - yolo_world
   # Whisper decoder tokenization assets (whisper_h8)
   - name: token_embedding_weight_base.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/token_embedding_weight_base.npy
