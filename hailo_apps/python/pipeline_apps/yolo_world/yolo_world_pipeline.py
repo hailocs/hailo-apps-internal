@@ -135,6 +135,19 @@ class GStreamerYoloWorldApp(GStreamerApp):
         self.create_pipeline()
         logger.debug("Pipeline created")
 
+    def on_eos(self):
+        """Shut down cleanly on end-of-stream instead of rebuilding the pipeline.
+
+        The base class loops file inputs by tearing the pipeline down and
+        rebuilding it. The rebuild requests a fresh HailoRT VDevice while the
+        long-lived YoloWorldInference still holds one — this hardware only
+        permits one VDevice, so the rebuild crashes with
+        HAILO_OUT_OF_PHYSICAL_DEVICES. Looping a file isn't useful for this
+        app; a clean exit is the right behavior.
+        """
+        logger.info("EOS — shutting down cleanly (no file-loop rebuild)")
+        self.shutdown()
+
     def get_pipeline_string(self):
         source_pipeline = self.get_source_pipeline()
         # `identity sync=true` paces buffers against the pipeline clock so the
