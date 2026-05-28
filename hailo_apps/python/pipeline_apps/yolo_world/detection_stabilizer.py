@@ -21,7 +21,11 @@ Association is greedy by class + IoU. Call `reset()` when the prompt set changes
 # Tuned defaults (verified on Hailo-10H: ~75% fewer on/off flips vs raw).
 # Kept as named constants rather than CLI flags to keep the app's API small —
 # tweak here if a scene needs more/less persistence or smoothing.
-DEFAULT_COAST_FRAMES = 12       # frames a confirmed track persists after it drops (~0.6s @ 20 FPS)
+# Frames a confirmed track persists after it drops (~0.4 s @ 20 FPS). Tradeoff:
+# higher = fewer flicker transitions when an object briefly disappears, but the
+# box visibly "ghosts" for longer after the object truly leaves frame. 8 keeps
+# ghosting tight; for scenes where objects momentarily occlude, bump to ~16.
+DEFAULT_COAST_FRAMES = 8
 DEFAULT_MIN_HITS = 2            # detections needed before a track is shown (suppresses 1-frame flashes)
 DEFAULT_BOX_ALPHA = 0.5         # EMA weight on the new box (1.0 = no smoothing)
 DEFAULT_SCORE_ALPHA = 0.5       # EMA weight on the new score
