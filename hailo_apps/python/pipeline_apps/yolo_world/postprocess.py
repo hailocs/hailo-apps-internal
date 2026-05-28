@@ -183,24 +183,26 @@ def postprocess(output_tensors, score_threshold=0.3,
 
 
 def _decode_on_device_nms(arr, score_threshold, num_classes):
-    """Decode an on-device-NMS output tensor into detections.
+    """Decode an on-device-NMS output buffer into detections.
 
-    Two on-device-NMS layouts are accepted (different runtimes ship different ones):
+    Two on-device-NMS layouts are accepted (different runtimes use different ones):
 
+    * **Packed byte stream (``uint8`` 1-D)** — HailoRT 4.x with output format
+      ``HAILO_NMS_BY_SCORE``. Layout: ``uint16 n_dets`` header followed by
+      ``n_dets`` 22-byte records, each ``[y1, x1, y2, x2, score]`` (5×f32) +
+      ``class_id`` (uint16). We pick this format on 4.x because the
+      ``HAILO_NMS_BY_CLASS`` readout silently drops non-zero classes for this
+      HEF — BY_SCORE encodes class id per detection and is correct.
     * **Parsed tensor ``(B, C, max_dets, 5)``** — HailoRT 5.x InferModel.
       Score-threshold and pack into dicts.
-    * **Flat ``HAILO_NMS_BY_CLASS`` buffer** — HailoRT 4.x InferModel returns
-      this raw format: per class ``[count_f32, det_1, det_2, ..., det_N]`` where
-      each detection is ``[x1, y1, x2, y2, score]`` and only the first ``count``
-      slots are valid. Total size is ``num_classes * (1 + max_per_class * 5)``.
 
     Bounding boxes are already normalized to [0, 1] and NMS has run on-device.
     ``num_classes`` lets the caller slice further if a smaller prompt set is
-    loaded; trailing classes from the padded HEF are skipped.
+    loaded; classes beyond ``num_classes`` are dropped.
     """
-    # HAILO_NMS_BY_CLASS flat raw layout.
-    if arr.ndim == 1:
-        return _decode_nms_by_class_flat(arr, score_threshold, num_classes)
+    # HAILO_NMS_BY_SCORE packed byte stream (HailoRT 4.x).
+    if arr.dtype == np.uint8 and arr.ndim == 1:
+        return _decode_nms_by_score_bytes(arr, score_threshold, num_classes)
 
     if arr.ndim == 4:
         arr = arr[0]
@@ -227,50 +229,67 @@ def _decode_on_device_nms(arr, score_threshold, num_classes):
     return detections
 
 
-def _decode_nms_by_class_flat(arr, score_threshold, num_classes):
-    """Decode a HailoRT 4.x ``HAILO_NMS_BY_CLASS`` flat float buffer.
+_NMS_BY_SCORE_RECORD = np.dtype([
+    ("y1",       np.float32),
+    ("x1",       np.float32),
+    ("y2",       np.float32),
+    ("x2",       np.float32),
+    ("score",    np.float32),
+    ("class_id", np.uint16),
+])
+NMS_BY_SCORE_RECORD_BYTES = _NMS_BY_SCORE_RECORD.itemsize   # 22
 
-    Layout (per class, contiguous): one float32 ``count`` followed by
-    ``max_per_class`` × 5-float detection records ``[x1, y1, x2, y2, score]``.
-    Only the first ``count`` records per class are valid; the rest is padding.
-    Total length is ``hef_num_classes × (1 + max_per_class × 5)``.
 
-    We reverse-derive ``max_per_class`` from the buffer size and the HEF's
-    nominal class count (80 for yolo_world_v2s). If divisibility doesn't work
-    out we log and bail rather than guess.
+def _decode_nms_by_score_bytes(buf, score_threshold, num_classes):
+    """Decode HailoRT 4.x ``HAILO_NMS_BY_SCORE`` packed byte stream.
+
+    Layout:
+      ``uint16 n_dets`` header, then ``n_dets`` × 22-byte records:
+        ``float32 y1, x1, y2, x2, score; uint16 class_id``
+
+    Records are pre-sorted by descending score (Hailo's NMS does this).
+    Boxes are normalized to [0, 1] in Hailo / YOLO ``[y_min, x_min,
+    y_max, x_max]`` axis order — we swap to ``[x1, y1, x2, y2]`` to
+    match the rest of the app.
+
+    ``num_classes`` clamps the active prompt set: detections whose
+    ``class_id`` is ≥ ``num_classes`` (i.e. land in the zero-padded
+    embedding slots) are dropped.
     """
-    HEF_NUM_CLASSES = 80   # yolo_world_v2s padded head; the active prompt count
-                           # is `num_classes`, used only for slicing here.
-    total = arr.size
-    per_class = total // HEF_NUM_CLASSES
-    if HEF_NUM_CLASSES * per_class != total or (per_class - 1) % 5 != 0:
+    if buf.size < 2:
+        logger.error("on-device-NMS byte buffer too small: %d bytes", buf.size)
+        return []
+    n_dets = int(np.frombuffer(buf[:2], dtype=np.uint16)[0])
+    if n_dets == 0:
+        return []
+    body_bytes = n_dets * NMS_BY_SCORE_RECORD_BYTES
+    if 2 + body_bytes > buf.size:
         logger.error(
-            "Unexpected on-device-NMS flat buffer size: %d (per-class %d)",
-            total, per_class,
+            "on-device-NMS byte buffer truncated: header=%d, need=%d, have=%d",
+            n_dets, 2 + body_bytes, buf.size,
         )
         return []
-    max_per_class = (per_class - 1) // 5
-    rows = arr.reshape(HEF_NUM_CLASSES, per_class)
+    recs = np.frombuffer(buf[2:2 + body_bytes], dtype=_NMS_BY_SCORE_RECORD)
 
-    active = min(num_classes, HEF_NUM_CLASSES)
     detections = []
-    for cls_id in range(active):
-        n = int(rows[cls_id, 0])
-        if n <= 0:
+    for r in recs:
+        score = float(r["score"])
+        if score < score_threshold:
+            # Records are sorted by score desc; we could break, but the
+            # cost of finishing the loop on a tiny capped n_dets is trivial
+            # and protects against unsorted edge cases.
             continue
-        if n > max_per_class:
-            n = max_per_class
-        dets = rows[cls_id, 1:1 + n * 5].reshape(n, 5)
-        scores = dets[:, 4]
-        keep = scores >= score_threshold
-        if not keep.any():
+        cls_id = int(r["class_id"])
+        if cls_id >= num_classes:
             continue
-        for row in dets[keep]:
-            detections.append({
-                "bbox": [float(row[0]), float(row[1]), float(row[2]), float(row[3])],
-                "class_id": cls_id,
-                "score": float(row[4]),
-            })
+        detections.append({
+            "bbox": [float(r["x1"]), float(r["y1"]), float(r["x2"]), float(r["y2"])],
+            "class_id": cls_id,
+            "score": score,
+        })
+    # Already score-desc from the chip, but a final sort guards against
+    # the (unusual) case where multiple records tie or the chip returns
+    # an out-of-order tail.
     detections.sort(key=lambda d: d["score"], reverse=True)
     return detections
 

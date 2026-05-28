@@ -19,7 +19,7 @@ Hot-path notes:
   GStreamer callback always does).
 """
 import numpy as np
-from hailo_platform import HEF, FormatType, VDevice
+from hailo_platform import HEF, FormatOrder, FormatType, VDevice
 
 from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -67,6 +67,20 @@ class YoloWorldInference:
         logger.info("Text input: %s", self._text_input_name)
 
         self._output_names = [info.name for info in output_infos]
+        # On-device NMS HEFs (Hailo-8) emit a single output. We deliberately
+        # read it as HAILO_NMS_BY_SCORE: the BY_CLASS layout silently dropped
+        # everything but class 0 in HailoRT 4.23 with this HEF, even when the
+        # model produced multi-class detections. BY_SCORE returns a packed
+        # record stream (`uint16 n_dets` header + N × 22-byte rows of
+        # `[y1, x1, y2, x2, score, class_id]`) where class_id is explicit
+        # per detection — no silent suppression.
+        self._nms_by_score = (
+            len(output_infos) == 1
+            and getattr(output_infos[0].format, "order", None) in (
+                FormatOrder.HAILO_NMS_BY_CLASS,
+                FormatOrder.HAILO_NMS_BY_SCORE,
+            )
+        )
 
         params = VDevice.create_params()
         params.group_id = SHARED_VDEVICE_GROUP_ID
@@ -75,8 +89,13 @@ class YoloWorldInference:
 
         self._infer_model.input(self._image_input_name).set_format_type(FormatType.UINT8)
         self._infer_model.input(self._text_input_name).set_format_type(FormatType.FLOAT32)
-        for name in self._output_names:
-            self._infer_model.output(name).set_format_type(FormatType.FLOAT32)
+        if self._nms_by_score:
+            self._infer_model.output(self._output_names[0]).set_format_order(
+                FormatOrder.HAILO_NMS_BY_SCORE,
+            )
+        else:
+            for name in self._output_names:
+                self._infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         self._config_ctx = self._infer_model.configure()
         self._configured_model = self._config_ctx.__enter__()
@@ -91,10 +110,16 @@ class YoloWorldInference:
         # Sanity check: should be (1, 640, 640, 3) or (640, 640, 3) — handled below.
         logger.info("Image input buffer shape: %s", self._image_input_buffer.shape)
 
-        self._output_buffers = {
-            name: np.empty(self._infer_model.output(name).shape, dtype=np.float32)
-            for name in self._output_names
-        }
+        # NMS_BY_SCORE returns a packed uint8 byte stream; raw heads return
+        # float32 tensors. The dtype must match what HailoRT expects per
+        # the selected format order.
+        self._output_buffers = {}
+        for name in self._output_names:
+            shape = self._infer_model.output(name).shape
+            if self._nms_by_score:
+                self._output_buffers[name] = np.empty(shape, dtype=np.uint8)
+            else:
+                self._output_buffers[name] = np.empty(shape, dtype=np.float32)
 
         # Create bindings once; HailoRT lets us reuse them across runs as long
         # as the buffer references stay valid.

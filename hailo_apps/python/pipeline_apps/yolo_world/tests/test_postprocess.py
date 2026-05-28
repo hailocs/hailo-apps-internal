@@ -248,66 +248,90 @@ class TestOnDeviceNMSDispatch:
         assert result == []
 
 
-class TestOnDeviceNMSFlatLayout:
-    """HailoRT 4.x InferModel returns NMS as a flat HAILO_NMS_BY_CLASS buffer:
-    per class ``[count_f32, det_1, ..., det_N]``, each detection a 5-float row.
+class TestOnDeviceNMSByScoreBytes:
+    """HailoRT 4.x emits the on-device NMS output as a ``HAILO_NMS_BY_SCORE``
+    packed byte stream: ``uint16 n_dets`` header + N × 22-byte records:
+    ``float32 y1, x1, y2, x2, score; uint16 class_id``. Records are
+    pre-sorted by descending score.
 
-    For yolo_world_v2s: 80 classes × (1 + 300 × 5 floats) = 120080 elements.
+    BY_SCORE replaces the BY_CLASS layout because the BY_CLASS readout
+    silently drops detections from non-zero class slots for this HEF.
+    BY_SCORE encodes the class id per detection so there's no silent
+    dropout.
     """
 
-    HEF_NUM_CLASSES = 80
-    MAX_PER_CLASS = 300
-    PER_CLASS_STRIDE = 1 + MAX_PER_CLASS * 5
+    _REC = np.dtype([
+        ("y1", np.float32), ("x1", np.float32),
+        ("y2", np.float32), ("x2", np.float32),
+        ("score", np.float32), ("class_id", np.uint16),
+    ])
 
     @classmethod
-    def _flat_buffer(cls, rows_per_class):
-        buf = np.zeros(cls.HEF_NUM_CLASSES * cls.PER_CLASS_STRIDE, dtype=np.float32)
-        for cls_id, dets in rows_per_class.items():
-            base = cls_id * cls.PER_CLASS_STRIDE
-            buf[base] = len(dets)
-            for i, (x1, y1, x2, y2, sc) in enumerate(dets):
-                off = base + 1 + i * 5
-                buf[off:off + 5] = (x1, y1, x2, y2, sc)
-        return {"yolov8_nms_postprocess": buf}
+    def _byte_buffer(cls, dets):
+        """Build a fixture byte buffer. ``dets`` is a list of
+        ``(x1, y1, x2, y2, score, class_id)`` tuples in user-facing axis
+        order — we write them in the chip's [y1, x1, y2, x2] order."""
+        buf = bytearray()
+        buf += np.uint16(len(dets)).tobytes()
+        for x1, y1, x2, y2, sc, cls_id in dets:
+            buf += np.float32(y1).tobytes()
+            buf += np.float32(x1).tobytes()
+            buf += np.float32(y2).tobytes()
+            buf += np.float32(x2).tobytes()
+            buf += np.float32(sc).tobytes()
+            buf += np.uint16(cls_id).tobytes()
+        return {"yolov8_nms_postprocess": np.frombuffer(bytes(buf), dtype=np.uint8)}
 
-    def test_flat_buffer_decodes_per_class_counts(self):
-        out = self._flat_buffer({
-            3: [(0.1, 0.1, 0.2, 0.2, 0.9), (0.3, 0.3, 0.4, 0.4, 0.4)],
-            7: [(0.5, 0.5, 0.6, 0.6, 0.8)],
-        })
+    def test_byte_stream_decodes_records_and_swaps_axis(self):
+        # Asymmetric box catches any accidental drop of the y↔x swap.
+        out = self._byte_buffer([
+            (0.7, 0.0, 0.9, 0.6, 0.9, 5),    # tall narrow on the right
+            (0.1, 0.2, 0.3, 0.4, 0.4, 7),
+        ])
         result = postprocess(out, score_threshold=0.5)
-        assert len(result) == 2
-        assert [d["class_id"] for d in result] == [3, 7]
-        assert result[0]["bbox"] == pytest.approx([0.1, 0.1, 0.2, 0.2])
+        assert len(result) == 1
+        d = result[0]
+        assert d["class_id"] == 5
+        x1, y1, x2, y2 = d["bbox"]
+        assert x1 == pytest.approx(0.7)
+        assert y1 == pytest.approx(0.0)
+        assert x2 == pytest.approx(0.9)
+        assert y2 == pytest.approx(0.6)
+        assert (x2 - x1) < (y2 - y1)   # tall, not wide
 
-    def test_flat_buffer_threshold_filters(self):
-        out = self._flat_buffer({5: [(0.0, 0.0, 1.0, 1.0, 0.05)]})
+    def test_byte_stream_threshold_filters(self):
+        out = self._byte_buffer([(0.0, 0.0, 1.0, 1.0, 0.05, 3)])
         assert postprocess(out, score_threshold=0.5) == []
 
-    def test_flat_buffer_count_zero_skipped(self):
-        out = self._flat_buffer({})   # every class has count=0
+    def test_byte_stream_empty_header_zero(self):
+        out = self._byte_buffer([])
         assert postprocess(out, score_threshold=0.1) == []
 
-    def test_flat_buffer_num_classes_slices_padded_classes(self):
-        out = self._flat_buffer({
-            3: [(0.1, 0.1, 0.2, 0.2, 0.9)],
-            79: [(0.5, 0.5, 0.6, 0.6, 0.9)],
-        })
+    def test_byte_stream_clamps_to_num_classes(self):
+        out = self._byte_buffer([
+            (0.1, 0.1, 0.2, 0.2, 0.9, 3),
+            (0.5, 0.5, 0.6, 0.6, 0.9, 79),   # padded slot — must be dropped
+        ])
         result = postprocess(out, score_threshold=0.5, num_classes=4)
         assert [d["class_id"] for d in result] == [3]
 
-    def test_flat_buffer_bad_size_returns_empty(self):
-        out = {"yolov8_nms_postprocess": np.zeros(123, dtype=np.float32)}
+    def test_byte_stream_truncated_buffer_returns_empty(self):
+        # n_dets says 10 but the body is too short for 10 records.
+        buf = bytearray()
+        buf += np.uint16(10).tobytes()
+        buf += b"\x00" * 22   # only one record's worth
+        out = {"yolov8_nms_postprocess": np.frombuffer(bytes(buf), dtype=np.uint8)}
         assert postprocess(out, score_threshold=0.5) == []
 
-    def test_flat_buffer_clips_count_above_max(self):
-        # If the count field reports more dets than fit in the slot, only the
-        # in-bounds rows are read (the rest is padding).
-        out = self._flat_buffer({2: [(0.0, 0.0, 1.0, 1.0, 0.9)]})
-        # Inject a bogus oversize count for class 2.
-        out["yolov8_nms_postprocess"][2 * self.PER_CLASS_STRIDE] = 9999
-        result = postprocess(out, score_threshold=0.5)
-        # We expect the decoder to clip to max_per_class and only the one real
-        # detection has score > threshold; the rest of the slot is zeros.
-        scored = [d for d in result if d["score"] > 0.5]
-        assert scored and scored[0]["class_id"] == 2
+    def test_byte_stream_multi_class_all_returned(self):
+        """Pins the bug we hit live: BY_CLASS suppressed non-zero classes;
+        BY_SCORE must return every class explicitly carried in the record."""
+        out = self._byte_buffer([
+            (0.0, 0.0, 0.5, 0.5, 0.95, 0),
+            (0.1, 0.1, 0.6, 0.6, 0.80, 1),
+            (0.2, 0.2, 0.7, 0.7, 0.65, 2),
+            (0.3, 0.3, 0.8, 0.8, 0.50, 3),
+        ])
+        result = postprocess(out, score_threshold=0.4, num_classes=4)
+        assert [d["class_id"] for d in result] == [0, 1, 2, 3]
+        assert [round(d["score"], 2) for d in result] == [0.95, 0.80, 0.65, 0.50]
