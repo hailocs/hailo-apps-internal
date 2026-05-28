@@ -2,7 +2,7 @@
 
 ![YOLO World Example](../../../../doc/images/yolo_world.gif)
 
-Open-vocabulary, zero-shot object detection: detect **anything you describe in text** — no retraining, classes changeable at runtime. Requires **Hailo-10H** (the `yolo_world_v2s` HEF is dual-input).
+Open-vocabulary, zero-shot object detection: detect **anything you describe in text** — no retraining, classes changeable at runtime. Supported on **Hailo-8** and **Hailo-10H**; the `yolo_world_v2s` HEF is dual-input either way (image + 80×512 text embeddings).
 
 #### Run the YOLO World example:
 ```bash

@@ -193,3 +193,56 @@ class TestNMS:
         # IoU = 0.25 / 1.75 ≈ 0.143
         assert sorted(_nms(boxes, scores, 0.5)) == [0, 1]
         assert _nms(boxes, scores, 0.1) == [0]
+
+
+class TestOnDeviceNMSDispatch:
+    """The H8 HEF emits a single (1, C, max_dets, 5) tensor (NMS on-device).
+
+    Postprocess must dispatch on output count: a single tensor goes through
+    the score-filter-only path; six tensors keep the existing DFL+NMS path.
+    """
+
+    @staticmethod
+    def _nms_output(rows_per_class):
+        """Build a (1, 80, max_dets, 5) on-device-NMS tensor from a sparse map.
+
+        ``rows_per_class`` is a dict ``cls_id -> [(x1,y1,x2,y2,score), ...]``.
+        Within each class the rows are sorted descending by score (matches the
+        on-device contract) and padded with zeros.
+        """
+        max_dets = max((len(v) for v in rows_per_class.values()), default=0) or 1
+        arr = np.zeros((1, 80, max_dets, 5), dtype=np.float32)
+        for cls_id, rows in rows_per_class.items():
+            rows = sorted(rows, key=lambda r: -r[4])
+            for i, row in enumerate(rows):
+                arr[0, cls_id, i] = row
+        return {"yolov8_nms_postprocess": arr}
+
+    def test_single_tensor_route_returns_score_filtered_dets(self):
+        out = self._nms_output({
+            3: [(0.1, 0.1, 0.2, 0.2, 0.9), (0.3, 0.3, 0.4, 0.4, 0.4)],
+            7: [(0.5, 0.5, 0.6, 0.6, 0.8)],
+        })
+        result = postprocess(out, score_threshold=0.5)
+        assert len(result) == 2
+        # sorted by score descending
+        assert [d["class_id"] for d in result] == [3, 7]
+        assert [round(d["score"], 2) for d in result] == [0.9, 0.8]
+        # bboxes preserved
+        assert result[0]["bbox"] == pytest.approx([0.1, 0.1, 0.2, 0.2])
+
+    def test_single_tensor_threshold_filters_low_scores(self):
+        out = self._nms_output({5: [(0.0, 0.0, 1.0, 1.0, 0.05)]})
+        result = postprocess(out, score_threshold=0.5)
+        assert result == []
+
+    def test_single_tensor_respects_num_classes_cap(self):
+        out = self._nms_output({3: [(0.1, 0.1, 0.2, 0.2, 0.9)],
+                                79: [(0.5, 0.5, 0.6, 0.6, 0.9)]})
+        # Only the first 4 classes are active; class 79's detection is sliced out.
+        result = postprocess(out, score_threshold=0.5, num_classes=4)
+        assert [d["class_id"] for d in result] == [3]
+
+    def test_unrecognized_single_tensor_shape_returns_empty(self):
+        result = postprocess({"weird": np.zeros((2, 3))}, score_threshold=0.5)
+        assert result == []

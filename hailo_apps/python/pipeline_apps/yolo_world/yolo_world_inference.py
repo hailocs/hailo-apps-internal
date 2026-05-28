@@ -2,8 +2,13 @@
 
 `hailonet` does not support dual-input HEFs, so we drive HailoRT directly
 from a Python user-callback. The HEF takes a 640x640x3 image plus a
-(1, 80, 512) tensor of L2-normalized CLIP text embeddings and emits 6 raw
-tensors (3 classification maps + 3 regression maps at strides 8/16/32).
+(1, 80, 512) tensor of L2-normalized CLIP text embeddings. Output shape
+depends on the build:
+  * Hailo-10H HEF emits 6 raw tensors (3 cls maps + 3 reg maps at
+    strides 8/16/32) — postprocess does DFL+NMS in Python.
+  * Hailo-8 HEF emits a single ``yolov8_nms_postprocess`` tensor of
+    decoded boxes — postprocess just score-filters.
+Postprocess dispatches by output count; the wrapper itself is agnostic.
 
 Hot-path notes:
 - Bindings are created once at configure time and reused per frame.

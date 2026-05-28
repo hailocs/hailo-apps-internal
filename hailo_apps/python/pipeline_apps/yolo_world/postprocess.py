@@ -73,18 +73,25 @@ def postprocess(output_tensors, score_threshold=0.3,
                 iou_threshold=DEFAULT_NMS_IOU_THRESHOLD, num_classes=80):
     """Post-process YOLO World output tensors into detections.
 
-    Args:
-        output_tensors: dict mapping layer name to numpy array.
-            Expected: 3 cls tensors (HxWx80) + 3 reg tensors (HxWx4 or HxWx64).
-            Cls outputs have sigmoid applied on-device.
-        score_threshold: minimum confidence for a detection.
-        iou_threshold: NMS IoU threshold.
-        num_classes: number of active classes (for slicing padded outputs).
+    Two HEF flavors are supported; dispatch is by tensor count:
+      * **Raw-tensor HEF** (Hailo-10H): 3 cls maps (HxWx80) + 3 reg maps
+        (HxWx4 or HxWx64) — DFL decode, grid decode, and per-class NMS happen
+        here. Cls outputs have sigmoid applied on-device.
+      * **On-device-NMS HEF** (Hailo-8): a single ``yolov8_nms_postprocess``
+        tensor shaped ``(1, num_classes, max_dets, 5)`` with already-decoded
+        ``[x1,y1,x2,y2,score]`` per box — we just filter by score and return.
 
-    Returns:
-        list of dicts: [{"bbox": [x1,y1,x2,y2], "class_id": int, "score": float}, ...]
-        Bounding boxes are normalized to [0, 1].
+    Both paths return the same detection-dict format with bboxes normalized
+    to [0, 1].
     """
+    # On-device-NMS HEF (Hailo-8): single output, already decoded.
+    if len(output_tensors) == 1:
+        return _decode_on_device_nms(
+            next(iter(output_tensors.values())),
+            score_threshold=score_threshold,
+            num_classes=num_classes,
+        )
+
     cls_tensors = []
     reg_tensors = []  # tuples of (tensor, is_dfl)
     for name in sorted(output_tensors.keys()):
@@ -171,6 +178,41 @@ def postprocess(output_tensors, score_threshold=0.3,
                 "score": float(cls_scores[idx]),
             })
 
+    detections.sort(key=lambda d: d["score"], reverse=True)
+    return detections
+
+
+def _decode_on_device_nms(arr, score_threshold, num_classes):
+    """Decode an on-device-NMS output tensor into detections.
+
+    The HEF emits ``(B, C, max_dets, 5)`` with ``[x1, y1, x2, y2, score]`` per
+    row, sorted by score within each class. Bounding boxes are already
+    normalized to [0, 1] and NMS has run on-device — we just score-threshold
+    and pack into the standard dict format. The HEF already exposes only the
+    active class count, but `num_classes` lets the caller slice further if a
+    smaller prompt set is loaded.
+    """
+    if arr.ndim == 4:
+        arr = arr[0]
+    if arr.ndim != 3 or arr.shape[-1] != 5:
+        logger.error("Unexpected on-device-NMS output shape: %s", arr.shape)
+        return []
+
+    n_classes = min(num_classes, arr.shape[0])
+    detections = []
+    for cls_id in range(n_classes):
+        cls_rows = arr[cls_id]                              # (max_dets, 5)
+        scores = cls_rows[:, 4]
+        keep = scores >= score_threshold
+        if not keep.any():
+            continue
+        kept = cls_rows[keep]
+        for row in kept:
+            detections.append({
+                "bbox": [float(row[0]), float(row[1]), float(row[2]), float(row[3])],
+                "class_id": cls_id,
+                "score": float(row[4]),
+            })
     detections.sort(key=lambda d: d["score"], reverse=True)
     return detections
 

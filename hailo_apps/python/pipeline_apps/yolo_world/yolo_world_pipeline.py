@@ -22,6 +22,7 @@ from hailo_apps.python.core.common.core import (
     resolve_hef_path,
 )
 from hailo_apps.python.core.common.defines import (
+    HAILO8_ARCH,
     HAILO10H_ARCH,
     YOLO_WORLD_APP_TITLE,
     YOLO_WORLD_PIPELINE,
@@ -97,13 +98,15 @@ class GStreamerYoloWorldApp(GStreamerApp):
         logger.info("Initializing GStreamer YOLO World App...")
         super().__init__(parser, user_data)
 
-        # YOLO World requires the dual-input HEF — Hailo-10H only.
-        if self.arch != HAILO10H_ARCH:
-            logger.error(
-                "YOLO World requires Hailo-10H (detected: %s).", self.arch,
+        # Supported architectures. H10H runs the raw-tensor HEF (Python DFL+NMS);
+        # H8 runs the on-device-NMS HEF and yields already-decoded boxes. The
+        # postprocess dispatches on output shape — both paths return the same
+        # detection-dict format.
+        if self.arch not in (HAILO8_ARCH, HAILO10H_ARCH):
+            raise RuntimeError(
+                f"ERROR: Unsupported Hailo architecture: {self.arch}. "
+                "YOLO World supports: hailo8, hailo10h."
             )
-            import sys
-            sys.exit(1)
 
         # Make SOURCE_PIPELINE deliver native 640x640 RGB. Mirrors the pattern in
         # detection_simple — only overrides the parser's default 1280x720, so
