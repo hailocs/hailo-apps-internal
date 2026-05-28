@@ -1075,7 +1075,9 @@ yolo_world: &yolo_world_app
         - name: yolo_world_v2s
           source: s3
     hailo8l:
-      default: None
+      default:
+        - name: yolo_world_v2s
+          source: s3
     hailo10h:
       default:
         - name: yolo_world_v2s
