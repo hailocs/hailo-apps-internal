@@ -246,3 +246,68 @@ class TestOnDeviceNMSDispatch:
     def test_unrecognized_single_tensor_shape_returns_empty(self):
         result = postprocess({"weird": np.zeros((2, 3))}, score_threshold=0.5)
         assert result == []
+
+
+class TestOnDeviceNMSFlatLayout:
+    """HailoRT 4.x InferModel returns NMS as a flat HAILO_NMS_BY_CLASS buffer:
+    per class ``[count_f32, det_1, ..., det_N]``, each detection a 5-float row.
+
+    For yolo_world_v2s: 80 classes × (1 + 300 × 5 floats) = 120080 elements.
+    """
+
+    HEF_NUM_CLASSES = 80
+    MAX_PER_CLASS = 300
+    PER_CLASS_STRIDE = 1 + MAX_PER_CLASS * 5
+
+    @classmethod
+    def _flat_buffer(cls, rows_per_class):
+        buf = np.zeros(cls.HEF_NUM_CLASSES * cls.PER_CLASS_STRIDE, dtype=np.float32)
+        for cls_id, dets in rows_per_class.items():
+            base = cls_id * cls.PER_CLASS_STRIDE
+            buf[base] = len(dets)
+            for i, (x1, y1, x2, y2, sc) in enumerate(dets):
+                off = base + 1 + i * 5
+                buf[off:off + 5] = (x1, y1, x2, y2, sc)
+        return {"yolov8_nms_postprocess": buf}
+
+    def test_flat_buffer_decodes_per_class_counts(self):
+        out = self._flat_buffer({
+            3: [(0.1, 0.1, 0.2, 0.2, 0.9), (0.3, 0.3, 0.4, 0.4, 0.4)],
+            7: [(0.5, 0.5, 0.6, 0.6, 0.8)],
+        })
+        result = postprocess(out, score_threshold=0.5)
+        assert len(result) == 2
+        assert [d["class_id"] for d in result] == [3, 7]
+        assert result[0]["bbox"] == pytest.approx([0.1, 0.1, 0.2, 0.2])
+
+    def test_flat_buffer_threshold_filters(self):
+        out = self._flat_buffer({5: [(0.0, 0.0, 1.0, 1.0, 0.05)]})
+        assert postprocess(out, score_threshold=0.5) == []
+
+    def test_flat_buffer_count_zero_skipped(self):
+        out = self._flat_buffer({})   # every class has count=0
+        assert postprocess(out, score_threshold=0.1) == []
+
+    def test_flat_buffer_num_classes_slices_padded_classes(self):
+        out = self._flat_buffer({
+            3: [(0.1, 0.1, 0.2, 0.2, 0.9)],
+            79: [(0.5, 0.5, 0.6, 0.6, 0.9)],
+        })
+        result = postprocess(out, score_threshold=0.5, num_classes=4)
+        assert [d["class_id"] for d in result] == [3]
+
+    def test_flat_buffer_bad_size_returns_empty(self):
+        out = {"yolov8_nms_postprocess": np.zeros(123, dtype=np.float32)}
+        assert postprocess(out, score_threshold=0.5) == []
+
+    def test_flat_buffer_clips_count_above_max(self):
+        # If the count field reports more dets than fit in the slot, only the
+        # in-bounds rows are read (the rest is padding).
+        out = self._flat_buffer({2: [(0.0, 0.0, 1.0, 1.0, 0.9)]})
+        # Inject a bogus oversize count for class 2.
+        out["yolov8_nms_postprocess"][2 * self.PER_CLASS_STRIDE] = 9999
+        result = postprocess(out, score_threshold=0.5)
+        # We expect the decoder to clip to max_per_class and only the one real
+        # detection has score > threshold; the rest of the slot is zeros.
+        scored = [d for d in result if d["score"] > 0.5]
+        assert scored and scored[0]["class_id"] == 2

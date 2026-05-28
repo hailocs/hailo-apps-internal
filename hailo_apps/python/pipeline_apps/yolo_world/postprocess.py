@@ -185,13 +185,23 @@ def postprocess(output_tensors, score_threshold=0.3,
 def _decode_on_device_nms(arr, score_threshold, num_classes):
     """Decode an on-device-NMS output tensor into detections.
 
-    The HEF emits ``(B, C, max_dets, 5)`` with ``[x1, y1, x2, y2, score]`` per
-    row, sorted by score within each class. Bounding boxes are already
-    normalized to [0, 1] and NMS has run on-device — we just score-threshold
-    and pack into the standard dict format. The HEF already exposes only the
-    active class count, but `num_classes` lets the caller slice further if a
-    smaller prompt set is loaded.
+    Two on-device-NMS layouts are accepted (different runtimes ship different ones):
+
+    * **Parsed tensor ``(B, C, max_dets, 5)``** — HailoRT 5.x InferModel.
+      Score-threshold and pack into dicts.
+    * **Flat ``HAILO_NMS_BY_CLASS`` buffer** — HailoRT 4.x InferModel returns
+      this raw format: per class ``[count_f32, det_1, det_2, ..., det_N]`` where
+      each detection is ``[x1, y1, x2, y2, score]`` and only the first ``count``
+      slots are valid. Total size is ``num_classes * (1 + max_per_class * 5)``.
+
+    Bounding boxes are already normalized to [0, 1] and NMS has run on-device.
+    ``num_classes`` lets the caller slice further if a smaller prompt set is
+    loaded; trailing classes from the padded HEF are skipped.
     """
+    # HAILO_NMS_BY_CLASS flat raw layout.
+    if arr.ndim == 1:
+        return _decode_nms_by_class_flat(arr, score_threshold, num_classes)
+
     if arr.ndim == 4:
         arr = arr[0]
     if arr.ndim != 3 or arr.shape[-1] != 5:
@@ -208,6 +218,54 @@ def _decode_on_device_nms(arr, score_threshold, num_classes):
             continue
         kept = cls_rows[keep]
         for row in kept:
+            detections.append({
+                "bbox": [float(row[0]), float(row[1]), float(row[2]), float(row[3])],
+                "class_id": cls_id,
+                "score": float(row[4]),
+            })
+    detections.sort(key=lambda d: d["score"], reverse=True)
+    return detections
+
+
+def _decode_nms_by_class_flat(arr, score_threshold, num_classes):
+    """Decode a HailoRT 4.x ``HAILO_NMS_BY_CLASS`` flat float buffer.
+
+    Layout (per class, contiguous): one float32 ``count`` followed by
+    ``max_per_class`` × 5-float detection records ``[x1, y1, x2, y2, score]``.
+    Only the first ``count`` records per class are valid; the rest is padding.
+    Total length is ``hef_num_classes × (1 + max_per_class × 5)``.
+
+    We reverse-derive ``max_per_class`` from the buffer size and the HEF's
+    nominal class count (80 for yolo_world_v2s). If divisibility doesn't work
+    out we log and bail rather than guess.
+    """
+    HEF_NUM_CLASSES = 80   # yolo_world_v2s padded head; the active prompt count
+                           # is `num_classes`, used only for slicing here.
+    total = arr.size
+    per_class = total // HEF_NUM_CLASSES
+    if HEF_NUM_CLASSES * per_class != total or (per_class - 1) % 5 != 0:
+        logger.error(
+            "Unexpected on-device-NMS flat buffer size: %d (per-class %d)",
+            total, per_class,
+        )
+        return []
+    max_per_class = (per_class - 1) // 5
+    rows = arr.reshape(HEF_NUM_CLASSES, per_class)
+
+    active = min(num_classes, HEF_NUM_CLASSES)
+    detections = []
+    for cls_id in range(active):
+        n = int(rows[cls_id, 0])
+        if n <= 0:
+            continue
+        if n > max_per_class:
+            n = max_per_class
+        dets = rows[cls_id, 1:1 + n * 5].reshape(n, 5)
+        scores = dets[:, 4]
+        keep = scores >= score_threshold
+        if not keep.any():
+            continue
+        for row in dets[keep]:
             detections.append({
                 "bbox": [float(row[0]), float(row[1]), float(row[2]), float(row[3])],
                 "class_id": cls_id,

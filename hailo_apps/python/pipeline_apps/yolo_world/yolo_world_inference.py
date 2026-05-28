@@ -80,6 +80,10 @@ class YoloWorldInference:
 
         self._config_ctx = self._infer_model.configure()
         self._configured_model = self._config_ctx.__enter__()
+        # HailoRT 4.x InferModel needs explicit stream activation; 5.x configures
+        # them implicitly on enter. Detect via hasattr to keep both runtimes happy.
+        if hasattr(self._configured_model, "activate"):
+            self._configured_model.activate()
 
         # Pre-allocate input/output buffers (hot path mustn't allocate).
         image_input_shape = self._infer_model.input(self._image_input_name).shape
@@ -135,6 +139,13 @@ class YoloWorldInference:
     def close(self):
         """Release HailoRT resources."""
         if self._config_ctx:
+            if self._configured_model is not None and hasattr(
+                self._configured_model, "deactivate",
+            ):
+                try:
+                    self._configured_model.deactivate()
+                except Exception:
+                    pass
             self._config_ctx.__exit__(None, None, None)
             self._config_ctx = None
         logger.info("Inference engine closed")
