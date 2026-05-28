@@ -1071,7 +1071,9 @@ v2a_demo:
 yolo_world: &yolo_world_app
   models:
     hailo8:
-      default: None
+      default:
+        - name: yolo_world_v2s
+          source: s3
     hailo8l:
       default: None
     hailo10h:
