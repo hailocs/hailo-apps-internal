@@ -96,20 +96,24 @@ def app_callback(element, buffer, user_data):
             user_data.stabilizer.reset()
         logger.info("Inference engine updated with new embeddings")
 
-    with user_data.engine_lock:   # shared with the interactive ?probe
+    # The lock spans engine.run() + postprocess. `engine.run()` returns *views*
+    # into pre-allocated output buffers; if the interactive ?probe acquired the
+    # lock between run() and postprocess, it would swap embeddings and re-run
+    # the engine, overwriting those buffers mid-read. Postprocess materializes
+    # owned detection dicts, so the stabilizer can run after we release.
+    with user_data.engine_lock:
         outputs = engine.run(frame)
-    t_after_infer = user_data.profiler.mark(t_after_copy, "infer")
-
-    labels = manager.get_labels()
-    num_classes = manager.get_num_classes()
-    # When stabilizing, postprocess at the lower sustain threshold so the tracker
-    # sees weak detections (hysteresis decides what to actually show).
-    detections = postprocess(
-        outputs,
-        score_threshold=user_data.detect_threshold,
-        iou_threshold=0.7,
-        num_classes=num_classes,
-    )
+        t_after_infer = user_data.profiler.mark(t_after_copy, "infer")
+        labels = manager.get_labels()
+        num_classes = manager.get_num_classes()
+        # When stabilizing, postprocess at the lower sustain threshold so the
+        # tracker sees weak detections (hysteresis decides what to actually show).
+        detections = postprocess(
+            outputs,
+            score_threshold=user_data.detect_threshold,
+            iou_threshold=0.7,
+            num_classes=num_classes,
+        )
     if user_data.stabilizer is not None:
         detections = user_data.stabilizer.update(detections)
     t_after_post = user_data.profiler.mark(t_after_infer, "postprocess")

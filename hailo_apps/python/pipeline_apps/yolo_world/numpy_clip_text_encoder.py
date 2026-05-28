@@ -86,8 +86,10 @@ class NumpyClipTextEncoder:
         self.scale = self.head_dim ** -0.5
 
         # Body weights (fp16 on disk → fp32 in memory for stable math).
+        # `allow_pickle=False` guards against a tampered .npz triggering pickle
+        # deserialization; only plain numeric arrays are expected.
         self.w = {k: np.asarray(v, dtype=np.float32)
-                  for k, v in np.load(body_weights_path).items()}
+                  for k, v in np.load(body_weights_path, allow_pickle=False).items()}
         # Shared repo resources (bit-exact to HF).
         self.w["token_embedding"] = load_token_embeddings().astype(np.float32)
         # repo text_projection.npy == HF text_projection.weight.T, so we apply
