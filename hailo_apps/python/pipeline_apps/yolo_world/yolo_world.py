@@ -111,7 +111,6 @@ def app_callback(element, buffer, user_data):
         detections = postprocess(
             outputs,
             score_threshold=user_data.detect_threshold,
-            iou_threshold=0.7,
             num_classes=num_classes,
         )
     if user_data.stabilizer is not None:

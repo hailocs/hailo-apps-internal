@@ -22,9 +22,12 @@ STRIDES = [8, 16, 32]
 IMAGE_SIZE = 640
 DFL_BINS = 16  # 4 sides × 16-bin distribution
 DFL_CHANNELS = 4 * DFL_BINS
-# Drop a same-class box when this fraction of it sits inside a kept higher-scoring
-# box (suppresses parts-of-an-object nested in the whole-object box). Tune here.
-CONTAINMENT_THRESHOLD = 0.8
+# NMS knobs (single source of truth — change here, not at call sites).
+# IoU: standard same-class overlap suppression (greedy, highest-score-first).
+# Containment: drop a same-class box when this fraction of it sits inside a kept
+# higher-scoring box — kills "parts of an object" nested in the whole-object box.
+DEFAULT_NMS_IOU_THRESHOLD = 0.5
+CONTAINMENT_THRESHOLD = 0.6
 
 _DFL_BIN_VALUES = np.arange(DFL_BINS, dtype=np.float32)
 
@@ -66,7 +69,8 @@ def _decode_dfl_subset(reg_flat: np.ndarray, indices: np.ndarray) -> np.ndarray:
     return (probs * _DFL_BIN_VALUES).sum(axis=-1)
 
 
-def postprocess(output_tensors, score_threshold=0.3, iou_threshold=0.7, num_classes=80):
+def postprocess(output_tensors, score_threshold=0.3,
+                iou_threshold=DEFAULT_NMS_IOU_THRESHOLD, num_classes=80):
     """Post-process YOLO World output tensors into detections.
 
     Args:
