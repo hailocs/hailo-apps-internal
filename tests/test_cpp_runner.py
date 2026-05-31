@@ -37,7 +37,12 @@ logger = logging.getLogger(__name__)
 
 REPO_ROOT  = Path(__file__).resolve().parents[1]
 CPP_DIR    = REPO_ROOT / "hailo_apps" / "cpp"
-RES_DIR    = REPO_ROOT / "resources"
+
+if sys.platform == "win32":
+    RES_DIR = Path(r"C:\usr\local\hailo\resources")
+else:
+    RES_DIR = REPO_ROOT / "resources"
+
 IMAGES_DIR = RES_DIR / "images"
 VIDEOS_DIR = RES_DIR / "videos"
 MODELS_DIR = RES_DIR / "models"
@@ -174,8 +179,11 @@ def _download_if_missing(url: str, dest: Path) -> None:
 def _detect_arch() -> Optional[str]:
     try:
         from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
-        return detect_hailo_arch()
-    except Exception:
+        arch = detect_hailo_arch()
+        print(f"Detected arch: {arch}")
+        return arch
+    except Exception as e:
+        print(f"_detect_arch failed: {type(e).__name__}: {e}")
         return None
 
 
@@ -393,8 +401,8 @@ def _resources(_arch):
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
     _download_if_missing(f"{S3_BASE}/images/bus.jpg", IMAGES_DIR / "bus.jpg")
-    _download_if_missing(f"{S3_BASE}/videos/example.mp4",     VIDEOS_DIR / "example.mp4")
-    _download_if_missing(f"{S3_BASE}/videos/example_640.mp4", VIDEOS_DIR / "example_640.mp4")
+    _download_if_missing(f"{S3_BASE}/video/example.mp4",     VIDEOS_DIR / "example.mp4")
+    _download_if_missing(f"{S3_BASE}/video/example_640.mp4", VIDEOS_DIR / "example_640.mp4")
 
     # onnxrt: yolov8m-seg_post.onnx must live next to the binary
     _download_if_missing(
@@ -421,7 +429,7 @@ def test_cpp_build(app_name):
     log = _log_path(app_name, "build")
 
     if sys.platform == "win32":
-        display_cmd = ["powershell", "build.ps1", app_name]
+        display_cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\build.ps1", app_name]
     else:
         display_cmd = ["bash", "build.sh", app_name]
 

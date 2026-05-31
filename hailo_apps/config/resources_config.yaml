@@ -802,7 +802,9 @@ onnxrt_hailo_pipeline: &onnxrt_hailo_pipeline_app
         - name: yolov8m_seg
           source: mz
     hailo10h:
-      default: None
+      default:
+        - name: yolov8m_seg
+          source: mz
 
 zero_shot_classification: &zero_shot_classification
   models:
