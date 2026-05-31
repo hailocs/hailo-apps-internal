@@ -91,6 +91,19 @@ By default, the package contains a single model depending on the device architec
 You can download additional models by running `hailo-download-resources --all`.
 The models are downloaded to the `resources/models/` directory.
 
+#### HEF provenance (frozen)
+
+All three HEFs are pinned in the cs-data S3 bucket — none are pulled from the
+model zoo at runtime. This insulates the app from upstream changes that could
+alter output layout, NMS config, or input quantization. To re-pin, overwrite the
+staged file under `s3_staging/hefs/<arch>/` and update the row below.
+
+| Arch | HEF | Source of truth | md5 | Compile notes |
+|---|---|---|---|---|
+| `hailo8` | `yolo_world_v2s.hef` (25.3 MB) | DFC 3.33 recompile from the quantized HAR, `performance_param(compiler_optimization_level=max)` | `0aade2deae4e11cb319464a280ff4e9d` | 3 contexts, a16w16 on concat/conv_feature_splitter + selected convs |
+| `hailo8l` | `yolo_world_v2s.hef` (41.2 MB) | Same flow as H8 above, target arch `hailo8l` | `03a5832b668bc2fa5cade0dddaa63bb1` | 4 contexts, a8w8 throughout (H8L resource budget) |
+| `hailo10h` | `yolo_world_v2s.hef` (27.6 MB) | Frozen from Hailo model-zoo **v5.3.0** | `228559cbb1adb253a5f19b86d1536841` | Raw-tensor output (6 heads), DFL + NMS in Python postprocess |
+
 #### Retrained Networks Support
 YOLO World is published for fine-tuning (normal / prompt-tuning / reparameterized). For reliable detection of a fixed class set, fine-tune in the [AILab-CVC/YOLO-World](https://github.com/AILab-CVC/YOLO-World) framework and recompile to a HEF. For more information, see [Using Retrained Models](../../../../doc/developer_guide/retraining_example.md).
 
