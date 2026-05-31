@@ -19,7 +19,15 @@ Hot-path notes:
   GStreamer callback always does).
 """
 import numpy as np
+import hailo_platform
 from hailo_platform import HEF, FormatOrder, FormatType, VDevice
+
+# HailoRT 4.x default BY_CLASS readout for the on-device NMS HEFs silently
+# drops detections from non-zero class slots → we override to BY_SCORE there.
+# HailoRT 5.x reads BY_CLASS correctly (multi-class output verified) and the
+# BY_SCORE override raises HAILO_INVALID_ARGUMENT on configure() for these
+# HEFs, so we leave the default.
+_HRT_MAJOR = int(hailo_platform.__version__.split(".")[0])
 
 from hailo_apps.python.core.common.defines import SHARED_VDEVICE_GROUP_ID
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -89,19 +97,25 @@ class YoloWorldInference:
 
         self._infer_model.input(self._image_input_name).set_format_type(FormatType.UINT8)
         self._infer_model.input(self._text_input_name).set_format_type(FormatType.FLOAT32)
-        if self._nms_by_score:
+        self._using_by_score = self._nms_by_score and _HRT_MAJOR < 5
+        if self._using_by_score:
             self._infer_model.output(self._output_names[0]).set_format_order(
                 FormatOrder.HAILO_NMS_BY_SCORE,
             )
+            logger.info("Output format: HAILO_NMS_BY_SCORE (HailoRT 4.x path)")
+        elif self._nms_by_score:
+            self._infer_model.output(self._output_names[0]).set_format_type(FormatType.FLOAT32)
+            logger.info("Output format: HAILO_NMS_BY_CLASS flat float32 (HailoRT 5.x path)")
         else:
             for name in self._output_names:
                 self._infer_model.output(name).set_format_type(FormatType.FLOAT32)
 
         self._config_ctx = self._infer_model.configure()
         self._configured_model = self._config_ctx.__enter__()
-        # HailoRT 4.x InferModel needs explicit stream activation; 5.x configures
-        # them implicitly on enter. Detect via hasattr to keep both runtimes happy.
-        if hasattr(self._configured_model, "activate"):
+        # HailoRT 4.x InferModel needs explicit stream activation; 5.x activates
+        # implicitly on context entry and rejects a redundant activate() call as
+        # an "Invalid operation". Gate on the runtime major version.
+        if _HRT_MAJOR < 5 and hasattr(self._configured_model, "activate"):
             self._configured_model.activate()
 
         # Pre-allocate input/output buffers (hot path mustn't allocate).
@@ -110,13 +124,13 @@ class YoloWorldInference:
         # Sanity check: should be (1, 640, 640, 3) or (640, 640, 3) — handled below.
         logger.info("Image input buffer shape: %s", self._image_input_buffer.shape)
 
-        # NMS_BY_SCORE returns a packed uint8 byte stream; raw heads return
-        # float32 tensors. The dtype must match what HailoRT expects per
-        # the selected format order.
+        # Buffer dtype tracks the selected output format:
+        #   * BY_SCORE (HailoRT 4.x path): uint8 byte stream
+        #   * BY_CLASS flat / raw heads (5.x path or non-NMS HEFs): float32
         self._output_buffers = {}
         for name in self._output_names:
             shape = self._infer_model.output(name).shape
-            if self._nms_by_score:
+            if self._using_by_score:
                 self._output_buffers[name] = np.empty(shape, dtype=np.uint8)
             else:
                 self._output_buffers[name] = np.empty(shape, dtype=np.float32)

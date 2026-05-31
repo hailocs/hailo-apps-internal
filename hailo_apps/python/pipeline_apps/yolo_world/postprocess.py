@@ -200,9 +200,14 @@ def _decode_on_device_nms(arr, score_threshold, num_classes):
     ``num_classes`` lets the caller slice further if a smaller prompt set is
     loaded; classes beyond ``num_classes`` are dropped.
     """
-    # HAILO_NMS_BY_SCORE packed byte stream (HailoRT 4.x).
+    # HAILO_NMS_BY_SCORE packed byte stream (HailoRT 4.x InferModel + override).
     if arr.dtype == np.uint8 and arr.ndim == 1:
         return _decode_nms_by_score_bytes(arr, score_threshold, num_classes)
+
+    # HAILO_NMS_BY_CLASS flat float32 buffer (HailoRT 5.x InferModel default).
+    # Layout: per class [count_f32, det_1, ..., det_max], each det = [y1, x1, y2, x2, score].
+    if arr.dtype == np.float32 and arr.ndim == 1:
+        return _decode_nms_by_class_flat(arr, score_threshold, num_classes)
 
     if arr.ndim == 4:
         arr = arr[0]
@@ -222,6 +227,58 @@ def _decode_on_device_nms(arr, score_threshold, num_classes):
         for row in kept:
             detections.append({
                 "bbox": [float(row[0]), float(row[1]), float(row[2]), float(row[3])],
+                "class_id": cls_id,
+                "score": float(row[4]),
+            })
+    detections.sort(key=lambda d: d["score"], reverse=True)
+    return detections
+
+
+def _decode_nms_by_class_flat(arr, score_threshold, num_classes):
+    """Decode HailoRT 5.x default ``HAILO_NMS_BY_CLASS`` float32 flat buffer.
+
+    Layout (per class, contiguous):
+      ``[count_f32, det_1, det_2, …, det_max_per_class]`` where each ``det`` is
+      five float32 values ``[y_min, x_min, y_max, x_max, score]`` (Hailo / YOLO
+      axis order). Only the first ``count`` records per class are valid.
+
+    Total size is ``HEF_num_classes × (1 + max_per_class × 5)``. We
+    reverse-derive ``max_per_class`` from the buffer size and the HEF's
+    nominal class count (80 for yolo_world_v2s).
+
+    The axis swap ``[y1, x1, y2, x2] → [x1, y1, x2, y2]`` happens at pack time
+    so the rest of the app (stabilizer / hailooverlay) sees the
+    repo-wide ``HailoBBox`` convention.
+    """
+    HEF_NUM_CLASSES = 80
+    total = arr.size
+    per_class = total // HEF_NUM_CLASSES
+    if HEF_NUM_CLASSES * per_class != total or (per_class - 1) % 5 != 0:
+        logger.error(
+            "Unexpected NMS_BY_CLASS flat float32 buffer size: %d (per-class %d)",
+            total, per_class,
+        )
+        return []
+    max_per_class = (per_class - 1) // 5
+    rows = arr.reshape(HEF_NUM_CLASSES, per_class)
+
+    active = min(num_classes, HEF_NUM_CLASSES)
+    detections = []
+    for cls_id in range(active):
+        n = int(rows[cls_id, 0])
+        if n <= 0:
+            continue
+        if n > max_per_class:
+            n = max_per_class
+        dets = rows[cls_id, 1:1 + n * 5].reshape(n, 5)
+        scores = dets[:, 4]
+        keep = scores >= score_threshold
+        if not keep.any():
+            continue
+        for row in dets[keep]:
+            # Chip writes [y1, x1, y2, x2, score]; swap to [x1, y1, x2, y2] at pack time.
+            detections.append({
+                "bbox": [float(row[1]), float(row[0]), float(row[3]), float(row[2])],
                 "class_id": cls_id,
                 "score": float(row[4]),
             })
