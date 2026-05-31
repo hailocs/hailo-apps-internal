@@ -531,22 +531,24 @@ load_config() {
     # Parse YAML config using bash
     log_debug "Parsing config.yaml..."
 
-    # Extract venv settings
-    VENV_NAME=$(yaml_get "venv.name" "${CONFIG_FILE}")
+    # Extract venv settings (CLI args take precedence over config values)
+    VENV_NAME="${VENV_NAME:-$(yaml_get "venv.name" "${CONFIG_FILE}")}"
     local cfg_use_system_site_packages
     cfg_use_system_site_packages=$(yaml_get "venv.use_system_site_packages" "${CONFIG_FILE}")
 
-    # Handle boolean for use_system_site_packages
-    case "${cfg_use_system_site_packages,,}" in
-        true|yes|1) USE_SYSTEM_SITE_PACKAGES=true ;;
-        false|no|0) USE_SYSTEM_SITE_PACKAGES=false ;;
-        *) USE_SYSTEM_SITE_PACKAGES=true ;;
-    esac
+    # Handle boolean for use_system_site_packages (only if not already set by CLI)
+    if [[ -z "${USE_SYSTEM_SITE_PACKAGES}" ]]; then
+        case "${cfg_use_system_site_packages,,}" in
+            true|yes|1) USE_SYSTEM_SITE_PACKAGES=true ;;
+            false|no|0) USE_SYSTEM_SITE_PACKAGES=false ;;
+            *) USE_SYSTEM_SITE_PACKAGES=true ;;
+        esac
+    fi
 
-    # Extract resources settings
+    # Extract resources settings (CLI args take precedence over config values)
     RESOURCES_ROOT=$(yaml_get "resources.root" "${CONFIG_FILE}")
     RESOURCES_SYMLINK_NAME=$(yaml_get "resources.path" "${CONFIG_FILE}")
-    DOWNLOAD_GROUP=$(yaml_get "resources.download_group" "${CONFIG_FILE}")
+    DOWNLOAD_GROUP="${DOWNLOAD_GROUP:-$(yaml_get "resources.download_group" "${CONFIG_FILE}")}"
     ENV_FILE=$(yaml_get "resources.env_file" "${CONFIG_FILE}")
 
     # Extract system packages (list)
