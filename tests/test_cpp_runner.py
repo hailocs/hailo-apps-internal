@@ -7,18 +7,17 @@ Test suites:
   test_cpp_build[app]   - verify build.sh <app> exits 0 (no device needed)
   test_cpp_image[app]   - run <app> with a still image, expect clean exit
   test_cpp_video[app]   - run <app> with a video file for VIDEO_RUN_TIME seconds
-  test_cpp_camera[app]  - run <app> with USB camera (opt-in: HAILO_CPP_TEST_CAMERA=1)
+  test_cpp_camera[app]  - run <app> with USB camera
 
 Special handling:
   depth_estimation_stereo  : uses --left / --right instead of --input
-  onnxrt_hailo_pipeline    : requires --net yolo26n.hef + --onnx yolo26n_postprocessing.onnx
+  onnxrt_hailo_pipeline    : requires yolov8m_seg.hef (auto-resolved) + yolov8m-seg_post.onnx
   zero_shot_classification : different CLI (-te= -ie= -i= -p=); needs text_projection.bin
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import subprocess
 import sys
@@ -89,6 +88,7 @@ _APPS: List[_AppCfg] = [
         binary="depth_estimation_stereo/build/stereo_depth_estimation",
         input_mode="stereo",
         supports_camera=False,
+        skip_video="depth_estimation_stereo supports image input only",
         skip_camera="Stereo depth requires two independent camera devices",
     ),
     _AppCfg(
@@ -127,8 +127,10 @@ _APPS: List[_AppCfg] = [
         binary="zero_shot_classification/build/zero_shot_classification",
         input_mode="zero_shot",
         supports_camera=False,
-        run_cwd="zero_shot_classification",   # text_projection.bin is relative to this dir
-        skip_camera="Camera not applicable for zero-shot classification",
+        run_cwd="zero_shot_classification",
+        skip_image="zero_shot_classification: build test only",
+        skip_video="zero_shot_classification: build test only",
+        skip_camera="zero_shot_classification: build test only",
     ),
 ]
 
@@ -139,15 +141,31 @@ _ALL_NAMES = [c.name for c in _APPS]
 # Download helper
 # ---------------------------------------------------------------------------
 
+class _Redirect308Handler(urllib.request.HTTPRedirectHandler):
+    """urllib does not handle 308 by default; delegate it to the 307 handler."""
+    def http_error_308(self, req, fp, code, msg, headers):
+        return self.http_error_307(req, fp, code, msg, headers)
+
+_http_opener = urllib.request.build_opener(_Redirect308Handler())
+
+
 def _download_if_missing(url: str, dest: Path) -> None:
     if dest.exists():
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Downloading %s → %s", url, dest)
     req = urllib.request.Request(url, headers={"User-Agent": "hailo-cpp-tests/1.0"})
-    with urllib.request.urlopen(req, timeout=300) as resp, open(dest, "wb") as fh:
-        while chunk := resp.read(1 << 16):
-            fh.write(chunk)
+    # timeout=30 is per socket operation (connect + each read chunk).
+    # This prevents a stalled server from blocking the test suite indefinitely.
+    try:
+        with _http_opener.open(req, timeout=30) as resp:
+            with open(dest, "wb") as fh:
+                while chunk := resp.read(1 << 16):
+                    fh.write(chunk)
+    except Exception:
+        if dest.exists():
+            dest.unlink()
+        raise
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -162,7 +180,12 @@ def _detect_arch() -> Optional[str]:
 
 
 def _binary(cfg: _AppCfg) -> Path:
+    if sys.platform == "win32":
+        parent, name = cfg.binary.rsplit("/", 1)
+        return CPP_DIR / parent / "Release" / (name + ".exe")
     return CPP_DIR / cfg.binary
+
+
 
 
 def _run_cwd(cfg: _AppCfg) -> Path:
@@ -178,22 +201,10 @@ def _zero_shot_ready(arch: str) -> bool:
     )
 
 
-def _onnxrt_files(arch: str):
-    """Return (hef_path, onnx_path) for onnxrt_hailo_pipeline, or (None, None) if missing."""
-    # Try arch-specific HEF first, fall back to hailo8
-    for arch_try in [arch, "hailo8"]:
-        hef = MODELS_DIR / arch_try / "yolo26n.hef"
-        if hef.exists():
-            break
-    else:
-        hef = None
-
-    # ONNX postprocessor is CPU-only — always use hailo8 copy
-    onnx = MODELS_DIR / "hailo8" / "yolo26n_postprocessing.onnx"
-
-    if hef is None or not hef.exists() or not onnx.exists():
-        return None, None
-    return str(hef), str(onnx)
+def _onnxrt_onnx_path() -> Optional[Path]:
+    """Return path to yolov8m-seg_post.onnx (lives next to the binary), or None if missing."""
+    p = CPP_DIR / "onnxrt_hailo_pipeline" / "yolov8m-seg_post.onnx"
+    return p if p.exists() else None
 
 
 def _build_cmd(cfg: _AppCfg, input_type: str, arch: str, output_dir: Optional[Path]) -> List[str]:
@@ -221,12 +232,13 @@ def _build_cmd(cfg: _AppCfg, input_type: str, arch: str, output_dir: Optional[Pa
 
     # ---------------------------------------------------------------- stereo
     if cfg.input_mode == "stereo":
-        cmd = [binary, "--no-display"]
+        cmd = [binary]
         if output_dir:
             cmd += ["--output-dir", str(output_dir)]
         if input_type == "image":
-            cmd += ["--left",  str(IMAGES_DIR / "bus.jpg"),
-                    "--right", str(IMAGES_DIR / "zidane.jpg")]
+            stereo_dir = CPP_DIR / "depth_estimation_stereo"
+            cmd += ["--left",  str(stereo_dir / "left.jpg"),
+                    "--right", str(stereo_dir / "right.jpg")]
         elif input_type == "video":
             cmd += ["--left",  str(VIDEOS_DIR / "example.mp4"),
                     "--right", str(VIDEOS_DIR / "example_640.mp4")]
@@ -235,7 +247,7 @@ def _build_cmd(cfg: _AppCfg, input_type: str, arch: str, output_dir: Optional[Pa
         return cmd
 
     # ---------------------------------------------------------------- standard
-    cmd = [binary, "--no-display"]
+    cmd = [binary]
     if output_dir:
         cmd += ["--output-dir", str(output_dir)]
 
@@ -246,14 +258,15 @@ def _build_cmd(cfg: _AppCfg, input_type: str, arch: str, output_dir: Optional[Pa
     else:
         cmd += ["--input", "usb"]
 
-    # onnxrt needs explicit --net and --onnx (ResourcesManager doesn't resolve ONNX)
+    # onnxrt: HEF is auto-resolved by ResourcesManager (yolov8m_seg); only --onnx is needed
     if cfg.name == "onnxrt_hailo_pipeline":
-        hef, onnx = _onnxrt_files(arch)
-        if hef is None:
+        onnx = _onnxrt_onnx_path()
+        if onnx is None:
             pytest.skip(
-                "onnxrt_hailo_pipeline: yolo26n HEF or yolo26n_postprocessing.onnx not found"
+                "onnxrt_hailo_pipeline: yolov8m-seg_post.onnx not found. "
+                "Run hailo_apps/cpp/onnxrt_hailo_pipeline/download_resources.sh"
             )
-        cmd += ["--net", hef, "--onnx", onnx]
+        cmd += ["--onnx", str(onnx)]
     else:
         cmd += cfg.extra.get(input_type, [])
 
@@ -296,7 +309,7 @@ def _run_timed(cmd: List[str], cwd: Path, run_time: int) -> _Result:
     elapsed = time.monotonic() - start
 
     if not early_exit:
-        proc.send_signal(signal.SIGTERM)
+        proc.terminate()  # SIGTERM on Linux/macOS, TerminateProcess on Windows
 
     try:
         stdout, stderr = proc.communicate(timeout=TERM_TIMEOUT)
@@ -337,10 +350,9 @@ def _assert_clean(result: _Result, app: str, tag: str, log: Path,
                   min_runtime: float = 0.0) -> None:
     stderr = result.stderr.decode(errors="replace").lower()
 
-    # rc=0: clean finish; rc=-SIGTERM: killed by test harness (OK for timed runs)
-    bad_exit = result.returncode not in (0, -signal.SIGTERM)
-    if result.early_exit and result.returncode != 0:
-        bad_exit = True
+    # early_exit=True  → process quit by itself; rc must be 0
+    # early_exit=False → harness killed it (terminate/SIGTERM); any rc is expected
+    bad_exit = result.early_exit and result.returncode != 0
 
     fatal = next((kw for kw in _FATAL if kw in stderr), None)
     too_short = min_runtime > 0 and result.elapsed < min_runtime
@@ -380,18 +392,14 @@ def _resources(_arch):
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
-    _download_if_missing(f"{S3_BASE}/images/bus.jpg",         IMAGES_DIR / "bus.jpg")
-    _download_if_missing(f"{S3_BASE}/images/zidane.jpg",      IMAGES_DIR / "zidane.jpg")
+    _download_if_missing(f"{S3_BASE}/images/bus.jpg", IMAGES_DIR / "bus.jpg")
     _download_if_missing(f"{S3_BASE}/videos/example.mp4",     VIDEOS_DIR / "example.mp4")
     _download_if_missing(f"{S3_BASE}/videos/example_640.mp4", VIDEOS_DIR / "example_640.mp4")
 
-    # Download HEFs and ONNX models via the standard download module
-    subprocess.run(
-        [sys.executable, "-m", "hailo_apps.installation.download_resources",
-         "--arch", _arch],
-        cwd=str(REPO_ROOT),
-        check=True,
-        timeout=600,
+    # onnxrt: yolov8m-seg_post.onnx must live next to the binary
+    _download_if_missing(
+        f"{S3_BASE}/onnxs/yolov8m-seg_post.onnx",
+        CPP_DIR / "onnxrt_hailo_pipeline" / "yolov8m-seg_post.onnx",
     )
 
     # zero_shot extra: text_projection.bin must live next to the binary
@@ -407,24 +415,30 @@ def _resources(_arch):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.cpp
-@pytest.mark.cpp_build
 @pytest.mark.parametrize("app_name", _ALL_NAMES)
 def test_cpp_build(app_name):
-    """Run build.sh <app> and assert exit code 0."""
+    """Build <app> and assert exit code 0."""
     log = _log_path(app_name, "build")
-    proc = subprocess.run(
-        ["bash", "build.sh", app_name],
+
+    if sys.platform == "win32":
+        display_cmd = ["powershell", "build.ps1", app_name]
+    else:
+        display_cmd = ["bash", "build.sh", app_name]
+
+    p = subprocess.run(
+        display_cmd,
         cwd=str(CPP_DIR),
         capture_output=True,
         timeout=BUILD_TIMEOUT,
     )
-    _write_log(log, ["bash", "build.sh", app_name],
-               _Result(proc.returncode, proc.stdout, proc.stderr))
-    assert proc.returncode == 0, (
+    result = _Result(p.returncode, p.stdout, p.stderr)
+
+    _write_log(log, display_cmd, result)
+    assert result.returncode == 0, (
         f"Build failed for {app_name}. Log: {log}\n"
-        + proc.stdout.decode(errors="replace")[-3000:]
+        + result.stdout.decode(errors="replace")[-3000:]
         + "\n"
-        + proc.stderr.decode(errors="replace")[-500:]
+        + result.stderr.decode(errors="replace")[-500:]
     )
 
 
@@ -433,7 +447,6 @@ def test_cpp_build(app_name):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.cpp
-@pytest.mark.cpp_image
 @pytest.mark.requires_device
 @pytest.mark.parametrize("app_name", _ALL_NAMES)
 def test_cpp_image(app_name, _resources, _arch, tmp_path):
@@ -470,10 +483,9 @@ def test_cpp_image(app_name, _resources, _arch, tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.cpp
-@pytest.mark.cpp_video
 @pytest.mark.requires_device
 @pytest.mark.parametrize("app_name", _ALL_NAMES)
-def test_cpp_video(app_name, _resources, _arch, tmp_path):
+def test_cpp_video(app_name, _resources, _arch):
     """Run <app> with a video file; expect stable run without early crash."""
     cfg = _APP_MAP[app_name]
     if cfg.skip_video:
@@ -492,24 +504,13 @@ def test_cpp_video(app_name, _resources, _arch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 4. Camera tests — opt-in via HAILO_CPP_TEST_CAMERA=1
+# 4. Camera tests
 # ---------------------------------------------------------------------------
 
-def _camera_enabled() -> bool:
-    return os.environ.get("HAILO_CPP_TEST_CAMERA", "0").strip() == "1"
-
-
 @pytest.mark.cpp
-@pytest.mark.cpp_camera
 @pytest.mark.requires_device
 @pytest.mark.parametrize("app_name", [c.name for c in _APPS if c.supports_camera])
-def test_cpp_camera(app_name, _resources, _arch, tmp_path):
-    """Run <app> with USB camera for CAMERA_RUN_TIME seconds.
-
-    Disabled by default. Enable with: HAILO_CPP_TEST_CAMERA=1 ./run_tests.sh --cpp
-    """
-    if not _camera_enabled():
-        pytest.skip("Camera tests disabled. Set HAILO_CPP_TEST_CAMERA=1 to enable")
+def test_cpp_camera(app_name, _resources, _arch):
 
     cfg = _APP_MAP[app_name]
     if cfg.skip_camera:

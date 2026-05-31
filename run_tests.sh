@@ -140,7 +140,6 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --cpp"
             echo "  $0 --cpp --apps object_detection"
             echo "  $0 --cpp --pipelines --standalone"
-            echo "  HAILO_CPP_TEST_CAMERA=1 $0 --cpp   # include camera tests"
             echo "  $0 --pipelines --standalone"
             echo ""
             echo "Without options, runs: sanity -> install -> pipelines -> standalone"
@@ -284,12 +283,12 @@ if [ "$RUN_GENAI" = true ]; then
     fi
 fi
 
-# 6. C++ App Tests — build + image + video (camera opt-in via HAILO_CPP_TEST_CAMERA=1)
+# 6. C++ App Tests — build + image + video + camera
 if [ "$RUN_CPP" = true ]; then
     echo ""
     echo "--- Running C++ App Tests (build + image + video) ---"
     CPP_PYTEST_ARGS=("${TESTS_DIR}/test_cpp_runner.py" -v --log-cli-level=INFO
-                     -m "cpp_build or cpp_image or cpp_video")
+                     -m "cpp")
     if [[ -n "$PYTEST_K_EXPR" ]]; then
         echo "Filtering C++ tests to apps: ${APPS_FILTER}"
         CPP_PYTEST_ARGS+=( -k "$PYTEST_K_EXPR" )
