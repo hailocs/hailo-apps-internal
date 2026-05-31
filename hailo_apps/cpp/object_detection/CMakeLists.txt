@@ -41,6 +41,14 @@ else()
     add_subdirectory("${THIRD_PARTY_DIR}/yaml-cpp" "${CMAKE_BINARY_DIR}/_deps/yaml-cpp")
 endif()
 
+if(TARGET yaml-cpp::yaml-cpp)
+    set(YAMLCPP_TARGET yaml-cpp::yaml-cpp)
+elseif(TARGET yaml-cpp)
+    set(YAMLCPP_TARGET yaml-cpp)
+else()
+    message(FATAL_ERROR "yaml-cpp target was not created.")
+endif()
+
 # ============================================================
 # libcurl — system preferred, HTTP-only submodule fallback
 # ============================================================
@@ -108,9 +116,12 @@ set(HAILO_APPS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${HAILO_APPS_ROOT}/config/resources_config.yaml"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../config/resources_config.yaml"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/resources_config.yaml"
-    COMMENT "Copying resources_config.yaml"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/visualization_config.yaml"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/visualization_config.yaml"
+    COMMENT "Copying config files"
 )
 
 # ============================================================
@@ -127,16 +138,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # Compile options
 # ============================================================
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /W4)
+    target_compile_options(${PROJECT_NAME} PRIVATE /w)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -O3
+        -w -O3
         -fconcepts
-        -Wno-ignored-qualifiers
-        -Wno-extra
-        -Wno-stringop-truncation
-        -Wno-reorder
+       
+       
+       
+       
     )
 endif()
 
@@ -147,7 +158,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     HailoRT::libhailort
     Threads::Threads
     ${OpenCV_LIBS}
-    yaml-cpp
+    ${YAMLCPP_TARGET}
     CURL::libcurl
 )
 

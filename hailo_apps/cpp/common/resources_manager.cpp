@@ -44,11 +44,6 @@ static std::string getenv_str(const char *k)
     return v ? std::string(v) : std::string();
 }
 
-static bool is_url(const std::string &s)
-{
-    return s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0;
-}
-
 static std::string stem_no_ext(const std::string &name)
 {
     fs::path p(name);
@@ -136,18 +131,16 @@ static HeadInfo head_request(const std::string &url)
     curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);        // HEAD request
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "hailo-apps-resources/1.0");
 
-    const CURLcode res = curl_easy_perform(curl);
+    curl_easy_perform(curl);
 
-    // Always try to get HTTP status (even if res != CURLE_OK)
     long http_code = 0;
     if (curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code) == CURLE_OK) {
         info.status = http_code;
     }
 
-    // Content length might not be provided by server (then it stays -1)
-    double cl = -1.0;
-    if (curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &cl) == CURLE_OK) {
-        if (cl >= 0) info.size = (curl_off_t)cl;
+    curl_off_t cl = -1;
+    if (curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl) == CURLE_OK) {
+        if (cl >= 0) info.size = cl;
     }
 
     curl_easy_cleanup(curl);
@@ -503,7 +496,7 @@ static std::string modelzoo_version_for(const std::string &hw_arch, const std::s
 
     // hailo8/8l: 4.x -> v2.xx
     static const std::unordered_map<std::string,std::string> compat_8 = {
-        {"4.23.0","v2.17.0"},
+        {"4.23.0","v2.18.0"},
         {"4.22.0","v2.16.0"},
         {"4.21.0","v2.15.0"},
         {"4.20.0","v2.14.0"},
