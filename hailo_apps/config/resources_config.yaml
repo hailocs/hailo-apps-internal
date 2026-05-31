@@ -1069,11 +1069,7 @@ v2a_demo:
           source: s3
 
 yolo_world: &yolo_world_app
-  # All three arches are pinned to the cs-data bucket. The H10H HEF was
-  # frozen from Hailo model-zoo v5.3.0 (md5 228559cbb1adb253a5f19b86d1536841)
-  # so the app is insulated from upstream model-zoo changes that could
-  # alter output layout, NMS config, or input ranges. Re-pin by overwriting
-  # the staged file + bumping the README provenance table.
+  # HEFs compiled with DFC 3.33 from model-zoo v5.3.0.
   models:
     hailo8:
       default:
