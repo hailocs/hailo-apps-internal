@@ -75,13 +75,20 @@ class YoloWorldInference:
         logger.info("Text input: %s", self._text_input_name)
 
         self._output_names = [info.name for info in output_infos]
-        # On-device NMS HEFs (Hailo-8) emit a single output. We deliberately
-        # read it as HAILO_NMS_BY_SCORE: the BY_CLASS layout silently dropped
-        # everything but class 0 in HailoRT 4.23 with this HEF, even when the
-        # model produced multi-class detections. BY_SCORE returns a packed
-        # record stream (`uint16 n_dets` header + N × 22-byte rows of
-        # `[y1, x1, y2, x2, score, class_id]`) where class_id is explicit
-        # per detection — no silent suppression.
+        # On-device NMS HEFs (single fused output, both H8 and H10H) — we
+        # deliberately read them as HAILO_NMS_BY_SCORE on both runtimes.
+        # Rationale:
+        #   * HRT 4.x (H8): BY_CLASS silently dropped non-zero classes for this
+        #     HEF.
+        #   * HRT 5.x (H10H): BY_CLASS hits a bug in libhailort
+        #     YOLOV8PostProcessOp::fill_nms_by_class_format_buffer — only
+        #     class 0's slot in the output buffer gets populated regardless of
+        #     how many classes actually fired. Reproducible with 2 identical
+        #     embeddings → only class 0 detects. Filed upstream.
+        # BY_SCORE encodes class_id per detection (uint16 n_dets header +
+        # N × 22-byte records [y1, x1, y2, x2, score, class_id]); the same
+        # underlying detection list is correct, so this format dodges the bug
+        # on both runtimes.
         self._nms_by_score = (
             len(output_infos) == 1
             and getattr(output_infos[0].format, "order", None) in (
@@ -97,15 +104,13 @@ class YoloWorldInference:
 
         self._infer_model.input(self._image_input_name).set_format_type(FormatType.UINT8)
         self._infer_model.input(self._text_input_name).set_format_type(FormatType.FLOAT32)
-        self._using_by_score = self._nms_by_score and _HRT_MAJOR < 5
+        self._using_by_score = self._nms_by_score
         if self._using_by_score:
             self._infer_model.output(self._output_names[0]).set_format_order(
                 FormatOrder.HAILO_NMS_BY_SCORE,
             )
-            logger.info("Output format: HAILO_NMS_BY_SCORE (HailoRT 4.x path)")
-        elif self._nms_by_score:
-            self._infer_model.output(self._output_names[0]).set_format_type(FormatType.FLOAT32)
-            logger.info("Output format: HAILO_NMS_BY_CLASS flat float32 (HailoRT 5.x path)")
+            self._infer_model.output(self._output_names[0]).set_format_type(FormatType.UINT8)
+            logger.info("Output format: HAILO_NMS_BY_SCORE (uint8 byte stream)")
         else:
             for name in self._output_names:
                 self._infer_model.output(name).set_format_type(FormatType.FLOAT32)
@@ -125,8 +130,8 @@ class YoloWorldInference:
         logger.info("Image input buffer shape: %s", self._image_input_buffer.shape)
 
         # Buffer dtype tracks the selected output format:
-        #   * BY_SCORE (HailoRT 4.x path): uint8 byte stream
-        #   * BY_CLASS flat / raw heads (5.x path or non-NMS HEFs): float32
+        #   * BY_SCORE (on-device NMS HEFs, both 4.x and 5.x): uint8 byte stream
+        #   * Raw heads (non-NMS HEFs): float32
         self._output_buffers = {}
         for name in self._output_names:
             shape = self._infer_model.output(name).shape
