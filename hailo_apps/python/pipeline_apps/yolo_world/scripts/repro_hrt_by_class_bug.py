@@ -24,8 +24,9 @@ Repro
   number of detections at class 0 and class 1.
 * In practice: HAILO_NMS_BY_CLASS reports class 0 ≥ 1 detection, class 1 = 0.
 * The same configuration with HAILO_NMS_BY_SCORE returns matched detections
-  with both `class_id=0` and `class_id=1` records — confirming the chip and
-  the NMS core list are healthy; the bug is isolated to the BY_CLASS writer.
+  with both `class_id=0` and `class_id=1` records — confirming libhailort's
+  internal NMS detection list is correct (multi-class); the bug is isolated
+  to the BY_CLASS output-formatting step that ships that list to the caller.
 
 Run
 ---
@@ -188,8 +189,8 @@ def main(hef_path: str) -> int:
     print("=== summary ===")
     if bug_present and by_score_ok:
         print("  Confirmed: BY_CLASS writer drops class>0; BY_SCORE works.")
-        print("  Underlying NMS detection list is correct on the chip — only")
-        print("  the host-side BY_CLASS writer drops everything but class 0.")
+        print("  libhailort's internal NMS detection list is correct — only the")
+        print("  BY_CLASS output-formatting step drops everything but class 0.")
         print("  Suspect: YOLOV8PostProcessOp::fill_nms_by_class_format_buffer")
         print("           in libhailort/src/net_flow/ops/yolov8_post_process.cpp")
         return 0

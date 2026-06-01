@@ -48,7 +48,7 @@ python yolo_world.py --input usb --prompts "person, dog, laptop"
 
 #### App logic
 
-You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings), reads the on-device CPU NMS output (a single `yolov8_nms_postprocess` tensor presented as a `HAILO_NMS_BY_SCORE` byte stream — `uint16 n_dets` header + N × 22-byte records `[y1, x1, y2, x2, score, class_id]`, already score-thresholded and NMS'd on chip), stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
+You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings); libhailort's host-side `YOLOV8PostProcessOp` decodes DFL, applies sigmoid, runs per-class IoU NMS and hands back a single `yolov8_nms_postprocess` tensor in `HAILO_NMS_BY_SCORE` layout (a `uint16 n_dets` header + N × 22-byte records `[y1, x1, y2, x2, score, class_id]`); the callback parses that byte stream, stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
 
 > The same `BY_SCORE` readout is used on both H8 (HRT 4.x) and H10H (HRT 5.x). On both runtimes the `HAILO_NMS_BY_CLASS` alternative has known bugs for this specific HEF (H8/4.x: silently drops non-zero classes; H10H/5.x: `libhailort/src/net_flow/ops/yolov8_post_process.cpp::fill_nms_by_class_format_buffer` only populates class 0's slot). `BY_SCORE` encodes `class_id` per detection so it dodges both. A standalone reproducer for the H10H bug — for filing with the HailoRT team — is at [scripts/repro_hrt_by_class_bug.py](scripts/repro_hrt_by_class_bug.py).
 
@@ -125,7 +125,7 @@ End-to-end pipeline FPS measured on the bundled HEFs (USB camera input, COCO-80 
 | Hailo-8 | ~30.1 | ~33 ms | ~32 ms | < 0.5 ms |
 | Hailo-10H | ~27.6 | ~36 ms | ~35 ms | ~0.1 ms |
 
-NMS runs **on the chip's CPU** (the `engine=cpu` in the HEF is on-chip Cortex-A53, not the host) on both archs. The Python postprocess only parses the byte stream HRT hands back and score-thresholds the records — no DFL decode, no sigmoid, no per-class IoU loop on the host. That's why the postprocess column is sub-ms and the model itself is the bottleneck on both archs.
+NMS runs in **libhailort's host-side `YOLOV8PostProcessOp`** on both archs (the HEF's `engine=cpu` directive maps to `PostprocessTarget.CPU`, which is the host CPU — there's no separate "chip CPU" target). The chip's NN core emits 6 raw cls/reg tensors; libhailort then runs DFL decode + sigmoid + per-class IoU NMS and hands the app a single fused output. The Python postprocess only parses that output and score-thresholds the records — no DFL, no sigmoid, no per-class IoU loop in Python. That's why the postprocess column is sub-ms even with 80 classes, and the chip-side inference is the bottleneck on both archs.
 
 Reducing the active prompt count does **not** speed up inference at runtime (the text input is always padded to 80); for higher throughput, recompile the HEF with a smaller `classes` parameter in the NMS config.
 
@@ -133,8 +133,8 @@ Reducing the active prompt count does **not** speed up inference at runtime (the
 
 | Arch | DFC | Model Zoo | Notes |
 |---|---|---|---|
-| Hailo-8 / Hailo-8L | 3.33 | v2.18 | on-device CPU NMS, 6-output → 1 fused stream via HRT 4.x |
-| Hailo-10H | 5.4 | v5.4 (dev) | on-device CPU NMS, single `yolov8_nms_postprocess` output exposed by HRT 5.x |
+| Hailo-8 / Hailo-8L | 3.33 | v2.18 | host-side libhailort NMS (`engine=cpu`), HRT 4.x |
+| Hailo-10H | 5.4 | v5.4 (dev) | host-side libhailort NMS (`engine=cpu`), HRT 5.x |
 
 #### Retrained Networks Support
 YOLO World is published for fine-tuning (normal / prompt-tuning / reparameterized). For reliable detection of a fixed class set, fine-tune in the [AILab-CVC/YOLO-World](https://github.com/AILab-CVC/YOLO-World) framework and recompile to a HEF. For more information, see [Using Retrained Models](../../../../doc/developer_guide/retraining_example.md).
