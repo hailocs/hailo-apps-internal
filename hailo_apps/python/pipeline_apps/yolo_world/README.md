@@ -122,10 +122,12 @@ End-to-end pipeline FPS measured on the bundled HEFs (USB camera input, COCO-80 
 
 | Arch | Pipeline FPS | Per-frame callback (mean) | Inference (mean) | Postprocess (mean) |
 |---|---:|---:|---:|---:|
-| Hailo-8 | ~30 | ~33 ms | ~32 ms | < 0.5 ms |
-| Hailo-10H | ~28 | ~36 ms | ~35 ms | < 0.5 ms |
+| Hailo-8 | ~30.1 | ~33 ms | ~32 ms | < 0.5 ms |
+| Hailo-10H | ~27.6 | ~36 ms | ~35 ms | ~0.1 ms |
 
-On-device CPU NMS keeps the host-side postprocess at sub-millisecond cost — the model itself is the bottleneck on both archs. Reducing the active prompt count does **not** speed up inference at runtime (the text input is always padded to 80); for higher throughput, recompile the HEF with a smaller `classes` parameter in the NMS config.
+NMS runs **on the chip's CPU** (the `engine=cpu` in the HEF is on-chip Cortex-A53, not the host) on both archs. The Python postprocess only parses the byte stream HRT hands back and score-thresholds the records — no DFL decode, no sigmoid, no per-class IoU loop on the host. That's why the postprocess column is sub-ms and the model itself is the bottleneck on both archs.
+
+Reducing the active prompt count does **not** speed up inference at runtime (the text input is always padded to 80); for higher throughput, recompile the HEF with a smaller `classes` parameter in the NMS config.
 
 #### HEF provenance
 
