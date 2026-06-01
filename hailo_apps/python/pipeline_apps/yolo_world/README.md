@@ -57,6 +57,29 @@ The `YoloWorldCallbackData` class shares state (inference engine, embedding mana
 - Pass `--prompts "a, b, c"` or `--prompts-file classes.json` (a JSON array of up to 80 class names).
 - Embeddings are cached to `embeddings.json` and re-encoded automatically when the prompts file changes (`--watch-prompts`).
 
+##### Deploying with frozen prompts (no CLIP encoder at runtime)
+
+For products with a fixed class set, encode once on a dev machine and ship the
+resulting embeddings JSON alongside the HEF. At runtime the app loads the cached
+vectors directly — the CLIP text encoder is never built (weights aren't loaded,
+no tokenizer initialized).
+
+```bash
+# Once, on a dev machine:
+hailo-yolo-world --prompts-file classes.json --run-duration 1
+# → writes embeddings.json (labels + (N, 512) float32 vectors) into the app dir
+
+# On the deployment target — ship only the HEF + embeddings.json:
+hailo-yolo-world --embeddings-file embeddings.json
+# CLIP body weights, tokenizer, encoder = never loaded.
+# ~30 MB less resident memory and faster startup.
+```
+
+Without `--prompts` / `--prompts-file` the app picks up `embeddings.json` from
+the app directory automatically (or whatever path `--embeddings-file` points
+at). The encoder is constructed lazily, so on a deploy that always uses the
+cache, the CLIP body weights resource is never touched at runtime.
+
 ##### Prompt phrasing matters
 
 Open-vocabulary detection is very sensitive to phrasing — small word changes can move detection quality from rock-solid to near-zero. Two rules of thumb:
