@@ -186,8 +186,8 @@ def map_arch_to_s3_path(hailo_arch: str) -> str:
 def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
     """Get Model Zoo version and download architecture for a given Hailo architecture.
 
-    For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0)
-    For H8/H8L: Uses the config-defined default (first entry in VALID_H8_MODEL_ZOO_VERSION)
+    For H10: Derives from HailoRT version (5.1.x -> v5.1.0, 5.2.x -> v5.2.0, etc.)
+    For H8/H8L: Derives from HailoRT version (4.24.x -> v2.19.0, 4.23.x -> v2.18.0)
     """
     download_arch = hailo_arch
 
@@ -195,12 +195,13 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
     model_zoo_version = os.getenv(MODEL_ZOO_VERSION_KEY)
 
     if model_zoo_version is None:
+        hailort_version = os.getenv(
+            HAILORT_VERSION_KEY,
+            auto_detect_hailort_version()
+        )
+
         # Auto-select default model zoo version based on device architecture
         if hailo_arch == HAILO10H_ARCH:
-            hailort_version = os.getenv(
-                HAILORT_VERSION_KEY,
-                auto_detect_hailort_version()
-            )
             if not hailort_version:
                 raise RuntimeError(
                     "Failed to determine HailoRT version for Hailo-10H. "
@@ -213,8 +214,14 @@ def get_model_zoo_version_for_arch(hailo_arch: str) -> tuple[str, str]:
                 # For newer versions, use the exact HailoRT version
                 model_zoo_version = f"v{hailort_version}"
         else:
-            # H8/H8L: use the first (newest) valid version from the config
-            model_zoo_version = VALID_H8_MODEL_ZOO_VERSION[0]
+            # H8/H8L: Derive from HailoRT version
+            if hailort_version and hailort_version.startswith("4.24"):
+                model_zoo_version = "v2.19.0"
+            elif hailort_version and hailort_version.startswith("4.23"):
+                model_zoo_version = "v2.18.0"
+            else:
+                # Fallback to newest
+                model_zoo_version = VALID_H8_MODEL_ZOO_VERSION[0]
 
     # Validate the version; fall back to the config default if invalid
     if hailo_arch == HAILO10H_ARCH and model_zoo_version not in VALID_H10_MODEL_ZOO_VERSION:
