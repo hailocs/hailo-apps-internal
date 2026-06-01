@@ -155,11 +155,11 @@ detect_hailo_arch() {
               "$hailort_version" != "-1" && "$hailort_version" != "unknown" ]]; then
             detection_method="version_inference"
             
-            # Check if versions indicate Hailo8 (4.22.x or 4.23.x)
-            if [[ ("$driver_version" == 4.22* || "$driver_version" == 4.23*) && \
-                  ("$hailort_version" == 4.22* || "$hailort_version" == 4.23*) ]]; then
+            # Check if versions indicate Hailo8 (4.22.x, 4.23.x, or 4.24.x)
+            if [[ ("$driver_version" == 4.22* || "$driver_version" == 4.23* || "$driver_version" == 4.24*) && \
+                  ("$hailort_version" == 4.22* || "$hailort_version" == 4.23* || "$hailort_version" == 4.24*) ]]; then
                 arch="hailo8"
-                echo "[INFO] Inferred Hailo architecture: HAILO8 (from driver/hailort version 4.22.x/4.23.x)"
+                echo "[INFO] Inferred Hailo architecture: HAILO8 (from driver/hailort version 4.22.x/4.23.x/4.24.x)"
                 echo "[INFO] Note: This is inferred from package versions. Connect device to confirm via hailortcli."
             # Check if versions indicate Hailo10H (>= 5.0.0)
             elif compare_versions "$driver_version" "5.0.0" && compare_versions "$hailort_version" "5.0.0"; then
@@ -212,7 +212,7 @@ validate_versions_for_arch() {
     if [[ "$packages_installed" == "false" ]]; then
         echo "[INFO] Hailo packages not installed, skipping version validation for $arch"
         echo "[INFO] To validate versions, please install:"
-        echo "[INFO]   - For Hailo8/Hailo8L: driver and hailort version 4.23.x"
+        echo "[INFO]   - For Hailo8/Hailo8L: driver and hailort version 4.23.x or 4.24.x"
         echo "[INFO]   - For Hailo10H: driver and hailort version >= 5.0.0"
         return 0
     fi
@@ -224,11 +224,11 @@ validate_versions_for_arch() {
         # Check driver version
         if [[ "$driver_version" != "-1" && "$driver_version" != "unknown" && -n "$driver_version" ]]; then
             validations_done=$((validations_done + 1))
-            # Check if version starts with 4.23
-            if [[ "$driver_version" == 4.23* ]]; then
-                echo "[OK]   Driver version $driver_version is valid for $arch (4.23.x)"
+            # Check if version starts with 4.23 or 4.24
+            if [[ "$driver_version" == 4.23* || "$driver_version" == 4.24* ]]; then
+                echo "[OK]   Driver version $driver_version is valid for $arch (4.23.x/4.24.x)"
             else
-                echo "[ERROR] Driver version $driver_version is invalid for $arch. Expected 4.23.x"
+                echo "[ERROR] Driver version $driver_version is invalid for $arch. Expected 4.23.x or 4.24.x"
                 errors=$((errors + 1))
             fi
         fi
@@ -236,11 +236,11 @@ validate_versions_for_arch() {
         # Check hailort version
         if [[ "$hailort_version" != "-1" && "$hailort_version" != "unknown" && -n "$hailort_version" ]]; then
             validations_done=$((validations_done + 1))
-            # Check if version starts with 4.23
-            if [[ "$hailort_version" == 4.23* ]]; then
-                echo "[OK]   HailoRT version $hailort_version is valid for $arch (4.23.x)"
+            # Check if version starts with 4.23 or 4.24
+            if [[ "$hailort_version" == 4.23* || "$hailort_version" == 4.24* ]]; then
+                echo "[OK]   HailoRT version $hailort_version is valid for $arch (4.23.x/4.24.x)"
             else
-                echo "[ERROR] HailoRT version $hailort_version is invalid for $arch. Expected 4.23.x"
+                echo "[ERROR] HailoRT version $hailort_version is invalid for $arch. Expected 4.23.x or 4.24.x"
                 errors=$((errors + 1))
             fi
         fi
@@ -618,7 +618,7 @@ to_check() {
 
     if [[ "$hailo_arch" == "hailo8" || "$hailo_arch" == "hailo8l" ]]; then
         for _v in "${_candidates[@]}"; do
-            if [[ "$_v" == 4.23* ]]; then driver_version="$_v"; _driver_matched=true; break; fi
+            if [[ "$_v" == 4.23* || "$_v" == 4.24* ]]; then driver_version="$_v"; _driver_matched=true; break; fi
         done
     elif [[ "$hailo_arch" == "hailo10h" ]]; then
         for _v in "${_candidates[@]}"; do

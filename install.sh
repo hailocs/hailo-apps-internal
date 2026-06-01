@@ -356,14 +356,24 @@ get_model_zoo_version() {
 
     case "$arch" in
         hailo8|hailo8l)
-            mz_version="v2.18.0"
+            # H8/H8L: Derive from HailoRT version
+            # HailoRT 4.24.x -> Model Zoo v2.19.0
+            # HailoRT 4.23.x (default) -> Model Zoo v2.18.0
+            if [[ "$hailort_ver" == 4.24.* ]]; then
+                mz_version="v2.19.0"
+            else
+                mz_version="v2.18.0"
+            fi
             ;;
         hailo10h)
             # H10: Derive from HailoRT version
+            # HailoRT 5.4.x -> Model Zoo v5.4.0
             # HailoRT 5.3.x -> Model Zoo v5.3.0
             # HailoRT 5.2.x -> Model Zoo v5.2.0
             # HailoRT 5.1.x (default) -> Model Zoo v5.1.0
-            if [[ "$hailort_ver" == 5.3.* ]]; then
+            if [[ "$hailort_ver" == 5.4.* ]]; then
+                mz_version="v5.4.0"
+            elif [[ "$hailort_ver" == 5.3.* ]]; then
                 mz_version="v5.3.0"
             elif [[ "$hailort_ver" == 5.2.* ]]; then
                 mz_version="v5.2.0"
@@ -1031,7 +1041,7 @@ check_prerequisites() {
 # Helper: infer Hailo arch from driver/hailort version string
 infer_arch_from_version() {
     local ver="$1"
-    if [[ "$ver" == 4.22* || "$ver" == 4.23* ]]; then
+    if [[ "$ver" == 4.22* || "$ver" == 4.23* || "$ver" == 4.24* ]]; then
         echo "hailo8"
     elif [[ "$ver" == 5.* ]]; then
         echo "hailo10h"
