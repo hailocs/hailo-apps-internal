@@ -171,7 +171,7 @@ Example
 
 **Inference on an image**
 ```shell script
-./instance_segmentation.py -n yolov5m_seg_with_nms.hef -i zidane.jpg -m v5
+./instance_segmentation.py -n yolov5m_seg_with_nms.hef -i dog_bicycle.jpg -m v5
 ```
 
 **Inference on a folder of images**

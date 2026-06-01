@@ -120,7 +120,7 @@ Example
 
 - For a single image:
     ```shell script
-    ./build/classifier -n resnet_v1_50.hef -i zidane.jpg
+    ./build/classifier -n resnet_v1_50.hef -i dog_bicycle.jpg
     ```
     Output image is saved as processed_image_0.jpg
 

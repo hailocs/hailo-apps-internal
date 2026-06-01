@@ -154,7 +154,7 @@ Example
 
 **Inference on single image**
 ```shell script
-./pose_estimation.py -n yolov8s_pose.hef -i zidane.jpg -b 1
+./pose_estimation.py -n yolov8s_pose.hef -i dog_bicycle.jpg -b 1
 ```
 
 **Inference on a usb camera stream**

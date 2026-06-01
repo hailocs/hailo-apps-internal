@@ -121,19 +121,6 @@ videos:
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
 images:
-  - name: zidane.jpg
-    url: https://ultralytics.com/images/zidane.jpg
-    tag:
-      - detection
-      - object_detection
-      - object_detection_onnx_postproc
-      - simple_detection
-      - instance_segmentation
-      - onnxrt_hailo_pipeline
-      - pose_estimation
-      - pose_estimation_onnx_postproc
-      - classifier
-      - semantic_segmentation
   - name: dog_bicycle.jpg
     source: s3
     tag:

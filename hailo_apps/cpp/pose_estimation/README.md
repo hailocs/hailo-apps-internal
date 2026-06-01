@@ -89,7 +89,7 @@ Example
 
 - For a single image:
     ```shell script
-    ./build/pose_estimation -n yolov8m_pose.hef -i zidane.jpg
+    ./build/pose_estimation -n yolov8m_pose.hef -i dog_bicycle.jpg
     ```
     Output image is saved as processed_image_0.jpg
 

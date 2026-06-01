@@ -88,7 +88,7 @@ Example
 
 - For a single image:
     ```shell script
-    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef -i zidane.jpg
+    ./build/semantic_segmentation -n fcn8_resnet_v1_18.hef -i dog_bicycle.jpg
     ```
     Output image is saved as processed_image_0.jpg
 
