@@ -8,9 +8,12 @@ HAILO8L_ARCH = "hailo8l"
 HAILO10H_ARCH = "hailo10h"
 AUTO_DETECT = "auto"
 HAILO_TAPPAS_CORE = "hailo-tappas-core"
+HAILO_APPS_CORE = "hailo-apps-core"  # New name since TAPPAS 5.4
 HAILO_TAPPAS_CORE_PYTHON_NAMES = [
+    "hailo-apps-core-python-binding",  # New name since TAPPAS 5.4
     "hailo-tappas-core-python-binding",
     "tappas-core-python-binding",
+    HAILO_APPS_CORE,
     HAILO_TAPPAS_CORE,
 ]
 HAILORT_PACKAGE_NAME = "hailort"
@@ -144,7 +147,7 @@ RESOURCES_PATH_DEFAULT = RESOURCES_ROOT_PATH_DEFAULT
 VIRTUAL_ENV_NAME_DEFAULT = "venv_hailo_apps"
 
 # Default TAPPAS post-processing directory - set via environment variable during installation
-# The installer runs: pkg-config --variable=tappas_postproc_lib_dir hailo-tappas-core
+# The installer runs: pkg-config --variable=tappas_postproc_lib_dir hailo-apps-core (or hailo-tappas-core)
 # and stores the result in the .env file as TAPPAS_POSTPROC_PATH
 TAPPAS_POSTPROC_PATH_DEFAULT = ""  # Will be populated from environment at runtime
 

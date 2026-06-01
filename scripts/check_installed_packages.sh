@@ -395,8 +395,8 @@ check_tappas_packages() {
     local found=false
 
     # 1) Check for known Debian packages - handle versioned packages
-    if dpkg -l 2>/dev/null | grep -E "^ii.*(hailo-tappas-core|hailo-tappas|tappas-core|tappas)" | head -1 | grep -q .; then
-        pkg_line=$(dpkg -l 2>/dev/null | grep -E "^ii.*(hailo-tappas-core|hailo-tappas|tappas-core|tappas)" | head -1)
+    if dpkg -l 2>/dev/null | grep -E "^ii.*(hailo-apps-core|hailo-tappas-core|hailo-tappas|tappas-core|tappas)" | head -1 | grep -q .; then
+        pkg_line=$(dpkg -l 2>/dev/null | grep -E "^ii.*(hailo-apps-core|hailo-tappas-core|hailo-tappas|tappas-core|tappas)" | head -1)
         pkg_name=$(echo "$pkg_line" | awk '{print $2}')
         version=$(echo "$pkg_line" | awk '{print $3}')
         echo "[OK]   $pkg_name (system) version: $version"
@@ -405,7 +405,7 @@ check_tappas_packages() {
 
     # 2) Fallback to pkg-config if no dpkg package found
     if ! $found; then
-        for pc in hailo-tappas-core hailo_tappas tappas-core tappas; do
+        for pc in hailo-apps-core hailo-tappas-core hailo_tappas tappas-core tappas; do
             if pkg-config --exists "$pc" 2>/dev/null; then
                 if pkg-config --modversion "$pc" &>/dev/null; then
                     version=$(pkg-config --modversion "$pc")
@@ -422,7 +422,7 @@ check_tappas_packages() {
 
     # 3) If still not found
     if ! $found; then
-        echo "[MISSING] any of hailo-tappas-core / hailo-tappas / tappas-core (system), version: -1"
+        echo "[MISSING] any of hailo-apps-core / hailo-tappas-core / hailo-tappas / tappas-core (system), version: -1"
     fi
 
     # 4) Always return a key=value
@@ -501,7 +501,7 @@ check_tappas_core_py() {
     # Check pip-distribution with multiple possible package names
     found_version=""
     found_pkg=""
-    for pkg in "hailo-tappas-core-python-binding" "tappas-core-python-binding" "hailo-tappas-python-binding" "tappas"; do
+    for pkg in "hailo-apps-core-python-binding" "hailo-tappas-core-python-binding" "tappas-core-python-binding" "hailo-tappas-python-binding" "tappas"; do
         if ver=$(detect_pip_pkg_version "$pkg") && [[ -n "$ver" ]]; then
             tappas_python_version="$ver"
             found_version="$ver"

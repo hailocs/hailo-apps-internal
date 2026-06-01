@@ -314,9 +314,9 @@ Before running hailo-apps, you need to install the Hailo runtime packages. The i
 |---------|------|-------------|
 | `hailort-pcie-driver` | .deb | PCIe driver for Hailo devices |
 | `hailort` | .deb | HailoRT runtime library |
-| `hailo-tappas-core` | .deb | TAPPAS Core GStreamer plugins |
+| `hailo-tappas-core` | .deb | TAPPAS Core GStreamer plugins (named `hailo-apps-core` since TAPPAS 5.4) |
 | `hailort` | .whl | HailoRT Python bindings |
-| `hailo_tappas_core_python_binding` | .whl | TAPPAS Core Python bindings |
+| `hailo_tappas_core_python_binding` | .whl | TAPPAS Core Python bindings (named `hailo-apps-core-python-binding` since TAPPAS 5.4) |
 
 **Note: Hailo Model Zoo GenAI** Is required only for Hailo-10H & GenAI use cases, like Hailo-Ollama, more details [Hailo Model Zoo GenAI](/hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)
 
@@ -346,7 +346,7 @@ For x86_64 Ubuntu systems, download all 5 packages from the [Hailo Developer Zon
 ```bash
 sudo dpkg -i hailort-pcie-driver_<version>_all.deb
 sudo dpkg -i hailort_<version>_amd64.deb
-sudo dpkg -i hailo-tappas-core_<version>_amd64.deb
+sudo dpkg -i hailo-tappas-core_<version>_amd64.deb  # or hailo-apps-core for TAPPAS 5.4+
 ```
 
 ### Install Python Wheels (.whl)
@@ -470,7 +470,7 @@ To completely remove all Hailo components from your system:
 sudo dpkg -l | grep hailo
 
 # Remove them (replace with actual package names from above)
-sudo apt purge hailort hailort-pcie-driver hailo-tappas-core
+sudo apt purge hailort hailort-pcie-driver hailo-tappas-core hailo-apps-core
 ```
 
 **2. Remove Python packages:**
@@ -479,7 +479,7 @@ sudo apt purge hailort hailort-pcie-driver hailo-tappas-core
 pip list | grep hailo
 
 # Remove them (add --break-system-packages if required)
-pip uninstall hailort hailo-tappas-core hailo-apps
+pip uninstall hailort hailo-tappas-core hailo-apps-core hailo-apps
 ```
 
 **3. Remove hailo-apps resources directory:**
