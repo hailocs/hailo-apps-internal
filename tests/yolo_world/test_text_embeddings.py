@@ -155,7 +155,10 @@ prompts="cat",
 
 class TestDefaultPromptsExist:
     def test_default_prompts_file_loads_as_list(self):
-        path = Path(__file__).resolve().parents[1] / "default_prompts.json"
+        # default_prompts.json ships next to text_embedding_manager.py in the
+        # yolo_world package — resolve via the package, not the test's path.
+        from hailo_apps.python.pipeline_apps.yolo_world import text_embedding_manager as tem
+        path = Path(tem.__file__).resolve().parent / "default_prompts.json"
         assert path.exists(), f"Missing {path}"
         data = json.loads(path.read_text())
         assert isinstance(data, list)

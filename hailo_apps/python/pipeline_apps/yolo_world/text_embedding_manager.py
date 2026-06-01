@@ -6,7 +6,7 @@ encoder** ([numpy_clip_text_encoder.py]) — numerically identical to HF
 (validated at cosine 1.0), but with no `torch`/`transformers` runtime
 dependency. This also avoids the on-device Hailo CLIP HEF, whose 8-bit output
 quantization distorted the embedding geometry enough to break YOLO World's
-class head (~16% detection match vs HF; see tests/test_clip_equivalence.py / test_e2e_parity.py).
+class head (~16% detection match vs HF; see test_clip_equivalence.py + test_e2e_parity.py).
 
 Embeddings are computed once at startup, cached to disk, and re-encoded on
 prompts-file change. Runtime deps: numpy + tokenizers (both lightweight).
