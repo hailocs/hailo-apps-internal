@@ -186,7 +186,7 @@ Example
 
 **Inference on single image**
 ```shell script
-./pose_estimation_onnx_postproc.py -i zidane.jpg -b 1
+./pose_estimation_onnx_postproc.py -i dog_bicycle.jpg -b 1
 ```
 
 **Inference on a usb camera stream**

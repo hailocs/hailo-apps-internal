@@ -667,7 +667,6 @@ resources:
 
   photos:
     - name: "dog_bicycle.jpg"
-    - name: "zidane.jpg"
     - name: "bus.jpg"
     - name: "input_image.png"
     - name: "ocr_img1.png"
