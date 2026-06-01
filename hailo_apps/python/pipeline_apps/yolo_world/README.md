@@ -48,7 +48,7 @@ python yolo_world.py --input usb --prompts "person, dog, laptop"
 
 #### App logic
 
-You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings), decodes the raw tensors (DFL + per-class NMS), stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
+You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings), reads the on-device CPU NMS output (a single `yolov8_nms_postprocess` tensor with `[y1, x1, y2, x2, score]` per box, already score-thresholded and NMS'd on chip), stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
 
 The `YoloWorldCallbackData` class shares state (inference engine, embedding manager, detection stabilizer) with the pipeline class `GStreamerYoloWorldApp`.
 
@@ -91,9 +91,23 @@ By default, the package contains a single model depending on the device architec
 You can download additional models by running `hailo-download-resources --all`.
 The models are downloaded to the `resources/models/` directory.
 
+#### Performance
+
+End-to-end pipeline FPS measured on the bundled HEFs (USB camera input, COCO-80 prompts, default 0.3 confidence threshold):
+
+| Arch | Pipeline FPS | Per-frame callback (mean) | Inference (mean) | Postprocess (mean) |
+|---|---:|---:|---:|---:|
+| Hailo-8 | ~30 | ~33 ms | ~32 ms | < 0.5 ms |
+| Hailo-10H | ~28 | ~36 ms | ~35 ms | < 0.5 ms |
+
+On-device CPU NMS keeps the host-side postprocess at sub-millisecond cost — the model itself is the bottleneck on both archs. Reducing the active prompt count does **not** speed up inference at runtime (the text input is always padded to 80); for higher throughput, recompile the HEF with a smaller `classes` parameter in the NMS config.
+
 #### HEF provenance
 
-All three HEFs were compiled with DFC 3.33 from model-zoo v5.3.0.
+| Arch | DFC | Model Zoo | Notes |
+|---|---|---|---|
+| Hailo-8 / Hailo-8L | 3.33 | v2.18 | on-device CPU NMS, 6-output → 1 fused stream via HRT 4.x |
+| Hailo-10H | 5.4 | v5.4 (dev) | on-device CPU NMS, single `yolov8_nms_postprocess` output exposed by HRT 5.x |
 
 #### Retrained Networks Support
 YOLO World is published for fine-tuning (normal / prompt-tuning / reparameterized). For reliable detection of a fixed class set, fine-tune in the [AILab-CVC/YOLO-World](https://github.com/AILab-CVC/YOLO-World) framework and recompile to a HEF. For more information, see [Using Retrained Models](../../../../doc/developer_guide/retraining_example.md).

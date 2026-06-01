@@ -129,6 +129,17 @@ def postprocess(output_tensors, score_threshold=0.3,
         h, w, _ = cls_map.shape
         scores_flat = cls_map[:, :, :num_classes].reshape(-1, num_classes)  # (HW, C)
 
+        # Some HEF builds apply the cls sigmoid on-chip (output in [0,1]); others
+        # emit raw logits and expect host-side sigmoid. Detect once per call by
+        # range: if any value is outside [0,1], assume logits and apply sigmoid.
+        if scores_flat.size and (scores_flat.max() > 1.0 or scores_flat.min() < 0.0):
+            # Numerically stable sigmoid (avoid exp overflow for large negatives).
+            scores_flat = np.where(
+                scores_flat >= 0,
+                1.0 / (1.0 + np.exp(-scores_flat)),
+                np.exp(scores_flat) / (1.0 + np.exp(scores_flat)),
+            )
+
         # Multi-label: every (cell, class) whose score clears the threshold is a
         # candidate. YOLO World's head is per-class sigmoid, so a single location
         # can legitimately fire for several overlapping classes (e.g. a "can" held
@@ -277,10 +288,18 @@ def _decode_nms_by_class_flat(arr, score_threshold, num_classes):
             continue
         for row in dets[keep]:
             # Chip writes [y1, x1, y2, x2, score]; swap to [x1, y1, x2, y2] at pack time.
+            # Clamp to [0, 1]: HRT's BY_CLASS layout can emit FP32-ULP overshoots
+            # (e.g. score=1.0000305) and bbox coords beyond the frame, both of
+            # which HailoDetection rejects with std::invalid_argument.
+            x1 = max(0.0, min(1.0, float(row[1])))
+            y1 = max(0.0, min(1.0, float(row[0])))
+            x2 = max(0.0, min(1.0, float(row[3])))
+            y2 = max(0.0, min(1.0, float(row[2])))
+            score = max(0.0, min(1.0, float(row[4])))
             detections.append({
-                "bbox": [float(row[1]), float(row[0]), float(row[3]), float(row[2])],
+                "bbox": [x1, y1, x2, y2],
                 "class_id": cls_id,
-                "score": float(row[4]),
+                "score": score,
             })
     detections.sort(key=lambda d: d["score"], reverse=True)
     return detections
