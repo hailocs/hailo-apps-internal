@@ -59,3 +59,7 @@ resources
 .cursor/
 .vscode/
 docs/superpowers/
+
+# s3_staging is a local-only staging area for binaries pushed to S3
+# out-of-band; never commit its contents.
+s3_staging/
