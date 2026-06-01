@@ -48,7 +48,9 @@ python yolo_world.py --input usb --prompts "person, dog, laptop"
 
 #### App logic
 
-You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings), reads the on-device CPU NMS output (a single `yolov8_nms_postprocess` tensor with `[y1, x1, y2, x2, score]` per box, already score-thresholded and NMS'd on chip), stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
+You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings), reads the on-device CPU NMS output (a single `yolov8_nms_postprocess` tensor presented as a `HAILO_NMS_BY_SCORE` byte stream — `uint16 n_dets` header + N × 22-byte records `[y1, x1, y2, x2, score, class_id]`, already score-thresholded and NMS'd on chip), stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
+
+> The same `BY_SCORE` readout is used on both H8 (HRT 4.x) and H10H (HRT 5.x). On both runtimes the `HAILO_NMS_BY_CLASS` alternative has known bugs for this specific HEF (H8/4.x: silently drops non-zero classes; H10H/5.x: `libhailort/src/net_flow/ops/yolov8_post_process.cpp::fill_nms_by_class_format_buffer` only populates class 0's slot). `BY_SCORE` encodes `class_id` per detection so it dodges both. A standalone reproducer for the H10H bug — for filing with the HailoRT team — is at [scripts/repro_hrt_by_class_bug.py](scripts/repro_hrt_by_class_bug.py).
 
 The `YoloWorldCallbackData` class shares state (inference engine, embedding manager, detection stabilizer) with the pipeline class `GStreamerYoloWorldApp`.
 
