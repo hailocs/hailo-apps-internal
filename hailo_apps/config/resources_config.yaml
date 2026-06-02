@@ -88,6 +88,10 @@ videos:
     tag:
       - clip
       - classifier
+  - name: office_example.mp4
+    source: s3
+    tag:
+      - yolo_world
   - name: full_mov_slow.mp4
     source: s3
     tag:

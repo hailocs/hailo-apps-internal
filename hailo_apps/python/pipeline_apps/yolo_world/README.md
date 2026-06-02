@@ -5,22 +5,35 @@
 Open-vocabulary, zero-shot object detection: detect **anything you describe in text** — no retraining, classes changeable at runtime. Supported on **Hailo-8** and **Hailo-10H**; the `yolo_world_v2s` HEF is dual-input either way (image + 80×512 text embeddings).
 
 #### Run the YOLO World example:
-```bash
-hailo-yolo-world
-```
-To close the application, press `Ctrl+C`.
 
-By default it detects the COCO-80 classes. Provide your own classes with `--prompts`:
-```bash
-hailo-yolo-world --prompts "person, water glass, houseplant"
-```
+The packaged example runs the bundled `office_example.mp4` clip with a prompt set
+that was hand-tuned for it:
 
-A worked example clip ships with the resources:
 ```bash
 hailo-yolo-world --input /usr/local/hailo/resources/videos/office_example.mp4 \
-                 --prompts "smartphone, white mug, keyboard, mouse, scissors"
+                 --prompts "wireless keyboard, mouse, colorful ball, coffee mug, black scissors, bottle" \
+                 --arch hailo10h
 ```
-Note the phrasing — `smartphone` beats `phone` by ~60% peak confidence on this clip, and `white mug` beats `coffee cup` by ~3×. See the *Prompt phrasing matters* section below.
+
+To close the application, press `Ctrl+C`.
+
+The clip and the matching prompts are part of the `yolo_world` resource tag and
+are fetched automatically by `hailo-download-resources --all` (or by running the
+installer). If you don't already have it, the video lives at:
+
+`https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/office_example.mp4`
+
+For your own scenes, use `--prompts` (or `--input usb` for live camera):
+```bash
+hailo-yolo-world --prompts "person, water glass, houseplant"
+hailo-yolo-world --input usb --prompts "cat, dog, laptop"
+```
+
+Without `--prompts`, the app falls back to the COCO-80 default set. Note that
+prompt **phrasing** matters a lot — `wireless keyboard` beats `keyboard`,
+`coffee mug` beats `coffee cup`, etc. on this clip. See *Prompt phrasing matters*
+below for the technique, and use `--interactive` `?word` to compare synonyms
+live against your own scene.
 
 #### Running with Raspberry Pi Camera input:
 ```bash
