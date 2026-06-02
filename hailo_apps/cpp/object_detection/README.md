@@ -91,6 +91,7 @@ Arguments
     - On Linux, you can also use /dev/vidoeX (e.g., `/dev/video0`) to select a specific camera.
     - On Windows, you can also use a camera index (`0`, `1`, `2`, ...) to select a specific camera.
     - On Raspberry Pi, you can also use `rpi` to enable the Raspberry Pi camera.
+    - On Astrial/IMX8 (Yocto-based systems), use `csi` to auto-detect and open the CSI camera. The ISP must be initialized first: `cd /opt/imx8-isp/bin && ./run.sh -lm -c dual_imx219_1080p60 &`
   - A **predefined input name** from `resources_config.yaml` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
     - Use `--list-inputs` to display all available predefined inputs.

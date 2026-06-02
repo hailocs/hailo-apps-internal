@@ -139,6 +139,15 @@ void validate_visualization_params(const VisualizationParams &vis, AppVisMode mo
     }
 }
 
+static std::string make_csi_gst_pipeline(const std::string &device, int w, int h)
+{
+    return "v4l2src device=" + device + " ! "
+           "videoscale ! videoconvert ! "
+           "video/x-raw,format=BGR,width=" + std::to_string(w) +
+           ",height=" + std::to_string(h) + " ! "
+           "appsink max-buffers=1 drop=true sync=false";
+}
+
 static std::string make_rpi_gst_pipeline(int w, int h, int fps)
 {
     return "libcamerasrc ! "
@@ -167,6 +176,41 @@ static bool is_raspberry_pi()
     std::getline(f, model);
 
     return model.find(RPI_POSSIBLE_NAME) != std::string::npos;
+#endif
+}
+
+static bool is_yocto()
+{
+#ifdef _WIN32
+    return false;
+#else
+    // Known identifiers for Yocto/OpenEmbedded-based distros.
+    // Checked case-insensitively against the ID, ID_LIKE, and CPE_NAME fields.
+    static const std::vector<std::string> YOCTO_MARKERS = {
+        "poky", "yocto", "openembedded", "fsl-imx", "buildroot", "openwrt"
+    };
+
+    std::ifstream f("/etc/os-release");
+    if (!f.is_open()) return false;
+
+    std::string line;
+    while (std::getline(f, line)) {
+        // Only inspect relevant keys
+        const bool relevant =
+            line.rfind("ID=", 0)       == 0 ||
+            line.rfind("ID_LIKE=", 0)  == 0 ||
+            line.rfind("CPE_NAME=", 0) == 0;
+        if (!relevant) continue;
+
+        std::string lower = line;
+        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+
+        for (const auto &marker : YOCTO_MARKERS) {
+            if (lower.find(marker) != std::string::npos)
+                return true;
+        }
+    }
+    return false;
 #endif
 }
 
@@ -471,6 +515,38 @@ static std::vector<CameraDevice> get_usb_video_devices_linux()
 
     return usb_video_devices;
 }
+
+static std::string find_csi_video_device_linux()
+{
+    std::vector<std::string> candidates;
+    for (const auto &entry : fs::directory_iterator("/dev")) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("video", 0) == 0)
+            candidates.push_back("/dev/" + name);
+    }
+    std::sort(candidates.begin(), candidates.end());
+
+    for (const auto &device : candidates) {
+        const std::string info = run_command(
+            "udevadm info --query=all --name=" + device + " 2>/dev/null");
+
+        if (info.find("ID_BUS=usb") != std::string::npos)
+            continue;
+
+        // Check capture capability: prefer udev property, fall back to v4l2-ctl
+        if (info.find("ID_V4L_CAPABILITIES") != std::string::npos) {
+            if (info.find(":capture:") == std::string::npos) continue;
+        } else {
+            const std::string cap = run_command(
+                "v4l2-ctl --device=" + device + " --info 2>/dev/null");
+            if (cap.find("Video Capture") == std::string::npos) continue;
+        }
+
+        std::cout << "CSI camera detected: " << device << "\n";
+        return device;
+    }
+    return "";
+}
 #endif
 
 #ifdef _WIN32
@@ -603,6 +679,29 @@ InputType determine_input_type(const std::string& input_path,
         capture = open_video_capture(input_path, capture, org_height, org_width, frame_count,
                                      true /*is_camera*/, camera_resolution);
 
+    //5. CSI camera shortcut (Astrial/IMX8 and other platform CSI cameras)
+    } else if (input_path == "csi") {
+#ifdef _WIN32
+        throw std::runtime_error("'csi' camera input is not supported on Windows.");
+#else
+        if (!is_yocto()) {
+            throw std::runtime_error(
+                "'csi' camera input is only supported on Yocto-based embedded systems (e.g. Astrial/IMX8).\n"
+                "Use '-i usb' for a USB camera or '-i rpi' on Raspberry Pi.");
+        }
+        const std::string csi_device = find_csi_video_device_linux();
+        if (csi_device.empty()) {
+            std::cerr << "-W- No CSI camera detected.\n"
+                      << "-W- On Astrial/IMX8, initialize the ISP first:\n"
+                      << "-W-   cd /opt/imx8-isp/bin && ./run.sh -lm -c dual_imx219_1080p60 &\n";
+            throw std::runtime_error("No CSI camera detected");
+        }
+        input_type.is_camera = true;
+        std::cout << "Using CSI camera: " << csi_device << "\n";
+        capture = open_video_capture("csi:" + csi_device, capture, org_height, org_width,
+                                     frame_count, true /*is_camera*/, camera_resolution);
+#endif
+
     } else {
         throw std::runtime_error("Unsupported input type: " + input_path);
     }
@@ -708,12 +807,13 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
     const std::string &camera_resolution)
     {
     const bool is_rpi_input = (input_path == "rpi");
+    const bool is_csi       = (input_path.rfind("csi:", 0) == 0);
+    const std::string device = is_csi ? input_path.substr(4) : input_path;
     // Validate platform
     if (is_rpi_input && !is_raspberry_pi()) {
         throw std::runtime_error(
             "You requested '-i rpi', but this system is not a Raspberry Pi.\n"
-            "Use '-i usb' or a video file instead."
-        );
+            "Use '-i usb' or a video file instead.");
     }
 
     // Default camera resolution
@@ -744,6 +844,9 @@ cv::VideoCapture open_video_capture(const std::string &input_path,
         org_width  = width  = 800;
         org_height = height = 600;
         std::string pipeline = make_rpi_gst_pipeline(width, height, fps);
+        capture.open(pipeline, cv::CAP_GSTREAMER);
+    } else if (is_csi) {
+        std::string pipeline = make_csi_gst_pipeline(device, width, height);
         capture.open(pipeline, cv::CAP_GSTREAMER);
     } else {
     #ifdef _WIN32

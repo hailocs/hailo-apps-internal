@@ -847,7 +847,7 @@ std::string ResourcesManager::resolve_input_arg(const std::string &app,
     //  - "usb" / "rpi"
     //  - Windows: "0", "1", ...
     //  - Linux: "/dev/videoX"
-    if (input_arg == "usb" || input_arg == "rpi" ||
+    if (input_arg == "usb" || input_arg == "rpi" || input_arg == "csi" ||
         (!input_arg.empty() && std::all_of(input_arg.begin(), input_arg.end(), ::isdigit)) ||
         (input_arg.rfind("/dev/video", 0) == 0))
     {

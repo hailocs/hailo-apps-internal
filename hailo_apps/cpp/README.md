@@ -55,6 +55,7 @@ yaml-cpp and libcurl are bundled as submodules and built automatically — no ma
 | CMake | 3.20 | [cmake.org](https://cmake.org/download/) |
 | OpenCV | 4.5.4 | `vcpkg install opencv` |
 | Visual Studio | 2019+ | With "Desktop development with C++" workload |
+| Git for Windows | any | [git-scm.com](https://git-scm.com/download/win) — required by `build.ps1` for Unix tools (`sed`) |
 
 ---
 
@@ -87,18 +88,16 @@ cd hailo_apps/cpp
 
 ## Building the Applications
 
-All applications are built through a single entry point: **`build.sh`** (Linux) or per-app CMake commands (Windows).
+All applications are built through a single build script: **`build.sh`** on Linux and **`build.ps1`** on Windows. Both scripts share the same interface and behavior:
 
-### Linux — `build.sh`
-
-`build.sh` is the recommended way to build on Linux. It handles everything in order:
-
-1. Checks whether yaml-cpp and libcurl are available as system packages.  
-2. If not found on the system, builds them **once** from the bundled submodules into a shared `deps/` directory.  
-3. Builds whichever applications you specify (or all of them).  
-4. Prints a clean pass/fail summary at the end.
+1. Check whether yaml-cpp and libcurl are available as system packages.
+2. If not, build them **once** from the bundled submodules into a shared `deps/` directory.
+3. Build whichever applications you specify (or all of them).
+4. Print a pass/fail summary at the end.
 
 Shared dependencies are built only once and reused across all applications — subsequent builds are fast.
+
+Use `build.sh` on Linux and `build.ps1` on Windows — the interface is identical.
 
 #### Build All Applications
 
@@ -108,8 +107,6 @@ Shared dependencies are built only once and reused across all applications — s
 
 #### Build Specific Applications
 
-Pass one or more application names as arguments:
-
 ```bash
 ./build.sh object_detection
 ./build.sh object_detection instance_segmentation pose_estimation
@@ -117,12 +114,11 @@ Pass one or more application names as arguments:
 
 #### Clean Build (Remove Previous Build Artifacts)
 
-Use `--rebuild` to delete each application's `build/` directory before rebuilding. This is useful when switching branches or after changing CMake options:
+Use `--rebuild` to delete each application's `build/` directory before rebuilding. Useful when switching branches or after changing CMake options:
 
 ```bash
 ./build.sh --rebuild
 ./build.sh --rebuild object_detection
-./build.sh --rebuild object_detection instance_segmentation
 ```
 
 #### Help
@@ -168,16 +164,6 @@ At the end of each build, a summary shows which applications succeeded and which
 ==========================================
 ```
 
-### Windows — Per-Application CMake
-
-On Windows, build each application individually from its directory:
-
-```bat
-cd hailo_apps\cpp\object_detection
-cmake -S. -Bbuild -DCMAKE_FIND_PACKAGE_RESOLVE_SYMLINKS=True
-cmake --build build --config Release
-```
-
 ---
 
 ## Application Reference
@@ -220,6 +206,7 @@ To quickly see what a binary accepts, run it with `--help`:
 | USB camera | `--input usb` | Auto-selects first USB camera |
 | Specific camera | `--input /dev/video2` | Linux only |
 | Raspberry Pi camera | `--input rpi` | Raspberry Pi only |
+| CSI camera | `--input csi` | Yocto-based systems (e.g. Astrial/IMX8). ISP must be initialized first — see [Platform Notes](#platform-notes) |
 | Camera index | `--input 1` | Windows camera index |
 | Predefined resource | `--input bus` | Auto-downloaded from `resources_config.yaml` |
 
@@ -264,6 +251,14 @@ Models in the same group share the device's virtual device context, improving re
   ```
 
 - **Video saving (`-s`):** When saving a processed video stream (`-s`/`--save-stream-output`), FPS may drop when decoding from a video file due to VPU contention between the hardware decoder and encoder. This does not affect camera input.
+
+- **CSI camera (`--input csi`):** The Astrial exposes its CSI camera as a standard V4L2 device after the ISP is initialized. Before using `--input csi`, start the ISP on the device:
+
+  ```bash
+  cd /opt/imx8-isp/bin && ./run.sh -lm -c dual_imx219_1080p60 &
+  ```
+
+  The application will then auto-detect the first non-USB V4L2 capture device. If no device is found, a warning is printed with this command as a reminder. `--input csi` is only accepted on Yocto-based systems — it will error immediately on Windows or standard desktop Linux.
 
 ---
 
