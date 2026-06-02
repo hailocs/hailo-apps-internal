@@ -610,8 +610,12 @@ static std::string build_hef_url(const std::string &source,
     }
 
     if (source == "s3") {
-        // Example style: https://hailo-csdata.s3.amazonaws.com/resources/hefs/<mz_ver>/<arch>/<name>
-        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + mz_ver + "/" + hw_arch + "/" + name;
+        // s3 uses short arch names (h8/h8l/h10h) with no version component
+        std::string short_arch = hw_arch;
+        if      (hw_arch == "hailo8")  short_arch = "h8";
+        else if (hw_arch == "hailo8l") short_arch = "h8l";
+        else if (hw_arch == "hailo10h") short_arch = "h10h";
+        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + short_arch + "/" + name;
     }
 
     if (source == "gen-ai-mz") {
@@ -908,7 +912,20 @@ std::string ResourcesManager::resolve_input_arg(const std::string &app,
     // ------------------------------------------------
     // (4) Non-empty input that was NOT an explicit path and
     //     was NOT found locally -> treat as YAML resource name.
+    //     Determine kind (image/video) to pick the right download dir.
     // ------------------------------------------------
+    const auto images = collect_resources_by_tag(root, "images", app);
+    for (const auto &e : images) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("images"));
+        }
+    }
+    const auto videos = collect_resources_by_tag(root, "videos", app);
+    for (const auto &e : videos) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("videos"));
+        }
+    }
     return download_input_yaml(root, app, input_arg, target_dir);
 }
 
@@ -1099,8 +1116,8 @@ std::string ResourcesManager::get_model_meta_value(const std::string &app,
         v = find_in_group(models["extra"]);
         if (v != "N/A") return v;
 
-        std::cerr << "Warning: model '" << model_name << "' not found for app '" << app
-                  << "' arch '" << arch << "'\n";
+        std::cerr << "Warning: metadata key '" << key << "' not found for model '"
+                  << model_name << "' (app='" << app << "', arch='" << arch << "')\n";
         return "N/A";
     }
     catch (const std::exception &e) {
