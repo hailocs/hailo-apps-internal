@@ -138,34 +138,38 @@ def is_valid_json_file(filepath: Path) -> bool:
         return False
 
 def is_valid_npy_file(filepath: Path) -> bool:
-    """Check if a file is a valid NumPy archive — either NPY or NPZ.
+    """Check if a file is loadable by numpy.
 
-    The shared `npy:` section in resources_config.yaml holds both `.npy`
-    (single-array, magic `\\x93NUMPY`) and `.npz` (multi-array ZIP archive,
-    magic `PK\\x03\\x04`). We dispatch by file extension so the same magic
-    check applies cleanly to either format.
+    Covers both .npy (single-array) and .npz (multi-array zip archive) —
+    the shared `npy:` section in resources_config.yaml mixes both. We rely
+    on numpy itself to validate: ``np.load`` parses the file header (for
+    .npy) or the ZIP central directory + per-array NPY headers (for .npz),
+    raising on any structural problem. This catches truncated downloads,
+    corruption, and "right-magic-bytes-but-not-actually-numpy" failure
+    modes that a magic-byte check would miss.
+
+    ``allow_pickle=False`` is deliberate: numpy resources shipped with the
+    app must not require unpickling at load time (security + repro).
 
     Args:
         filepath: Path to the file to check
 
     Returns:
-        True if the file's magic bytes match its declared extension.
+        True iff ``np.load(filepath)`` returns without raising.
     """
+    import numpy as np
+
     if not filepath.exists() or filepath.stat().st_size == 0:
         return False
 
-    suffix = filepath.suffix.lower()
-    if suffix == ".npy":
-        expected_magic = b"\x93NUMPY"
-    elif suffix == ".npz":
-        expected_magic = b"PK\x03\x04"
-    else:
-        return False
-
     try:
-        with open(filepath, "rb") as f:
-            return f.read(len(expected_magic)) == expected_magic
-    except Exception:
+        result = np.load(filepath, allow_pickle=False)
+        # NpzFile (the .npz case) keeps a file handle open — close it.
+        if hasattr(result, "close"):
+            result.close()
+        return True
+    except Exception as e:
+        logger.warning("np.load(%s) failed: %s: %s", filepath, type(e).__name__, e)
         return False
 
 def is_valid_video_file(filepath: Path) -> bool:
