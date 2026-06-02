@@ -146,10 +146,11 @@ def main():
 
     # Temporal stability is handled by the GStreamer hailotracker element
     # downstream of the user-callback (see TRACKER_PIPELINE in
-    # yolo_world_pipeline.py). Postprocess threshold == user's confidence
-    # threshold; the tracker keeps tracks alive for keep_lost_frames after
-    # they stop matching, which absorbs short detection gaps.
-    user_data.detect_threshold = opts.confidence_threshold
+    # yolo_world_pipeline.py). Postprocess threshold runs at ~half the user
+    # confidence threshold so weak detections still reach the tracker;
+    # hailotracker's keep_new_frames acts as the "confirm before showing"
+    # gate, and keep_lost_frames sustains tracks across detection gaps.
+    user_data.detect_threshold = max(0.1, 0.5 * opts.confidence_threshold)
 
     user_data.embedding_manager = TextEmbeddingManager(
         prompts=opts.prompts,

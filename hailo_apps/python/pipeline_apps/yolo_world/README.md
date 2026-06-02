@@ -15,6 +15,13 @@ By default it detects the COCO-80 classes. Provide your own classes with `--prom
 hailo-yolo-world --prompts "person, water glass, houseplant"
 ```
 
+A worked example clip ships with the resources:
+```bash
+hailo-yolo-world --input /usr/local/hailo/resources/videos/office_example.mp4 \
+                 --prompts "smartphone, white mug, keyboard, mouse, scissors"
+```
+Note the phrasing — `smartphone` beats `phone` by ~60% peak confidence on this clip, and `white mug` beats `coffee cup` by ~3×. See the *Prompt phrasing matters* section below.
+
 #### Running with Raspberry Pi Camera input:
 ```bash
 hailo-yolo-world --input rpi

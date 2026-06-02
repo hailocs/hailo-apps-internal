@@ -166,11 +166,21 @@ class GStreamerYoloWorldApp(GStreamerApp):
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
         # hailotracker runs after the callback attaches HailoDetection metadata.
         # class-id=-1 tracks across all classes (one tracker, all prompts).
-        # keep-lost-frames=8 ≈ the old stabilizer's coast_frames default — keeps
-        # a track visible for ~0.3 s after detection drops, smoothing brief gaps.
+        # IoU thresholds loosened from the repo defaults (0.9/0.7) because
+        # YOLO World's bboxes on small/stationary objects jitter by several
+        # pixels frame-to-frame — at IoU=0.9 the tracker reads every frame as
+        # a fresh track and kills it before it stabilizes.
+        # keep_new_frames=2 / keep_tracked_frames=5 / keep_lost_frames=2 →
+        # total post-detection ghost ≈ 250 ms at 28 FPS (vs ~900 ms with the
+        # detection-app defaults of 2/15/2). Tight enough for a responsive
+        # demo without causing 1-2-frame flicker.
         tracker_pipeline = TRACKER_PIPELINE(
             class_id=-1,
-            keep_lost_frames=8,
+            iou_thr=0.5,
+            init_iou_thr=0.5,
+            keep_new_frames=2,
+            keep_tracked_frames=5,
+            keep_lost_frames=2,
         )
         # Display sync stays "false" so the sink renders every callback output
         # immediately instead of dropping it as late vs PTS.
