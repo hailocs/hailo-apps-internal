@@ -1,7 +1,13 @@
 """Offline (one-time) extraction of CLIP ViT-B/32 text-encoder body weights.
 
-This is the ONLY place torch + transformers are needed, and only to regenerate
-the packaged weights — never at runtime. Produces:
+NOT part of the runtime pipeline. The yolo_world app consumes the prebuilt
+``clip_text_vitb32_body_fp16.npz`` resource at runtime via numpy only — torch
+and transformers are not imported by the app. This script is the *build-side*
+producer of that resource; run it only when you need to regenerate the npz
+(e.g. upstream CLIP weights change, or to validate the encoder body bit-for-
+bit against HuggingFace).
+
+Produces:
   - clip_text_vitb32_body_fp16.npz  (12 transformer layers + positional emb +
     final LayerNorm; token embedding + projection are reused from the repo's
     existing shared CLIP resources, so they're intentionally excluded here)
@@ -9,7 +15,7 @@ the packaged weights — never at runtime. Produces:
 
 Usage:
     pip install torch transformers   # build-time only
-    python -m hailo_apps.python.pipeline_apps.yolo_world.scripts.extract_clip_text_weights \\
+    python scripts/extract_clip_text_weights.py \\
         --out-dir /usr/local/hailo/resources/npy
 """
 import argparse
