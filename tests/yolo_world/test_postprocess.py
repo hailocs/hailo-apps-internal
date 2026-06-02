@@ -66,15 +66,25 @@ class TestPostprocess:
         class_ids = sorted(d["class_id"] for d in result)
         assert class_ids == [0, 5]
 
-    def test_same_cell_multilabel_keeps_both_classes(self):
-        """Multi-label: a single cell with two classes above threshold emits BOTH.
-        (Regression for the person+can overlap bug — argmax would drop the can.)"""
+    def test_same_cell_two_classes_cross_class_nms_keeps_highest(self):
+        """Same-cell two-class collision: cross-class NMS keeps only the higher-
+        scoring class. Same physical bbox firing for two visually-similar
+        prompts (e.g. "smartphone" + "mouse" on a desk object) was producing
+        flickering labels on one box — at IoU=1.0 the lower-scoring class is
+        a duplicate and gets suppressed.
+
+        The legitimate "different-sized overlapping objects" case (small can
+        inside a big person) is covered by
+        test_overlapping_objects_different_classes_both_detected — small box
+        inside a big box has tiny IoU and survives.
+        """
         outs = _empty_outputs()
         _plant_detection(outs, stride=8, gy=40, gx=40, class_id=0, score=0.9)
         _plant_detection(outs, stride=8, gy=40, gx=40, class_id=5, score=0.85)
         result = postprocess(outs, score_threshold=0.3)
-        assert len(result) == 2
-        assert sorted(d["class_id"] for d in result) == [0, 5]
+        assert len(result) == 1
+        assert result[0]["class_id"] == 0
+        assert result[0]["score"] == pytest.approx(0.9, abs=1e-3)
 
     def test_overlapping_objects_different_classes_both_detected(self):
         """A 'can' (class 1) inside a 'person' (class 0): the can's cell also has a

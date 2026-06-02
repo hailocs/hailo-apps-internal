@@ -69,6 +69,45 @@ def _decode_dfl_subset(reg_flat: np.ndarray, indices: np.ndarray) -> np.ndarray:
     return (probs * _DFL_BIN_VALUES).sum(axis=-1)
 
 
+CROSS_CLASS_NMS_IOU = 0.5   # suppress overlapping boxes regardless of class
+
+
+def _cross_class_nms(detections, iou_threshold=CROSS_CLASS_NMS_IOU):
+    """Drop overlapping boxes regardless of class label, keeping the highest-
+    scoring one. Compensates for libhailort's per-class-only NMS that lets
+    "smartphone" and "mouse" both surface on the same object when their
+    cosine similarities are close — which then makes hailotracker flicker
+    the label every frame as the leader changes.
+
+    Assumes input is already sorted descending by score.
+    """
+    if len(detections) <= 1:
+        return detections
+    keep = []
+    for cand in detections:
+        bx1, by1, bx2, by2 = cand["bbox"]
+        b_area = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+        if b_area <= 0:
+            continue
+        suppressed = False
+        for chosen in keep:
+            cx1, cy1, cx2, cy2 = chosen["bbox"]
+            ix1 = max(bx1, cx1); iy1 = max(by1, cy1)
+            ix2 = min(bx2, cx2); iy2 = min(by2, cy2)
+            iw = max(0.0, ix2 - ix1); ih = max(0.0, iy2 - iy1)
+            inter = iw * ih
+            if inter <= 0:
+                continue
+            c_area = max(0.0, cx2 - cx1) * max(0.0, cy2 - cy1)
+            union = b_area + c_area - inter
+            if union > 0 and (inter / union) >= iou_threshold:
+                suppressed = True
+                break
+        if not suppressed:
+            keep.append(cand)
+    return keep
+
+
 def postprocess(output_tensors, score_threshold=0.3,
                 iou_threshold=DEFAULT_NMS_IOU_THRESHOLD, num_classes=80):
     """Post-process YOLO World output tensors into detections.
@@ -81,16 +120,21 @@ def postprocess(output_tensors, score_threshold=0.3,
         tensor shaped ``(1, num_classes, max_dets, 5)`` with already-decoded
         ``[x1,y1,x2,y2,score]`` per box — we just filter by score and return.
 
+    Both paths run an extra cross-class NMS at the end so two different
+    prompts firing on the same object (common for visually-similar nouns
+    like "smartphone" + "mouse") don't both surface as competing tracks.
+
     Both paths return the same detection-dict format with bboxes normalized
     to [0, 1].
     """
     # On-device-NMS HEF (Hailo-8): single output, already decoded.
     if len(output_tensors) == 1:
-        return _decode_on_device_nms(
+        dets = _decode_on_device_nms(
             next(iter(output_tensors.values())),
             score_threshold=score_threshold,
             num_classes=num_classes,
         )
+        return _cross_class_nms(dets)
 
     cls_tensors = []
     reg_tensors = []  # tuples of (tensor, is_dfl)
@@ -190,7 +234,7 @@ def postprocess(output_tensors, score_threshold=0.3,
             })
 
     detections.sort(key=lambda d: d["score"], reverse=True)
-    return detections
+    return _cross_class_nms(detections)
 
 
 def _decode_on_device_nms(arr, score_threshold, num_classes):
