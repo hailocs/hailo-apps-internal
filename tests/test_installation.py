@@ -138,22 +138,33 @@ def is_valid_json_file(filepath: Path) -> bool:
         return False
 
 def is_valid_npy_file(filepath: Path) -> bool:
-    """Check if a file is valid NPY.
-    
+    """Check if a file is a valid NumPy archive — either NPY or NPZ.
+
+    The shared `npy:` section in resources_config.yaml holds both `.npy`
+    (single-array, magic `\\x93NUMPY`) and `.npz` (multi-array ZIP archive,
+    magic `PK\\x03\\x04`). We dispatch by file extension so the same magic
+    check applies cleanly to either format.
+
     Args:
         filepath: Path to the file to check
-        
+
     Returns:
-        True if the file is valid NPY
+        True if the file's magic bytes match its declared extension.
     """
     if not filepath.exists() or filepath.stat().st_size == 0:
         return False
 
+    suffix = filepath.suffix.lower()
+    if suffix == ".npy":
+        expected_magic = b"\x93NUMPY"
+    elif suffix == ".npz":
+        expected_magic = b"PK\x03\x04"
+    else:
+        return False
+
     try:
-        with open(filepath, 'rb') as f:
-            # Check NPY magic number
-            magic = f.read(6)
-            return magic == b'\x93NUMPY'
+        with open(filepath, "rb") as f:
+            return f.read(len(expected_magic)) == expected_magic
     except Exception:
         return False
 
