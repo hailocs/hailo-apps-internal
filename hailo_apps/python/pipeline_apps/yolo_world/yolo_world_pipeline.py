@@ -36,6 +36,7 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import (
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     QUEUE,
+    TRACKER_PIPELINE,
     USER_CALLBACK_PIPELINE,
 )
 
@@ -163,6 +164,14 @@ class GStreamerYoloWorldApp(GStreamerApp):
             name="yw_callback_q", max_size_buffers=2, leaky="downstream",
         )
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
+        # hailotracker runs after the callback attaches HailoDetection metadata.
+        # class-id=-1 tracks across all classes (one tracker, all prompts).
+        # keep-lost-frames=8 ≈ the old stabilizer's coast_frames default — keeps
+        # a track visible for ~0.3 s after detection drops, smoothing brief gaps.
+        tracker_pipeline = TRACKER_PIPELINE(
+            class_id=-1,
+            keep_lost_frames=8,
+        )
         # Display sync stays "false" so the sink renders every callback output
         # immediately instead of dropping it as late vs PTS.
         display_pipeline = DISPLAY_PIPELINE(
@@ -174,6 +183,7 @@ class GStreamerYoloWorldApp(GStreamerApp):
             f"{pacer} ! "
             f"{callback_queue} ! "
             f"{user_callback_pipeline} ! "
+            f"{tracker_pipeline} ! "
             f"{display_pipeline}"
         )
         logger.debug("Pipeline string: %s", pipeline_string)

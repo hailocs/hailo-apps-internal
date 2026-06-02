@@ -23,7 +23,6 @@ from hailo_apps.python.core.common.buffer_utils import (  # noqa: E402
 )
 from hailo_apps.python.core.common.hailo_logger import get_logger  # noqa: E402
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class  # noqa: E402
-from hailo_apps.python.pipeline_apps.yolo_world.detection_stabilizer import DetectionStabilizer  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.live_control import LivePromptController  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.postprocess import postprocess  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.prompt_suggester import PromptSuggester  # noqa: E402
@@ -49,8 +48,8 @@ class YoloWorldCallbackData(app_callback_class):
         self.confidence_threshold = 0.3
         self._last_embeddings_id = None
         self.profiler = CallbackProfiler(enabled=False)
-        self.stabilizer = None        # DetectionStabilizer or None (raw mode)
-        self.detect_threshold = 0.3   # threshold fed to postprocess
+        self.detect_threshold = 0.3   # threshold fed to postprocess (== confidence_threshold;
+                                      # GStreamer hailotracker handles temporal stability downstream)
         self.frame_buffer = None      # deque of recent frames (interactive probe)
         self.engine_lock = threading.Lock()  # guards the shared detector engine
         self._counts_lock = threading.Lock()
@@ -86,35 +85,28 @@ def app_callback(element, buffer, user_data):
     engine = user_data.inference_engine
     manager = user_data.embedding_manager
 
-    # Re-bind embeddings tensor in the inference engine when it changes. The
-    # prompt set changed too, so class ids change meaning — reset the tracker.
+    # Re-bind embeddings tensor in the inference engine when it changes.
     current_embeddings = manager.get_embeddings()
     if current_embeddings is not user_data._last_embeddings_id:
         engine.update_text_embeddings(current_embeddings)
         user_data._last_embeddings_id = current_embeddings
-        if user_data.stabilizer is not None:
-            user_data.stabilizer.reset()
         logger.info("Inference engine updated with new embeddings")
 
     # The lock spans engine.run() + postprocess. `engine.run()` returns *views*
     # into pre-allocated output buffers; if the interactive ?probe acquired the
     # lock between run() and postprocess, it would swap embeddings and re-run
     # the engine, overwriting those buffers mid-read. Postprocess materializes
-    # owned detection dicts, so the stabilizer can run after we release.
+    # owned detection dicts, so downstream elements can read them safely.
     with user_data.engine_lock:
         outputs = engine.run(frame)
         t_after_infer = user_data.profiler.mark(t_after_copy, "infer")
         labels = manager.get_labels()
         num_classes = manager.get_num_classes()
-        # When stabilizing, postprocess at the lower sustain threshold so the
-        # tracker sees weak detections (hysteresis decides what to actually show).
         detections = postprocess(
             outputs,
             score_threshold=user_data.detect_threshold,
             num_classes=num_classes,
         )
-    if user_data.stabilizer is not None:
-        detections = user_data.stabilizer.update(detections)
     t_after_post = user_data.profiler.mark(t_after_infer, "postprocess")
 
     # hailooverlay reads detections off the buffer ROI.
@@ -152,15 +144,12 @@ def main():
     user_data.confidence_threshold = opts.confidence_threshold
     user_data.profiler = CallbackProfiler(enabled=opts.profile)
 
-    # Temporal stabilization (anti-flicker) is always on, tuned via constants in
-    # detection_stabilizer.py. The confirm threshold tracks --confidence-threshold;
-    # postprocess runs at the lower sustain threshold so the tracker sees weak
-    # detections (hysteresis decides what to actually show).
-    user_data.stabilizer = DetectionStabilizer(confirm_thr=opts.confidence_threshold)
-    user_data.detect_threshold = user_data.stabilizer.sustain_thr
-    logger.info("Stabilization: confirm=%.2f sustain=%.2f coast=%d frames",
-                user_data.stabilizer.confirm_thr, user_data.stabilizer.sustain_thr,
-                user_data.stabilizer.coast_frames)
+    # Temporal stability is handled by the GStreamer hailotracker element
+    # downstream of the user-callback (see TRACKER_PIPELINE in
+    # yolo_world_pipeline.py). Postprocess threshold == user's confidence
+    # threshold; the tracker keeps tracks alive for keep_lost_frames after
+    # they stop matching, which absorbs short detection gaps.
+    user_data.detect_threshold = opts.confidence_threshold
 
     user_data.embedding_manager = TextEmbeddingManager(
         prompts=opts.prompts,
