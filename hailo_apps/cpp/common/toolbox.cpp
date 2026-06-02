@@ -139,13 +139,24 @@ void validate_visualization_params(const VisualizationParams &vis, AppVisMode mo
     }
 }
 
+static bool has_gstreamer_element(const std::string &element_name);
+
 static std::string make_csi_gst_pipeline(const std::string &device, int w, int h)
 {
-    return "v4l2src device=" + device + " ! "
-           "videoscale ! videoconvert ! "
-           "video/x-raw,format=BGR,width=" + std::to_string(w) +
-           ",height=" + std::to_string(h) + " ! "
-           "appsink max-buffers=1 drop=true sync=false";
+    // On Astrial/IMX8: use hardware G2D scaler/converter if available,
+    // fall back to software.
+    if (has_gstreamer_element("imxvideoconvert_g2d")) {
+        return "v4l2src device=" + device +
+               " ! imxvideoconvert_g2d ! video/x-raw,format=BGRx"
+               ",width=" + std::to_string(w) + ",height=" + std::to_string(h) +
+               " ! videoconvert ! video/x-raw,format=BGR"
+               " ! appsink max-buffers=1 drop=true sync=false";
+    }
+    return "v4l2src device=" + device +
+           " ! videoscale ! videoconvert"
+           " ! video/x-raw,format=BGR,width=" + std::to_string(w) +
+           ",height=" + std::to_string(h) +
+           " ! appsink max-buffers=1 drop=true sync=false";
 }
 
 static std::string make_rpi_gst_pipeline(int w, int h, int fps)
