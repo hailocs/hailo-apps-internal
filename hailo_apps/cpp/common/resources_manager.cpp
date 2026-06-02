@@ -912,7 +912,20 @@ std::string ResourcesManager::resolve_input_arg(const std::string &app,
     // ------------------------------------------------
     // (4) Non-empty input that was NOT an explicit path and
     //     was NOT found locally -> treat as YAML resource name.
+    //     Determine kind (image/video) to pick the right download dir.
     // ------------------------------------------------
+    const auto images = collect_resources_by_tag(root, "images", app);
+    for (const auto &e : images) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("images"));
+        }
+    }
+    const auto videos = collect_resources_by_tag(root, "videos", app);
+    for (const auto &e : videos) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("videos"));
+        }
+    }
     return download_input_yaml(root, app, input_arg, target_dir);
 }
 
@@ -1103,8 +1116,8 @@ std::string ResourcesManager::get_model_meta_value(const std::string &app,
         v = find_in_group(models["extra"]);
         if (v != "N/A") return v;
 
-        std::cerr << "Warning: model '" << model_name << "' not found for app '" << app
-                  << "' arch '" << arch << "'\n";
+        std::cerr << "Warning: metadata key '" << key << "' not found for model '"
+                  << model_name << "' (app='" << app << "', arch='" << arch << "')\n";
         return "N/A";
     }
     catch (const std::exception &e) {
