@@ -610,8 +610,12 @@ static std::string build_hef_url(const std::string &source,
     }
 
     if (source == "s3") {
-        // Example style: https://hailo-csdata.s3.amazonaws.com/resources/hefs/<mz_ver>/<arch>/<name>
-        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + mz_ver + "/" + hw_arch + "/" + name;
+        // s3 uses short arch names (h8/h8l/h10h) with no version component
+        std::string short_arch = hw_arch;
+        if      (hw_arch == "hailo8")  short_arch = "h8";
+        else if (hw_arch == "hailo8l") short_arch = "h8l";
+        else if (hw_arch == "hailo10h") short_arch = "h10h";
+        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + short_arch + "/" + name;
     }
 
     if (source == "gen-ai-mz") {
