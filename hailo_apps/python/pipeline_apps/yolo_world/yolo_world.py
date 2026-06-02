@@ -27,7 +27,7 @@ from hailo_apps.python.pipeline_apps.yolo_world.detection_stabilizer import Dete
 from hailo_apps.python.pipeline_apps.yolo_world.live_control import LivePromptController  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.postprocess import postprocess  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.prompt_suggester import PromptSuggester  # noqa: E402
-from hailo_apps.python.pipeline_apps.yolo_world.profiler import CallbackProfiler  # noqa: E402
+from hailo_apps.python.core.common.callback_profiler import CallbackProfiler  # noqa: E402
 from hailo_apps.python.pipeline_apps.yolo_world.text_embedding_manager import (  # noqa: E402
     TextEmbeddingManager,
 )
