@@ -818,6 +818,76 @@ class TestNpyConfigFiles:
 
 
 # ============================================================================
+# SECTION 10: DOWNLOAD CLI BEHAVIOR
+# ============================================================================
+
+@pytest.mark.installation
+@pytest.mark.resources
+class TestDownloadCliBehavior:
+    """Tests guarding regressions in the download CLI's user-visible behavior.
+
+    Bugs these tests guard against:
+    1. The CLI used to silently no-op for everything but the HEF because the
+       root logger stayed at WARNING and all per-task progress was logged at
+       INFO. Users saw only the HEF URL probe (a print()) and concluded
+       "nothing else downloaded".
+    2. The legacy `download_group_resources(group, cfg, arch)` API silently
+       dropped any caller intent to force re-download — it didn't accept
+       force/dry_run/parallel and built a default DownloadConfig.
+    """
+
+    def test_download_group_resources_accepts_force_and_dry_run(self):
+        """Legacy group-download API must thread force/dry_run/parallel."""
+        import inspect
+        from hailo_apps.installation.download_resources import download_group_resources
+
+        sig = inspect.signature(download_group_resources)
+        for required in ("force", "dry_run", "parallel"):
+            assert required in sig.parameters, (
+                f"download_group_resources is missing the '{required}' parameter — "
+                f"install.sh-driven group downloads can't force re-download without it"
+            )
+
+    def test_cli_main_unsilences_installation_logger(self):
+        """Invoking the download CLI must leave installation INFO logs enabled.
+
+        Regression guard: init_logging() suppresses hailo_apps.installation.*
+        to keep other CLIs quiet, but for THIS CLI those logs ARE the
+        user-facing progress. main() must override the suppression.
+        """
+        import logging as _logging
+        import sys
+        import hailo_apps.installation.download_resources as dr
+
+        # Pre-set the installation logger to WARNING to simulate the
+        # exact failure mode (silenced by init_logging's default policy).
+        installation_logger = _logging.getLogger("hailo_apps.installation")
+        installation_logger.setLevel(_logging.WARNING)
+
+        old_argv = sys.argv
+        sys.argv = [
+            "hailo-download-resources",
+            "--group", "yolo_world",
+            "--arch", "hailo10h",
+            "--dry-run",
+            "--no-parallel",
+        ]
+        try:
+            dr.main()
+        finally:
+            sys.argv = old_argv
+
+        # After main() runs, INFO records under hailo_apps.installation must
+        # be enabled. effective_level must be <= INFO.
+        eff = installation_logger.getEffectiveLevel()
+        assert eff <= _logging.INFO, (
+            f"hailo_apps.installation effective log level is {eff} "
+            f"(> INFO={_logging.INFO}). Per-resource progress lines will be "
+            f"silenced — users will see only the HEF URL probe."
+        )
+
+
+# ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
 
