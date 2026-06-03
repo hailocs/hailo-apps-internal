@@ -1,29 +1,120 @@
-# Hailo LPR App
+# Hailo LPR Application
 
-License Plate Recognition pipeline. Two orthogonal choices control behaviour:
+![LPR Example](../../../../doc/images/lpr.gif)
 
-| Flag         | Values                                  | Default    |
-|--------------|-----------------------------------------|------------|
-| `--backbone` | `yolov8n` / `yolov8n_tiled` / `cascade` | `yolov8n`  |
-| `--ocr`      | `lprnet` / `paddle`                     | `lprnet`   |
+#### Run the LPR example:
+```bash
+hailo-lpr
+```
+To close the application, press `Ctrl+C`.
 
-Backbone picks the detector(s) that find license plates in the frame; OCR
-picks the recognition network that reads characters off each plate crop.
+This example demonstrates real-time license-plate recognition using a single
+4-class yolov8n detector for plate localisation paired with a locally
+retrained 37-class LPRNet OCR head. A multilingual `paddle_ocr_v5`
+alternative is available via `--ocr paddle`.
 
-## What's new in this release
+#### Running with Raspberry Pi Camera input:
+```bash
+hailo-lpr --input rpi
+```
 
-This is a substantial rework of the LPR pipeline. The previous version
-chained a vehicle detector, a license-plate detector, and a digits-only
-LPRNet — fine for plate formats that are purely numeric (e.g. IL), but
-unable to read plate formats with letters such as EU and US. The new
-pipeline replaces both detector stages with a single 4-class yolov8n
-and swaps the digits-only LPRNet for a locally retrained 37-class
-LPRNet that reads Latin alphanumeric plates. Numeric formats still
-work; alphanumeric formats now work too. The result is a pipeline
-that reads the plates it sees, end-to-end, in real time on the
-accelerator, across the regional formats we tested.
+#### Running with USB camera input (webcam):
+There are 2 ways:
 
-### Operational thresholds
+Specify the argument `--input` to `usb`:
+```bash
+hailo-lpr --input usb
+```
+
+This will automatically detect the available USB camera (if multiple are connected, it will use the first detected).
+
+Second way:
+
+Detect the available camera using this script:
+```bash
+get-usb-camera
+```
+Run example using USB camera input - Use the device found by the previous script:
+```bash
+hailo-lpr --input /dev/video<X>
+```
+
+For additional options, execute:
+```bash
+hailo-lpr --help
+```
+
+#### Running as Python script
+
+For examples:
+```bash
+python lpr.py --input usb
+```
+
+#### App logic
+
+The LPR pipeline operates in two stages:
+
+1. **Plate Detection Stage**: A 4-class yolov8n_384_640 detector
+   (person / vehicle / face / license_plate) runs once per frame. Only
+   detections labelled `license_plate` are kept and forwarded.
+
+2. **OCR Stage**: Each plate crop is resized and fed to the selected OCR
+   network (`lprnet` or `paddle`). The decoded text passes a length gate
+   and an engine-specific confidence gate before being printed and added
+   to the on-screen plate log.
+
+A `hailo_tracker` between the two stages assigns a stable `track_id` to
+each plate so the OCR network only runs once per unique plate, not once
+per frame. Quality gates (sharpness, crop size, ROI) filter detections
+before they reach OCR.
+
+#### Working in Python with the results
+
+The basic idea is to utilize the pipeline's callback function. In simple terms, it can be thought of as a Python function that is invoked at the end of the pipeline when frame processing is complete.
+
+This is the recommended location to implement your logic.
+
+```python
+def app_callback(element, buffer, user_data):
+    roi = hailo.get_roi_from_buffer(buffer)
+    for det in roi.get_objects_typed(hailo.HAILO_DETECTION):
+        if det.get_label() != "license_plate":
+            continue
+        track_id = det.get_objects_typed(hailo.HAILO_UNIQUE_ID)[0].get_id()
+        # crop, OCR, gate, log...
+    return
+```
+
+The `user_app_callback_class` extends the base callback class with
+LPR-specific state:
+- `seen_plates`: `track_id → plate_text` for plates already accepted
+- `plate_log`: recent `(crop, text, confidence, track_id)` tuples for
+  the display panel
+- `ocr_infer`: the HailoRT OCR inference handle
+
+#### Backbones
+
+| Backbone            | Detection chain | Typical use |
+|---------------------|-----------------|-------------|
+| `yolov8n` (default) | one `hailo_yolov8n_384_640` (4 classes: person / vehicle / face / license_plate) | most workloads |
+| `yolov8n_tiled`     | same network, fed 5 tiles per frame (2×2 quadrants + 1 full frame), aggregated | FHD / 4K input where small plates need higher per-plate pixel density |
+
+`yolov8n` is light-weight enough to run on H8L while reading plates
+end-to-end in real time. `yolov8n_tiled` trades ~30 % FPS for a
+meaningful accuracy lift on HD-and-up source video; opt-in when needed.
+
+#### OCR engines
+
+`lprnet` (default) is a locally-retrained 37-class Latin-alphanumeric
+LPRNet (`lprnet_intl.hef`). Distinct filename from the bundled 11-class
+`lprnet.hef` so the two coexist on disk. Confidence threshold: 0.50.
+
+`paddle` is `paddle_ocr_v5_mobile_recognition`. 18,385-class CTC head,
+broader script support, more tolerant of formatting. Lower per-character
+confidence by design; threshold: 0.30.
+
+#### Operational thresholds
 
 | Component       | Threshold | Effect                                                                |
 |-----------------|----------:|-----------------------------------------------------------------------|
@@ -31,181 +122,72 @@ accelerator, across the regional formats we tested.
 | OCR (`lprnet`)  | **0.50**  | OCR reads with per-character softmax mean ≥ 0.50 are accepted         |
 | OCR (`paddle`)  | 0.30      | Paddle softmax is spread over 18 k classes — lower gate by design     |
 
-### Accuracy
+#### Accuracy
 
 Default configuration (`--backbone yolov8n_tiled --ocr lprnet`),
-performance-compiled HEFs. Detector and OCR are reported separately
-since they are exercised independently.
+performance-compiled HEFs. Detector and OCR are reported separately.
 
-#### Detector — `yolov8n_384_640` (license_plate class, score ≥ 0.25, IoU ≥ 0.5)
+Detector — `yolov8n_384_640` (license_plate class, score ≥ 0.25, IoU ≥ 0.5):
 
-| Device | GT plates | **Recall** | **Miss** | Precision | mean IoU | FPS (img/s) |
-|--------|----------:|-----------:|---------:|----------:|---------:|------------:|
-| **Hailo-8**  | 5,014 | **98.4 %** | **1.6 %** | 99.2 %    | 0.854    | **120**     |
-| **Hailo-10H**| 5,014 | **98.9 %** | **1.1 %** | 99.3 %    | 0.855    | 80          |
+| Device       | GT plates | Recall    | Miss     | Precision | mean IoU | FPS  |
+|--------------|----------:|----------:|---------:|----------:|---------:|-----:|
+| Hailo-8      | 5,014     | 98.4 %    | 1.6 %    | 99.2 %    | 0.854    | 120  |
+| Hailo-10H    | 5,014     | 98.9 %    | 1.1 %    | 99.3 %    | 0.855    | 80   |
 
-#### OCR — 37-class `lprnet_intl.hef` on real labeled plate crops
+OCR — 37-class `lprnet_intl.hef` on real labeled plate crops:
 
-| Region group                | N    | Hailo-8 EXACT | Hailo-10H EXACT | ≤d2 (H8) | char-acc (H8) |
-|-----------------------------|-----:|--------------:|----------------:|---------:|--------------:|
-| **US** *(real)*             |  148 | **97.3 %**    | 96.6 %          | 100.0 %  | 99.4 %        |
-| **EU** *(real)*             |   22 | **95.5 %**    | 95.5 %          | 100.0 %  | 99.4 %        |
-| Rest of world *(IL synth.)* |  996 | 78.2 %        | 78.2 %          | 96.3 %   | 95.0 %        |
+| Region group                | N    | H8 EXACT | H10H EXACT | ≤d2 (H8) | char-acc (H8) |
+|-----------------------------|-----:|---------:|-----------:|---------:|--------------:|
+| US *(real)*                 |  148 | 97.3 %   | 96.6 %     | 100.0 %  | 99.4 %        |
+| EU *(real)*                 |   22 | 95.5 %   | 95.5 %     | 100.0 %  | 99.4 %        |
+| Rest of world *(IL synth.)* |  996 | 78.2 %   | 78.2 %     | 96.3 %   | 95.0 %        |
 
-Exact-match is character-for-character agreement with ground truth.
-`≤d2` (within 2 edits) is the OCR-ceiling indicator — most misses are
-1–2 character substitutions on visually-similar pairs (`I`↔`1`, `O`↔`0`,
-`S`↔`5`, `B`↔`8`). For reference, the legacy cascade backbone scored
-single-digit exact-match recall on a smaller earlier corpus; this
-version is an order of magnitude better.
+Most remaining misses are 1–2 character substitutions on visually-similar
+pairs (`I`↔`1`, `O`↔`0`, `S`↔`5`, `B`↔`8`).
 
-### Performance on the accelerator
+#### Performance on the accelerator
 
 End-to-end wall-clock FPS of the full GStreamer pipeline (OCR = `lprnet`),
 performance-compiled HEFs:
 
-| Backbone (OCR = lprnet)      | Hailo-8 | Hailo-8L\* | Hailo-10H | Notes                                              |
-|------------------------------|--------:|-----------:|----------:|----------------------------------------------------|
-| `yolov8n`                    | ~254    | ~117       | ~243      | Single inference per frame, real-time on FHD       |
-| `yolov8n_tiled` *(default)*  | ~171    | ~77        | ~80       | 5-tile inference; best accuracy on FHD / 4K        |
-| `cascade` *(legacy)*         | ~34     | TBD        | not supported† | Two detectors + cropper; kept for H8/H8L compat |
+| Backbone (OCR = lprnet)     | Hailo-8 | Hailo-8L\* | Hailo-10H | Notes                                        |
+|-----------------------------|--------:|-----------:|----------:|----------------------------------------------|
+| `yolov8n`                   | ~254    | ~117       | ~243      | Single inference per frame, real-time on FHD |
+| `yolov8n_tiled` *(default)* | ~171    | ~77        | ~80       | 5-tile inference; best accuracy on FHD / 4K  |
 
 \* H8L FPS measured by running the H8L performance HEFs on a physical H8
 device (H8 is a strict superset of H8L; HEFs compiled for H8L run on H8
 unchanged). Faithful proxy for actual H8L throughput, within ±5 % of
 the expected ~0.5× of H8.
 
-† Cascade on H10H: HEFs exist in the Model Zoo (v5.2.0+) but the
-cascade-specific postprocess shared objects don't currently produce
-detections from the H10H build of `yolov5m_vehicles`. Use `yolov8n` or
-`yolov8n_tiled` on H10H; both are first-class supported and faster than
-cascade anyway.
+#### Honest limitations
 
-### Honest limitations
-
-This release is a meaningful step forward, **not a finished product**.
-Things to expect:
-
-- A small percentage of plates is still missed end-to-end. Detector
-  miss rate is ~1 % on the real plate-detection corpus; OCR miss rate
-  on real US/EU plates is ~3–5 %. Most remaining failures come from
-  motion blur, severe perspective, or partially-occluded plates.
+- Detector miss rate is ~1 % on the real plate-detection corpus; OCR
+  miss rate on real US/EU plates is ~3–5 %. Most remaining failures come
+  from motion blur, severe perspective, or partially-occluded plates.
 - Numeric-only plate formats are a weak spot. The 37-class LPRNet has
   no format prior, so digit-only plates (e.g. IL) tend to pick up
-  spurious letter substitutions. A region-specific fine-tune is the
-  right fix — see *Future improvements*.
+  spurious letter substitutions.
 - The 37-class LPRNet is trained on Latin alphanumerics only. Plates
-  with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`,
-  which is multilingual but lower-accuracy on Latin plates.
-- Character substitutions are concentrated in the usual visually-similar
-  pairs (`O`↔`0`, `I`↔`1`, `S`↔`5`, `B`↔`8`) — the `≤d2` column in the
-  accuracy table separates these "almost-right" reads from outright
-  misses.
+  with non-Latin script (Arabic, Cyrillic, CJK) need `--ocr paddle`.
 
-### Future improvements
+#### Fine-tuning LPRNet for your regional plates
 
-**Fine-tune LPRNet for your regional plates.** The shipped 37-class
-LPRNet is trained on a mixed Latin corpus, so a single-region deployment
-(e.g. one country's plates, or one US state's plate format) inherits a
-generality cost it doesn't need to pay. Retraining the OCR head on a
-narrower corpus closes most of the remaining gap between near-match
-and exact-match in that region.
+The shipped 37-class LPRNet is trained on a mixed Latin corpus, so a
+single-region deployment inherits a generality cost it doesn't need to
+pay. Retraining the OCR head on a narrower corpus closes most of the
+remaining gap between near-match and exact-match in that region.
 
-This is intentionally easy to do: LPRNet is small, the architecture
-ships unchanged, and a few thousand labeled plate crops from the
-target region is enough to move the needle. The same training loop
-that produced `lprnet_intl.hef` accepts a region-specific dataset
-with no code changes — fine-tune from the checkpoint, recompile, and
-drop the new HEF in at `/usr/local/hailo/resources/models/<arch>/lprnet_intl.hef`.
-No pipeline changes needed.
+LPRNet is small, the architecture ships unchanged, and a few thousand
+labeled plate crops from the target region is enough to move the
+needle. Fine-tune from the checkpoint, recompile, and drop the new HEF
+in at `/usr/local/hailo/resources/models/<arch>/lprnet_intl.hef`. No
+pipeline changes needed.
 
-## Pipeline overview
+#### Installation
 
-```text
-   source
-     │
-     ▼
-   decode
-     │
-     ▼
-   detector              ← --backbone:  cascade │ yolov8n │ yolov8n_tiled
-     │
-     ▼
-   tracker               ← hailo_tracker (Kalman + IoU)
-     │
-     ▼
-   quality gates  ───►   reject: off-center · over-/undersized · motion-blurred
-     │ (pass)
-     ▼
-   crop
-     │
-     ▼
-   OCR                   ← --ocr:  lprnet │ paddle
-     │
-     ▼
-   confidence + length  ───►   reject: low confidence · too short
-     │ (pass)
-     ▼
-   dedupe per track      ← one stable read per track_id
-     │
-     ▼
-   display / log
-```
-
-Backbone choice swaps the detector only; everything downstream is
-invariant. The tracker is doing the heavy lifting on deduplication —
-without it, every frame would emit the same plate. Quality gates trade
-some recall for precision: blurred / off-center / oversize detections
-never reach the OCR network, and low-confidence OCR reads never reach
-the display.
-
-## Backbones
-
-| Backbone         | Detection chain                                                            | Typical use |
-|------------------|----------------------------------------------------------------------------|-------------|
-| `yolov8n` (default) | one `hailo_yolov8n_384_640` (4 classes: person/vehicle/face/license_plate) | most workloads |
-| `yolov8n_tiled`  | same network, fed 5 tiles per frame (2×2 quadrants + 1 full-frame), aggregated | FHD / 4K input where small plates need higher per-plate pixel density |
-| `cascade`        | yolov5m_vehicles → tracker → cropper(tiny_yolov4_license_plates) (legacy)  | lowest-memory; kept for compatibility, may be removed |
-
-We default to `yolov8n` because it's a clear accuracy + speed win over the
-cascade on every workload we've measured, and stays light-weight enough
-to run on H8L. `yolov8n_tiled` trades ~30 % FPS for a meaningful accuracy
-lift on HD-and-up source video; opt-in when needed.
-
-## OCR engines
-
-### `lprnet` — retrained 37-class Latin alphanumeric LPRNet  *(default)*
-
-A new locally-retrained LPRNet HEF that **replaces the bundled 11-class
-Chinese-plate LPRNet** for our use cases. The new HEF lives at a
-*separate* filename so the bundled `lprnet.hef` from the Hailo Model Zoo
-stays untouched on disk if `install.sh` placed it there.
-
-| | Bundled `lprnet.hef`           | Retrained `lprnet_intl.hef`            |
-|---|---|---|
-| Filename at install root | `lprnet.hef`                   | **`lprnet_intl.hef`**                  |
-| Classes                  | 11 (digits + CTC blank)        | **37** (digits + A–Z + CTC blank)      |
-| Charset                  | `0-9 + blank`                  | `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-`|
-| Training corpus          | Chinese plates (CCPD-style)    | Mixed Latin (synthetic + OpenALPR + curated US/EU + IL augmentation) |
-
-Headline accuracy numbers for the retrained HEF are in the
-[Accuracy table above](#ocr--37-class-lprnet_intlhef-on-real-labeled-plate-crops).
-
-### `paddle` — paddle_ocr_v5_mobile_recognition
-
-The multilingual route, unchanged. Use when you need broader script
-support (non-Latin) or richer formatting tolerance (hyphens, dots,
-spaces). 18,385-class CTC head, so per-character confidence is
-naturally diffuse — the confidence gate is 0.30 (vs 0.50 on lprnet).
-
-Future direction: we may apply the same fine-tune treatment to paddle
-that we just did to LPRNet — retraining on the plate-specific corpus.
-For now, paddle is left as-is.
-
-## Installation
-
-A plain `sudo ./install.sh` (default `download_group`) fetches everything
-the OOB LPR path needs for the detected architecture:
+A plain `sudo ./install.sh` fetches everything the OOB LPR path needs
+for the detected architecture:
 
 ```
 /usr/local/hailo/resources/models/<arch>/
@@ -220,27 +202,7 @@ the OOB LPR path needs for the detected architecture:
 `lprnet_intl`, `hailo_yolov8n_384_640`, and `paddle_ocr_v5` are listed
 under `lpr → default` in
 [`resources_config.yaml`](../../../config/resources_config.yaml) and
-fetched from the `LPR/` subdirectory on S3 (`hefs/<arch>/LPR/…`). The
-PaddleOCR-v5 character dictionary rides along as a sidecar of the
-`ocr` entry.
-
-> **Side note — paddle OCR HEF naming.** The LPR app's `--ocr paddle`
-> path uses **`paddle_ocr_v5.hef`** (PP-OCRv5 mobile recognition,
-> distinguished from the legacy `ocr.hef` by filename). The standalone
-> `paddle_ocr` apps continue to use the legacy `ocr.hef` (v3/v4 build)
-> served at the original flat S3 path, so anyone consuming that file
-> from `paddle_ocr → default` keeps receiving v3/v4 — no behaviour
-> change for those users. If `paddle_ocr_v5.hef` isn't on disk (e.g.
-> upgrade from a pre-rework install), the LPR app falls back to
-> `ocr.hef` with a warning; the postprocess layer auto-detects v3/v4
-> vs v5 by class count.
-
-The legacy cascade backbone (`yolov5m_vehicles`, `tiny_yolov4_license_plates`,
-bundled `lprnet`) sits under `lpr → extra` and is only fetched with:
-
-```bash
-sudo ./install.sh --all
-```
+fetched from the `LPR/` subdirectory on S3.
 
 If you've compiled a fresh `lprnet_intl.hef` locally and want to test it
 before it's published to S3, drop it in place manually:
@@ -250,28 +212,27 @@ sudo cp /path/to/your/lprnet_intl.hef \
         /usr/local/hailo/resources/models/<arch>/lprnet_intl.hef
 ```
 
-## Run examples
+## Command Line Arguments
 
-`sudo ./install.sh` lays down two demo clips at
-`/usr/local/hailo/resources/videos/`:
-
-- `clip1.mp4` — short EU / US traffic sample; the **default** when
-  `--input` is omitted.
-- `clip2.mp4` — longer mixed-traffic sample.
-
+### Application specific arguments:
 ```bash
-# Default — yolov8n backbone + retrained LPRNet, runs against clip1.mp4
-hailo-lpr
+--backbone <name>       # yolov8n (default) | yolov8n_tiled
+--ocr <name>            # lprnet (default) | paddle
+--save-ocr-inputs [dir] # Dump every OCR-network input crop (default: /tmp/lpr_ocr_inputs)
+```
 
-# Same defaults, but explicit input (or any clip of your own)
-hailo-lpr --input /usr/local/hailo/resources/videos/clip2.mp4
+### Run examples:
+```bash
+# Default — yolov8n backbone + retrained LPRNet
+hailo-lpr
 
 # Best accuracy on HD / 4K
 hailo-lpr --backbone yolov8n_tiled --ocr lprnet --input <your-clip.mp4>
 
 # Multilingual OCR
 hailo-lpr --backbone yolov8n_tiled --ocr paddle --input <your-clip.mp4>
-
-# Legacy cascade
-hailo-lpr --backbone cascade --ocr lprnet --input <your-clip.mp4>
 ```
+
+### All pipeline commands support these common arguments:
+
+[Common arguments](../../../../doc/user_guide/running_applications.md#command-line-argument-reference)

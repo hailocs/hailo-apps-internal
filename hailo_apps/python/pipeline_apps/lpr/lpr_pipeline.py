@@ -1,8 +1,7 @@
 # LPR pipeline: builds the GStreamer pipeline string for the chosen
-# detector backbone. Three backbones are supported (see `BACKBONES` below);
+# detector backbone. Two backbones are supported (see `BACKBONES` below);
 # the OCR stage (LPRNet or paddle_ocr_v5) is invariant.
 #
-#   cascade        : yolov5m_vehicles → tracker → vehicle-cropper(tiny_yolov4_lp) → OCR
 #   yolov8n        : yolov8n_384x640 (4 classes, "license_plate" direct)         → OCR
 #   yolov8n_tiled  : same yolov8n, but each video frame is split into 5 tiles
 #                    (4 quadrants + 1 full frame) and run through the network
@@ -14,13 +13,11 @@ from pathlib import Path
 import setproctitle
 
 from hailo_apps.python.core.common.core import (
-    configure_multi_model_hef_path,
     get_pipeline_parser,
     get_resource_path,
     handle_list_models_flag,
 )
 from hailo_apps.python.core.common.defines import (
-    ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
     BASIC_PIPELINES_VIDEO_EXAMPLE_NAME,
     HAILO8L_ARCH,
     LPR_VIDEO_NAME,
@@ -36,7 +33,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import (
     dummy_callback,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    CROPPER_PIPELINE,
     DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
@@ -54,20 +50,11 @@ LPR_APP_TITLE = "Hailo LPR App"
 LPR_PIPELINE = "lpr"
 
 # Backbone identifiers — matches the CLI --backbone choices.
-BACKBONE_CASCADE = "cascade"
 BACKBONE_YOLOV8N = "yolov8n"
 BACKBONE_YOLOV8N_TILED = "yolov8n_tiled"
-BACKBONES = (BACKBONE_CASCADE, BACKBONE_YOLOV8N, BACKBONE_YOLOV8N_TILED)
+BACKBONES = (BACKBONE_YOLOV8N, BACKBONE_YOLOV8N_TILED)
 
-# --- Cascade-specific postprocess (vehicle det + LP det) -------------------
-VEHICLE_DETECTION_POSTPROCESS_SO = "libyolo_hailortpp_postprocess.so"
-VEHICLE_DETECTION_POSTPROCESS_FUNC = "yolov5m_vehicles"
-# Custom LP postprocess that handles UINT8/UINT16/FLOAT32 across all archs.
-LP_DETECTION_POSTPROCESS_SO = "libyolov4_lp_postprocess.so"
-LP_DETECTION_POSTPROCESS_FUNC = "tiny_yolov4_license_plates"
-VEHICLE_CROPPER_FUNC = "all_detections"
-
-# --- yolov8n-specific postprocess (single 4-class detector) ----------------
+# --- yolov8n postprocess (single 4-class detector) -------------------------
 # Generic yolo postprocess that picks the NMS tensor by regex (works across
 # different network-name prefixes) and reads labels from a JSON config.
 YOLOV8N_DETECTION_POSTPROCESS_SO = "libyolo_hailortpp_postprocess.so"
@@ -75,35 +62,27 @@ YOLOV8N_DETECTION_POSTPROCESS_FUNC = "filter"
 YOLOV8N_DETECTION_LABELS_JSON = "hailo_4_classes.json"
 
 # Filename of the 4-class yolov8n license-plate detector HEF. Listed in
-# resources_config.yaml under lpr → extra so install.sh fetches it from S3
-# alongside the cascade HEFs. The resolved file lives at the standard
-# /usr/local/hailo/resources/models/<arch>/hailo_yolov8n_384_640.hef path
-# that install.sh writes to.
+# resources_config.yaml under lpr → default so install.sh fetches it from S3.
+# Lands at the standard /usr/local/hailo/resources/models/<arch>/ install path.
 YOLOV8N_DETECTOR_HEF_NAME = "hailo_yolov8n_384_640.hef"
 
 
 class GStreamerLPRApp(GStreamerApp):
-    """GStreamer LPR pipeline that supports three detector backbones.
+    """GStreamer LPR pipeline that supports two detector backbones.
 
-    The backbone (cascade / yolov8n / yolov8n_tiled) is chosen at construction
+    The backbone (yolov8n / yolov8n_tiled) is chosen at construction
     time and decides:
-      - which HEF(s) are loaded
-      - the pipeline-string shape (cropper-cascaded vs single inference vs
-        5-tile multi-scale inference)
+      - the pipeline-string shape (single inference vs 5-tile multi-scale)
       - the hailonet batch size
-    The user callback receives the same buffer + ROI metadata in all three
-    cases; it inspects `user_data.backbone` to know whether to look for
-    'car' detections with LP sub-detections (cascade) or 'license_plate'
-    detections at the top level (yolov8n / yolov8n_tiled).
+    The user callback receives the same buffer + ROI metadata in both
+    cases; it inspects detections labelled 'license_plate' at the top level.
     """
 
     def __init__(self, app_callback, user_data, parser=None,
-                 backbone: str = BACKBONE_CASCADE):
+                 backbone: str = BACKBONE_YOLOV8N):
         if parser is None:
             parser = get_pipeline_parser()
 
-        if backbone == BACKBONE_CASCADE:
-            configure_multi_model_hef_path(parser)
         handle_list_models_flag(parser, LPR_PIPELINE)
         super().__init__(parser, user_data)
         setproctitle.setproctitle(LPR_APP_TITLE)
@@ -119,12 +98,10 @@ class GStreamerLPRApp(GStreamerApp):
                 arch=self.arch, model=LPR_VIDEO_NAME,
             )
 
-        # Batch size + frame-rate tuning is backbone-dependent because the
-        # cascade runs two inferences per frame, single-yolov8n runs one,
-        # and tiled-yolov8n runs five.
-        if backbone == BACKBONE_CASCADE:
-            self.batch_size = 1 if self.arch == HAILO8L_ARCH else 2
-        elif backbone == BACKBONE_YOLOV8N:
+        # Batch size + frame-rate tuning is backbone-dependent because
+        # single-yolov8n runs one inference per frame and tiled-yolov8n
+        # runs five.
+        if backbone == BACKBONE_YOLOV8N:
             self.batch_size = 1
         else:  # yolov8n_tiled
             self.batch_size = 5     # 1 full frame + 4 quadrants
@@ -139,69 +116,12 @@ class GStreamerLPRApp(GStreamerApp):
             f"output-format-type=HAILO_FORMAT_TYPE_FLOAT32"
         )
 
-        # Resolve HEFs based on backbone.
-        if backbone == BACKBONE_CASCADE:
-            self._setup_cascade_models()
-        else:
-            self._setup_yolov8n_models()
+        self._setup_yolov8n_models()
 
         self.app_callback = app_callback
         self.create_pipeline()
 
     # ----- model setup ------------------------------------------------------
-    def _setup_cascade_models(self):
-        # Cascade HEFs live under `lpr → extra` in resources_config.yaml
-        # (cascade is legacy, opt-in via `sudo ./install.sh --all`).
-        # resolve_hef_paths only walks the `default:` list, so we resolve
-        # cascade HEFs by filename at the standard install-time path —
-        # same pattern as the yolov8n branch below.
-        #
-        # The cascade parser uses configure_multi_model_hef_path
-        # (action='append'), so --hef-path arrives as None or list[str].
-        # Cascade needs exactly two HEFs: [vehicle_detector, lp_detector].
-        REQUIRED_HEF_COUNT = 2
-        cli_hef = getattr(self.options_menu, "hef_path", None)
-        if cli_hef:
-            # Normalize: a stray single-value caller could pass a str instead
-            # of a list. Treat both the same and validate count.
-            if isinstance(cli_hef, str):
-                cli_hef = [cli_hef]
-            if len(cli_hef) != REQUIRED_HEF_COUNT:
-                raise ValueError(
-                    f"--backbone cascade requires exactly {REQUIRED_HEF_COUNT} "
-                    f"HEFs (vehicle detector + LP detector); got {len(cli_hef)}. "
-                    f"Pass them as: "
-                    f"--hef-path <vehicles.hef> --hef-path <lp.hef>"
-                )
-            self.vehicle_detection_hef = cli_hef[0]
-            self.lp_detection_hef = cli_hef[1]
-        else:
-            models_dir = Path(RESOURCES_ROOT_PATH_DEFAULT) / "models" / self.arch
-            self.vehicle_detection_hef = str(models_dir / "yolov5m_vehicles.hef")
-            self.lp_detection_hef = str(models_dir / "tiny_yolov4_license_plates.hef")
-        for hef in (self.vehicle_detection_hef, self.lp_detection_hef):
-            if not Path(hef).exists():
-                raise FileNotFoundError(
-                    f"Cascade HEF not found: {hef}\n"
-                    f"  - Run `sudo ./install.sh --all` to fetch the legacy "
-                    f"cascade HEFs (yolov5m_vehicles + tiny_yolov4_license_plates), or\n"
-                    f"  - pass --hef-path <vehicles.hef> --hef-path <lp.hef>, or\n"
-                    f"  - use --backbone yolov8n (the default, no extra install)."
-                )
-
-        self.vehicle_detection_post_so = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=VEHICLE_DETECTION_POSTPROCESS_SO,
-        )
-        self.lp_detection_post_so = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=LP_DETECTION_POSTPROCESS_SO,
-        )
-        self.vehicle_cropper_so = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
-        )
-
     def _setup_yolov8n_models(self):
         # --hef-path wins; else resolve via the standard install-time path that
         # install.sh writes to when resources_config.yaml lists this model
@@ -220,8 +140,7 @@ class GStreamerLPRApp(GStreamerApp):
             raise FileNotFoundError(
                 f"yolov8n LP detector HEF not found: {self.yolov8n_hef}.\n"
                 f"  - Run sudo ./install.sh to download it from S3, or\n"
-                f"  - pass --hef-path <path-to-hef>, or\n"
-                f"  - fall back to --backbone cascade (requires --all install)."
+                f"  - pass --hef-path <path-to-hef>."
             )
 
         self.yolov8n_post_so = get_resource_path(
@@ -243,10 +162,7 @@ class GStreamerLPRApp(GStreamerApp):
             sync=self.sync,
         )
 
-        if self.backbone == BACKBONE_CASCADE:
-            detect_and_track = self._cascade_detect_and_track()
-        else:
-            detect_and_track = self._yolov8n_detect_and_track()
+        detect_and_track = self._yolov8n_detect_and_track()
 
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
         display_pipeline = DISPLAY_PIPELINE(
@@ -260,45 +176,7 @@ class GStreamerLPRApp(GStreamerApp):
             f"{display_pipeline}"
         )
 
-    # ----- backbone-specific pipeline fragments ----------------------------
-    def _cascade_detect_and_track(self):
-        """yolov5m_vehicles → tracker → cropper(tiny_yolov4_lp)."""
-        vehicle_detection_pipeline = INFERENCE_PIPELINE(
-            hef_path=self.vehicle_detection_hef,
-            post_process_so=self.vehicle_detection_post_so,
-            post_function_name=VEHICLE_DETECTION_POSTPROCESS_FUNC,
-            batch_size=self.batch_size,
-            additional_params=self.thresholds_str,
-            name="vehicle_detection",
-        )
-        vehicle_detection_wrapper = INFERENCE_PIPELINE_WRAPPER(
-            vehicle_detection_pipeline, name="vehicle_detection_wrapper"
-        )
-        tracker_pipeline = TRACKER_PIPELINE(
-            class_id=-1, kalman_dist_thr=0.5, iou_thr=0.6,
-            keep_tracked_frames=2, keep_lost_frames=2,
-            keep_past_metadata=True, name="hailo_tracker",
-        )
-        lp_detection_pipeline = INFERENCE_PIPELINE(
-            hef_path=self.lp_detection_hef,
-            post_process_so=self.lp_detection_post_so,
-            post_function_name=LP_DETECTION_POSTPROCESS_FUNC,
-            batch_size=self.batch_size,
-            name="lp_detection",
-            additional_params="output-format-type=HAILO_FORMAT_TYPE_FLOAT32",
-        )
-        vehicle_cropper = CROPPER_PIPELINE(
-            inner_pipeline=lp_detection_pipeline,
-            so_path=self.vehicle_cropper_so,
-            function_name=VEHICLE_CROPPER_FUNC,
-            internal_offset=True, name="vehicle_cropper",
-        )
-        return (
-            f"{vehicle_detection_wrapper} ! "
-            f"{tracker_pipeline} ! "
-            f"{vehicle_cropper}"
-        )
-
+    # ----- backbone-specific pipeline fragment ------------------------------
     def _yolov8n_detect_and_track(self):
         """Single yolov8n_384x640 (with or without tiling) → tracker."""
         detection_pipeline = INFERENCE_PIPELINE(

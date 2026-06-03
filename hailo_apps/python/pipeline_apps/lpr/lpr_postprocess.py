@@ -5,8 +5,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import hailo
-
 from hailo_apps.python.core.common.defines import RESOURCES_ROOT_PATH_DEFAULT
 
 # ---------------------------------------------------------------------------
@@ -72,21 +70,11 @@ MIN_LP_HEIGHT_PIXELS = 8
 MAX_LP_WIDTH_PIXELS = 600
 MAX_LP_HEIGHT_PIXELS = 200
 
-# ROI zone: only process vehicles whose center falls in the center 1/3 of the frame.
-ROI_Y_START = 1.0 / 3.0
-ROI_Y_END = 2.0 / 3.0
-
 # Sharpness gate: variance of Laplacian on the central 80% of the LP crop.
 # Plates below this variance are rejected as too blurry to OCR reliably.
 # Threshold matches the TAPPAS reference (core/hailo/libs/croppers/lpr).
 SHARPNESS_MIN_VARIANCE = 100.0
 SHARPNESS_INNER_TRIM = 0.1  # trim 10% from each side before measuring
-
-# Minimum vehicle bounding-box area in pixels — vehicles smaller than this
-# produce sub-OCR-resolution plate crops even after upscaling. Set lower than
-# TAPPAS's reference (40000) because highway footage has more distant vehicles
-# than the close-camera scenarios that reference targets.
-MIN_VEHICLE_AREA_PX = 10000  # ~100x100
 
 # Output-class counts for the supported PaddleOCR variants.
 PADDLE_V3V4_NUM_CLASSES = 97       # legacy "simplified" PaddleOCR (v3/v4 era)
@@ -290,55 +278,3 @@ def letterbox_resize(img_bgr, target_w, target_h, pad_value=0):
     out = np.full((target_h, target_w, 3), pad_value, dtype=img_bgr.dtype)
     out[:, :new_w] = resized
     return out
-
-
-# ---------------------------------------------------------------------------
-# LP detection helpers
-# ---------------------------------------------------------------------------
-def detect_lps_gstreamer(detection, frame, frame_w, frame_h):
-    """Extract LP sub-detections from GStreamer cropper/hailofilter pipeline.
-
-    LP detections are added by the custom libyolov4_lp_postprocess.so running
-    inside the hailocropper element. Works on all architectures (H8/H8L/H10H).
-
-    Crops failing the size or sharpness gates are dropped here so they never
-    reach OCR. The sharpness gate runs on the BGR crop using a Laplacian
-    variance check (TAPPAS-style).
-
-    Returns list of (lp_crop, x1, y1, x2, y2) tuples.
-    """
-    vbox = detection.get_bbox()
-    results = []
-    for lp in detection.get_objects_typed(hailo.HAILO_DETECTION):
-        if lp.get_label() != "license_plate":
-            continue
-        
-        lpbox = lp.get_bbox()
-        x1 = max(0, int((vbox.xmin() + lpbox.xmin() * vbox.width()) * frame_w))
-        y1 = max(0, int((vbox.ymin() + lpbox.ymin() * vbox.height()) * frame_h))
-        x2 = min(
-            frame_w,
-            int((vbox.xmin() + (lpbox.xmin() + lpbox.width()) * vbox.width()) * frame_w),
-        )
-        y2 = min(
-            frame_h,
-            int((vbox.ymin() + (lpbox.ymin() + lpbox.height()) * vbox.height()) * frame_h),
-        )
-        crop_w = x2 - x1
-        crop_h = y2 - y1
-        if crop_w < MIN_LP_WIDTH_PIXELS or crop_h < MIN_LP_HEIGHT_PIXELS:
-            continue
-        if crop_w > MAX_LP_WIDTH_PIXELS or crop_h > MAX_LP_HEIGHT_PIXELS:
-            continue
-        lp_crop = frame[y1:y2, x1:x2]
-        if lp_crop.size == 0:
-            continue
-        
-        # Sharpness gate: a blurry plate produces garbage OCR even when
-        # detection confidence is high.
-        lp_crop_bgr = cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)
-        if laplacian_variance(lp_crop_bgr) < SHARPNESS_MIN_VARIANCE:
-            continue
-
-        results.append((lp_crop, x1, y1, x2, y2))
-    return results

@@ -8,19 +8,10 @@ Two orthogonal choices control the pipeline:
 Backbones
 =========
 
-  cascade        Two cascaded detectors. Vehicle detection (yolov5m_vehicles)
-                 finds cars in the full frame; each car crop is then sent
-                 through a small tiny_yolov4 license-plate detector. This is
-                 the legacy default and is the lightest on memory, but it
-                 misses plates whose vehicles weren't detected (or were
-                 cropped to a patch too small for the LP head to work on).
-                 ~34 fps end-to-end on a Hailo-8 driving 3 HD clips.
-
   yolov8n        A single yolov8n_384x640 (4 classes: person/vehicle/face/
                  license_plate) run once per full frame. We filter for the
-                 license_plate class and crop directly. Replaces the cascade
-                 with one inference and skips the vehicle dependency.
-                 ~218 fps on the same machine.
+                 license_plate class and crop directly. One inference per
+                 frame, no vehicle dependency.
 
   yolov8n_tiled  Same network, but each video frame is split into 5 tiles
                  (4 quadrants from a 2x2 grid + 1 full frame) which are
@@ -28,8 +19,8 @@ Backbones
                  lands in a quadrant at roughly 2x the pixels per plate
                  compared to the full-frame view, recovering small plates
                  that a single 384x640 inference would miss.
-                 ~151 fps. Recommended for FHD (1920x1080) and 4K input;
-                 the win shrinks below ~720p where the full-frame inference
+                 Recommended for FHD (1920x1080) and 4K input; the win
+                 shrinks below ~720p where the full-frame inference
                  already has enough pixels per plate.
 
 OCR engines
@@ -63,9 +54,6 @@ Run examples
 
   # Multilingual OCR
   hailo-lpr --backbone yolov8n_tiled --ocr paddle --input clip.mp4
-
-  # Legacy two-stage cascade (kept for low-memory scenarios)
-  hailo-lpr --backbone cascade --ocr lprnet --input clip.mp4
 """
 
 import os
@@ -101,9 +89,7 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_display import (
     lpr_display_thread,
 )
 from hailo_apps.python.pipeline_apps.lpr.lpr_pipeline import (
-    BACKBONE_CASCADE,
     BACKBONE_YOLOV8N,
-    BACKBONE_YOLOV8N_TILED,
     BACKBONES,
     GStreamerLPRApp,
     LPR_PIPELINE,
@@ -115,14 +101,10 @@ from hailo_apps.python.pipeline_apps.lpr.lpr_postprocess import (
     MIN_LENGTH,
     MIN_LP_HEIGHT_PIXELS,
     MIN_LP_WIDTH_PIXELS,
-    MIN_VEHICLE_AREA_PX,
-    ROI_Y_END,
-    ROI_Y_START,
     SHARPNESS_MIN_VARIANCE,
     SUMMARY_INTERVAL,
     ctc_decode_lprnet,
     ctc_decode_paddle,
-    detect_lps_gstreamer,
     laplacian_variance,
     letterbox_resize,
     min_ocr_confidence_for,
@@ -135,7 +117,7 @@ LP_LABEL = "license_plate"
 
 class user_app_callback_class(app_callback_class):
     def __init__(self, ocr_hef_path, ocr="lprnet",
-                 backbone=BACKBONE_CASCADE,
+                 backbone=BACKBONE_YOLOV8N,
                  save_ocr_inputs_dir=None):
         super().__init__()
         self.backbone = backbone
@@ -175,8 +157,7 @@ class user_app_callback_class(app_callback_class):
 def _run_ocr_on_crop(user_data, lp_crop_rgb, track_id):
     """Resize → OCR → length/conf gate → print + log. Returns True if accepted.
 
-    Shared between the cascade and yolov8n callback branches; both pass an
-    RGB plate crop in source-frame pixels.
+    Takes an RGB plate crop in source-frame pixels.
     """
     lp_crop_bgr = cv2.cvtColor(lp_crop_rgb, cv2.COLOR_RGB2BGR)
 
@@ -232,51 +213,42 @@ def _run_ocr_on_crop(user_data, lp_crop_rgb, track_id):
     return True
 
 
-def _cascade_callback(buffer, user_data, frame, frame_w, frame_h, roi):
-    """Original cascade callback: iterate 'car' detections from the vehicle
-    detector, extract LP sub-detections produced by the vehicle-cropper
-    cascaded LP detector, and OCR each one."""
-    detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-    for detection in detections:
-        if detection.get_label() != "car":
-            continue
+def app_callback(element, buffer, user_data):
+    """Single entry point called by GStreamer for every output buffer.
 
-        track_id = 0
-        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
-        if len(track) == 1:
-            track_id = track[0].get_id()
-        user_data.vehicles_seen.add(track_id)
+    Iterates top-level detections, keeps those labelled license_plate, crops
+    from the source frame, and dispatches each crop to OCR.
+    """
+    if buffer is None:
+        return
 
-        # Center-1/3 ROI gate so we only OCR vehicles well-framed by the camera.
-        vbox = detection.get_bbox()
-        vehicle_center_y = vbox.ymin() + vbox.height() / 2.0
-        if vehicle_center_y < ROI_Y_START or vehicle_center_y > ROI_Y_END:
-            continue
+    now = time.time()
+    if now - user_data.last_summary_time >= SUMMARY_INTERVAL:
+        total = len(user_data.vehicles_seen)
+        recognized = len(user_data.seen_plates)
+        # `vehicles_seen` holds plate track IDs; the label in the summary
+        # line stays "Vehicles detected" for backward compat with
+        # test_lpr_end_to_end.py parsing.
+        print(
+            f"--- Summary ({SUMMARY_INTERVAL}s) | "
+            f"Vehicles detected: {total} | "
+            f"Plates recognized (>{user_data.min_ocr_confidence:.0%}): {recognized} ---"
+        )
+        user_data.last_summary_time = now
 
-        # Drop vehicles too small to yield a readable plate after cropping.
-        if frame_w is not None and frame_h is not None:
-            v_area = int(vbox.width() * frame_w) * int(vbox.height() * frame_h)
-            if v_area < MIN_VEHICLE_AREA_PX:
-                continue
+    try:
+        roi = hailo.get_roi_from_buffer(buffer)
+    except Exception:
+        return
 
-        if track_id in user_data.seen_plates:
-            continue
-        if frame is None:
-            continue
+    pad = element.get_static_pad("src")
+    frame_format, frame_w, frame_h = get_caps_from_pad(pad)
+    frame = None
+    if frame_format is not None:
+        frame = get_numpy_from_buffer_efficient(
+            buffer, frame_format, frame_w, frame_h
+        )
 
-        lp_crops = detect_lps_gstreamer(detection, frame, frame_w, frame_h)
-        for lp_crop, _x1, _y1, _x2, _y2 in lp_crops:
-            _run_ocr_on_crop(user_data, lp_crop, track_id)
-
-    # Remove LP sub-detections so hailooverlay only draws vehicle boxes
-    for detection in detections:
-        for sub in detection.get_objects_typed(hailo.HAILO_DETECTION):
-            detection.remove_object(sub)
-
-
-def _yolov8n_callback(buffer, user_data, frame, frame_w, frame_h, roi):
-    """yolov8n / yolov8n_tiled callback: iterate top-level detections, keep
-    those labelled license_plate, crop from the source frame, OCR."""
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     for det in detections:
         if det.get_label() != LP_LABEL:
@@ -307,54 +279,11 @@ def _yolov8n_callback(buffer, user_data, frame, frame_w, frame_h, roi):
         lp_crop = frame[y1:y2, x1:x2]
         if lp_crop.size == 0:
             continue
-        # Sharpness gate (same threshold as the cascade variant).
         if laplacian_variance(cv2.cvtColor(lp_crop, cv2.COLOR_RGB2BGR)) \
                 < SHARPNESS_MIN_VARIANCE:
             continue
 
         _run_ocr_on_crop(user_data, lp_crop, track_id)
-
-
-def app_callback(element, buffer, user_data):
-    """Single entry point called by GStreamer for every output buffer.
-
-    Dispatches to the cascade- or yolov8n-shaped handler based on which
-    backbone the pipeline is built around (`user_data.backbone`).
-    """
-    if buffer is None:
-        return
-
-    now = time.time()
-    if now - user_data.last_summary_time >= SUMMARY_INTERVAL:
-        total = len(user_data.vehicles_seen)
-        recognized = len(user_data.seen_plates)
-        # In the yolov8n backbones, `vehicles_seen` actually holds plate
-        # track IDs — the label in the summary line stays "Vehicles
-        # detected" for backward compat with test_lpr_end_to_end.py parsing.
-        print(
-            f"--- Summary ({SUMMARY_INTERVAL}s) | "
-            f"Vehicles detected: {total} | "
-            f"Plates recognized (>{user_data.min_ocr_confidence:.0%}): {recognized} ---"
-        )
-        user_data.last_summary_time = now
-
-    try:
-        roi = hailo.get_roi_from_buffer(buffer)
-    except Exception:
-        return
-
-    pad = element.get_static_pad("src")
-    frame_format, frame_w, frame_h = get_caps_from_pad(pad)
-    frame = None
-    if frame_format is not None:
-        frame = get_numpy_from_buffer_efficient(
-            buffer, frame_format, frame_w, frame_h
-        )
-
-    if user_data.backbone == BACKBONE_CASCADE:
-        _cascade_callback(buffer, user_data, frame, frame_w, frame_h, roi)
-    else:
-        _yolov8n_callback(buffer, user_data, frame, frame_w, frame_h, roi)
 
 
 def main():
@@ -365,9 +294,7 @@ def main():
             "Detector backbone (default: yolov8n). "
             "'yolov8n' = single yolov8n_384x640 with direct license_plate class. "
             "'yolov8n_tiled' = same network with 5-tile preprocessing "
-            "(4 quadrants + full frame); recommended for FHD/4K input. "
-            "'cascade' = legacy vehicle + LP detector chain (kept for "
-            "low-memory scenarios; may be removed in a future release)."
+            "(4 quadrants + full frame); recommended for FHD/4K input."
         ),
     )
     parser.add_argument(
@@ -397,7 +324,7 @@ def main():
     #
     # - lprnet  → lprnet_intl.hef (the retrained 37-class build; distinct
     #             filename so it never collides with the bundled Hailo
-    #             lprnet.hef from the legacy cascade install).
+    #             lprnet.hef).
     # - paddle  → paddle_ocr_v5.hef (the v5 build the LPR app's `install.sh`
     #             pulls from hefs/<arch>/LPR/ocr.hef). If that file isn't
     #             present (e.g. older install or paddle_ocr-only install

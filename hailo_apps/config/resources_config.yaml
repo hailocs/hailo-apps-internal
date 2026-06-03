@@ -655,11 +655,6 @@ lpr: &lpr_app
   # warning when only the legacy file is installed.
   # The PaddleOCR-v5 character dictionary rides along as a sidecar of
   # the `ocr` entry — same S3 subdirectory, same download path.
-  #
-  # The legacy cascade backbone (yolov5m_vehicles → tiny_yolov4_license_plates
-  # → bundled lprnet) is listed under `extra` and only fetched with
-  # `sudo ./install.sh --all`. Cascade is kept for low-memory scenarios and
-  # may be removed in a future release.
   models:
     hailo8:
       default:
@@ -675,13 +670,6 @@ lpr: &lpr_app
           local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
-      extra:
-        - name: yolov5m_vehicles
-          source: mz
-        - name: tiny_yolov4_license_plates
-          source: mz
-        - name: lprnet
-          source: mz
     hailo8l:
       default:
         - name: hailo_yolov8n_384_640
@@ -696,13 +684,6 @@ lpr: &lpr_app
           local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
-      extra:
-        - name: yolov5m_vehicles
-          source: mz
-        - name: tiny_yolov4_license_plates
-          source: mz
-        - name: lprnet
-          source: mz
     hailo10h:
       default:
         - name: hailo_yolov8n_384_640
@@ -717,13 +698,6 @@ lpr: &lpr_app
           local_name: paddle_ocr_v5
           extras:
             - ppocrv5_char_dict.npz
-      extra:
-        - name: yolov5m_vehicles
-          source: mz
-        - name: tiny_yolov4_license_plates
-          source: mz
-        - name: lprnet
-          source: mz
 
 instance_segmentation: &instance_segmentation_app
   models:
