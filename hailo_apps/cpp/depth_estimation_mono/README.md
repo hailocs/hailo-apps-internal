@@ -29,7 +29,7 @@ Usage
 
 1. Clone the repository:
     ```shell script
-    git clone https://github.com/hailo-ai/hailo-apps.git
+    git clone --recurse-submodules https://github.com/hailo-ai/hailo-apps.git
     cd hailo-apps/hailo_apps/cpp/depth_estimation_mono
     ``` 
 
@@ -61,6 +61,7 @@ Arguments
 - `-i, --input`:
   - An **input source** such as an image (`bus.jpg`), a video (`video.mp4`), a directory of images, or `usb` to use the system camera.
     - On Raspberry Pi, you can also use `rpi` to enable the Raspberry Pi camera.
+    - On Astrial/IMX8 (Yocto-based systems), use `csi` to auto-detect and open the CSI camera. The ISP must be initialized first: `cd /opt/imx8-isp/bin && ./run.sh -lm -c dual_imx219_1080p60 &`
   - A **predefined input name** from `inputs.json` (e.g., `bus`, `street`).
     - If you choose a predefined name, the input will be **automatically downloaded** if it doesn't already exist.
 - `-b, --batch-size`: [optional] Number of images in one batch. Defaults to 1.

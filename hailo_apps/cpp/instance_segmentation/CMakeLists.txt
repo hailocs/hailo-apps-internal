@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 project(instance_segmentation LANGUAGES C CXX)
 
 # ============================================================
@@ -123,12 +123,14 @@ else()
     FetchContent_Declare(
         xtl
         GIT_REPOSITORY https://github.com/xtensor-stack/xtl.git
-        GIT_TAG        0.7.7
+        GIT_TAG        0.8.0
+        PATCH_COMMAND  sed -i "s/cmake_minimum_required(VERSION 3.29)/cmake_minimum_required(VERSION 3.16)/" CMakeLists.txt
     )
     FetchContent_Declare(
         xtensor
         GIT_REPOSITORY https://github.com/xtensor-stack/xtensor.git
         GIT_TAG        0.26.0
+        PATCH_COMMAND  sed -i "s/cmake_minimum_required(VERSION 3.29)/cmake_minimum_required(VERSION 3.16)/" CMakeLists.txt
     )
     FetchContent_MakeAvailable(xtl xtensor)
     set(USE_SYSTEM_XTENSOR OFF)
@@ -166,7 +168,7 @@ endif()
 # ============================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /W4 /O2
+        /w /O2
         /EHsc
         /permissive-
         /Zc:__cplusplus
@@ -174,11 +176,11 @@ if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 else()
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -O3 -DNDEBUG -Wall -Wextra
-        -Wno-reorder -Wno-ignored-qualifiers -Wno-unused-local-typedefs
-        -Wno-parentheses -Wno-array-bounds -Wno-unused-value
-        -Wno-conversion -Wno-unused-parameter -Wno-missing-field-initializers
-        -Wno-sign-compare -Wno-uninitialized
+        -O3 -DNDEBUG -w
+       
+       
+       
+       
     )
 endif()
 
@@ -198,7 +200,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # <exe_dir>/config/resources_config.yaml
 # ============================================================
 set(HAILO_APPS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../..")  # instance_segmentation -> cpp -> hailo_apps
-set(RESOURCES_YAML_SRC "${HAILO_APPS_ROOT}/config/resources_config.yaml")
+set(RESOURCES_YAML_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../config/resources_config.yaml")
 
 if(NOT EXISTS "${RESOURCES_YAML_SRC}")
     message(FATAL_ERROR "resources_config.yaml not found at: ${RESOURCES_YAML_SRC}")
@@ -209,5 +211,8 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${RESOURCES_YAML_SRC}"
             "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/resources_config.yaml"
-    COMMENT "Copy resources_config.yaml next to the executable"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/visualization_config.yaml"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/config/visualization_config.yaml"
+    COMMENT "Copy config files next to the executable"
 )

@@ -36,6 +36,7 @@ videos:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - semantic_segmentation
@@ -53,6 +54,7 @@ videos:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - semantic_segmentation
@@ -123,18 +125,6 @@ videos:
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
 images:
-  - name: zidane.jpg
-    url: https://ultralytics.com/images/zidane.jpg
-    tag:
-      - detection
-      - object_detection
-      - object_detection_onnx_postproc
-      - simple_detection
-      - instance_segmentation
-      - pose_estimation
-      - pose_estimation_onnx_postproc
-      - classifier
-      - semantic_segmentation
   - name: dog_bicycle.jpg
     source: s3
     tag:
@@ -143,6 +133,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -155,6 +146,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -167,6 +159,7 @@ images:
       - object_detection_onnx_postproc
       - simple_detection
       - instance_segmentation
+      - onnxrt_hailo_pipeline
       - pose_estimation
       - pose_estimation_onnx_postproc
       - classifier
@@ -412,10 +405,10 @@ detection: &detection_app
   models:
     hailo8:
       default:
-        - name: yolov8m
+        - name: yolov5m_wo_spp
           source: mz
       extra:
-        - name: yolov5m_wo_spp
+        - name: yolov8m
           source: mz
         - name: yolov8s
           source: mz
@@ -471,9 +464,11 @@ detection: &detection_app
           app_type: [standalone]
     hailo8l:
       default:
-        - name: yolov8s
+        - name: yolov5m_wo_spp
           source: mz
       extra:
+        - name: yolov8s
+          source: mz
         - name: yolov5s
           source: mz
         - name: yolov5m
@@ -526,10 +521,10 @@ detection: &detection_app
           app_type: [standalone]
     hailo10h:
       default:
-        - name: yolov8m
+        - name: yolov5m_wo_spp
           source: mz
       extra:
-        - name: yolov5m_wo_spp
+        - name: yolov8m
           source: mz
         - name: yolov5s
           source: mz
@@ -806,7 +801,9 @@ onnxrt_hailo_pipeline: &onnxrt_hailo_pipeline_app
         - name: yolov8m_seg
           source: mz
     hailo10h:
-      default: None
+      default:
+        - name: yolov8m_seg
+          source: mz
 
 zero_shot_classification: &zero_shot_classification
   models:

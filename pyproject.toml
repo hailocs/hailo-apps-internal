@@ -140,6 +140,7 @@ markers = [
     "pipeline: GStreamer pipeline functional tests",
     "standalone: Standalone app smoke tests",
     "genai: Generative AI app tests",
+    "cpp: C++ application tests",
 ]
 
 [tool.ruff.format]

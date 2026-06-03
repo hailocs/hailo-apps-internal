@@ -44,11 +44,6 @@ static std::string getenv_str(const char *k)
     return v ? std::string(v) : std::string();
 }
 
-static bool is_url(const std::string &s)
-{
-    return s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0;
-}
-
 static std::string stem_no_ext(const std::string &name)
 {
     fs::path p(name);
@@ -136,18 +131,16 @@ static HeadInfo head_request(const std::string &url)
     curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);        // HEAD request
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "hailo-apps-resources/1.0");
 
-    const CURLcode res = curl_easy_perform(curl);
+    curl_easy_perform(curl);
 
-    // Always try to get HTTP status (even if res != CURLE_OK)
     long http_code = 0;
     if (curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code) == CURLE_OK) {
         info.status = http_code;
     }
 
-    // Content length might not be provided by server (then it stays -1)
-    double cl = -1.0;
-    if (curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD, &cl) == CURLE_OK) {
-        if (cl >= 0) info.size = (curl_off_t)cl;
+    curl_off_t cl = -1;
+    if (curl_easy_getinfo(curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl) == CURLE_OK) {
+        if (cl >= 0) info.size = cl;
     }
 
     curl_easy_cleanup(curl);
@@ -503,7 +496,7 @@ static std::string modelzoo_version_for(const std::string &hw_arch, const std::s
 
     // hailo8/8l: 4.x -> v2.xx
     static const std::unordered_map<std::string,std::string> compat_8 = {
-        {"4.23.0","v2.17.0"},
+        {"4.23.0","v2.18.0"},
         {"4.22.0","v2.16.0"},
         {"4.21.0","v2.15.0"},
         {"4.20.0","v2.14.0"},
@@ -617,8 +610,12 @@ static std::string build_hef_url(const std::string &source,
     }
 
     if (source == "s3") {
-        // Example style: https://hailo-csdata.s3.amazonaws.com/resources/hefs/<mz_ver>/<arch>/<name>
-        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + mz_ver + "/" + hw_arch + "/" + name;
+        // s3 uses short arch names (h8/h8l/h10h) with no version component
+        std::string short_arch = hw_arch;
+        if      (hw_arch == "hailo8")  short_arch = "h8";
+        else if (hw_arch == "hailo8l") short_arch = "h8l";
+        else if (hw_arch == "hailo10h") short_arch = "h10h";
+        return "https://hailo-csdata.s3.amazonaws.com/resources/hefs/" + short_arch + "/" + name;
     }
 
     if (source == "gen-ai-mz") {
@@ -854,7 +851,7 @@ std::string ResourcesManager::resolve_input_arg(const std::string &app,
     //  - "usb" / "rpi"
     //  - Windows: "0", "1", ...
     //  - Linux: "/dev/videoX"
-    if (input_arg == "usb" || input_arg == "rpi" ||
+    if (input_arg == "usb" || input_arg == "rpi" || input_arg == "csi" ||
         (!input_arg.empty() && std::all_of(input_arg.begin(), input_arg.end(), ::isdigit)) ||
         (input_arg.rfind("/dev/video", 0) == 0))
     {
@@ -915,7 +912,20 @@ std::string ResourcesManager::resolve_input_arg(const std::string &app,
     // ------------------------------------------------
     // (4) Non-empty input that was NOT an explicit path and
     //     was NOT found locally -> treat as YAML resource name.
+    //     Determine kind (image/video) to pick the right download dir.
     // ------------------------------------------------
+    const auto images = collect_resources_by_tag(root, "images", app);
+    for (const auto &e : images) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("images"));
+        }
+    }
+    const auto videos = collect_resources_by_tag(root, "videos", app);
+    for (const auto &e : videos) {
+        if (e.name == input_arg) {
+            return download_input_yaml(root, app, input_arg, inputs_dir_for_kind("videos"));
+        }
+    }
     return download_input_yaml(root, app, input_arg, target_dir);
 }
 
@@ -1106,8 +1116,8 @@ std::string ResourcesManager::get_model_meta_value(const std::string &app,
         v = find_in_group(models["extra"]);
         if (v != "N/A") return v;
 
-        std::cerr << "Warning: model '" << model_name << "' not found for app '" << app
-                  << "' arch '" << arch << "'\n";
+        std::cerr << "Warning: metadata key '" << key << "' not found for model '"
+                  << model_name << "' (app='" << app << "', arch='" << arch << "')\n";
         return "N/A";
     }
     catch (const std::exception &e) {
