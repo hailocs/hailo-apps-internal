@@ -1067,7 +1067,7 @@ check_prerequisites() {
     # Final error message — include connection type if known
     local connection_type=""
     [[ "$matched_driver_type" == "USB" ]] && connection_type=" USB"
-    [[ "$matched_driver_type" == "PCIe" ]] && connection_type=" PCIe"
+    [[ "$matched_driver_type" == PCIe* ]] && connection_type=" PCIe"
 
     if [[ -n "$inferred_device_name" ]]; then
         log_error "No ${inferred_device_name}${connection_type} device detected — reconnect device or reboot and retry"
