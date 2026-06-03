@@ -18,7 +18,7 @@ pip uninstall -y --break-system-packages hailo-apps-core-python-binding hailo-ta
 
 # Uninstall apt packages
 echo "Removing apt packages..."
-sudo apt purge -y hailo-apps-core hailo-tappas-core hailort hailort-pcie-driver 2>/dev/null || true
+sudo apt purge -y hailo-apps-core hailo-tappas-core hailort h10-hailort hailort-pcie-driver h10-hailort-pcie-driver 2>/dev/null || true
 
 # Remove kernel modules
 echo "Removing kernel modules..."

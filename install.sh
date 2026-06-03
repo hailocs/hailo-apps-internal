@@ -791,16 +791,29 @@ check_prerequisites() {
     local tappas_python_version="-1"
 
     local _v
-    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-pcie-driver 2>/dev/null) || true
+    # Check for PCIe driver: try h10-hailort-pcie-driver first (RPi + H10 all 5.x, x86 + H10 from 5.4)
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort-pcie-driver 2>/dev/null) || true
     [[ "$_v" == install\ ok\ installed\ * ]] && pcie_driver_version="${_v##* }"
+    # Fall back to hailort-pcie-driver (x86, or older H10 on x86)
+    if [[ "$pcie_driver_version" == "-1" ]]; then
+        _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-pcie-driver 2>/dev/null) || true
+        [[ "$_v" == install\ ok\ installed\ * ]] && pcie_driver_version="${_v##* }"
+    fi
 
     _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-usb-driver 2>/dev/null) || true
     [[ "$_v" == install\ ok\ installed\ * ]] && usb_driver_version="${_v##* }"
 
-    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+    # Check for HailoRT runtime: try h10-hailort first (RPi + H10), then hailort
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort 2>/dev/null) || true
     if [[ "$_v" == install\ ok\ installed\ * ]]; then
         hailort_version="${_v##* }"
         HAILORT_VERSION="$hailort_version"
+    else
+        _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+        if [[ "$_v" == install\ ok\ installed\ * ]]; then
+            hailort_version="${_v##* }"
+            HAILORT_VERSION="$hailort_version"
+        fi
     fi
 
     # --- Check 1: hailortcli scan — is any Hailo device physically present? ---

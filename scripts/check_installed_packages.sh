@@ -341,7 +341,11 @@ check_kernel_module() {
         fi
     else
         # Fallback check for the package if neither module is found
-        if dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep -q "^ii"; then
+        # Check h10-hailort-pcie-driver first (RPi + H10 all 5.x, x86 + H10 from 5.4)
+        if dpkg -l 2>/dev/null | grep "h10-hailort-pcie-driver" | grep -q "^ii"; then
+            version=$(dpkg -l 2>/dev/null | grep "h10-hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
+            echo "[OK]   h10-hailort-pcie-driver package installed, version: $version"
+        elif dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep -q "^ii"; then
             version=$(dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
             echo "[OK]   hailort-pcie-driver package installed, version: $version"
         else
@@ -369,9 +373,9 @@ check_kernel_module() {
 check_hailort() {
     local hailort_version="-1"
     
-    # Check system installation via apt - handle both regular and versioned packages
-    if dpkg -l 2>/dev/null | grep -E "^ii.*hailort(/| )" | head -1 | grep -q .; then
-        hailort_version=$(dpkg -l | grep -E "^ii.*hailort(/| )" | head -1 | awk '{print $3}')
+    # Check system installation via apt - handle h10-hailort (RPi+H10) and hailort
+    if dpkg -l 2>/dev/null | grep -E "^ii.*(h10-hailort|hailort)(/| )" | grep -v "pcie-driver\|usb-driver" | head -1 | grep -q .; then
+        hailort_version=$(dpkg -l | grep -E "^ii.*(h10-hailort|hailort)(/| )" | grep -v "pcie-driver\|usb-driver" | head -1 | awk '{print $3}')
         echo "[OK]   hailort (system) version: $hailort_version"
     # Check with hailortcli if available
     elif command -v hailortcli >/dev/null 2>&1; then
