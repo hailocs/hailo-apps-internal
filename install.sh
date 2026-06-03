@@ -1042,11 +1042,14 @@ check_prerequisites() {
     esac
 
     # Show HailoRT status and check version match against the matching driver
+    # Check all driver sources: USB, h10-hailort-pcie-driver, hailort-pcie-driver
     local matched_driver_type="" matched_driver_ver="-1"
     if [[ "$usb_driver_version" != "-1" && "$hailort_version" == "$usb_driver_version" ]]; then
         matched_driver_type="USB"; matched_driver_ver="$usb_driver_version"
-    elif [[ "$pcie_driver_version" != "-1" && "$hailort_version" == "$pcie_driver_version" ]]; then
-        matched_driver_type="PCIe"; matched_driver_ver="$pcie_driver_version"
+    elif [[ "$h10_pcie_driver_version" != "-1" && "$hailort_version" == "$h10_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe (H10)"; matched_driver_ver="$h10_pcie_driver_version"
+    elif [[ "$std_pcie_driver_version" != "-1" && "$hailort_version" == "$std_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe"; matched_driver_ver="$std_pcie_driver_version"
     fi
 
     if [[ "$hailort_version" != "-1" ]]; then
