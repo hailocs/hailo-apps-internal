@@ -341,13 +341,21 @@ check_kernel_module() {
         fi
     else
         # Fallback check for the package if neither module is found
-        # Check h10-hailort-pcie-driver first (RPi + H10 all 5.x, x86 + H10 from 5.4)
+        # Both H10 and H8 drivers can coexist — check both independently
+        local h10_version="-1"
+        local h8_version="-1"
         if dpkg -l 2>/dev/null | grep "h10-hailort-pcie-driver" | grep -q "^ii"; then
-            version=$(dpkg -l 2>/dev/null | grep "h10-hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
-            echo "[OK]   h10-hailort-pcie-driver package installed, version: $version"
-        elif dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep -q "^ii"; then
-            version=$(dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
-            echo "[OK]   hailort-pcie-driver package installed, version: $version"
+            h10_version=$(dpkg -l 2>/dev/null | grep "h10-hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
+            echo "[OK]   h10-hailort-pcie-driver package installed, version: $h10_version"
+        fi
+        if dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep -q "^ii"; then
+            h8_version=$(dpkg -l 2>/dev/null | grep "hailort-pcie-driver" | grep "^ii" | awk '{print $3}')
+            echo "[OK]   hailort-pcie-driver package installed, version: $h8_version"
+        fi
+        if [[ "$h10_version" != "-1" ]]; then
+            version="$h10_version"
+        elif [[ "$h8_version" != "-1" ]]; then
+            version="$h8_version"
         else
             echo "[WARN] hailo_pci/hailo1x_pci module not found, version: -1"
         fi
