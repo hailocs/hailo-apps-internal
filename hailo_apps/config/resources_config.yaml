@@ -90,6 +90,10 @@ videos:
     tag:
       - clip
       - classifier
+  - name: office_example.mp4
+    source: s3
+    tag:
+      - yolo_world
   - name: full_mov_slow.mp4
     source: s3
     tag:
@@ -223,6 +227,7 @@ json:
     source: s3
     tag:
       - clip
+      - yolo_world
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -231,10 +236,17 @@ npy:
     source: s3
     tag:
       - clip
+      - yolo_world
   - name: text_projection.npy
     source: s3
     tag:
       - clip
+      - yolo_world
+  # YOLO World pure-NumPy CLIP text-encoder body weights (~67 MB)
+  - name: clip_text_vitb32_body_fp16.npz
+    source: s3
+    tag:
+      - yolo_world
   # Whisper decoder tokenization assets (whisper_h8)
   - name: token_embedding_weight_base.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/token_embedding_weight_base.npy
@@ -1055,6 +1067,22 @@ v2a_demo:
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
         - name: all_minilm_l6_v2
+          source: s3
+
+yolo_world: &yolo_world_app
+  # HEFs compiled with DFC 3.33 from model-zoo v5.3.0.
+  models:
+    hailo8:
+      default:
+        - name: yolo_world_v2s
+          source: s3
+    hailo8l:
+      default:
+        - name: yolo_world_v2s
+          source: s3
+    hailo10h:
+      default:
+        - name: yolo_world_v2s
           source: s3
 
 clip: &clip_app

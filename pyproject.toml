@@ -94,6 +94,7 @@ hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
 hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
 hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip:main"
+hailo-yolo-world =          "hailo_apps.python.pipeline_apps.yolo_world.yolo_world:main"
 hailo-ocr  =                "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main"
 hailo-audio-troubleshoot =  "hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot:main"
 

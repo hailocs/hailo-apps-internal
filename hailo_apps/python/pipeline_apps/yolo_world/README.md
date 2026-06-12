@@ -1,0 +1,169 @@
+# YOLO World Application
+
+![YOLO World Example](../../../../doc/images/yolo_world.gif)
+
+Open-vocabulary, zero-shot object detection: detect **anything you describe in text** — no retraining, classes changeable at runtime. Supported on **Hailo-8** and **Hailo-10H**; the `yolo_world_v2s` HEF is dual-input either way (image + 80×512 text embeddings).
+
+#### Run the YOLO World example:
+
+The packaged example runs the bundled `office_example.mp4` clip with a prompt set
+that was hand-tuned for it:
+
+```bash
+hailo-yolo-world --input /usr/local/hailo/resources/videos/office_example.mp4 \
+                 --prompts "wireless keyboard, mouse, colorful ball, coffee mug, black scissors, bottle" \
+                 --arch hailo10h
+```
+
+To close the application, press `Ctrl+C`.
+
+The clip and the matching prompts are part of the `yolo_world` resource tag and
+are fetched automatically by `hailo-download-resources --all` (or by running the
+installer). If you don't already have it, the video lives at:
+
+`https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/video/office_example.mp4`
+
+For your own scenes, use `--prompts` (or `--input usb` for live camera):
+```bash
+hailo-yolo-world --prompts "person, water glass, houseplant"
+hailo-yolo-world --input usb --prompts "cat, dog, laptop"
+```
+
+Without `--prompts`, the app falls back to the COCO-80 default set. Note that
+prompt **phrasing** matters a lot — `wireless keyboard` beats `keyboard`,
+`coffee mug` beats `coffee cup`, etc. on this clip. See *Prompt phrasing matters*
+below for the technique, and use `--interactive` `?word` to compare synonyms
+live against your own scene.
+
+#### Running with Raspberry Pi Camera input:
+```bash
+hailo-yolo-world --input rpi
+```
+
+#### Running with USB camera input (webcam):
+There are 2 ways:
+
+Specify the argument `--input` to `usb`:
+```bash
+hailo-yolo-world --input usb
+```
+This will automatically detect the available USB camera (if multiple are connected, it will use the first detected).
+
+Second way — detect the available camera, then pass the device:
+```bash
+get-usb-camera
+hailo-yolo-world --input /dev/video<X>
+```
+
+For additional options, execute:
+```bash
+hailo-yolo-world --help
+```
+
+#### Running as Python script
+
+```bash
+python yolo_world.py --input usb --prompts "person, dog, laptop"
+```
+
+#### App logic
+
+You supply free-text class names; a CLIP text encoder turns them into embeddings that the `yolo_world_v2s` HEF uses to score every region. The "business logic" lives in Python's `app_callback`: it runs the dual-input HEF (image + text embeddings); libhailort's host-side `YOLOV8PostProcessOp` decodes DFL, applies sigmoid, runs per-class IoU NMS and hands back a single `yolov8_nms_postprocess` tensor in `HAILO_NMS_BY_SCORE` layout (a `uint16 n_dets` header + N × 22-byte records `[y1, x1, y2, x2, score, class_id]`); the callback parses that byte stream, stabilizes detections across frames, and attaches them as `hailo.HailoDetection` metadata for `hailooverlay` to draw.
+
+> Both archs read the output as `HAILO_NMS_BY_SCORE` rather than `HAILO_NMS_BY_CLASS` — the BY_CLASS layout has known HailoRT bugs for this HEF (drops non-class-0 detections). BY_SCORE encodes `class_id` per detection so it dodges them.
+
+The `YoloWorldCallbackData` class shares state (inference engine, embedding manager, detection stabilizer) with the pipeline class `GStreamerYoloWorldApp`.
+
+#### Prompts
+
+- Pass `--prompts "a, b, c"` or `--prompts-file classes.json` (a JSON array of up to 80 class names).
+- Embeddings are cached to `embeddings.json` and re-encoded automatically when the prompts file changes (`--watch-prompts`).
+
+##### Deploying with frozen prompts (no CLIP encoder at runtime)
+
+For products with a fixed class set, encode once on a dev machine and ship the
+resulting embeddings JSON alongside the HEF. At runtime the app loads the cached
+vectors directly — the CLIP text encoder is never built (weights aren't loaded,
+no tokenizer initialized).
+
+```bash
+# Once, on a dev machine:
+hailo-yolo-world --prompts-file classes.json --run-duration 1
+# → writes embeddings.json (labels + (N, 512) float32 vectors) into the app dir
+
+# On the deployment target — ship only the HEF + embeddings.json:
+hailo-yolo-world --embeddings-file embeddings.json
+# CLIP body weights, tokenizer, encoder = never loaded.
+# ~30 MB less resident memory and faster startup.
+```
+
+Without `--prompts` / `--prompts-file` the app picks up `embeddings.json` from
+the app directory automatically (or whatever path `--embeddings-file` points
+at). The encoder is constructed lazily, so on a deploy that always uses the
+cache, the CLIP body weights resource is never touched at runtime.
+
+##### Prompt phrasing matters
+
+Open-vocabulary detection is very sensitive to phrasing — small word changes can move detection quality from rock-solid to near-zero. Two rules of thumb:
+
+- **Use concrete nouns the model was trained on.** Out-of-distribution phrasings ("fidget toy", "leafy plant", "flower pot") often score ~0 and the model can latch onto the nearest in-vocab class instead, producing confident *false* labels ("fire hydrant" on a colorful object). The default COCO-80 set works for canonical objects in normal scenes; for anything else, try the LVIS / Objects365 category space.
+- **Iterate on synonyms when a class detects weakly.** "potted plant" peaked at 0.25 in one office scene while "houseplant" / "indoor plant" peaked at 0.95 in the same frames. Run `hailo-yolo-world --interactive` and use `?word` in the panel to rank near-synonyms by what *actually* detects on recent frames — that's the fastest path to a stable prompt.
+
+#### Interactive mode
+
+```bash
+hailo-yolo-world --input usb --prompts "person" --interactive
+```
+A terminal panel lets you change classes live: type names to **replace**, `+name` to **add**, `-name` to **remove**, and `?name` to get a **"did you mean"** suggestion ranked by how strongly each phrasing actually detects.
+
+#### Text encoder
+
+Text embeddings are produced by a pure-NumPy CLIP ViT-B/32 encoder (numerically identical to HuggingFace `openai/clip-vit-base-patch32`), so the app needs **no `torch`/`transformers`** at runtime — only `numpy` + `tokenizers`. The encoder body weights (`clip_text_vitb32_body_fp16.npz`) are a downloaded resource; regenerate them offline with `extract_clip_text_weights.py`.
+
+#### Resolution
+
+The pipeline runs the detector at 640×640. Source resolution can be set via:
+```bash
+self.video_width
+self.video_height
+```
+
+#### Running with different models
+
+See our [hailo_model_zoo](https://github.com/hailo-ai/hailo_model_zoo) for additional supported models.
+
+By default, the package contains a single model depending on the device architecture.
+You can download additional models by running `hailo-download-resources --all`.
+The models are downloaded to the `resources/models/` directory.
+
+#### Performance
+
+End-to-end pipeline FPS measured on the bundled HEFs (USB camera input, COCO-80 prompts, default 0.3 confidence threshold):
+
+| Arch | Pipeline FPS | Per-frame callback (mean) | Inference (mean) | Postprocess (mean) |
+|---|---:|---:|---:|---:|
+| Hailo-8 | ~30.1 | ~33 ms | ~32 ms | < 0.5 ms |
+| Hailo-10H | ~27.6 | ~36 ms | ~35 ms | ~0.1 ms |
+
+NMS runs in **libhailort's host-side `YOLOV8PostProcessOp`** on both archs (the HEF's `engine=cpu` directive maps to `PostprocessTarget.CPU`, which is the host CPU — there's no separate "chip CPU" target). The chip's NN core emits 6 raw cls/reg tensors; libhailort then runs DFL decode + sigmoid + per-class IoU NMS and hands the app a single fused output. The Python postprocess only parses that output and score-thresholds the records — no DFL, no sigmoid, no per-class IoU loop in Python. That's why the postprocess column is sub-ms even with 80 classes, and the chip-side inference is the bottleneck on both archs.
+
+Reducing the active prompt count does **not** speed up inference at runtime (the text input is always padded to 80); for higher throughput, recompile the HEF with a smaller `classes` parameter in the NMS config.
+
+#### Retrained Networks Support
+YOLO World is published for fine-tuning (normal / prompt-tuning / reparameterized). For reliable detection of a fixed class set, fine-tune in the [AILab-CVC/YOLO-World](https://github.com/AILab-CVC/YOLO-World) framework and recompile to a HEF. For more information, see [Using Retrained Models](../../../../doc/developer_guide/retraining_example.md).
+
+## Command Line Arguments
+
+### Application specific arguments:
+```bash
+--prompts <str>              # Comma-separated class names, e.g. "cat,dog,person"
+--prompts-file <path>        # Path to a JSON array of class names (max 80)
+--embeddings-file <path>     # Path to cached embeddings JSON
+--confidence-threshold <f>   # Detection confidence threshold (default 0.3)
+--watch-prompts              # Reload the prompts file on change
+--interactive                # Live prompt control panel in the terminal
+```
+
+### All pipeline commands support these common arguments:
+
+[Common arguments](../../../../doc/user_guide/running_applications.md#command-line-argument-reference)

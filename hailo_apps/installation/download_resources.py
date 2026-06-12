@@ -29,7 +29,9 @@ from typing import Optional
 
 import yaml
 
-from hailo_apps.python.core.common.hailo_logger import get_logger
+import logging
+
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging
 
 hailo_logger = get_logger(__name__)
 
@@ -1227,16 +1229,19 @@ def download_file(url: str, dest_path: Path, show_progress: bool = True):
 def download_group_resources(
     group_name: str,
     resource_config_path: str | None = None,
-    arch: str | None = None
+    arch: str | None = None,
+    dry_run: bool = False,
+    force: bool = False,
+    parallel: bool = True,
 ):
     """Legacy function: Download resources for a specific group/app."""
     cfg_path = Path(resource_config_path or DEFAULT_RESOURCES_CONFIG_PATH)
     if not cfg_path.is_file():
         hailo_logger.error(f"Config file not found at {cfg_path}")
         return
-    
+
     config = load_config(cfg_path)
-    
+
     hailo_arch = arch or detect_hailo_arch()
     if not hailo_arch:
         hailo_logger.error("Could not detect Hailo architecture.")
@@ -1250,19 +1255,20 @@ def download_group_resources(
             file=sys.stderr
         )
         sys.exit(1)
-    
+
     hailo_logger.info(f"Using Hailo architecture: {hailo_arch}")
-    
+
     resource_root = Path(RESOURCES_ROOT_PATH_DEFAULT)
-    
+
     downloader = ResourceDownloader(
         config=config,
         hailo_arch=hailo_arch,
-        resource_root=resource_root
+        resource_root=resource_root,
+        download_config=DownloadConfig(dry_run=dry_run, force_redownload=force),
     )
-    
+
     downloader.collect_group_resources(group_name)
-    downloader.execute(parallel=True)
+    downloader.execute(parallel=parallel)
 
 
 def _create_downloader(
@@ -1672,9 +1678,20 @@ Examples:
         action="store_true",
         help="Include gen-ai apps in bulk downloads (not needed with --group, gen-ai models are auto-included when group has them)"
     )
-    
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show debug-level logs"
+    )
+
     args = parser.parse_args()
-    
+
+    cli_level = "DEBUG" if args.verbose else "INFO"
+    init_logging(level=cli_level)
+    # init_logging() suppresses `hailo_apps.installation` to keep other CLIs
+    # quiet; for THIS CLI the installation logs ARE the user-facing output.
+    logging.getLogger("hailo_apps.installation").setLevel(cli_level)
+
     load_environment()
     
     # List models and exit

@@ -1,115 +1,34 @@
-# YOLO World — Zero-Shot Object Detection
+# YOLO World — moved to the official pipeline app
 
-Detect **any object** by describing it in text. No retraining required.
+The YOLO World zero-shot detection app now lives at:
 
-This app uses [YOLO World v2s](https://github.com/AILab-CVC/YOLO-World) on Hailo-10H for real-time zero-shot object detection. You provide text class names (e.g., "cat", "dog", "coffee mug"), and the model detects them in the video stream using CLIP text-image similarity computed on-device.
-
-## How It Works
-
-1. **Text Encoding** (startup): CLIP text encoder (`openai/clip-vit-base-patch32`) converts your class names into 512-dim embeddings on CPU
-2. **Detection** (real-time): YOLO World HEF on Hailo-10H takes the video frame + text embeddings and outputs bounding boxes with class scores
-3. **Display**: OpenCV draws detections on each frame
-
-The text-image contrastive matching runs entirely on the Hailo accelerator. Changing detected classes only requires swapping the text embeddings — no model recompilation needed.
-
-## Prerequisites
-
-- **Hardware**: Hailo-10H (Hailo-8 and Hailo-8L are not supported — the dual-input HEF architecture requires Hailo-10H)
-- **Model**: `yolo_world_v2s` HEF (auto-downloaded on first run)
-- **Python packages**: `transformers`, `torch` (for text encoding; not needed if using cached embeddings)
-
-Install text encoder dependencies:
-```bash
-pip install transformers torch
+```
+hailo_apps/python/pipeline_apps/yolo_world/
 ```
 
-## Usage
+The earlier community prototype that lived here has been **superseded** by the
+official app from PR #202, which is the canonical, more complete implementation:
+
+- Pure-NumPy CLIP ViT-B/32 text encoder (no torch/transformers runtime dep,
+  numerically identical to HuggingFace).
+- Dual-input `yolo_world_v2s` HEF driven directly via HailoRT from the GStreamer
+  user callback (HailoRT 5.3 compatible; `hailonet` can't drive dual-input HEFs).
+- Pure-NumPy DFL decode → grid decode → multi-label, containment-aware per-class
+  NMS (~1 ms postprocess).
+- Class-aware temporal stabilization (hysteresis, coasting, EMA box smoothing).
+- Optional interactive prompt-tuning panel (`--interactive`) with a
+  detection-aware probe.
+- `hailooverlay` display path, ~20 FPS, inference-bound.
+
+## Run it
 
 ```bash
-# Activate environment first
 source setup_env.sh
-
-# Default COCO-80 classes
-python community/apps/pipeline_apps/yolo_world/yolo_world.py --input usb
-
-# Custom classes via CLI
-python community/apps/pipeline_apps/yolo_world/yolo_world.py --input usb \
-    --prompts "cat,dog,person,car"
-
-# Custom classes via file
-python community/apps/pipeline_apps/yolo_world/yolo_world.py --input usb \
-    --prompts-file my_classes.json
-
-# Live prompt updates (edit the file while running)
-python community/apps/pipeline_apps/yolo_world/yolo_world.py --input usb \
-    --prompts-file my_classes.json --watch-prompts
-
-# Pre-cached embeddings (no torch/transformers needed)
-python community/apps/pipeline_apps/yolo_world/yolo_world.py --input usb \
-    --embeddings-file embeddings.json
+python hailo_apps/python/pipeline_apps/yolo_world/yolo_world.py --help
 ```
 
-### Prompts File Format
+See `hailo_apps/python/pipeline_apps/yolo_world/README.md` for full usage,
+prompt configuration, and the `--interactive` control panel.
 
-A simple JSON array of class names:
-```json
-["cat", "dog", "person", "car", "bicycle"]
-```
-
-Maximum 80 classes. Use bare class names (not "a photo of a cat").
-
-## CLI Arguments
-
-| Argument | Type | Default | Description |
-|---|---|---|---|
-| `--input` | str | required | Video source: `usb`, file path, or RTSP URL |
-| `--prompts` | str | None | Comma-separated class names |
-| `--prompts-file` | str | None | Path to JSON prompts file |
-| `--embeddings-file` | str | `embeddings.json` | Path to cached embeddings |
-| `--confidence-threshold` | float | 0.3 | Detection confidence filter |
-| `--watch-prompts` | flag | False | Watch prompts file for live updates |
-| `--show-fps` | flag | False | Display FPS counter |
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│ GStreamer Pipeline                                   │
-│ USB Camera → videoscale(640x640) → identity_callback │
-│                                         ↓            │
-│         ┌───────────────────────────────┤            │
-│         │ Python Callback               │            │
-│         │   image, text_emb → HailoRT   │            │
-│         │   → HEF (yolo_world_v2s)      │            │
-│         │   → postprocess (DFL + NMS)   │            │
-│         │   → hailo.HailoDetection      │            │
-│         │     attached to buffer ROI    │            │
-│         └───────────────────────────────┤            │
-│                                         ↓            │
-│ hailooverlay (draws bboxes) → autovideosink         │
-└─────────────────────────────────────────────────────┘
-
-Text Embedding Manager (background):
-  CLIP encoder (CPU) → embeddings.json → HailoRT input_layer2
-  File watcher → re-encode on prompts change
-```
-
-Detections are rendered natively by `hailooverlay` from `HailoDetection`
-metadata the callback attaches to the buffer — no Python/OpenCV drawing.
-
-## Performance
-
-| Metric | Value |
-|---|---|
-| Model | YOLO World v2s (640x640) |
-| FPS | ~16 end-to-end (USB cam @ 30 fps, hailooverlay + autovideosink) |
-| Inference | ~45 fps standalone (batch=1) |
-| mAP (COCO) | 31.6 (quantized) |
-| Max classes | 80 |
-
-## Customization
-
-- **Different classes**: Use `--prompts` or `--prompts-file`
-- **Sensitivity**: Adjust `--confidence-threshold` (lower = more detections)
-- **Live updates**: Use `--watch-prompts` with a prompts file, edit while running
-- **Offline mode**: Generate embeddings once, then use `--embeddings-file` without torch
+Supported architecture: **Hailo-10H** (the dual-input `yolo_world_v2s` HEF is
+H10-only).
