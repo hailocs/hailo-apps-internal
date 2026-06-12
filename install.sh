@@ -783,7 +783,13 @@ check_prerequisites() {
     fi
 
     # --- Get installed driver versions from dpkg (always available) ---
-    local pcie_driver_version="-1"
+    # H10 and H8 PCIe drivers can coexist on the same host (different package names).
+    # - h10-hailort-pcie-driver: always H10 (RPi all 5.x, x86 from 5.4)
+    # - hailort-pcie-driver: H8/H8L (4.x) OR older H10 on x86 (5.1-5.3)
+    # Use infer_arch_from_version() on the version to determine actual device.
+    local h10_pcie_driver_version="-1"  # from package: h10-hailort-pcie-driver
+    local std_pcie_driver_version="-1"  # from package: hailort-pcie-driver (H8 or old H10)
+    local pcie_driver_version="-1"      # combined: any PCIe driver present
     local usb_driver_version="-1"
     local hailort_version="-1"
     local pyhailort_version="-1"
@@ -791,16 +797,33 @@ check_prerequisites() {
     local tappas_python_version="-1"
 
     local _v
+    # Check for h10-hailort-pcie-driver (always H10)
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort-pcie-driver 2>/dev/null) || true
+    [[ "$_v" == install\ ok\ installed\ * ]] && h10_pcie_driver_version="${_v##* }"
+    # Check for hailort-pcie-driver (H8/H8L with 4.x, or older H10 on x86 with 5.1-5.3)
     _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-pcie-driver 2>/dev/null) || true
-    [[ "$_v" == install\ ok\ installed\ * ]] && pcie_driver_version="${_v##* }"
+    [[ "$_v" == install\ ok\ installed\ * ]] && std_pcie_driver_version="${_v##* }"
+    # Set combined pcie_driver_version for general "is any PCIe driver installed?" checks
+    if [[ "$h10_pcie_driver_version" != "-1" ]]; then
+        pcie_driver_version="$h10_pcie_driver_version"
+    elif [[ "$std_pcie_driver_version" != "-1" ]]; then
+        pcie_driver_version="$std_pcie_driver_version"
+    fi
 
     _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-usb-driver 2>/dev/null) || true
     [[ "$_v" == install\ ok\ installed\ * ]] && usb_driver_version="${_v##* }"
 
-    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+    # Check for HailoRT runtime: try h10-hailort first (RPi + H10), then hailort
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort 2>/dev/null) || true
     if [[ "$_v" == install\ ok\ installed\ * ]]; then
         hailort_version="${_v##* }"
         HAILORT_VERSION="$hailort_version"
+    else
+        _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+        if [[ "$_v" == install\ ok\ installed\ * ]]; then
+            hailort_version="${_v##* }"
+            HAILORT_VERSION="$hailort_version"
+        fi
     fi
 
     # --- Check 1: hailortcli scan — is any Hailo device physically present? ---
@@ -848,12 +871,15 @@ check_prerequisites() {
         if [[ "$HAILO_ARCH" == "hailo10h" ]]; then
             if [[ "$usb_driver_version" != "-1" ]]; then
                 driver_type="USB"; driver_version="$usb_driver_version"
-            elif [[ "$pcie_driver_version" != "-1" ]]; then
-                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            elif [[ "$h10_pcie_driver_version" != "-1" ]]; then
+                driver_type="PCIe"; driver_version="$h10_pcie_driver_version"
+            elif [[ "$std_pcie_driver_version" != "-1" && "$std_pcie_driver_version" == 5.* ]]; then
+                # Old H10 on x86 (5.1-5.3) uses hailort-pcie-driver
+                driver_type="PCIe"; driver_version="$std_pcie_driver_version"
             fi
         else
-            if [[ "$pcie_driver_version" != "-1" ]]; then
-                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            if [[ "$std_pcie_driver_version" != "-1" && "$std_pcie_driver_version" == 4.* ]]; then
+                driver_type="PCIe"; driver_version="$std_pcie_driver_version"
             elif [[ "$usb_driver_version" != "-1" ]]; then
                 driver_type="USB"; driver_version="$usb_driver_version"
             fi
@@ -1030,7 +1056,17 @@ check_prerequisites() {
     local inferred_arch="" inferred_device_name=""
 
     # Show driver status and infer arch
-    if [[ "$pcie_driver_version" != "-1" && "$usb_driver_version" != "-1" ]]; then
+    # Report both drivers when coexisting; use version to infer actual arch
+    if [[ "$h10_pcie_driver_version" != "-1" && "$std_pcie_driver_version" != "-1" ]]; then
+        log_info "Driver: h10-hailort-pcie-driver ${h10_pcie_driver_version}, hailort-pcie-driver ${std_pcie_driver_version}"
+        any_driver_installed=true
+        # Both present: infer from HailoRT version (which device the user intends to use)
+        if [[ "$hailort_version" != "-1" ]]; then
+            inferred_arch=$(infer_arch_from_version "$hailort_version")
+        else
+            inferred_arch=$(infer_arch_from_version "$h10_pcie_driver_version")
+        fi
+    elif [[ "$pcie_driver_version" != "-1" && "$usb_driver_version" != "-1" ]]; then
         log_info "Driver: PCIe ${pcie_driver_version}, USB ${usb_driver_version}"
         any_driver_installed=true
         if [[ "$usb_driver_version" == "$hailort_version" ]]; then
@@ -1058,11 +1094,14 @@ check_prerequisites() {
     esac
 
     # Show HailoRT status and check version match against the matching driver
+    # Check all driver sources: USB, h10-hailort-pcie-driver, hailort-pcie-driver
     local matched_driver_type="" matched_driver_ver="-1"
     if [[ "$usb_driver_version" != "-1" && "$hailort_version" == "$usb_driver_version" ]]; then
         matched_driver_type="USB"; matched_driver_ver="$usb_driver_version"
-    elif [[ "$pcie_driver_version" != "-1" && "$hailort_version" == "$pcie_driver_version" ]]; then
-        matched_driver_type="PCIe"; matched_driver_ver="$pcie_driver_version"
+    elif [[ "$h10_pcie_driver_version" != "-1" && "$hailort_version" == "$h10_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe (H10)"; matched_driver_ver="$h10_pcie_driver_version"
+    elif [[ "$std_pcie_driver_version" != "-1" && "$hailort_version" == "$std_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe"; matched_driver_ver="$std_pcie_driver_version"
     fi
 
     if [[ "$hailort_version" != "-1" ]]; then
@@ -1080,7 +1119,7 @@ check_prerequisites() {
     # Final error message — include connection type if known
     local connection_type=""
     [[ "$matched_driver_type" == "USB" ]] && connection_type=" USB"
-    [[ "$matched_driver_type" == "PCIe" ]] && connection_type=" PCIe"
+    [[ "$matched_driver_type" == PCIe* ]] && connection_type=" PCIe"
 
     if [[ -n "$inferred_device_name" ]]; then
         log_error "No ${inferred_device_name}${connection_type} device detected — reconnect device or reboot and retry"
