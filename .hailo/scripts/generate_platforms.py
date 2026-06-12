@@ -126,6 +126,9 @@ def path_hailo_to_github(body: str) -> str:
     body = body.replace(".hailo/skills/", ".github/skills/")
     body = body.replace(".hailo/instructions/", ".github/instructions/")
     body = body.replace(".hailo/toolsets/", ".github/toolsets/")
+    # Editorial source of truth lives in .hailo/memory/, but .github/memory/ is
+    # materialized as an auto-generated co-located mirror so GitHub Copilot's
+    # instruction/agent layer sees the files where its conventions expect them.
     body = body.replace(".hailo/memory/", ".github/memory/")
     body = body.replace(".hailo/knowledge/", ".github/knowledge/")
     body = body.replace(".hailo/scripts/", ".github/scripts/")
@@ -360,6 +363,7 @@ def generate_copilot():
             "hl-model-management.md",
             "hl-plan-and-execute.md",
             "hl-validate.md",
+            "hl-profile-pipeline.md",
         ]
         for skill_name in utility_skills:
             src_file = skills_src / skill_name
@@ -389,8 +393,8 @@ def generate_copilot():
             out_path = GITHUB_DIR / "instructions" / out_name
             generated_files[out_path] = out_content
 
-    # 5. Instructions, toolsets, memory, knowledge — copy verbatim with path transform
-    for subdir in ["instructions", "toolsets", "memory", "knowledge"]:
+    # 5. Instructions, toolsets, knowledge — copy verbatim with path transform.
+    for subdir in ["instructions", "toolsets", "knowledge"]:
         src = HAILO_DIR / subdir
         if not src.is_dir():
             continue
@@ -402,6 +406,23 @@ def generate_copilot():
                 out_path = GITHUB_DIR / subdir / rel
                 generated_files[out_path] = content
 
+    # 5b. Memory — co-located mirror of .hailo/memory/ for Copilot. The .hailo/
+    # version is the editorial source; .github/memory/ files are auto-generated
+    # and stamped with a "DO NOT EDIT" header so contributors edit the canonical
+    # location. .claude/ is intentionally NOT mirrored — Claude Code reads
+    # .hailo/memory/ directly.
+    memory_src = HAILO_DIR / "memory"
+    if memory_src.is_dir():
+        for src_file in sorted(memory_src.rglob("*.md")):
+            content = read_file(src_file)
+            rel = src_file.relative_to(memory_src)
+            header = (
+                "<!-- AUTO-GENERATED mirror of .hailo/memory/{name} — DO NOT EDIT DIRECTLY -->\n"
+                "<!-- Edit the canonical file in .hailo/memory/ and run: "
+                "python3 .hailo/scripts/generate_platforms.py --generate -->\n\n"
+            ).format(name=rel)
+            generated_files[GITHUB_DIR / "memory" / rel] = header + content
+
     # 6. Prompts — wrap in ```prompt
     prompts_src = HAILO_DIR / "prompts"
     if prompts_src.is_dir():
@@ -412,12 +433,14 @@ def generate_copilot():
             out_path = GITHUB_DIR / "prompts" / out_name
             generated_files[out_path] = content
 
-    # 7. Scripts — copy to .github/scripts/ (including the generator itself)
+    # 7. Scripts — copy to .github/scripts/ (including the generator itself).
+    # Recurses one level so script bundles (e.g. profile_pipeline/) are mirrored.
     scripts_src = HAILO_DIR / "scripts"
     if scripts_src.is_dir():
-        for src_file in sorted(scripts_src.glob("*.py")):
+        for src_file in sorted(scripts_src.rglob("*.py")):
+            rel = src_file.relative_to(scripts_src)
             content = read_file(src_file)
-            out_path = GITHUB_DIR / "scripts" / src_file.name
+            out_path = GITHUB_DIR / "scripts" / rel
             generated_files[out_path] = content
 
     # 8. .copilotignore — prevent Copilot from scanning .claude/ (which it now
@@ -613,36 +636,40 @@ Persistent knowledge in `.hailo/memory/`. Read at task start, update when learni
             out_path = CLAUDE_DIR / "rules" / src_file.name
             generated_files[out_path] = out_content
 
-    # 5. Claude memory — redirect to .hailo/memory/ (Claude reads files directly)
-    generated_files[CLAUDE_DIR / "memory" / "MEMORY.md"] = (
-        "# Memory Redirect\n\n"
-        "Memory files are centralized in `.hailo/memory/`.\n"
-        "See `.hailo/memory/MEMORY.md` for the unified index.\n\n"
-        "Files:\n"
-        "- `.hailo/memory/common_pitfalls.md` — Bugs & anti-patterns (read on every task)\n"
-        "- `.hailo/memory/gen_ai_patterns.md` — VLM/LLM architecture patterns\n"
-        "- `.hailo/memory/pipeline_optimization.md` — GStreamer bottleneck fixes\n"
-        "- `.hailo/memory/camera_and_display.md` — Camera & OpenCV patterns\n"
-        "- `.hailo/memory/hailo_platform_api.md` — SDK usage patterns\n"
-    )
+    # 5. (Claude memory redirect removed — .hailo/memory/ is the single source of truth.
+    #     Claude Code reads files from .hailo/memory/ directly.)
 
-    # 6. Claude utility skills — thin wrappers pointing to .hailo/
+    # 6. Claude utility skills — thin wrappers pointing to .hailo/.
+    # Each entry: (skill_name, description, optional extra YAML fields dict).
     utility_skills = [
-        ("hl-monitoring", "Continuous monitoring patterns for Hailo apps."),
-        ("hl-event-detection", "Detect and report events from video streams."),
-        ("hl-camera", "Camera setup, USB/RPi configuration, and troubleshooting."),
-        ("hl-model-management", "HEF resolution, model download, and config management."),
-        ("hl-plan-and-execute", "Plan-and-execute loop pattern for complex builds."),
-        ("hl-validate", "Validation at every phase gate."),
+        ("hl-monitoring", "Continuous monitoring patterns for Hailo apps.", None),
+        ("hl-event-detection", "Detect and report events from video streams.", None),
+        ("hl-camera", "Camera setup, USB/RPi configuration, and troubleshooting.", None),
+        ("hl-model-management", "HEF resolution, model download, and config management.", None),
+        ("hl-plan-and-execute", "Plan-and-execute loop pattern for complex builds.", None),
+        ("hl-validate", "Validation at every phase gate.", None),
+        (
+            "hl-profile-pipeline",
+            "Profile GStreamer pipeline performance: auto-setup GST-Shark, profile, analyze bottlenecks, suggest & apply optimizations, run experiments, and learn from results. Single command — guides the user through everything.",
+            {
+                "argument-hint": "[app-path-or-trace-dir] [options]",
+                "allowed-tools": "Bash(python *), Bash(gst-*), Bash(sudo *), Bash(cd *), Read, Write, Edit, Grep, Glob, Agent, AskUserQuestion",
+            },
+        ),
     ]
     if skills_src.is_dir():
-        for skill_name, desc in utility_skills:
+        for skill_name, desc, extra in utility_skills:
             src_file = skills_src / f"{skill_name}.md"
             if src_file.exists():
+                extra_lines = ""
+                if extra:
+                    extra_lines = "".join(f'{k}: "{v}"\n' if k != "allowed-tools" else f'{k}: {v}\n'
+                                          for k, v in extra.items())
                 out_content = (
                     f"---\n"
                     f'name: {skill_name}\n'
                     f'description: "{desc}"\n'
+                    f"{extra_lines}"
                     f"---\n\n"
                     f"<!-- Thin wrapper — canonical doc lives in .hailo/ -->\n\n"
                     f"Read `.hailo/skills/{skill_name}.md` for the complete skill documentation.\n"
@@ -783,6 +810,7 @@ def generate_cursor():
     utility_skills = [
         "hl-monitoring.md", "hl-event-detection.md", "hl-camera.md",
         "hl-model-management.md", "hl-plan-and-execute.md", "hl-validate.md",
+        "hl-profile-pipeline.md",
     ]
     if skills_src.is_dir():
         for skill_name in utility_skills:

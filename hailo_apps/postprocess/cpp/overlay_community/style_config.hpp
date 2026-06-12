@@ -11,10 +11,11 @@
 #include <string>
 #include <unordered_map>
 #include <yaml-cpp/yaml.h>
+#include "hailomat.hpp"
 
 struct StyleEntry {
-    cv::Scalar color = cv::Scalar(-1, -1, -1);
-    cv::Scalar text_color = cv::Scalar(-1, -1, -1);
+    hailo_scalar_t color = hailo_scalar_t(-1, -1, -1);
+    hailo_scalar_t text_color = hailo_scalar_t(-1, -1, -1);
     int line_thickness = -1;    // -1 = use global default
     int show_bbox = -1;         // -1 = inherit, 0 = false, 1 = true
     int show_label = -1;
@@ -40,9 +41,9 @@ public:
             StyleEntry entry;
 
             if (val["color"] && val["color"].IsSequence() && val["color"].size() == 3)
-                entry.color = cv::Scalar(val["color"][0].as<int>(), val["color"][1].as<int>(), val["color"][2].as<int>());
+                entry.color = hailo_scalar_t(val["color"][0].as<int>(), val["color"][1].as<int>(), val["color"][2].as<int>());
             if (val["text_color"] && val["text_color"].IsSequence() && val["text_color"].size() == 3)
-                entry.text_color = cv::Scalar(val["text_color"][0].as<int>(), val["text_color"][1].as<int>(), val["text_color"][2].as<int>());
+                entry.text_color = hailo_scalar_t(val["text_color"][0].as<int>(), val["text_color"][1].as<int>(), val["text_color"][2].as<int>());
             if (val["line_thickness"])
                 entry.line_thickness = val["line_thickness"].as<int>();
             if (val["show_bbox"])

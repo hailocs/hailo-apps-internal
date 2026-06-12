@@ -64,6 +64,11 @@ Step-by-step workflow guides for agents. All use the `hl-` prefix.
 | `hl-plan-and-execute.md` | Orchestrated multi-phase workflow: plan, delegate, execute, gate |
 | `hl-validate.md` | 5-level validation: structural, imports, functional, conventions, lint |
 
+### Tool Skills
+| File | Description |
+|---|---|
+| `hl-profile-pipeline.md` | GStreamer pipeline profiling and optimization coach (GST-Shark, bottleneck analysis, knowledge base). Scripts in `scripts/profile_pipeline/`, knowledge base in `knowledge/profile_pipeline_kb.yaml`. |
+
 ## Toolsets (`toolsets/`)
 
 API references for frameworks and libraries used in Hailo apps.

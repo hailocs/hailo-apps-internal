@@ -54,21 +54,21 @@ Based on what the task involves, read **only** the matching rows:
 | **Building any new app** | The specialist agent (loaded via VS Code `@agent`) handles interactive flow. If not using agents, read `instructions/orchestration.md` and the relevant `skills/hl-build-*/SKILL.md` |
 | **ALWAYS read (every task)** | `memory/common_pitfalls.md`, `instructions/coding-standards.md` |
 
-All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` can be checked when you need recipes or patterns.
+All paths above are relative to `.github/`. The knowledge base at `.github/knowledge/knowledge_base.yaml` can be checked when you need recipes or patterns. Memory files in `.github/memory/` are auto-generated mirrors of the canonical `.hailo/memory/` (edit there, not here).
 
 ### Persistent Memory
 
 ```
-.github/memory/
-├── MEMORY.md                  ← Index — read this first
-├── gen_ai_patterns.md         ← VLM/LLM architecture, multiprocessing, gotchas
-├── pipeline_optimization.md   ← GStreamer bottlenecks, queue tuning, scheduler fixes
-├── camera_and_display.md      ← Camera init, BGR/RGB, OpenCV patterns
-├── hailo_platform_api.md      ← VDevice, VLM.generate(), HEF resolution
-└── common_pitfalls.md         ← Bugs found, anti-patterns to avoid
+.github/memory/                 ← Auto-generated mirror (editorial source: .hailo/memory/)
+├── MEMORY.md                   ← Index — read this first
+├── gen_ai_patterns.md          ← VLM/LLM architecture, multiprocessing, gotchas
+├── pipeline_optimization.md    ← GStreamer bottlenecks, queue tuning, scheduler fixes
+├── camera_and_display.md       ← Camera init, BGR/RGB, OpenCV patterns
+├── hailo_platform_api.md       ← VDevice, VLM.generate(), HEF resolution
+└── common_pitfalls.md          ← Bugs found, anti-patterns to avoid
 ```
 
-**Rules**: Read relevant memory files at task start (use routing table above). Update them when discovering new patterns.
+**Rules**: Read relevant memory files at task start (use routing table above). Update them in `.hailo/memory/` (the editorial source) when discovering new patterns, then re-run the generator.
 
 ## Interactive Design (MANDATORY — Phase 0)
 
@@ -138,7 +138,7 @@ PHASE 4: DOCUMENT  → Write README.md (required), update memory if needed
 3. **Phase gates** — NEVER advance to next phase until current gate passes
 4. **Sub-agents** — Delegate independent reads and module builds; keep sequential edits in main agent
 5. **Todo tracking** — Use `manage_todo_list` with explicit GATE items
-6. **Memory loop** — Update `.github/memory/` when new patterns or pitfalls are discovered
+6. **Memory loop** — Update `.hailo/memory/` (editorial source) when new patterns or pitfalls are discovered, then regenerate
 7. **Recovery** — On gate failure: read error → check memory → fix → re-run gate
 8. **Speed** — Fast-path clear requests, skip source code reads, use validate_app.py as single gate
 9. **Device check** — Always `hailortcli fw-control identify` before launching apps

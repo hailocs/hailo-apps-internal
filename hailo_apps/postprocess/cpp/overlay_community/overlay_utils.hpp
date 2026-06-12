@@ -7,6 +7,7 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
+#include "hailomat.hpp"
 
 __BEGIN_DECLS
 #define CONFIDENCE 0.5
@@ -49,10 +50,10 @@ class ParallelPixelClassConfMask : public Parallel_pixel_opencv
 {
 private:
     float *mask_data;
-    cv::Scalar mask_color;
+    hailo_scalar_t mask_color;
 
 public:
-    ParallelPixelClassConfMask(uint8_t *ptr, uint8_t *mask_data, float transparency, int image_cols, int roi_cols, cv::Scalar mask_color) : Parallel_pixel_opencv(ptr, transparency, image_cols, roi_cols), mask_data((float *)mask_data), mask_color(mask_color) {}
+    ParallelPixelClassConfMask(uint8_t *ptr, uint8_t *mask_data, float transparency, int image_cols, int roi_cols, hailo_scalar_t mask_color) : Parallel_pixel_opencv(ptr, transparency, image_cols, roi_cols), mask_data((float *)mask_data), mask_color(mask_color) {}
 
     virtual void operator()(const cv::Range &r) const
     {

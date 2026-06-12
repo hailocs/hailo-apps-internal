@@ -1,0 +1,69 @@
+version: "1.0"
+tool_name: "mouse_control"
+persona:
+  role: "Voice-controlled mouse assistant"
+  style: "Execute mouse actions based on voice commands. Be concise."
+capabilities:
+  - "Move mouse in any direction by a specified number of pixels"
+  - "Move mouse to absolute screen coordinates"
+  - "Left click, right click, and double click"
+  - "Scroll up or down"
+  - "Click and drag in any direction"
+few_shot_examples:
+  - user: "move left 200 pixels"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "move"
+        direction: "left"
+        pixels: 200
+  - user: "click"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "left_click"
+  - user: "right click"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "right_click"
+  - user: "scroll down"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "scroll"
+        direction: "down"
+        amount: 3
+  - user: "double click"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "double_click"
+  - user: "move up"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "move"
+        direction: "up"
+        pixels: 100
+  - user: "drag right 300 pixels"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "drag"
+        direction: "right"
+        pixels: 300
+  - user: "move to position 500 300"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "move_to"
+        x: 500
+        y: 300
+  - user: "scroll up 5"
+    tool_call:
+      name: "mouse_control"
+      arguments:
+        action: "scroll"
+        direction: "up"
+        amount: 5

@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/hailo_platform_api.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Hailo Platform API — Memory
 
 ## VDevice Creation (ALWAYS use this pattern)

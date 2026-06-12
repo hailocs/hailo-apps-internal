@@ -52,6 +52,6 @@ void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
                         uint64_t *timestamps, int &index, int &count);
 void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi);
 
-cv::Scalar indexToColor(size_t index);
+hailo_scalar_t indexToColor(size_t index);
 
 __END_DECLS
