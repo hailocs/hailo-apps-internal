@@ -1,8 +1,13 @@
 # ============================================================================
-# APP CATALOG - Structured catalog of all Hailo apps (26 total)
+# APP CATALOG - Structured catalog of all Hailo apps (66 total: 25 core + 41 community/new)
 # ============================================================================
 # Generated from source code analysis of the hailo-apps-infra repository.
 # Each app includes models, pipeline patterns, features, and metadata.
+# NOTE: the section banners below ("PIPELINE APPS (11)", "STANDALONE APPS (7)",
+# "GENAI APPS (7)") count only the ORIGINAL core block. The community +
+# newly-integrated apps (release/community-integration) are appended in their own
+# clearly-marked section near the END of this file, with concise discovery fields —
+# see each app's CLAUDE.md / README.md for full models / CLI / pipeline detail.
 
 # ============================================================================
 # PIPELINE APPS (11 apps) - Real-time GStreamer video pipelines
@@ -798,3 +803,508 @@ hailo_ollama:
   cli_command: null
   related_apps: [simple_llm_chat]
   callback_receives: null
+
+# ============================================================================
+# Community apps + new integrated apps (release/community-integration)
+# Added by AI-agent readiness pass (Task 10). Concise discovery entries;
+# see each app dir CLAUDE.md / README.md for full detail.
+# ============================================================================
+
+baby_sleep_monitor:
+  category: community_pipeline
+  display_name: Baby Sleep Monitor
+  description: Real-time baby sleep position monitoring using pose estimation. Analyzes body keypoints
+    to detect unsafe sleeping positions.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/baby_sleep_monitor/
+  cli_command: null
+
+bubble_pop:
+  category: community_pipeline
+  display_name: Bubble Pop
+  description: 'Pose-estimation mirror game: bubble hearts float and are popped by gestures. Kids/parents
+    interactive game.'
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/bubble_pop/
+  cli_command: null
+
+cat_food_monitor:
+  category: community_pipeline
+  display_name: Cat Food Monitor
+  description: Monitor a cat food bowl with a USB camera. Detects cats approaching and recognizes which
+    trained cat it is.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/cat_food_monitor/
+  cli_command: null
+
+crowd_counting:
+  category: community_pipeline
+  display_name: Crowd Counting
+  description: Real-time people counting; detects when persons cross a virtual horizontal line in the
+    frame.
+  complexity: simple
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/crowd_counting/
+  cli_command: null
+
+depth_anything:
+  category: community_pipeline
+  display_name: Depth Anything
+  description: Real-time monocular depth estimation using Depth Anything V1/V2. Produces colorized depth
+    maps.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/depth_anything/
+  cli_command: null
+
+depth_proximity_alert:
+  category: community_pipeline
+  display_name: Depth Proximity Alert
+  description: Depth-based proximity alerting using SCDepthV3 monocular depth. Alerts when objects enter
+    a near zone.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/depth_proximity_alert/
+  cli_command: null
+
+face_landmarks:
+  category: community_pipeline
+  display_name: Face Landmarks
+  description: Real-time 468-point face mesh landmark detection.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/face_landmarks/
+  cli_command: null
+
+gesture_mouse:
+  category: community_pipeline
+  display_name: Gesture Mouse
+  description: Control the computer mouse with hand gestures using Hailo-accelerated hand tracking.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/gesture_mouse/
+  cli_command: null
+
+hotdog_not_hotdog:
+  category: community_pipeline
+  display_name: Hotdog / Not Hotdog
+  description: Real-time "hotdog or not hotdog" classifier using CLIP zero-shot classification.
+  complexity: simple
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/hotdog_not_hotdog/
+  cli_command: null
+
+license_plate_reader:
+  category: community_pipeline
+  display_name: License Plate Reader (community)
+  description: Real-time license plate detection + text recognition, cascaded two-model pipeline. (See
+    also official hailo_apps lpr.)
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/license_plate_reader/
+  cli_command: null
+
+line_crossing_counter:
+  category: community_pipeline
+  display_name: Line Crossing Counter
+  description: People counting; detects when persons cross a virtual vertical line.
+  complexity: simple
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/line_crossing_counter/
+  cli_command: null
+
+multi_camera_store_monitor:
+  category: community_pipeline
+  display_name: Multi-Camera Store Monitor
+  description: Retail monitoring across 3 cameras (entrance, checkout, stockroom) through a single shared
+    pipeline.
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/multi_camera_store_monitor/
+  cli_command: null
+
+multi_entrance_tracker:
+  category: community_pipeline
+  display_name: Multi-Entrance Tracker
+  description: Cross-camera face re-identification tracker for multiple store entrances.
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/multi_entrance_tracker/
+  cli_command: null
+
+parking_lot_occupancy:
+  category: community_pipeline
+  display_name: Parking Lot Occupancy
+  description: Parking lot occupancy monitoring using YOLOv8 detection of vehicles in defined spots.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/parking_lot_occupancy/
+  cli_command: null
+
+ppe_safety_checker:
+  category: community_pipeline
+  display_name: PPE Safety Checker
+  description: PPE compliance checking using CLIP zero-shot classification.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/ppe_safety_checker/
+  cli_command: null
+
+retail_shelf_analyzer:
+  category: community_pipeline
+  display_name: Retail Shelf Analyzer
+  description: Retail shelf analysis using tiled detection to find small products from a distance.
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/retail_shelf_analyzer/
+  cli_command: null
+
+rhythm_royale:
+  category: community_pipeline
+  display_name: Rhythm Royale
+  description: Multi-player dance-off scored against the music beat using pose estimation.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/rhythm_royale/
+  cli_command: null
+
+room_security_monitor:
+  category: community_pipeline
+  display_name: Room Security Monitor
+  description: Door-camera security app built on the face recognition pipeline; monitors a USB camera
+    feed.
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/room_security_monitor/
+  cli_command: null
+
+semaphore_translator:
+  category: community_pipeline
+  display_name: Semaphore Translator
+  description: Semaphore flag signal translation using body pose; reads arm angles to decode letters.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/semaphore_translator/
+  cli_command: null
+
+vampire_mirror:
+  category: community_pipeline
+  display_name: Vampire Mirror
+  description: Real-time mirror where vampires are invisible. Instance segmentation + ByteTrack + hailovampire_overlay
+    plugin.
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/vampire_mirror/
+  cli_command: null
+
+workout_rep_counter:
+  category: community_pipeline
+  display_name: Workout Rep Counter
+  description: Exercise repetition counter using YOLOv8 pose estimation.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/pipeline_apps/workout_rep_counter/
+  cli_command: null
+
+aerial_object_counter:
+  category: community_standalone
+  display_name: Aerial Object Counter
+  description: Count/classify objects in aerial/drone images using oriented (rotated) bounding boxes (YOLO11-OBB).
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/standalone_apps/aerial_object_counter/
+  cli_command: null
+
+depth_anything_cpp:
+  category: community_standalone
+  display_name: Depth Anything (C++)
+  description: Monocular depth (Depth Anything V1/V2) using the HailoRT C++ API.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/standalone_apps/depth_anything_cpp/
+  cli_command: null
+
+depth_anything_python:
+  category: community_standalone
+  display_name: Depth Anything (Python)
+  description: Monocular depth (Depth Anything V1/V2) using the HailoRT Python API, no GStreamer.
+  complexity: simple
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/standalone_apps/depth_anything_python/
+  cli_command: null
+
+document_text_extractor:
+  category: community_standalone
+  display_name: Document Text Extractor
+  description: Batch OCR for scanned documents/photos using PaddleOCR.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/standalone_apps/document_text_extractor/
+  cli_command: null
+
+lane_departure_warning:
+  category: community_standalone
+  display_name: Lane Departure Warning
+  description: Processes dashcam video to detect lane markings and alert on lane departure.
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/standalone_apps/lane_departure_warning/
+  cli_command: null
+
+photo_enhancer:
+  category: community_standalone
+  display_name: Photo Enhancer
+  description: Batch 2x upscale of photos using Real-ESRGAN super resolution.
+  complexity: simple
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/standalone_apps/photo_enhancer/
+  cli_command: null
+
+traffic_light_detector:
+  category: community_standalone
+  display_name: Traffic Light Detector
+  description: Detect traffic lights in dashcam footage and classify state (red/yellow/green).
+  complexity: moderate
+  hardware:
+  - hailo8
+  key_files:
+  - community/apps/standalone_apps/traffic_light_detector/
+  cli_command: null
+
+visual_quality_inspector:
+  category: community_gen_ai
+  display_name: Visual Quality Inspector
+  description: Uses Hailo VLM to analyze manufacturing/quality images and report defects.
+  complexity: advanced
+  hardware:
+  - hailo10h
+  key_files:
+  - community/apps/gen_ai_apps/visual_quality_inspector/
+  cli_command: null
+
+voice_controlled_camera:
+  category: community_gen_ai
+  display_name: Voice Controlled Camera
+  description: Hands-free smart camera responding to voice commands to detect/describe objects.
+  complexity: advanced
+  hardware:
+  - hailo10h
+  key_files:
+  - community/apps/gen_ai_apps/voice_controlled_camera/
+  cli_command: null
+
+voice_mouse_agent:
+  category: community_gen_ai
+  display_name: Voice Mouse Agent
+  description: 'Voice-controlled mouse agent (Hailo-10H): natural-language commands move/click the mouse.'
+  complexity: advanced
+  hardware:
+  - hailo10h
+  key_files:
+  - community/apps/gen_ai_apps/voice_mouse_agent/
+  cli_command: null
+
+yolo_world:
+  category: pipeline
+  display_name: YOLO World (Zero-Shot Detection)
+  description: Zero-shot text-prompted object detection. NumPy CLIP text encoder + dual-input yolo_world_v2s
+    HEF via HailoRT, NumPy DFL postprocess, optional --interactive prompt panel. Per the app README/CLAUDE.md
+    it runs on hailo8 and hailo10h.
+  complexity: advanced
+  hardware:
+  - hailo8
+  - hailo10h
+  key_files:
+  - hailo_apps/python/pipeline_apps/yolo_world/
+  cli_command: hailo-yolo-world
+
+lpr:
+  category: pipeline
+  display_name: License Plate Recognition (official)
+  description: 'Official LPR pipeline: detection + OCR (--ocr lprnet|paddle, --backbone yolov8n|yolov8n_tiled).
+    PR #186, WIP PaddleOCR.'
+  complexity: advanced
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/pipeline_apps/lpr/
+  cli_command: null
+
+easter_game:
+  category: pipeline
+  display_name: Easter Game
+  description: Interactive Easter Egg / Afikoman catching game using pose estimation.
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/pipeline_apps/easter_game/
+  cli_command: null
+
+people_detection:
+  category: pipeline
+  display_name: People Detection
+  description: People-focused detection pipeline. (See app source/README.)
+  complexity: simple
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/pipeline_apps/people_detection/
+  cli_command: null
+
+phone_detection:
+  category: pipeline
+  display_name: Phone Detection
+  description: Phone-usage detection pipeline. (See app source/README.)
+  complexity: simple
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/pipeline_apps/phone_detection/
+  cli_command: null
+
+low_power_poc:
+  category: standalone
+  display_name: Low Power PoC
+  description: Benchmarks a Hailo-8 M.2 module sleep mode by measuring power consumption. PoC (also has
+    C++ variant under hailo_apps/cpp/low_power_poc).
+  complexity: advanced
+  hardware:
+  - hailo8
+  key_files:
+  - hailo_apps/python/standalone_apps/low_power_poc/
+  cli_command: null
+
+speech_recognition:
+  category: standalone
+  display_name: Speech Recognition (Whisper)
+  description: Whisper speech-to-text running on all Hailo accelerators (H8/H8L/H10).
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/standalone_apps/speech_recognition/
+  cli_command: null
+
+yolo26:
+  category: standalone
+  display_name: YOLO26 Object Detection
+  description: YOLO26 object detection standalone app. (See app source/README.)
+  complexity: moderate
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - hailo_apps/python/standalone_apps/yolo26/
+  cli_command: null
+
+gesture_detection:
+  category: community_pipeline
+  display_name: Gesture Detection
+  description: Real-time hand gesture detection/recognition using MediaPipe Blaze (palm detection + hand
+    landmark). Two-stage cascaded inference; multiple pipeline variants (Python callback, full C++, standalone).
+    Has its own postprocess C++ build under the app dir.
+  complexity: advanced
+  hardware:
+  - hailo8
+  - hailo8l
+  - hailo10h
+  key_files:
+  - community/apps/pipeline_apps/gesture_detection/
+  cli_command: null
+v2a_demo:
+  category: gen_ai
+  display_name: Voice-to-Action Demo
+  description: 'Hailo Voice-to-Action demo: speech command -> action pipeline (Hailo-10H gen-ai).'
+  complexity: advanced
+  hardware:
+  - hailo10h
+  key_files:
+  - hailo_apps/python/gen_ai_apps/v2a_demo/
+  cli_command: null
