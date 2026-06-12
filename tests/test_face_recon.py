@@ -23,6 +23,19 @@ logger = logging.getLogger('test_run_everything')
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
 
+# Face-recognition tests launch real app subprocesses that call detect_hailo_arch()
+# internally, which hard-asserts when no Hailo device is connected. Skip the whole
+# module on a device-less host so these report SKIPPED (with reason) rather than
+# FAILED. Mirrors the skip pattern in test_gen_ai.py / test_runner.py.
+try:
+    _frecon_hailo_arch = detect_hailo_arch()
+except (AssertionError, Exception):  # noqa: BLE001 — degrade gracefully
+    _frecon_hailo_arch = None
+pytestmark = pytest.mark.skipif(
+    not _frecon_hailo_arch,
+    reason="No Hailo device detected — face recognition tests require connected hardware.",
+)
+
 
 # ============================================================================
 # Helper functions (previously in old test_utils module)

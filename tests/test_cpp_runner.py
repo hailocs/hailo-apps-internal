@@ -428,6 +428,18 @@ def test_cpp_build(app_name):
     """Build <app> and assert exit code 0."""
     log = _log_path(app_name, "build")
 
+    # The C++ apps build against vendored git submodules (yaml-cpp, curl). On a
+    # checkout where those submodules have not been initialized, build.sh exits
+    # early with "submodule is not initialized" — that's an environment-prep gap,
+    # not a build defect. Skip with a clear reason instead of failing the suite.
+    # (Run `git submodule update --init --recursive` to enable these tests.)
+    _yaml_cpp = REPO_ROOT / "hailo_apps" / "cpp" / "external" / "yaml-cpp"
+    if not _yaml_cpp.exists() or not any(_yaml_cpp.iterdir()):
+        pytest.skip(
+            "yaml-cpp submodule not initialized — run "
+            "'git submodule update --init --recursive' to enable C++ build tests."
+        )
+
     if sys.platform == "win32":
         display_cmd = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\build.ps1", app_name]
     else:
