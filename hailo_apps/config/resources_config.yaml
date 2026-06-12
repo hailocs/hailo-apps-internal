@@ -712,10 +712,7 @@ instance_segmentation: &instance_segmentation_app
       default:
         - name: yolov5m_seg_with_nms
           source: s3
-          app_type: [standalone]
-        - name: yolov5m_seg
-          source: mz
-          app_type: [pipeline]
+          app_type: [pipeline, standalone]
       extra:
         - name: yolov5m_seg
           source: mz
@@ -769,17 +766,14 @@ instance_segmentation: &instance_segmentation_app
       default:
         - name: yolov5m_seg_with_nms
           source: s3
-          app_type: [standalone]
-        - name: yolov5m_seg
-          source: mz
-          app_type: [pipeline]
+          app_type: [pipeline, standalone]
       extra:
         - name: yolov5n_seg_with_nms
           source: s3
-          app_type: [standalone]
+          app_type: [pipeline, standalone]
         - name: yolov5s_seg_with_nms
           source: s3
-          app_type: [standalone]
+          app_type: [pipeline, standalone]
         - name: yolov5m_seg
           source: mz
           app_type: [standalone]

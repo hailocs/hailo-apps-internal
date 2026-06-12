@@ -862,6 +862,58 @@ check_prerequisites() {
         log_success "Hailo device detected (scan: ${scan_usb_device:-$scan_pci_device})"
         log_success "HailoRT ${hailort_version} identified device successfully"
 
+        # If custom wheels were provided, validate then install them now (system-wide)
+        # so the version checks below read what is actually installed — not stale state.
+        local _wheels_to_install=()
+        [[ -n "${PYHAILORT_PATH:-}" ]] && _wheels_to_install+=("HailoRT:${PYHAILORT_PATH}")
+        [[ -n "${PYTAPPAS_PATH:-}" && "${NO_TAPPAS_REQUIRED}" != true ]] && _wheels_to_install+=("TAPPAS:${PYTAPPAS_PATH}")
+
+        for _entry in "${_wheels_to_install[@]}"; do
+            local _label="${_entry%%:*}"
+            local _path="${_entry#*:}"
+
+            # Validate: file must exist
+            if [[ ! -f "${_path}" ]]; then
+                log_error "${_label} wheel file not found: ${_path}"
+                record_step_result "FAILED" "${_label} wheel not found"
+                return 1
+            fi
+
+            # Validate: must have .whl extension
+            if [[ "${_path}" != *.whl ]]; then
+                log_error "${_label} wheel path does not end with .whl: ${_path}"
+                log_error "Please provide the full filename including the .whl extension."
+                record_step_result "FAILED" "${_label} invalid wheel path"
+                return 1
+            fi
+
+            log_info "Installing provided ${_label} wheel: $(basename "${_path}")"
+            # Install to the user's local site-packages (~/.local/) so it takes
+            # priority over any stale system-wide version in pip lookups.
+            # pip skips automatically if the same version is already installed.
+            if ! as_original_user pip3 install --quiet --user "${_path}" 2>/dev/null; then
+                log_error "Failed to install ${_label} wheel: ${_path}"
+                record_step_result "FAILED" "${_label} wheel install failed"
+                return 1
+            fi
+
+            # Verify: read back the installed version directly from the user's pip
+            # to catch any path shadowing from stale system packages
+            local _installed_ver
+            _installed_ver=$(as_original_user pip3 show "$(basename "${_path}" | cut -d- -f1)" 2>/dev/null \
+                             | grep '^Version:' | awk '{print $2}')
+            if [[ -z "${_installed_ver}" ]]; then
+                log_warning "Could not verify installed version for ${_label} wheel"
+            else
+                log_success "${_label} wheel installed (version: ${_installed_ver})"
+                # Pre-populate version variables so the check script results are not needed
+                case "${_label}" in
+                    HailoRT) pyhailort_version="${_installed_ver}" ;;
+                    TAPPAS)  tappas_python_version="${_installed_ver}" ;;
+                esac
+            fi
+        done
+
         # Get TAPPAS and Python binding versions from check script
         local summary_line
         disable_error_trap
