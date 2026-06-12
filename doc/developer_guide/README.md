@@ -14,6 +14,12 @@ The Developer Guide provides comprehensive technical documentation for building 
 *   **[Retraining Models](./retraining_example.md)**: A step-by-step tutorial for retraining models.
 *   **[Debugging with GST Shark](./debugging_with_gst_shark.md)**: Debugging tool for GStreamer pipelines.
 
+## Environment overrides
+
+Set `hailo_arch=hailo8` / `hailo8l` / `hailo10h` to pin the architecture
+instead of auto-detecting it. Honored by `set_env` and by HEF resolution
+at runtime — useful for CI and multi-arch dev boxes.
+
 ## Additional Resources
 
 *   [Main Documentation](../README.md) - Return to the main documentation index

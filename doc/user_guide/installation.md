@@ -425,6 +425,30 @@ After running any of the installation methods, you can verify that everything is
 
 ---
 
+## Optional: Gen-AI Application Dependencies
+
+> **Only needed if you plan to run gen-AI apps** (`hailo_apps/python/gen_ai_apps/voice_assistant`, `agent_tools_example`, `simple_llm_chat`, `simple_vlm_chat`, `simple_whisper_chat`, `vlm_chat`). Pipeline apps and standalone apps do **not** require this.
+
+`install.sh` installs the base package (`pip install -e .`) which is enough for every pipeline app and standalone app. Gen-AI apps additionally require Python audio + voice-processing libraries (`PyAudio`, `webrtcvad-wheels`, `piper-tts`, `sounddevice`, `openwakeword`, etc.) declared in `pyproject.toml` under the `gen-ai` extras-group.
+
+These are not installed automatically because:
+- They pull in a large dependency tree.
+- Some require platform-specific audio system libraries (`portaudio`, `alsa`).
+- The base install must remain lightweight for users who only run pipeline / standalone apps.
+
+After `install.sh` finishes successfully, opt-in with:
+
+```bash
+source setup_env.sh                  # activate the venv first
+pip install -e ".[gen-ai]"
+```
+
+> **Note:** Gen-AI **HEFs** (Qwen2-VL, Qwen2.5, Whisper) are also not pulled by default — they're large. Download them explicitly: `hailo-download-resources --group vlm_chat`, `--group llm_chat`, `--group whisper_chat`, or `--all --include-gen-ai`. See [Download Resources](#download-resources) above.
+
+The same opt-in step is mentioned in every gen-AI app's per-app README; this section just collects it in one place for convenience.
+
+---
+
 ## Upgrading / Reinstalling
 
 When upgrading to a new version of hailo-apps, use the `--force-cleanup` flag to remove stale build artifacts (e.g., old C++ postprocess caches) before reinstalling:

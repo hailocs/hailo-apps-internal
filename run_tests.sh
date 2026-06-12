@@ -275,7 +275,21 @@ fi
 if [ "$RUN_GENAI" = true ]; then
     echo ""
     echo "--- Running GenAI Tests ---"
-    if python -m pytest "${TESTS_DIR}/test_gen_ai.py" "${TESTS_DIR}/voice_assistant_unit_tests.py" -v --log-cli-level=INFO; then
+    # Pre-flight: gen-AI tests require the [gen-ai] extras (webrtcvad-wheels,
+    # PyAudio, piper-tts, sounddevice, ...). install.sh deliberately does NOT
+    # install these because they're heavy and platform-specific. If the user
+    # asked for --genai without that step, skip cleanly with an actionable hint
+    # rather than emitting a wall of ModuleNotFoundError stack traces.
+    if ! python -c "import webrtcvad, sounddevice, pyaudio, piper" >/dev/null 2>&1; then
+        echo "✗ GenAI tests skipped — gen-ai Python dependencies are not installed"
+        echo ""
+        echo "  Install them with:"
+        echo "    source setup_env.sh"
+        echo "    pip install -e \".[gen-ai]\""
+        echo ""
+        echo "  See doc/user_guide/installation.md → 'Optional: Gen-AI Application Dependencies'"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    elif python -m pytest "${TESTS_DIR}/test_gen_ai.py" "${TESTS_DIR}/voice_assistant_unit_tests.py" -v --log-cli-level=INFO; then
         echo "✓ GenAI tests passed"
     else
         echo "✗ GenAI tests failed"

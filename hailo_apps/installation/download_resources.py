@@ -523,10 +523,14 @@ class ResourceDownloader:
         # Build URL based on source
         if source == "s3":
             s3_arch = map_arch_to_s3_path(self.hailo_arch)
-            url = f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
+            # Optional per-entry subdirectory under hefs/<arch>/.
+            # E.g. subdir: LPR → hefs/<arch>/LPR/<name>.hef
+            subdir = (model_entry.get("subdir") or "").strip("/")
+            prefix = f"hefs/{s3_arch}" + (f"/{subdir}" if subdir else "")
+            url = f"{S3_RESOURCES_BASE_URL}/{prefix}/{name}{HAILO_FILE_EXTENSION}"
             if test_url(url=url):
                 return url
-            return f"{S3_RESOURCES_BASE_URL}/hefs/{s3_arch}/{name}{HAILO_FILE_EXTENSION}"
+            return url
         elif source == "mz":
             url = f"{MODEL_ZOO_URL}/{self.model_zoo_version}/{self.download_arch}/{name}{HAILO_FILE_EXTENSION}"
             test_url(url=url)  # Print URL validation info
@@ -569,19 +573,54 @@ class ResourceDownloader:
         url = self._build_model_url(model_entry, source)
         if not url:
             return
-        
+
+        # Local filename defaults to the S3 `name` but can be overridden via
+        # `local_name` — needed when two entries publish HEFs at distinct S3
+        # locations that would otherwise collide at the same on-disk path
+        # (e.g. legacy paddle_ocr's flat-path ocr.hef vs the LPR app's v5
+        # build at hefs/<arch>/LPR/ocr.hef).
+        dest_filename = (
+            model_entry.get("local_name", name)
+            if isinstance(model_entry, dict)
+            else name
+        )
         dest = (
             self.resource_root
             / RESOURCES_MODELS_DIR_NAME
             / self.hailo_arch
-            / f"{name}{HAILO_FILE_EXTENSION}"
+            / f"{dest_filename}{HAILO_FILE_EXTENSION}"
         )
-        
+
         task = DownloadTask(
             url=url,
             dest_path=dest,
             resource_type="model",
-            name=name
+            name=dest_filename,
+        )
+        self._tasks.add(task)
+
+        # Per-model sidecars (e.g. dictionaries, label maps) listed verbatim by
+        # filename. Fetched from the same per-arch S3 prefix as the HEF and
+        # written next to it under models/<arch>/, preserving the original
+        # extension (no .hef coercion). Sidecars inherit the parent model's
+        # `subdir` so they live next to the HEF on S3 too.
+        if isinstance(model_entry, dict):
+            subdir = (model_entry.get("subdir") or "").strip("/")
+            for sidecar in model_entry.get("extras") or []:
+                if isinstance(sidecar, str) and sidecar:
+                    self._add_model_sidecar_task(sidecar, subdir=subdir)
+
+    def _add_model_sidecar_task(self, filename: str, subdir: str = ""):
+        """Add a verbatim-filename sidecar download task next to a model HEF."""
+        s3_arch = map_arch_to_s3_path(self.hailo_arch)
+        prefix = f"hefs/{s3_arch}" + (f"/{subdir}" if subdir else "")
+        url = f"{S3_RESOURCES_BASE_URL}/{prefix}/{filename}"
+        dest = self.resource_root / RESOURCES_MODELS_DIR_NAME / self.hailo_arch / filename
+        task = DownloadTask(
+            url=url,
+            dest_path=dest,
+            resource_type="model",
+            name=filename,
         )
         self._tasks.add(task)
 
@@ -613,9 +652,14 @@ class ResourceDownloader:
                 return
             
             dest = self.resource_root / RESOURCES_VIDEOS_DIR_NAME / video_name
-            
+
+            # Optional per-entry subdirectory under video/. Mirrors the
+            # `subdir` field on model entries — e.g. subdir: lpr →
+            # video/lpr/<name>. On-disk path is unchanged.
+            subdir = (video_entry.get("subdir") or "").strip("/")
+            prefix = f"video" + (f"/{subdir}" if subdir else "")
             if source == "s3":
-                url = video_url or f"{S3_RESOURCES_BASE_URL}/video/{video_name}"
+                url = video_url or f"{S3_RESOURCES_BASE_URL}/{prefix}/{video_name}"
             elif video_url:
                 url = video_url
             else:

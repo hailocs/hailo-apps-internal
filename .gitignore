@@ -83,6 +83,12 @@ access_log.csv
 # YOLO World cached text embeddings (regenerated on demand)
 **/yolo_world/embeddings.json
 
+# Local-only LPR regression workspace (lives outside the app repo)
+tests/lpr_regression/
+
+# gst-shark traces
+gstshark_*/
+
 # s3_staging is a local-only staging area for binaries pushed to S3
 # out-of-band; never commit its contents.
 s3_staging/
