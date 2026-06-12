@@ -7,7 +7,11 @@ project('hailo-apps', 'c', 'cpp',
                             'cpp_args=-Wno-psabi -Wno-class-memaccess -Wno-deprecated-declarations']
        )
 
-postprocess_dep = dependency('hailo-tappas-core', version : '>=3.30.0', required : false)
+postprocess_dep = dependency('hailo-apps-core', version : '>=3.30.0', required : false)
+
+if not postprocess_dep.found()
+    postprocess_dep = dependency('hailo-tappas-core', version : '>=3.30.0', required : false)
+endif
 
 if not postprocess_dep.found()
     postprocess_dep = dependency('hailo_tappas', version : '>=3.30.0', required : false)
@@ -53,15 +57,19 @@ if postprocess_dep.found()
     rapidjson_inc = include_directories(rapidjson_inc_dir, is_system: true)
 
     # Get the version to determine static vs dynamic linking strategy
-    pkg_name = 'hailo-tappas-core'
+    pkg_name = 'hailo-apps-core'
     pkg_version_result = run_command('pkg-config', '--modversion', pkg_name, check: false)
+    if pkg_version_result.returncode() != 0
+        pkg_name = 'hailo-tappas-core'
+        pkg_version_result = run_command('pkg-config', '--modversion', pkg_name, check: false)
+    endif
     if pkg_version_result.returncode() != 0
         pkg_name = 'hailo_tappas'
         pkg_version_result = run_command('pkg-config', '--modversion', pkg_name, check: false)
     endif
     
     tappas_version = pkg_version_result.returncode() == 0 ? pkg_version_result.stdout().strip() : 'unknown'
-    message('Found hailo-tappas-core version: @0@'.format(tappas_version))
+    message('Found TAPPAS core version: @0@'.format(tappas_version))
     
     # Determine if we should use static libraries (5.2.0+) or dynamic (5.1.0 and earlier)
     use_static = false
