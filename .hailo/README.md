@@ -68,6 +68,7 @@ Step-by-step workflow guides for agents. All use the `hl-` prefix.
 | File | Description |
 |---|---|
 | `hl-profile-pipeline.md` | GStreamer pipeline profiling and optimization coach (GST-Shark, bottleneck analysis, knowledge base). Scripts in `scripts/profile_pipeline/`, knowledge base in `knowledge/profile_pipeline_kb.yaml`. |
+| `hl-artifacts-downloader.md` | Download/switch the Hailo platform stack (HailoRT, TAPPAS, PCIe driver, Model Zoo) per device/version/arch; version-switch workflow for validating the supported matrix. |
 
 ## Toolsets (`toolsets/`)
 
