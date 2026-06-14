@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <yaml-cpp/yaml.h>
-#include "hailomat.hpp"
+#include "hailomat_compat.hpp"
 
 struct StyleEntry {
     hailo_scalar_t color = hailo_scalar_t(-1, -1, -1);

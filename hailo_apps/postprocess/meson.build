@@ -73,11 +73,15 @@ if postprocess_dep.found()
     
     # Determine if we should use static libraries (5.2.0+) or dynamic (5.1.0 and earlier)
     use_static = false
+    # Encoded TAPPAS version (major*100 + minor) for source-level API guards, e.g.
+    # the overlay_community hailomat compat shim. 0 means unknown.
+    tappas_ver_int = 0
     if tappas_version != 'unknown'
         version_parts = tappas_version.split('.')
         if version_parts.length() >= 2
             major = version_parts[0].to_int()
             minor = version_parts[1].to_int()
+            tappas_ver_int = major * 100 + minor
             # Use static for 5.2.0+, dynamic for 5.1.0 and earlier
             use_static = (major > 5) or (major == 5 and minor >= 2)
         endif

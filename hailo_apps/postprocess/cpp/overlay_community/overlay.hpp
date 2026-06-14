@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_set>
 #include "hailo_objects.hpp"
-#include "hailomat.hpp"
+#include "hailomat_compat.hpp"
 
 typedef enum
 {

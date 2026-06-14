@@ -7,7 +7,7 @@
 #pragma once
 
 #include <opencv2/opencv.hpp>
-#include "hailomat.hpp"
+#include "hailomat_compat.hpp"
 
 __BEGIN_DECLS
 #define CONFIDENCE 0.5
