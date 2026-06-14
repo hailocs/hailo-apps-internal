@@ -16,16 +16,29 @@
 // (0 = unknown -> treated as current/new API).
 
 #include "hailomat.hpp"
+#include <opencv2/core.hpp>
+#include <vector>
 
 #if defined(HAILO_TAPPAS_VER) && HAILO_TAPPAS_VER != 0 && HAILO_TAPPAS_VER < 503
-#include <opencv2/core.hpp>
-
-// Pre-5.3 headers lack these structs; alias them onto the cv:: types the old
-// drawing API expects. Constructors match those used by overlay_community
-// (cv::Point(x,y), cv::Size(w,h), cv::Rect(x,y,w,h), cv::Scalar(v0,v1,v2,v3)).
+// ---------------------------- TAPPAS < 5.3 ----------------------------------
+// Pre-5.3 headers lack the OpenCV-free drawing structs; alias them onto the
+// cv:: types the old drawing API expects (cv::Point(x,y), cv::Size(w,h),
+// cv::Rect(x,y,w,h), cv::Scalar(v0,v1,v2,v3)).
 using hailo_point_t  = cv::Point;
 using hailo_size_t   = cv::Size;
 using hailo_rect_t   = cv::Rect;
 using hailo_scalar_t = cv::Scalar;
 
-#endif // pre-5.3 compatibility
+// Pre-5.3 has no hailomat_internal.hpp / get_impl(); cv::Mat is reachable via
+// HailoMat::get_matrices() directly. Provide the 5.3 accessor names so call
+// sites work uniformly across versions.
+inline std::vector<cv::Mat> &get_cv_matrices(HailoMat &mat) { return mat.get_matrices(); }
+inline cv::Mat &get_cv_matrix(HailoMat &mat, int idx = 0) { return mat.get_matrices()[idx]; }
+
+#else
+// ---------------------------- TAPPAS >= 5.3 ---------------------------------
+// The real internal header provides get_impl()/get_cv_matrices(); the
+// OpenCV-free drawing structs live in the public hailomat.hpp.
+#include "hailomat_internal.hpp"
+inline cv::Mat &get_cv_matrix(HailoMat &mat, int idx = 0) { return mat.get_impl()->get(idx); }
+#endif

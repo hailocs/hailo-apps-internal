@@ -13,7 +13,7 @@
 #include "overlay.hpp"
 #include "overlay_utils.hpp"
 #include "hailo_common.hpp"
-#include "hailomat_internal.hpp"
+#include "hailomat_compat.hpp"
 #include "sprite_cache.hpp"
 #include "style_config.hpp"
 
@@ -166,7 +166,7 @@ static overlay_status_t draw_landmarks(HailoMat &hmat, HailoLandmarksPtr landmar
                     // Center sprite on keypoint
                     cv::Rect sprite_rect(x - sprite->cols / 2, y - sprite->rows / 2,
                                          sprite->cols, sprite->rows);
-                    draw_sprite(hmat.get_impl()->get(0), sprite_rect, *sprite);
+                    draw_sprite(get_cv_matrix(hmat, 0), sprite_rect, *sprite);
                     continue;  // skip default dot
                 }
             }
@@ -408,7 +408,7 @@ overlay_status_t draw_all(HailoMat &hmat, HailoROIPtr roi, const OverlayParams &
 {
     overlay_status_t ret = OVERLAY_STATUS_UNINITIALIZED;
     uint number_of_classifications = 0;
-    cv::Mat &mat = hmat.get_impl()->get(0);
+    cv::Mat &mat = get_cv_matrix(hmat, 0);
     for (auto obj : roi->get_objects())
     {
         switch (obj->get_type())
@@ -658,7 +658,7 @@ void draw_stats_overlay(HailoMat &hmat, HailoROIPtr roi,
         font_scale, font_thickness, &baseline);
     hailo_point_t text_pos(10, 10 + text_size.height);
     cv::Rect bg_rect(8, 8, text_size.width + 4, text_size.height + baseline + 4);
-    cv::rectangle(hmat.get_impl()->get(0), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
+    cv::rectangle(get_cv_matrix(hmat, 0), bg_rect, cv::Scalar(0, 0, 0), cv::FILLED);
     hmat.draw_text(text, text_pos, font_scale, hailo_scalar_t(255, 255, 255));
 }
 
@@ -708,7 +708,7 @@ static bool parse_kv_string(const std::string &label, const std::string &key, st
 
 void draw_hud_overlay(HailoMat &hmat, HailoROIPtr roi)
 {
-    cv::Mat &frame = hmat.get_impl()->get(0);
+    cv::Mat &frame = get_cv_matrix(hmat, 0);
     int w = frame.cols;
     int h = frame.rows;
 
