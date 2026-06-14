@@ -917,7 +917,12 @@ check_prerequisites() {
             # Install to the user's local site-packages (~/.local/) so it takes
             # priority over any stale system-wide version in pip lookups.
             # pip skips automatically if the same version is already installed.
-            if ! as_original_user pip3 install --quiet --user "${_path}" 2>/dev/null; then
+            # PEP 668 (Ubuntu 24.04 / Debian Trixie / py3.12+) marks the system
+            # environment "externally managed" and rejects --user without
+            # --break-system-packages; try that flag first and fall back for
+            # older pip that doesn't recognize it.
+            if ! as_original_user pip3 install --quiet --user --break-system-packages "${_path}" 2>/dev/null \
+               && ! as_original_user pip3 install --quiet --user "${_path}" 2>/dev/null; then
                 log_error "Failed to install ${_label} wheel: ${_path}"
                 record_step_result "FAILED" "${_label} wheel install failed"
                 return 1
@@ -1363,9 +1368,11 @@ install_python_packages() {
         log_warning "pip upgrade had issues (continuing anyway)"
     fi
 
-    # Install the hailo_apps package in editable mode
-    log_info "Installing hailo_apps package (editable mode)..."
-    if ! run_as_user bash -c "source '${venv_activate}' && pip install -e '${SCRIPT_DIR}'"; then
+    # Install the hailo_apps package in editable mode, including the dev extra
+    # (pytest + pytest-timeout + ruff/pre-commit) so the test suite runs on a
+    # fresh box without a manual `pip install pytest` step.
+    log_info "Installing hailo_apps package (editable mode, with dev extras)..."
+    if ! run_as_user bash -c "source '${venv_activate}' && pip install -e '${SCRIPT_DIR}[dev]'"; then
         log_error "Failed to install hailo_apps package"
         log_info "Troubleshooting:"
         log_info "  • Check setup.py or pyproject.toml exists"
