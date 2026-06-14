@@ -1,9 +1,11 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/pipeline_profiling.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Pipeline Profiling Notes
 
 ## Quick Reference
-- Profiler skill: `/profile-pipeline` (see `.claude/skills/profile-pipeline/SKILL.md`)
-- Scripts: `.claude/skills/profile-pipeline/scripts/`
-- Knowledge base: `.claude/skills/profile-pipeline/knowledge/knowledge_base.yaml`
+- Profiler skill: `/hl-profile-pipeline` (the profile-pipeline skill)
+- Scripts and knowledge base ship with the profile-pipeline skill bundle (`plot_graphs.py`, `profile_pipeline_kb.yaml`)
 
 ## Key Defaults
 - `QUEUE()`: max_size_buffers=3, leaky=no
@@ -25,7 +27,7 @@
 ## UX Notes
 - After analysis, always offer to generate performance graphs (bar chart of proctime, latency waterfall, queue fill). Users prefer visual data.
 - **Always open generated graphs** with `xdg-open <path>` so the user can see them on screen. Don't just embed in chat — open the file.
-- Graph templates script: `.claude/skills/profile-pipeline/scripts/plot_graphs.py`
+- Graph templates script: `plot_graphs.py` (in the profiler scripts)
   - `python plot_graphs.py <trace_dir> --open` — generates all 4 graphs and opens them
   - Can also import: `from plot_graphs import generate_all, plot_proctime, plot_npu_breakdown, plot_latency_waterfall, plot_queue_levels`
   - Waterfall uses inline labels (name + duration on each bar segment)

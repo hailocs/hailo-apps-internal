@@ -44,7 +44,7 @@ Missed after 3 seconds - next one spawns.
 
 Eggs appear more often than Afikoman.
 
-Background: /home/michaelf/room.png. 
+Background: pass any image with `--background <path>` (e.g. `~/Pictures/room.png`); without it, the bundled `room.png` resource is used. 
 
 Leaderboard on the right - auto-name new players. 
 

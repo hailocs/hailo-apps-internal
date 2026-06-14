@@ -92,3 +92,6 @@ gstshark_*/
 # s3_staging is a local-only staging area for binaries pushed to S3
 # out-of-band; never commit its contents.
 s3_staging/
+
+# Claude Code local auto-memory (canonical KB lives in .hailo/memory/)
+.claude/memory/

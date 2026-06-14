@@ -11,6 +11,10 @@
 | [camera_and_display.md](camera_and_display.md) | Camera init, BGR/RGB conversion, OpenCV display patterns | Camera-related work |
 | [hailo_platform_api.md](hailo_platform_api.md) | VDevice, VLM.generate(), HEF resolution, device sharing | Any HailoRT interaction |
 | [common_pitfalls.md](common_pitfalls.md) | Bugs found and fixed, anti-patterns to avoid | Any development task |
+| [gesture_detection.md](gesture_detection.md) | Blaze palm/hand tensor maps, C++ postprocess libs, rotation/scaling bug fixes | Gesture detection or two-stage cropper pipelines |
+| [tappas_coordinate_spaces.md](tappas_coordinate_spaces.md) | scaling_bbox accumulation, letterbox transforms, hailooverlay landmark vs bbox asymmetry | Landmarks/detections after INFERENCE_PIPELINE_WRAPPER |
+| [audio_issues.md](audio_issues.md) | AudioPlayer reinit race conditions, headset mic PulseAudio/ALSA setup | Voice assistant / audio I/O work |
+| [pipeline_profiling.md](pipeline_profiling.md) | Profiler defaults, bottleneck fixes, no-leaky-queue rule | Profiling or optimizing pipelines |
 
 ## Key Project Patterns
 
