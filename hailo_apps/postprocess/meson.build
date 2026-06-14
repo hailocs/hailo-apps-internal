@@ -156,6 +156,34 @@ if postprocess_dep.found()
         endif
     endif
 
+    # TAPPAS 5.3.x dropped the common:: utilities (get_xtensor, get_xtensor_uint16,
+    # softmax_2D, iou_calc, ...) from libhailo_opencv_utils.so and instead ships
+    # their implementations as source files next to the headers. Build them into a
+    # static convenience lib and fold it into postprocess_dep so every cpp target
+    # resolves those symbols. On TAPPAS < 5.3 the sources are absent and the
+    # symbols still live in libhailo_opencv_utils.so, so this is a no-op.
+    fs = import('fs')
+    common_impl_dir = '/usr/include/hailo/tappas/common'
+    if fs.is_file(common_impl_dir / 'tensors.cpp')
+        common_compat_srcs = [common_impl_dir / 'tensors.cpp']
+        foreach extra : ['math.cpp', 'nms.cpp']
+            if fs.is_file(common_impl_dir / extra)
+                common_compat_srcs += common_impl_dir / extra
+            endif
+        endforeach
+        hailo_common_compat_lib = static_library('hailo_common_compat',
+            common_compat_srcs,
+            dependencies : postprocess_dep,
+        )
+        postprocess_dep = declare_dependency(
+            dependencies : [postprocess_dep],
+            link_with : hailo_common_compat_lib,
+        )
+        message('Built hailo_common_compat from TAPPAS common/ sources (5.3.x compat)')
+    else
+        message('common:: sources not found — symbols expected in libhailo_opencv_utils.so (< 5.3)')
+    endif
+
     subdir('cpp')
 else
     message('⚠️  No Hailo TAPPAS dependencies found — skipping C++ postprocess build.')
