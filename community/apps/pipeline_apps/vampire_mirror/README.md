@@ -102,5 +102,13 @@ new aspect ratio.
 | `bg_shm.py` | POSIX shared-memory helpers |
 | `vampire_engine.py` | Vampire / human decision engine |
 
-The C++ `hailovampire_overlay` element lives under
-`hailo_apps/postprocess/cpp/vampire_overlay/`.
+The C++ `hailovampire_overlay` element is app-specific and lives with this app
+under `postprocess/`. Build and install it with:
+
+```bash
+community/apps/pipeline_apps/vampire_mirror/postprocess/build.sh
+```
+
+`run.sh` builds it automatically when `gst-inspect-1.0 hailovampire_overlay`
+can't find it. It is intentionally **not** part of the shared/official
+postprocess (`hailo_apps/postprocess/`).

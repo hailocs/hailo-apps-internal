@@ -21,8 +21,13 @@ plugin path is set).
 | Plugin (gst element) | Source dir | Klass | Purpose |
 |---|---|---|---|
 | `hailooverlay_community` | `hailo_apps/postprocess/cpp/overlay_community/` | `Hailo/Tools` | Community overlay element — draws detections, classifications, landmarks, IDs and other HailoObjects onto frames with configurable styling (yaml-cpp driven `style_config`). |
-| `hailovampire_overlay` | `hailo_apps/postprocess/cpp/vampire_overlay/` | `Filter/Effect/Video` | Paints "vampire" pixels with the corresponding region of a shared-memory background buffer (used by the vampire_mirror community app). |
 | `hailotilecropper_dynamic` | `hailo_apps/postprocess/cpp/hailotilecropper_dynamic/` | `Hailo/Tools` | Dynamic tiling cropper — crops tiles defined dynamically by upstream pipeline elements and/or statically by properties. Bundles its own `GstHailoBaseCropperDyn` base class so it loads in pipelines that don't bring in the system-wide TAPPAS base cropper. Ported from `community_plugins` with a TAPPAS 5.3 fix. |
+
+### App-bundled elements (built with their app, not the shared postprocess)
+
+| Plugin (gst element) | Source dir | Build | Purpose |
+|---|---|---|---|
+| `hailovampire_overlay` | `community/apps/pipeline_apps/vampire_mirror/postprocess/` | that dir's `build.sh` (or auto via the app's `run.sh`) | Paints "vampire" pixels with the corresponding region of a shared-memory background buffer. App-specific to `vampire_mirror`, so it ships with the app rather than the shared postprocess. |
 
 ## Usage examples
 
