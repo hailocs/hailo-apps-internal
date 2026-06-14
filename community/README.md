@@ -19,13 +19,17 @@ the same core framework (GStreamerApp, HailoRT, the postprocess plugins).
 GStreamer pipeline apps (inference in a user callback, hailooverlay display):
 
 `baby_sleep_monitor`, `bubble_pop`, `cat_food_monitor`, `crowd_counting`,
-`depth_anything`, `depth_proximity_alert`, `face_landmarks`, `gesture_detection`,
-`gesture_mouse`, `hotdog_not_hotdog`, `license_plate_reader`,
+`depth_anything`, `depth_proximity_alert`, `easter_game`, `face_landmarks`,
+`gesture_detection`, `gesture_mouse`, `hotdog_not_hotdog`, `license_plate_reader`,
 `line_crossing_counter`, `multi_camera_store_monitor`, `multi_entrance_tracker`,
 `parking_lot_occupancy`, `ppe_safety_checker`, `retail_shelf_analyzer`,
 `rhythm_royale`, `room_security_monitor`, `semaphore_translator`,
-`vampire_mirror`, `workout_rep_counter`, `yolo_world` (→ moved to official app,
-see its README).
+`vampire_mirror`, `workout_rep_counter`.
+
+> `yolo_world` is now an **official** app — see
+> `hailo_apps/python/pipeline_apps/yolo_world/`. `gesture_detection` (incl. the
+> Hailo-8 GStreamer variants `gesture_detection_h8.py` / `gesture_detection_gst.py`)
+> now lives entirely here in the community tree.
 
 ## Standalone apps (`apps/standalone_apps/`)
 

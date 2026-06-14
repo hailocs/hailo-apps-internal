@@ -7,7 +7,7 @@ or GStreamer dependencies. Uses mock point objects to simulate Hailo landmarks.
 
 import pytest
 
-from hailo_apps.python.pipeline_apps.gesture_detection.gesture_recognition import (
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import (
     GESTURE_FIST,
     GESTURE_FOUR,
     GESTURE_ONE,

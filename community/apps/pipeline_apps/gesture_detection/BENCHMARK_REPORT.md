@@ -206,19 +206,19 @@ source setup_env.sh
 INPUT=path/to/benchmark_video.avi
 
 # --- Hailo-8 C++ (recommended) ---
-cd hailo_apps/cpp/gesture_detection && ./build.sh && cd -
-hailo_apps/cpp/gesture_detection/build/gesture_detection \
-    --palm-model hailo_apps/python/pipeline_apps/gesture_detection/models/palm_detection_lite.hef \
-    --hand-model hailo_apps/python/pipeline_apps/gesture_detection/models/hand_landmark_lite.hef \
+cd community/apps/pipeline_apps/gesture_detection/cpp && ./build.sh && cd -
+community/apps/pipeline_apps/gesture_detection/cpp/build/gesture_detection \
+    --palm-model community/apps/pipeline_apps/gesture_detection/models/palm_detection_lite.hef \
+    --hand-model community/apps/pipeline_apps/gesture_detection/models/hand_landmark_lite.hef \
     --input $INPUT --headless
 
 # --- Hailo-8 Python ---
-python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 \
+python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 \
     --input $INPUT --headless
 
 # --- Native CPU baseline (x86, uses mediapipe package) ---
 pip install mediapipe psutil
-python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_native \
+python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_native \
     --input $INPUT --headless
 
 # --- Native CPU baseline (RPi / aarch64, uses TFLite directly) ---

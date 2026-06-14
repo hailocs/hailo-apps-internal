@@ -14,8 +14,8 @@ The Python callback runs both models via HailoRT InferVStreams and attaches:
   - HailoClassification("gesture", label) on each palm detection
 
 Usage:
-    python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_gst
-    python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_gst --input photo.jpg
+    python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst
+    python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst --input photo.jpg
 """
 
 # region imports
@@ -37,11 +37,11 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class
 from hailo_apps.python.core.common.core import get_pipeline_parser
 
-from hailo_apps.python.pipeline_apps.gesture_detection import blaze_base
-from hailo_apps.python.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
-from hailo_apps.python.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
-from hailo_apps.python.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
-from hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 import landmarks_to_gesture_points
+from community.apps.pipeline_apps.gesture_detection import blaze_base
+from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
+from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
+from community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 import landmarks_to_gesture_points
 
 hailo_logger = get_logger(__name__)
 # endregion imports

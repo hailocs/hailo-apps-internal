@@ -11,8 +11,8 @@ Uses HailoRT Python API (InferVStreams) directly instead of GStreamer.
 Based on AlbertaBeef/blaze_app_python (https://github.com/AlbertaBeef/blaze_app_python).
 
 Usage:
-    python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8
-    python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 --input video.mp4
+    python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8
+    python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 --input video.mp4
 """
 
 import argparse
@@ -27,10 +27,10 @@ import numpy as np
 import psutil
 from hailo_platform import VDevice
 
-from hailo_apps.python.pipeline_apps.gesture_detection import blaze_base
-from hailo_apps.python.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
-from hailo_apps.python.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
-from hailo_apps.python.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
+from community.apps.pipeline_apps.gesture_detection import blaze_base
+from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
+from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
 
 
 # Hand skeleton connections for drawing (MediaPipe topology)

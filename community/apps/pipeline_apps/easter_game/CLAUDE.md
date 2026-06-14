@@ -18,9 +18,9 @@ Interactive Easter-egg and Afikoman catching game built on Hailo pose estimation
 ## How to Run
 ```bash
 source setup_env.sh
-python hailo_apps/python/pipeline_apps/easter_game/easter_game.py --input usb
+python community/apps/pipeline_apps/easter_game/easter_game.py --input usb
 # with a custom background image:
-python hailo_apps/python/pipeline_apps/easter_game/easter_game.py --input usb --background /path/to/background.png
+python community/apps/pipeline_apps/easter_game/easter_game.py --input usb --background /path/to/background.png
 ```
 Without `--background`, the app resolves the bundled `room.png` resource (run `hailo-download-resources` if missing); otherwise it falls back to a dark frame.
 

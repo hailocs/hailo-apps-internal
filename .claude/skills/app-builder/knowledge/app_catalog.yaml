@@ -1,5 +1,5 @@
 # ============================================================================
-# APP CATALOG - Structured catalog of all Hailo apps (66 total: 25 core + 41 community/new)
+# APP CATALOG - Structured catalog of all Hailo apps (64 total: 25 core + 39 community/new)
 # ============================================================================
 # Generated from source code analysis of the hailo-apps-infra repository.
 # Each app includes models, pipeline patterns, features, and metadata.
@@ -1208,7 +1208,7 @@ lpr:
   cli_command: null
 
 easter_game:
-  category: pipeline
+  category: community_pipeline
   display_name: Easter Game
   description: Interactive Easter Egg / Afikoman catching game using pose estimation.
   complexity: moderate
@@ -1217,33 +1217,7 @@ easter_game:
   - hailo8l
   - hailo10h
   key_files:
-  - hailo_apps/python/pipeline_apps/easter_game/
-  cli_command: null
-
-people_detection:
-  category: pipeline
-  display_name: People Detection
-  description: People-focused detection pipeline. (See app source/README.)
-  complexity: simple
-  hardware:
-  - hailo8
-  - hailo8l
-  - hailo10h
-  key_files:
-  - hailo_apps/python/pipeline_apps/people_detection/
-  cli_command: null
-
-phone_detection:
-  category: pipeline
-  display_name: Phone Detection
-  description: Phone-usage detection pipeline. (See app source/README.)
-  complexity: simple
-  hardware:
-  - hailo8
-  - hailo8l
-  - hailo10h
-  key_files:
-  - hailo_apps/python/pipeline_apps/phone_detection/
+  - community/apps/pipeline_apps/easter_game/
   cli_command: null
 
 low_power_poc:

@@ -6,11 +6,11 @@
 - GStreamer source → Python callback (InferVStreams) → hailooverlay → display
 - Attaches: HailoDetection("palm") + HailoLandmarks("hand_landmarks", 21pts) + HailoClassification("gesture")
 - **Landmarks must be normalized relative to the detection bbox** (not the frame) for hailooverlay
-- `python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_gst --input <source>`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst --input <source>`
 
 ### 2. Standalone OpenCV: `gesture_detection_h8.py`
 - Pure Python (OpenCV + HailoRT InferVStreams), no GStreamer
-- `python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_h8 --input <source>`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 --input <source>`
 
 ## Blaze Model Tensor Mapping (VERIFIED)
 ### Palm Detection (palm_detection_lite.hef, 192x192)
@@ -40,11 +40,11 @@
 - All pre/post processing in C++, inference via hailonet (streaming)
 - Pipeline: source → palm_detection (hailonet+hailofilter) → palm_croppers (hailocropper) → [hand_affine_warp → hand_landmark hailonet+hailofilter] → gesture_classification → display
 - **104+ FPS** uncapped (vs 68.8 Python, 44.3 native MediaPipe)
-- `python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_cpp_pipeline --input <source>`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_cpp_pipeline --input <source>`
 
 ### 4. Native MediaPipe CPU Baseline: `gesture_detection_native.py`
 - Pure CPU MediaPipe HandLandmarker (tasks API v0.10.32)
-- `python -m hailo_apps.python.pipeline_apps.gesture_detection.gesture_detection_native --input <source>`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_native --input <source>`
 
 ## C++ Postprocess Libraries (all compiled, in /usr/local/hailo/resources/so/)
 - `libpalm_detection_postprocess.so` — SSD anchor decode + weighted NMS
