@@ -17,10 +17,10 @@
 #include "gst_hailo_stream_meta.hpp"
 #include "hailo_objects.hpp"
 #include "hailo_common.hpp"
-// hailomat_internal.hpp (get_impl()/HailoMatImpl) exists only on TAPPAS >= 5.3.
-// On older TAPPAS, HailoMat::get_matrices()/crop() are used directly (see
-// opencv_crop_and_resize below). HAILO_TAPPAS_VER is injected by meson.
-#if !defined(HAILO_TAPPAS_VER) || HAILO_TAPPAS_VER == 0 || HAILO_TAPPAS_VER >= 503
+// hailomat_internal.hpp (get_impl()/HailoMatImpl) exists only on TAPPAS >= 5.2.
+// On older TAPPAS (< 5.2), HailoMat::get_matrices()/crop() are used directly
+// (see opencv_crop_and_resize below). HAILO_TAPPAS_VER is injected by meson.
+#if !defined(HAILO_TAPPAS_VER) || HAILO_TAPPAS_VER == 0 || HAILO_TAPPAS_VER >= 502
 #include "hailomat_internal.hpp"
 #endif
 #include "gst_hailo_meta.hpp"
@@ -713,10 +713,10 @@ static gboolean dsp_crop_and_resize(GstHailoBaseCropperDyn *hailo_basecropper, c
 static gboolean opencv_crop_and_resize(GstHailoBaseCropperDyn *hailo_basecropper, std::shared_ptr<HailoMat> resized_image, std::shared_ptr<HailoMat> full_image, GstVideoInfo *full_image_info, HailoROIPtr crop_roi)
 {
     GstHailoBaseCropperDynClass *hailo_basecropperclass = GST_HAILO_BASE_CROPPER_DYN_GET_CLASS(hailo_basecropper);
-    // TAPPAS 5.3 moved HailoMat::get_matrices() to HailoMatImpl (via get_impl())
-    // and made crop() return std::unique_ptr<HailoMatImpl>. Pre-5.3 keeps the
+    // TAPPAS 5.2 moved HailoMat::get_matrices() to HailoMatImpl (via get_impl())
+    // and made crop() return std::unique_ptr<HailoMatImpl>. Pre-5.2 keeps the
     // direct get_matrices()/crop()->vector<cv::Mat> API.
-#if defined(HAILO_TAPPAS_VER) && HAILO_TAPPAS_VER != 0 && HAILO_TAPPAS_VER < 503
+#if defined(HAILO_TAPPAS_VER) && HAILO_TAPPAS_VER != 0 && HAILO_TAPPAS_VER < 502
     std::vector<cv::Mat> resized_cv_mat = resized_image->get_matrices();
 #else
     std::vector<cv::Mat> resized_cv_mat = resized_image->get_impl()->get_matrices();
@@ -728,7 +728,7 @@ static gboolean opencv_crop_and_resize(GstHailoBaseCropperDyn *hailo_basecropper
                      full_image->width(), full_image->height(),
                      crop_roi->get_bbox().xmin(), crop_roi->get_bbox().ymin(),
                      crop_roi->get_bbox().width(), crop_roi->get_bbox().height(), resized_cv_mat[0].cols, resized_cv_mat[0].rows);
-#if defined(HAILO_TAPPAS_VER) && HAILO_TAPPAS_VER != 0 && HAILO_TAPPAS_VER < 503
+#if defined(HAILO_TAPPAS_VER) && HAILO_TAPPAS_VER != 0 && HAILO_TAPPAS_VER < 502
     std::vector<cv::Mat> cropped_cv_mat = full_image->crop(crop_roi);
 #else
     std::unique_ptr<HailoMatImpl> cropped_impl = full_image->crop(crop_roi);
