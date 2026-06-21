@@ -156,6 +156,33 @@ log_dry_run() {
     log_to_file "DRY-RUN" "$*"
 }
 
+# Hint shown when a required HailoRT/TAPPAS deb or wheel is missing or its
+# version does not match. Points to the public, md5-verified manifest-based
+# downloader. Worded to be useful in ANY environment: a plain shell command
+# anyone can run, plus a note that AI coding assistants (Claude Code, Cursor,
+# Copilot, Gemini, …) expose the same thing as the `hl-artifacts-downloader`
+# skill — so the guidance is not Claude-specific.
+suggest_artifacts_downloader() {
+    local version="${1:-latest}"
+    local device="H10" arch="x86_64"
+    case "${HAILO_ARCH:-}" in
+        hailo8|hailo8l) device="H8" ;;
+        hailo10h)       device="H10" ;;
+    esac
+    case "$(uname -m)" in
+        aarch64|arm64) arch="aarch64" ;;
+    esac
+    [[ "$version" == "-1" || -z "$version" ]] && version="latest"
+
+    log_info "Need matching deb/wheel artifacts? Fetch them from Hailo's public,"
+    log_info "md5-verified manifest downloader (works on any machine):"
+    echo -e "    ${CYAN}curl -fsSL https://dev-public.hailo.ai/scripts/common/artifacts_downloader.sh -o /tmp/artifacts_downloader.sh${NC}"
+    echo -e "    ${CYAN}bash /tmp/artifacts_downloader.sh -d ${device} -v ${version} -a ${arch} -o /tmp/hailo_artifacts${NC}"
+    log_info "Install the downloaded .deb packages, then re-run install.sh with the wheels:"
+    echo -e "    ${CYAN}sudo ./install.sh --pyhailort /tmp/hailo_artifacts/hailort-*.whl --pytappas /tmp/hailo_artifacts/hailo_tappas_core_python_binding-*.whl${NC}"
+    log_info "Using an AI coding assistant (Claude Code, Cursor, Copilot, Gemini, …)? Ask it to run the 'hl-artifacts-downloader' skill."
+}
+
 # Step header logging
 log_step() {
     local step_num="$1"
@@ -1016,6 +1043,10 @@ check_prerequisites() {
         fi
 
         if [[ "$failed" == true ]]; then
+            # A required HailoRT/TAPPAS deb or wheel is missing or mismatched —
+            # point the user at the manifest-based downloader to obtain matching
+            # artifacts (helpful for any IDE/assistant, not just Claude Code).
+            suggest_artifacts_downloader "$hailort_version"
             record_step_result "FAILED" "Version validation failed"
             return 1
         fi
