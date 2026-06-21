@@ -34,10 +34,10 @@ PADDLE_BLANK_IDX = 0
 # ---------------------------------------------------------------------------
 # OCR and detection thresholds / constants
 # ---------------------------------------------------------------------------
-# Engine-specific OCR confidence thresholds. LPRNet's CTC head outputs over a
-# 37-class LPRNet has a wider vocab than the legacy 11-class digits-only
-# variant, so per-character softmax is spread thinner. The empirically-tuned
-# threshold for the retrained lprnet_intl is 0.50.
+# Engine-specific OCR confidence thresholds. The retrained 37-class LPRNet has
+# a wider vocab than the legacy 11-class digits-only variant, so its
+# per-character softmax is spread thinner. The empirically-tuned threshold for
+# the retrained lprnet_intl is 0.50.
 # PaddleOCR's head outputs 97-18,385 classes so confidence is naturally
 # diffuse even when the read is correct — its threshold is 0.30, consistent
 # with the confidences observed on the Hailo `ocr.mp4` text demo, where
