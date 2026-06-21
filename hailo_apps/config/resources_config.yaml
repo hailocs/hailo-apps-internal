@@ -1145,12 +1145,9 @@ v2a_demo:
 
 yolo_world: &yolo_world_app
   # HEFs compiled with DFC 3.33 from model-zoo v5.3.0.
+  # Only hailo8 and hailo10h: the app rejects hailo8l (see yolo_world_pipeline.py).
   models:
     hailo8:
-      default:
-        - name: yolo_world_v2s
-          source: s3
-    hailo8l:
       default:
         - name: yolo_world_v2s
           source: s3
