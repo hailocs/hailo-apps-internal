@@ -121,6 +121,22 @@ class GStreamerLPRApp(GStreamerApp):
         self.app_callback = app_callback
         self.create_pipeline()
 
+    # ----- end-of-stream behaviour ------------------------------------------
+    def on_eos(self):
+        """Disable the file-source rebuild loop for LPR.
+
+        Unlike single-network apps, LPR holds a *second* HailoRT device for
+        OCR — a ``HailoInfer`` instance created in the ``app_callback`` and
+        kept alive in ``user_data``. The base class loops file sources by
+        tearing down the GStreamer pipeline and probing for a free
+        ``VDevice`` before rebuilding; but the OCR device is never released
+        on that path, so the rebuild fails with
+        ``HAILO_OUT_OF_PHYSICAL_DEVICES`` on the second iteration. Rather
+        than loop, shut down cleanly at end-of-stream for every source type.
+        """
+        hailo_logger.debug("LPR on_eos(): looping disabled, shutting down")
+        self.shutdown()
+
     # ----- model setup ------------------------------------------------------
     def _setup_yolov8n_models(self):
         # --hef-path wins; else resolve via the standard install-time path that
