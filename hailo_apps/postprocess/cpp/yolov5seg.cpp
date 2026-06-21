@@ -444,8 +444,22 @@ static void decode_nms_byte_mask(HailoROIPtr roi, const Yolov5segParams *params)
         if (det->mask_size == 0)
             continue;
 
-        // Clamp coordinates to [0,1] — out-of-range values cause the overlay
-        // to produce zero-width destination rects which crash cv::resize
+        // Mask dimensions, per the HailoRT NMS_WITH_BYTE_MASK spec
+        // (hailo_detection_with_byte_mask_t in hailort.h): the mask covers the
+        // ORIGINAL (unclamped) box at the model-input resolution —
+        //   mask_width  = ceil((x_max - x_min) * image_width)
+        //   mask_height = ceil((y_max - y_min) * image_height)
+        // Using the *clamped* box width, or guessing a factorization of
+        // mask_size, yields the wrong row stride and shears the mask into
+        // diagonal stripes. The raw coords reproduce HailoRT's exact stride.
+        const int mask_w = std::max(1, (int)std::ceil((det->box.x_max - det->box.x_min) * model_w));
+        const int mask_h = std::max(1, (int)std::ceil((det->box.y_max - det->box.y_min) * model_h));
+        if ((size_t)(mask_w * mask_h) != det->mask_size)
+            continue;  // unexpected size — drop rather than render a sheared mask
+
+        // Clamp the box into the frame for drawing. The overlay resizes the
+        // mask into this box; an out-of-frame box (x_min >= 1, etc.) would make
+        // cv::resize abort, which filter_letterbox also guards against.
         const float x_min = std::max(0.0f, std::min(1.0f, det->box.x_min));
         const float y_min = std::max(0.0f, std::min(1.0f, det->box.y_min));
         const float x_max = std::max(0.0f, std::min(1.0f, det->box.x_max));
@@ -453,20 +467,6 @@ static void decode_nms_byte_mask(HailoROIPtr roi, const Yolov5segParams *params)
         const float w     = x_max - x_min;
         const float h     = y_max - y_min;
         if (w <= 0.0f || h <= 0.0f)
-            continue;
-
-        // Derive mask dimensions from mask_size to avoid floating-point ceil
-        // inconsistencies with HailoRT's internal computation (off-by-one in
-        // mask_w causes every row to shift by 1 pixel → diagonal stripe artifact)
-        int mask_w = std::max(1, (int)std::ceil(w * model_w));
-        int mask_h = std::max(1, (int)std::ceil(h * model_h));
-        if ((size_t)(mask_w * mask_h) != det->mask_size) {
-            mask_w = std::max(1, (int)std::round(w * model_w));
-            mask_h = (mask_w > 0 && det->mask_size % (size_t)mask_w == 0)
-                         ? std::max(1, (int)(det->mask_size / (size_t)mask_w))
-                         : std::max(1, (int)std::round(h * model_h));
-        }
-        if ((size_t)(mask_w * mask_h) != det->mask_size)
             continue;
 
         const int class_id = static_cast<int>(det->class_id) + 1;  // 1-indexed (TAPPAS convention)
@@ -519,19 +519,47 @@ void filter(HailoROIPtr roi, void *params_void_ptr)
 void filter_letterbox(HailoROIPtr roi, void *params_void_ptr)
 {
     filter(roi, params_void_ptr);
+
+    Yolov5segParams *params = reinterpret_cast<Yolov5segParams *>(params_void_ptr);
+    // Reference pixel size used downstream when the overlay resizes each instance
+    // mask to its detection box. A box that maps to < 1 px in either dimension
+    // makes hailooverlay call cv::resize() with a zero-sized destination, which
+    // aborts the process with "(-215) inv_scale_x > 0". Use the model input size.
+    const float model_w = static_cast<float>(params->input_shape[1]);
+    const float model_h = static_cast<float>(params->input_shape[0]);
+
     // Resize Letterbox
     HailoBBox roi_bbox = hailo_common::create_flattened_bbox(roi->get_bbox(), roi->get_scaling_bbox());
     auto detections = hailo_common::get_hailo_detections(roi);
+    std::vector<HailoDetectionPtr> degenerate;
     for (auto &detection : detections)
     {
         auto detection_bbox = detection->get_bbox();
-        auto xmin = (detection_bbox.xmin() * roi_bbox.width()) + roi_bbox.xmin();
-        auto ymin = (detection_bbox.ymin() * roi_bbox.height()) + roi_bbox.ymin();
-        auto xmax = (detection_bbox.xmax() * roi_bbox.width()) + roi_bbox.xmin();
-        auto ymax = (detection_bbox.ymax() * roi_bbox.height()) + roi_bbox.ymin();
-        HailoBBox new_bbox(xmin, ymin, xmax - xmin, ymax - ymin);
-        detection->set_bbox(new_bbox);
+        float xmin = (detection_bbox.xmin() * roi_bbox.width()) + roi_bbox.xmin();
+        float ymin = (detection_bbox.ymin() * roi_bbox.height()) + roi_bbox.ymin();
+        float xmax = (detection_bbox.xmax() * roi_bbox.width()) + roi_bbox.xmin();
+        float ymax = (detection_bbox.ymax() * roi_bbox.height()) + roi_bbox.ymin();
+
+        // Clamp into the frame. An out-of-frame x_min/y_min (>= 1.0) makes the
+        // overlay clamp the mask's resize destination to 0, which also aborts.
+        xmin = std::max(0.0f, std::min(1.0f, xmin));
+        ymin = std::max(0.0f, std::min(1.0f, ymin));
+        xmax = std::max(0.0f, std::min(1.0f, xmax));
+        ymax = std::max(0.0f, std::min(1.0f, ymax));
+        const float w = xmax - xmin;
+        const float h = ymax - ymin;
+
+        // Drop boxes that are sub-pixel after the letterbox transform so the
+        // degenerate mask never reaches the overlay's cv::resize().
+        if (w * model_w < 1.0f || h * model_h < 1.0f)
+        {
+            degenerate.push_back(detection);
+            continue;
+        }
+        detection->set_bbox(HailoBBox(xmin, ymin, w, h));
     }
+    hailo_common::remove_detections(roi, degenerate);
+
     // Clear the scaling bbox of main roi because all detections are fixed.
     roi->clear_scaling_bbox();
 }

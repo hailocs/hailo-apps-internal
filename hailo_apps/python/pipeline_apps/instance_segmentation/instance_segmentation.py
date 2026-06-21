@@ -113,6 +113,12 @@ def app_callback(element, buffer, user_data):
 
                     roi_width = int(bbox.width() * reduced_width)
                     roi_height = int(bbox.height() * reduced_height)
+                    # A tiny or degenerate bbox can scale down to 0 px in the
+                    # quarter-res frame (e.g. normalized width < 1/reduced_width),
+                    # and cv2.resize aborts on a zero target dimension
+                    # ("inv_scale_x > 0"). Skip the mask render in that case.
+                    if roi_width <= 0 or roi_height <= 0:
+                        continue
                     resized_mask_data = cv2.resize(
                         data, (roi_width, roi_height), interpolation=cv2.INTER_LINEAR
                     )

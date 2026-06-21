@@ -260,6 +260,13 @@ void calc_destination_roi_and_resize_mask(cv::Mat &destinationROI, cv::Mat &imag
     roi_width = std::clamp(roi_width, 0, image_planes.cols - roi_xmin);
     roi_height = std::clamp(roi_height, 0, image_planes.rows - roi_ymin);
 
+    // A sub-pixel or fully-clipped box yields a zero-sized destination, and
+    // cv::resize aborts the process on that ("(-215) inv_scale_x > 0"). Nothing
+    // to draw — leave destinationROI empty so callers iterate over 0 pixels.
+    if (roi_width <= 0 || roi_height <= 0) {
+        return;
+    }
+
     cv::Mat mat_data = cv::Mat(mask->get_height(), mask->get_width(), cv_type, (uint8_t *)data_ptr.data());
     cv::resize(mat_data, resized_mask_data, cv::Size(roi_width, roi_height), 0, 0, cv::INTER_LINEAR);
 
