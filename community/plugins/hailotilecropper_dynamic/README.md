@@ -17,11 +17,12 @@ you need:
 
 ## Building & installing
 
-The plugin builds as part of the standard repo postprocess build:
+This is an opt-in community plugin — build it from its own directory:
 
 ```bash
 source setup_env.sh
-hailo-compile-postprocess
+community/plugins/hailotilecropper_dynamic/build.sh
+# or build all community plugins: community/plugins/build.sh
 ```
 
 This installs `libgsthailotilecropper_dynamic.so` to GStreamer's plugin dir
@@ -103,20 +104,19 @@ also where bbox/label drawing happens.
 
 ## Tests
 
-Build and run C++ unit tests:
+Build and run C++ unit tests (built automatically when `gstreamer-check-1.0`
+is present):
 
 ```bash
-cd hailo_apps/postprocess && \
-  meson setup --reconfigure build.release -Dbuild_tests=true && \
-  ninja -C build.release && \
-  meson test -C build.release --suite hailotilecropper_dynamic
+community/plugins/hailotilecropper_dynamic/build.sh --no-install
+meson test -C community/plugins/hailotilecropper_dynamic/build --suite hailotilecropper_dynamic
 ```
 
 Run Python E2E tests (the `conftest.py` preloads the freshest `.so` so tests
-work even before `hailo-compile-postprocess install` runs):
+work even before the plugin is installed with `sudo`):
 
 ```bash
-pytest hailo_apps/postprocess/cpp/hailotilecropper_dynamic/tests/e2e -v
+pytest community/plugins/hailotilecropper_dynamic/tests/e2e -v
 ```
 
 ## Example
@@ -124,7 +124,7 @@ pytest hailo_apps/postprocess/cpp/hailotilecropper_dynamic/tests/e2e -v
 A runnable demo lives at `examples/tiling_dynamic_demo.py`:
 
 ```bash
-DISPLAY=:0 python hailo_apps/postprocess/cpp/hailotilecropper_dynamic/examples/tiling_dynamic_demo.py
+DISPLAY=:0 python community/plugins/hailotilecropper_dynamic/examples/tiling_dynamic_demo.py
 ```
 
 The demo walks a single dynamic tile across the frame using the identity-handoff

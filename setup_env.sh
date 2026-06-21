@@ -65,9 +65,9 @@ PROJECT_ROOT=$(pwd)
 # This ensures our project's modules are found first.
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH}"
 
-# Ensure GStreamer discovers the community overlay plugin installed to the
-# repo-owned directory (avoids requiring root to write to system plugin dir).
-export GST_PLUGIN_PATH="/usr/local/hailo/resources/so:${GST_PLUGIN_PATH}"
+# NOTE: GST_PLUGIN_PATH is intentionally not set. Shipped GStreamer plugins
+# install to the system plugin dir (on GStreamer's default scan path); the
+# opt-in community plugins (community/plugins/) install there too.
 
 echo "Project directory added to PYTHONPATH for this session:"
 echo "${PROJECT_ROOT}"

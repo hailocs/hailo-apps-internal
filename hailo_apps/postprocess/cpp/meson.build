@@ -268,53 +268,8 @@ shared_library('ocr_postprocess',
     install_dir: '/usr/local/hailo/resources/so',
 )
 
-################################################
-# HAILOOVERLAY_COMMUNITY (custom overlay GStreamer element)
-################################################
-overlay_community_inc = include_directories('overlay_community')
-
-yaml_cpp_dep = dependency('yaml-cpp', required : true)
-
-overlay_community_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep, yaml_cpp_dep]
-if opencv_dep.found()
-    overlay_community_deps += opencv_dep
-endif
-
-shared_library('gsthailooverlay_community',
-    ['overlay_community/gsthailooverlay_community.cpp',
-     'overlay_community/overlay.cpp'],
-    include_directories : [rapidjson_inc, overlay_community_inc],
-    dependencies : overlay_community_deps,
-    cpp_args : ['-DPACKAGE="hailooverlay_community"', '-DHAILO_TAPPAS_VER=' + tappas_ver_int.to_string()],
-    gnu_symbol_visibility : 'default',
-    install: true,
-    install_dir: gst_plugins_dir,
-)
-
-# NOTE: hailovampire_overlay moved to the vampire_mirror app
-# (community/apps/pipeline_apps/vampire_mirror/postprocess/) — it is app-specific,
-# not a shared/official postprocess element. Build it via that app's build.sh.
-
-################################################
-# HAILOTILECROPPER_DYNAMIC (dynamic-tile cropper for tiling pipelines).
-# Ported from community_plugins. Bundles its own GstHailoBaseCropperDyn base
-# class so it can be loaded in pipelines that don't bring in the system-wide
-# TAPPAS base cropper.
-################################################
-hailotilecropper_dynamic_inc = include_directories('hailotilecropper_dynamic')
-
-hailotilecropper_dynamic_deps = [postprocess_dep, gst_dep, gst_base_dep, gst_video_dep]
-if opencv_dep.found()
-    hailotilecropper_dynamic_deps += opencv_dep
-endif
-
-shared_library('gsthailotilecropper_dynamic',
-    ['hailotilecropper_dynamic/gsthailobasecropper.cpp',
-     'hailotilecropper_dynamic/gsthailotilecropper_dynamic.cpp'],
-    include_directories : [hailotilecropper_dynamic_inc],
-    dependencies : hailotilecropper_dynamic_deps,
-    cpp_args : ['-DPACKAGE="hailotilecropper_dynamic"', '-DHAILO_TAPPAS_VER=' + tappas_ver_int.to_string()],
-    gnu_symbol_visibility : 'default',
-    install : true,
-    install_dir : gst_plugins_dir,
-)
+# NOTE: the community GStreamer plugins (hailooverlay_community and
+# hailotilecropper_dynamic) were moved to community/plugins/. They are opt-in
+# and built separately via community/plugins/build.sh (each is a self-contained
+# meson project that installs to the system GStreamer plugin dir). They are
+# deliberately NOT part of this shared postprocess build.

@@ -47,13 +47,10 @@ def _detect_type_conflict() -> str | None:
     been run with root privileges.
     """
     import pathlib
-    # __file__ is at: <repo>/hailo_apps/postprocess/cpp/hailotilecropper_dynamic/tests/e2e/
-    # parents[6] = repo root
-    _repo_root = pathlib.Path(__file__).resolve().parents[6]
-    build_so = (
-        _repo_root / "hailo_apps" / "postprocess" / "build.release" / "cpp"
-        / "libgsthailotilecropper_dynamic.so"
-    )
+    # __file__ is at: <repo>/community/plugins/hailotilecropper_dynamic/tests/e2e/
+    # parents[2] = the plugin dir (community/plugins/hailotilecropper_dynamic/)
+    _plugin_dir = pathlib.Path(__file__).resolve().parents[2]
+    build_so = _plugin_dir / "build" / "libgsthailotilecropper_dynamic.so"
     system_so = pathlib.Path(
         "/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgsthailotilecropper_dynamic.so"
     )

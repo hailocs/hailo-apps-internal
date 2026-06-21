@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Builds the official Hailo postprocess shared libraries.
+# NOTE: the opt-in community GStreamer plugins (hailooverlay_community,
+# hailotilecropper_dynamic) are NOT built here — build them separately via
+# community/plugins/build.sh (see community/plugins/README.md).
+
 # Set the project directory name
 PROJECT_DIR="."
 

@@ -9,13 +9,10 @@ INSTALLED_PLUGIN = pathlib.Path(
 )
 
 # Build-dir fallback: prefer this .so when it is newer than the installed one.
-# __file__ is at: <repo>/hailo_apps/postprocess/cpp/hailotilecropper_dynamic/tests/e2e/
-# parents[6] = repo root
-_REPO_ROOT = pathlib.Path(__file__).resolve().parents[6]  # …/hailo-apps-infra
-BUILD_PLUGIN = (
-    _REPO_ROOT / "hailo_apps" / "postprocess" / "build.release" / "cpp"
-    / "libgsthailotilecropper_dynamic.so"
-)
+# __file__ is at: <repo>/community/plugins/hailotilecropper_dynamic/tests/e2e/
+# parents[2] = the plugin dir (community/plugins/hailotilecropper_dynamic/)
+_PLUGIN_DIR = pathlib.Path(__file__).resolve().parents[2]
+BUILD_PLUGIN = _PLUGIN_DIR / "build" / "libgsthailotilecropper_dynamic.so"
 
 
 def _preferred_plugin() -> pathlib.Path | None:
@@ -46,7 +43,7 @@ def _preload_plugin():
     if plugin_path is None:
         pytest.skip(
             f"Plugin not found at {INSTALLED_PLUGIN} or {BUILD_PLUGIN}. "
-            "Run `hailo-compile-postprocess` first."
+            "Build it first: community/plugins/hailotilecropper_dynamic/build.sh"
         )
     # Force-load our .so into the process before anything calls Gst.init().
     ctypes.CDLL(str(plugin_path), mode=ctypes.RTLD_GLOBAL)

@@ -1,33 +1,47 @@
 # Community GStreamer Plugins
 
-This directory surfaces the **community-contributed GStreamer postprocess plugins**
-so they are discoverable from the `community/` tree. The C++ sources live under
-`hailo_apps/postprocess/cpp/` (they must stay there so the meson build that ships
-the rest of the postprocess `.so` files can link them with the shared
-`postprocess_dep` and TAPPAS deps). This README is the canonical index mapping each
-community plugin to its source, gst element name, and usage.
+Community-contributed GStreamer postprocess plugins. Each is a **self-contained,
+opt-in** meson project living in its own subdirectory here — they are **not** part
+of the official `hailo_apps/postprocess` build and are only built when you want
+them.
 
-Build all of them with:
+Each plugin installs its `.so` into the **system GStreamer plugin directory**
+(`pkg-config --variable=pluginsdir gstreamer-1.0`, e.g.
+`/usr/lib/x86_64-linux-gnu/gstreamer-1.0`), which is on GStreamer's default scan
+path — so no `GST_PLUGIN_PATH` tweaking is needed. Installing there requires
+`sudo` (the build scripts handle this).
+
+## Build
+
+Build (and install) **all** community plugins:
 
 ```bash
-cd hailo_apps/postprocess && bash compile_postprocess.sh
+cd community/plugins
+./build.sh                # build + install (uses sudo for the gst plugin dir)
+./build.sh --no-install   # build only; libs left in each plugin's build/
 ```
 
-Each plugin installs as a `.so` into the system GStreamer plugin dir
-(`gst_plugins_dir`, e.g. `/usr/lib/x86_64-linux-gnu/gstreamer-1.0`). Verify with
-`gst-inspect-1.0 <element-name>` after building (`source setup_env.sh` first so the
-plugin path is set).
+Or build a single plugin:
 
-| Plugin (gst element) | Source dir | Klass | Purpose |
+```bash
+cd community/plugins/<plugin>
+./build.sh
+```
+
+Verify after install with `gst-inspect-1.0 <element-name>`.
+
+## Plugins
+
+| Plugin (gst element) | Source dir | Prerequisites | Purpose |
 |---|---|---|---|
-| `hailooverlay_community` | `hailo_apps/postprocess/cpp/overlay_community/` | `Hailo/Tools` | Community overlay element — draws detections, classifications, landmarks, IDs and other HailoObjects onto frames with configurable styling (yaml-cpp driven `style_config`). |
-| `hailotilecropper_dynamic` | `hailo_apps/postprocess/cpp/hailotilecropper_dynamic/` | `Hailo/Tools` | Dynamic tiling cropper — crops tiles defined dynamically by upstream pipeline elements and/or statically by properties. Bundles its own `GstHailoBaseCropperDyn` base class so it loads in pipelines that don't bring in the system-wide TAPPAS base cropper. Ported from `community_plugins` with a TAPPAS 5.3 fix. |
+| `hailooverlay_community` | `overlay_community/` | `libyaml-cpp-dev` (`sudo apt install libyaml-cpp-dev`) | Community overlay element — draws detections, classifications, landmarks, IDs and other HailoObjects onto frames with configurable styling (yaml-cpp driven `style_config`). Drop-in alternative to the stock `hailooverlay`. |
+| `hailotilecropper_dynamic` | `hailotilecropper_dynamic/` | none beyond TAPPAS + GStreamer | Dynamic tiling cropper — crops tiles defined dynamically by upstream pipeline elements and/or statically by properties. Bundles its own `GstHailoBaseCropperDyn` base class so it loads in pipelines that don't bring in the system-wide TAPPAS base cropper. |
 
-### App-bundled elements (built with their app, not the shared postprocess)
+### App-bundled elements (built with their app, not here)
 
 | Plugin (gst element) | Source dir | Build | Purpose |
 |---|---|---|---|
-| `hailovampire_overlay` | `community/apps/pipeline_apps/vampire_mirror/postprocess/` | that dir's `build.sh` (or auto via the app's `run.sh`) | Paints "vampire" pixels with the corresponding region of a shared-memory background buffer. App-specific to `vampire_mirror`, so it ships with the app rather than the shared postprocess. |
+| `hailovampire_overlay` | `community/apps/pipeline_apps/vampire_mirror/postprocess/` | that dir's `build.sh` (or auto via the app's `run.sh`) | Paints "vampire" pixels with the corresponding region of a shared-memory background buffer. App-specific to `vampire_mirror`, so it ships with the app. |
 
 ## Usage examples
 
@@ -35,22 +49,19 @@ plugin path is set).
 ```
 ... ! hailooverlay_community ! videoconvert ! autovideosink
 ```
-Used throughout the community pipeline apps (gesture_detection, vampire_mirror,
-bubble_pop, …) as a drop-in replacement for the stock `hailooverlay` with
-community styling.
-
-### hailovampire_overlay
-```
-... ! hailovampire_overlay background=/path/to/bg ! ...
-```
-See `community/apps/pipeline_apps/vampire_mirror/` for the full pipeline.
+Used by community pipeline apps (gesture_detection, bubble_pop, …) as a drop-in
+replacement for the stock `hailooverlay` with community styling. From Python
+pipelines, `OVERLAY_PIPELINE(community=True, ...)` emits this element — build the
+plugin first.
 
 ### hailotilecropper_dynamic
 ```
 ... ! hailotilecropper_dynamic ! <inference> ! hailotileaggregator ! ...
 ```
-See `community/apps/pipeline_apps/` tiling-based apps and
-`hailo_apps/postprocess/cpp/hailotilecropper_dynamic/examples/`.
+See `hailotilecropper_dynamic/examples/tiling_dynamic_demo.py` and the plugin's
+own `README.md`. Unit tests build with the plugin (when `gstreamer-check-1.0` is
+present) — run `meson test -C hailotilecropper_dynamic/build`; the e2e pytest
+suite lives under `hailotilecropper_dynamic/tests/e2e/`.
 
 ## Provenance
 
@@ -58,7 +69,6 @@ These plugins were integrated for the community release from the `community_apps
 (2026-06-07) and `community_plugins` (2026-05-26) branches. The `community_apps`
 versions are the newest and authoritative for the overlay element; the
 `hailotilecropper_dynamic` was ported from `community_plugins` with a TAPPAS 5.3
-build fix applied during integration. The `community_plugins` branch's other
-deltas (config.yaml, install.sh, generate_platforms.py, VLM-chat python files)
-were fully subsumed by the newer `community_apps` versions and therefore carry no
-unique content into this release.
+build fix applied during integration. They were moved here (out of
+`hailo_apps/postprocess/cpp/`) to make them fully opt-in and decoupled from the
+official postprocess build.

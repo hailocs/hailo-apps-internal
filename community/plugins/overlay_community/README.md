@@ -15,14 +15,18 @@ the sprite is silently skipped.
 
 ## Building
 
+This is an opt-in community plugin. Requires `libyaml-cpp-dev`
+(`sudo apt install libyaml-cpp-dev`) for YAML config parsing. Build it from its
+own directory:
+
 ```bash
 source setup_env.sh
-hailo-compile-postprocess
+community/plugins/overlay_community/build.sh
+# or build all community plugins: community/plugins/build.sh
 ```
 
-The shared library is installed to `/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgsthailooverlay_community.so`.
-
-Requires `libyaml-cpp-dev` for YAML config parsing.
+The shared library is installed to `/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgsthailooverlay_community.so`
+(resolved via `pkg-config --variable=pluginsdir gstreamer-1.0`).
 
 Verify the element is available:
 
@@ -396,7 +400,7 @@ With a YAML style config:
 
 ```bash
 python -m hailo_apps.python.pipeline_apps.pose_estimation.pose_estimation_overlay_demo \
-    --style-config hailo_apps/postprocess/cpp/overlay_community/examples/overlay_style.yaml
+    --style-config community/plugins/overlay_community/examples/overlay_style.yaml
 ```
 
 ### How It Works

@@ -13,11 +13,11 @@ Demonstrates hailooverlay_community features using the pose estimation pipeline:
 - **Min-confidence filtering** to hide weak detections
 
 Usage:
-    python hailo_apps/postprocess/cpp/overlay_community/examples/pose_estimation_overlay_demo.py
+    python community/plugins/overlay_community/examples/pose_estimation_overlay_demo.py
 
     # With a YAML style config (optional):
-    python hailo_apps/postprocess/cpp/overlay_community/examples/pose_estimation_overlay_demo.py \
-        --style-config hailo_apps/postprocess/cpp/overlay_community/examples/overlay_style.yaml
+    python community/plugins/overlay_community/examples/pose_estimation_overlay_demo.py \
+        --style-config community/plugins/overlay_community/examples/overlay_style.yaml
 """
 
 # region imports

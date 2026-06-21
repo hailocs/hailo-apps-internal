@@ -47,10 +47,11 @@ VLM / LLM / voice agent apps (Hailo-10H):
 
 ## Plugins (`plugins/`)
 
-Community GStreamer postprocess elements (sources live under
-`hailo_apps/postprocess/cpp/`, built by `compile_postprocess.sh`):
-`hailooverlay_community`, `hailovampire_overlay`, `hailotilecropper_dynamic`.
-See [`plugins/README.md`](plugins/README.md).
+Opt-in community GStreamer postprocess elements, each a self-contained meson
+project under `plugins/`, built separately via `plugins/build.sh` (not part of
+the official postprocess build): `hailooverlay_community`,
+`hailotilecropper_dynamic` (plus the app-bundled `hailovampire_overlay`, built
+with the `vampire_mirror` app). See [`plugins/README.md`](plugins/README.md).
 
 ## Contributions (`contributions/`)
 
