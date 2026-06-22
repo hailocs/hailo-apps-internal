@@ -322,6 +322,7 @@ class AgentApp:
             self.system_text = system_prompt.create_system_prompt(
                 [self.selected_tool],
                 yaml_config=self.yaml_config,
+                tool_call_format=config.TOOL_CALL_FORMAT,
             )
             logger.debug("System prompt: %d chars", len(self.system_text))
             # Log system prompt in readable format (with newlines)
@@ -357,7 +358,8 @@ class AgentApp:
             if self.yaml_config and self.yaml_config.few_shot_examples:
                 logger.info("Adding %d few-shot examples to context", len(self.yaml_config.few_shot_examples))
                 few_shot_messages = system_prompt.prepare_few_shot_examples_messages(
-                    self.yaml_config.few_shot_examples
+                    self.yaml_config.few_shot_examples,
+                    tool_call_format=config.TOOL_CALL_FORMAT,
                 )
                 messages.extend(few_shot_messages)
 
