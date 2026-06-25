@@ -9,14 +9,7 @@ import cv2
 import numpy as np
 from typing import Optional
 
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger
-except ImportError:
-    from pathlib import Path
-    import sys
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.hailo_logger import get_logger
+from hailo_apps.python.core.common.hailo_logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -32,7 +25,9 @@ COLOR_RANGES = {
         {"lower": np.array([160, 100, 100]), "upper": np.array([180, 255, 255])},
     ],
     "yellow": [
-        {"lower": np.array([15, 100, 100]), "upper": np.array([35, 255, 255])},
+        # Lower bound extended to H=10 to close the red(upper=10)/yellow gap so
+        # orange/amber lights classify as "yellow" rather than "unknown".
+        {"lower": np.array([10, 100, 100]), "upper": np.array([35, 255, 255])},
     ],
     "green": [
         {"lower": np.array([40, 50, 50]), "upper": np.array([90, 255, 255])},

@@ -11,20 +11,23 @@ Count and classify objects in aerial/drone images using oriented (rotated) bound
 ## How to Run
 
 ```bash
+# Activate the environment first
+source setup_env.sh
+
 # Process a directory of aerial images
-python community/apps/standalone_apps/aerial_object_counter/aerial_object_counter.py \
+python -m community.apps.standalone_apps.aerial_object_counter.aerial_object_counter \
     --input /path/to/drone/images/ \
     --no-display
 
 # With custom score threshold and JSON output path
-python community/apps/standalone_apps/aerial_object_counter/aerial_object_counter.py \
+python -m community.apps.standalone_apps.aerial_object_counter.aerial_object_counter \
     --input /path/to/drone/images/ \
     --score-threshold 0.4 \
     --json-output results/counts.json \
     --no-display
 
 # With display (for debugging)
-python community/apps/standalone_apps/aerial_object_counter/aerial_object_counter.py \
+python -m community.apps.standalone_apps.aerial_object_counter.aerial_object_counter \
     --input /path/to/drone/images/
 ```
 

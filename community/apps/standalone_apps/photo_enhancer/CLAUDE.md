@@ -14,13 +14,14 @@ Batch 2x upscaling of photos using a Real-ESRGAN super-resolution model on Hailo
 | File | Purpose |
 |------|---------|
 | `photo_enhancer.py` | Main: preprocess → async inference → postprocess threads; batch processing, side-by-side comparison |
-| `photo_enhancer_utils.py` | `PhotoEnhancerUtils`: resize/crop logic for letterbox padding, inference callback |
+| `photo_enhancer_utils.py` | `inference_result_handler` + `resize_infer_result_to_original`: letterbox-padding removal and side-by-side composition |
 
 ## How to Run
 ```bash
 source setup_env.sh
-python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py --input /path/to/images/ --save-output
+python -m community.apps.standalone_apps.photo_enhancer.photo_enhancer --input /path/to/images/ --save-output
 ```
+> `APP_NAME` is intentionally `"super_resolution"` so the app reuses the super_resolution resource/model config.
 Optional: `--enhanced-only`, `--output-dir results/`, `--show-fps`.
 
 ## How to Extend

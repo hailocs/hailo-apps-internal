@@ -12,27 +12,35 @@ Processes a directory of images (jpg/png), runs Real-ESRGAN x2 inference on the 
 
 ## How to Run
 
+First activate the environment:
+
+```bash
+source setup_env.sh
+```
+
+Then run the app as a module:
+
 ```bash
 # Process a directory of images (saves side-by-side comparison)
-python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py \
+python -m community.apps.standalone_apps.photo_enhancer.photo_enhancer \
     --input /path/to/image/directory \
     --save-output
 
 # Save only the enhanced images (no side-by-side)
-python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py \
+python -m community.apps.standalone_apps.photo_enhancer.photo_enhancer \
     --input /path/to/image/directory \
     --save-output \
     --enhanced-only
 
 # Specify output directory and show FPS
-python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py \
+python -m community.apps.standalone_apps.photo_enhancer.photo_enhancer \
     --input /path/to/image/directory \
     --output-dir /path/to/output \
     --save-output \
     --show-fps
 
 # Run without display (headless mode)
-python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py \
+python -m community.apps.standalone_apps.photo_enhancer.photo_enhancer \
     --input /path/to/image/directory \
     --save-output \
     --no-display
@@ -44,10 +52,10 @@ python community/apps/standalone_apps/photo_enhancer/photo_enhancer.py \
 Input Directory (jpg/png images)
         |
         v
-  [Preprocess Thread]  -- resize to model input (256x256)
+  [Preprocess Thread]  -- resize to model input dimensions
         |
         v
-  [Inference Thread]   -- Real-ESRGAN x2 on Hailo-8 (HailoAsyncInference)
+  [Inference Thread]   -- Real-ESRGAN x2 on Hailo-8 (HailoInfer, async queue-based)
         |
         v
   [Postprocess Thread] -- clip output, resize to original, save to disk
@@ -71,3 +79,5 @@ Three threads run in parallel via queues:
 ## Based On
 
 This app is based on the [super_resolution](../super_resolution/) standalone app template.
+
+> **Note:** Internally `APP_NAME` is set to `"super_resolution"` (not `"photo_enhancer"`). This is intentional — it lets the app reuse the same resource/model configuration (the Real-ESRGAN x2 HEF) as the `super_resolution` reference app instead of requiring a separate config entry.

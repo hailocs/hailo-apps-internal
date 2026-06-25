@@ -7,26 +7,11 @@ counting-specific visualization (count overlay, per-class color coding).
 
 import cv2
 import numpy as np
-from typing import List, Tuple
 
-try:
-    from hailo_apps.python.core.common.toolbox import id_to_color
-except ImportError:
-    from pathlib import Path
-    import sys
-    core_dir = Path(__file__).resolve().parents[2] / "core"
-    sys.path.insert(0, str(core_dir))
-    from common.toolbox import id_to_color
+from hailo_apps.python.core.common.toolbox import id_to_color
 
-
-# Import the core OBB postprocessing from the template app
-import sys
-from pathlib import Path
-_obb_dir = Path(__file__).resolve().parent.parent / "oriented_object_detection"
-if str(_obb_dir) not in sys.path:
-    sys.path.insert(0, str(_obb_dir))
-
-from oriented_object_detection_post_process import (
+# Reuse the core OBB postprocessing from the oriented_object_detection package.
+from hailo_apps.python.standalone_apps.oriented_object_detection.oriented_object_detection_post_process import (
     obb_postprocess,
     rotated_nms,
     extract_obb_detections,

@@ -15,26 +15,35 @@ Processes a directory of document images and:
 - Hailo-8 accelerator
 - OCR dependencies: `pip install -e ".[ocr]"`
 - Download models: `hailo-download-resources`
+- Activate the environment first: `source setup_env.sh`
+
+> **Note on models:** This app reuses the `paddle_ocr` core app's model resolution.
+> It is not registered as its own key in `resources_config.yaml`; instead its
+> internal `APP_NAME` is set to `"paddle_ocr"` so it resolves the same detection
+> (`ocr_det`) and recognition (`ocr`) HEFs. The OCR utilities are imported from
+> the sibling `hailo_apps/python/standalone_apps/paddle_ocr` app.
 
 ## Usage
 
 ```bash
+source setup_env.sh
+
 # Basic: process a directory of document images
-python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor \
+python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor \
     --input /path/to/document/images/
 
 # Save JSON results with bounding box coordinates
-python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor \
+python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor \
     --input /path/to/document/images/ \
     --save-json --no-display
 
 # Save annotated images + JSON, with spell correction
-python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor \
+python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor \
     --input /path/to/document/images/ \
     --save-output --save-json --use-corrector
 
 # Run headless (no display window)
-python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor \
+python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor \
     --input /path/to/document/images/ \
     --save-json --no-display
 ```

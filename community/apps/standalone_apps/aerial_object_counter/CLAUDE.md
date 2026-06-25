@@ -19,7 +19,7 @@ Detects and classifies objects in aerial/drone imagery using oriented (rotated) 
 ## How to Run
 ```bash
 source setup_env.sh
-python community/apps/standalone_apps/aerial_object_counter/aerial_object_counter.py --input /path/to/drone/images/
+python -m community.apps.standalone_apps.aerial_object_counter.aerial_object_counter --input /path/to/drone/images/
 ```
 Optional: `--score-threshold 0.4`, `--json-output results/counts.json`, `--no-display`.
 

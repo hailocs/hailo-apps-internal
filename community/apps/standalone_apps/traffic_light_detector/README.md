@@ -1,30 +1,37 @@
 # Traffic Light Detector
 
-Detect traffic lights in dashcam footage and classify their state (red, yellow, green) using a Hailo-8 accelerator. This standalone app uses YOLOv8 for object detection and HSV color analysis for state classification -- no GStreamer required.
+Detect traffic lights in dashcam footage and classify their state (red, yellow, green) on a Hailo-8, Hailo-8L, or Hailo-10H accelerator. This standalone app uses YOLOv8 for object detection and HSV color analysis for state classification -- no GStreamer required. Because all post-processing is pure Python, any COCO-trained YOLOv8 HEF works.
 
 ## Prerequisites
 
-- Hailo-8 accelerator
+- Hailo-8 / Hailo-8L / Hailo-10H accelerator
 - YOLOv8 model HEF (auto-downloaded via `hailo-download-resources`)
 - Python environment with hailo-apps-infra installed (`source setup_env.sh`)
 
+> **Note:** This app registers under the `object_detection` model key so the default
+> COCO YOLOv8 HEF resolves automatically. To use a different YOLOv8 HEF, pass `--hef-path`.
+
 ## How to Run
 
+First activate the environment, then run the module:
+
 ```bash
+source setup_env.sh
+
 # Process a dashcam video file
-python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector \
+python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector \
     --input dashcam_video.mp4
 
 # Process and save annotated output with JSON summary
-python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector \
+python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector \
     --input dashcam_video.mp4 --save-output --json-summary --output-dir results/
 
 # Process an image folder (batch mode, headless)
-python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector \
+python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector \
     --input /path/to/images/ --no-display --save-output
 
 # Show FPS and use a custom confidence threshold
-python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector \
+python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector \
     --input dashcam_video.mp4 --show-fps --confidence-threshold 0.4
 ```
 
@@ -37,7 +44,7 @@ Input (video/images)
         |
     input_queue
         |
-  [Inference Thread]   -- YOLOv8 detection on Hailo-8 (async)
+  [Inference Thread]   -- YOLOv8 detection on Hailo (async)
         |
     output_queue
         |

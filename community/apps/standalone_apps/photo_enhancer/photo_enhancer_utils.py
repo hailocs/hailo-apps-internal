@@ -42,9 +42,10 @@ def resize_infer_result_to_original(
     # Crop only the region corresponding to the scaled image
     cropped = infer_result[y_offset:y_offset + resized_h, x_offset:x_offset + resized_w]
 
-    # Resize to original image size
+    # Resize to original image size. The inference result is already RGB, so no
+    # color conversion is applied here (matches the super_resolution reference).
     result = cv2.resize(cropped, (orig_w, orig_h), interpolation=cv2.INTER_CUBIC)
-    return cv2.cvtColor(np.array(result), cv2.COLOR_BGR2RGB)
+    return result
 
 
 def inference_result_handler(
@@ -70,56 +71,16 @@ def inference_result_handler(
     Returns:
         np.ndarray: Enhanced image or side-by-side comparison [original | enhanced].
     """
+    # The inference result carries the model's letterbox padding, so the padding
+    # is removed using the model input dimensions (model_height, model_width) the
+    # handler receives — NOT the output tensor shape.
     infer_result_resized = resize_infer_result_to_original(
         infer_result=infer_result,
         original_size=original_frame.shape[:2],
-        model_input_size=infer_result.shape[:2]
+        model_input_size=(model_height, model_width)
     )
 
     if enhanced_only:
         return infer_result_resized
 
     return np.hstack((original_frame, infer_result_resized))
-
-
-class PhotoEnhancerUtils:
-    """
-    Utility class for Real-ESRGAN photo enhancement preprocessing and postprocessing.
-
-    Methods:
-        pre_process(image, model_w, model_h): Resizes input image to model dimensions.
-        post_process(infer_result, input_image): Clips and converts inference output to uint8.
-    """
-
-    def pre_process(self, image: np.ndarray, model_w: int, model_h: int) -> np.ndarray:
-        """
-        Preprocess an image for the Real-ESRGAN model.
-
-        Args:
-            image (np.ndarray): Input image (H, W, C).
-            model_w (int): Target model input width.
-            model_h (int): Target model input height.
-
-        Returns:
-            np.ndarray: Resized image ready for inference.
-        """
-        image = cv2.resize(image, (model_w, model_h), interpolation=cv2.INTER_CUBIC)
-        return image
-
-    def post_process(self, infer_result: np.ndarray, input_image: np.ndarray) -> np.ndarray:
-        """
-        Post-process the model output into a displayable image.
-
-        Args:
-            infer_result (np.ndarray): Raw model output.
-            input_image (np.ndarray): Original input image (unused, kept for API consistency).
-
-        Returns:
-            np.ndarray: Post-processed uint8 image.
-        """
-        infer_result = (
-            (infer_result * 255.0).clip(0, 255).astype(np.uint8)
-            if infer_result.dtype != np.uint8
-            else infer_result
-        )
-        return infer_result

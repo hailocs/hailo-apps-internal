@@ -8,79 +8,47 @@ color analysis on the cropped region. Outputs annotated video/images and an opti
 JSON summary of traffic light states per frame.
 
 Usage:
-    python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector --input dashcam.mp4
-    python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector --input dashcam.mp4 --save-output --json-summary
-    python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector --input images/ --no-display
+    source setup_env.sh
+    python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector --input dashcam.mp4
+    python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector --input dashcam.mp4 --save-output --json-summary
+    python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector --input images/ --no-display
 """
 import os
-import sys
 import queue
 import threading
 from functools import partial
-from types import SimpleNamespace
 from pathlib import Path
 import collections
 import json
 import numpy as np
 
-# Handle both installed-package and direct-script execution
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS,
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from community.apps.standalone_apps.traffic_light_detector.traffic_light_post_process import inference_result_handler
-except ImportError:
-    # Fallback for running as a plain script outside the package
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS,
-    )
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from community.apps.standalone_apps.traffic_light_detector.traffic_light_post_process import inference_result_handler
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS,
+)
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from community.apps.standalone_apps.traffic_light_detector.traffic_light_post_process import inference_result_handler
 
 
-APP_NAME = Path(__file__).stem
+# Use a registered COCO-detection app key so the default YOLOv8 HEF resolves
+# (this app filters COCO class 9 = traffic light from a standard detection model).
+# Override the model with --hef-path to use a different YOLOv8 HEF.
+APP_NAME = "object_detection"
 logger = get_logger(__name__)
-
-# Frame-level summary storage for JSON output
-frame_summaries = []
-frame_counter = [0]
 
 
 def parse_args():
@@ -131,48 +99,39 @@ def parse_args():
 
 def run_inference_pipeline(
     net,
-    input_src,
-    batch_size,
     labels,
-    output_dir,
-    save_output=False,
-    camera_resolution="sd",
-    output_resolution=None,
-    show_fps=False,
-    frame_rate=None,
-    no_display=False,
-    json_summary=False,
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    show_fps: bool = False,
+    json_summary: bool = False,
     confidence_threshold=None,
 ) -> None:
     """
-    Initialize queues, HailoAsyncInference instance, and run the inference pipeline.
+    Initialize queues, HailoInfer instance, and run the inference pipeline.
 
     Architecture:
-        preprocess_thread --> input_queue --> infer_thread --> output_queue --> visualize_thread
+        preprocess_thread --> input_queue --> infer_thread --> output_queue --> visualize
 
     The preprocess thread reads frames, resizes them to model input size, and queues them.
     The infer thread runs async inference on the Hailo device.
-    The visualize thread applies post-processing (traffic light detection + color
-    classification), draws results, and displays/saves output.
+    The main thread runs visualize(): post-processing (traffic light detection + color
+    classification), drawing, and display/save.
     """
     labels = get_labels(labels)
-    config_data = load_json_file("config.json")
+    app_dir = Path(__file__).resolve().parent
+    config_path = app_dir / "config.json"
+    config_data = load_json_file(str(config_path))
 
     # Override confidence threshold if provided via CLI
     if confidence_threshold is not None:
         config_data.setdefault("visualization_params", {})["score_thres"] = confidence_threshold
 
-    # Initialize input source from string: video file or image folder
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
+    # Per-run JSON-summary state (only allocated when requested)
+    frame_summaries = [] if json_summary else None
+    frame_counter = [0]
 
     stop_event = threading.Event()
-
-    fps_tracker = None
-    if show_fps:
-        fps_tracker = FrameRateTracker()
+    fps_tracker = FrameRateTracker() if show_fps else None
 
     input_queue = queue.Queue(MAX_INPUT_QUEUE_SIZE)
     output_queue = queue.Queue(MAX_OUTPUT_QUEUE_SIZE)
@@ -181,49 +140,57 @@ def run_inference_pipeline(
         inference_result_handler,
         labels=labels,
         config_data=config_data,
-        frame_summaries=frame_summaries if json_summary else None,
+        frame_summaries=frame_summaries,
         frame_counter=frame_counter,
     )
 
-    hailo_inference = HailoInfer(net, batch_size)
+    hailo_inference = HailoInfer(net, input_context.batch_size)
     height, width, _ = hailo_inference.get_input_shape()
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, input_queue,
-              width, height, cap_processing_mode, None, stop_event)
-    )
-    postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(output_queue, cap, save_output, output_dir,
-              post_process_callback_fn, fps_tracker, output_resolution,
-              frame_rate, False, stop_event, no_display)
+        args=(
+            input_context,
+            input_queue,
+            width,
+            height,
+            None,  # Use default preprocess from toolbox
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
     infer_thread = threading.Thread(
         target=infer,
-        args=(hailo_inference, input_queue, output_queue, stop_event)
+        args=(hailo_inference, input_queue, output_queue, stop_event),
+        name="infer-thread",
     )
 
     preprocess_thread.start()
-    postprocess_thread.start()
     infer_thread.start()
 
     if show_fps:
         fps_tracker.start()
 
     try:
+        visualize(
+            input_context,
+            visualization_settings,
+            output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
         infer_thread.join()
-        postprocess_thread.join()
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
-    finally:
+
         if show_fps:
             logger.info(fps_tracker.frame_rate_summary())
 
         # Save JSON summary if requested
         if json_summary and frame_summaries:
+            output_dir = visualization_settings.output_dir
             summary_path = os.path.join(output_dir, "traffic_light_summary.json")
             os.makedirs(output_dir, exist_ok=True)
             with open(summary_path, "w") as f:
@@ -234,8 +201,8 @@ def run_inference_pipeline(
             logger.info(f"Traffic light summary saved to '{summary_path}'.")
 
         logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved outputs to '{output_dir}'.")
+        if visualization_settings.save_stream_output or input_context.has_images:
+            logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -318,20 +285,31 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
+    )
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+    )
+
     run_inference_pipeline(
-        args.hef_path,
-        args.input,
-        args.batch_size,
-        args.labels,
-        args.output_dir,
-        args.save_output,
-        args.camera_resolution,
-        args.output_resolution,
-        args.show_fps,
-        args.frame_rate,
-        args.no_display,
-        args.json_summary,
-        args.confidence_threshold,
+        net=args.hef_path,
+        labels=args.labels,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        show_fps=args.show_fps,
+        json_summary=args.json_summary,
+        confidence_threshold=args.confidence_threshold,
     )
 
 

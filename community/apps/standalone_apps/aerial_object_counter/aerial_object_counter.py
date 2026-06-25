@@ -6,12 +6,16 @@ using oriented (rotated) bounding boxes.
 Based on the oriented_object_detection standalone app template.
 Uses YOLO11s-OBB model for detecting objects with rotated bounding boxes,
 then produces annotated images and a JSON count summary per class per image.
+
+Run with:
+    source setup_env.sh
+    python -m community.apps.standalone_apps.aerial_object_counter.aerial_object_counter \
+        --input /path/to/drone/images/
 """
 
 import argparse
 import json
 import os
-import sys
 import queue
 import threading
 from functools import partial
@@ -21,71 +25,41 @@ import cv2
 import collections
 import numpy as np
 
-def _ensure_repo_root_on_syspath() -> None:
-    """
-    This allows `import hailo_apps...` to work without requiring users to
-    `pip install -e .` or `source setup_env.sh`.
-    """
-    this_file = Path(__file__).resolve()
-    for parent in this_file.parents:
-        if (parent / "hailo_apps").is_dir():
-            sys.path.insert(0, str(parent))
-            return
-
-_ensure_repo_root_on_syspath()
-
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.defines import REPO_ROOT
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from aerial_object_counter_post_process import inference_result_handler
-
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.core import handle_and_resolve_args
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        get_labels,
-        load_json_file,
-        preprocess,
-        select_cap_processing_mode,
-        FrameRateTracker
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS
-    )
-    from hailo_apps.python.core.common.defines import REPO_ROOT
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-    from aerial_object_counter_post_process import inference_result_handler
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.core import handle_and_resolve_args
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    get_labels,
+    load_json_file,
+    preprocess,
+    FrameRateTracker,
+)
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS,
+)
+from hailo_apps.python.core.common.defines import REPO_ROOT
+from hailo_apps.python.core.common.parser import get_standalone_parser
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.standalone_apps.oriented_object_detection.oriented_object_detection_post_process import (
+    obb_postprocess,
+)
 
 
-APP_NAME = "oriented_object_detection"  # Reuse the same config entry for model resolution
+# APP_NAME is intentionally "oriented_object_detection": this is load-bearing for
+# HEF resolution. handle_and_resolve_args() looks up the resource/model config under
+# this name, and this app reuses the OBB model + config from that app.
+APP_NAME = "oriented_object_detection"
 logger = get_logger(__name__)
+
+# config.json lives alongside the oriented_object_detection package, not this app.
+# That package has no __init__.py (it is a namespace package), so resolve its
+# directory via __path__ rather than __file__ (which would be None).
+import hailo_apps.python.standalone_apps.oriented_object_detection as _obb_pkg
+OBB_CONFIG_PATH = str(Path(list(_obb_pkg.__path__)[0]).resolve() / "config.json")
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,7 +138,10 @@ class CountingVisualizer:
 
     def process_frame(self, original_frame, infer_results):
         """Process a single frame: run postprocessing, count, annotate, and store results."""
-        from aerial_object_counter_post_process import obb_postprocess, draw_counting_overlay
+        from community.apps.standalone_apps.aerial_object_counter.aerial_object_counter_post_process import (
+            obb_postprocess,
+            draw_counting_overlay,
+        )
 
         kept_boxes, kept_classes, kept_scores = obb_postprocess(
             original_frame, infer_results, self.config_data
@@ -223,9 +200,9 @@ class CountingVisualizer:
             logger.info(f"  {cls_name}: {count}")
 
 
-def counting_visualize(output_queue, cap, save_output, output_dir,
+def counting_visualize(output_queue, save_output, output_dir,
                        counting_viz, fps_tracker, output_resolution,
-                       framerate, stop_event, no_display):
+                       stop_event, no_display):
     """
     Custom visualization loop that uses CountingVisualizer
     instead of the default postprocess callback.
@@ -244,15 +221,15 @@ def counting_visualize(output_queue, cap, save_output, output_dir,
             fps_tracker.tick()
 
         # Save annotated image
-        if save_output or True:  # Always save for batch image processing
+        if save_output:
             os.makedirs(output_dir, exist_ok=True)
             out_path = os.path.join(output_dir, f"annotated_{counting_viz.image_index:04d}.jpg")
             cv2.imwrite(out_path, annotated)
 
         if not no_display:
             if output_resolution:
-                w, h = map(int, output_resolution.split("x"))
-                annotated = cv2.resize(annotated, (w, h))
+                w, h = output_resolution
+                annotated = cv2.resize(annotated, (int(w), int(h)))
             cv2.imshow("Aerial Object Counter", annotated)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
@@ -265,37 +242,23 @@ def counting_visualize(output_queue, cap, save_output, output_dir,
 
 def run_inference_pipeline(
     net,
-    input_src,
-    batch_size,
     labels_file,
-    output_dir,
-    camera_resolution,
-    output_resolution,
-    framerate,
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
     json_output_path=None,
     score_threshold=None,
-    save_output=False,
     show_fps=False,
-    no_display=False
 ) -> None:
     """Run the aerial object counting inference pipeline."""
 
     labels = get_labels(labels_file)
 
-    # Load config from the oriented_object_detection template
-    obb_config_path = str(
-        Path(__file__).resolve().parent.parent / "oriented_object_detection" / "config.json"
-    )
-    config_data = load_json_file(obb_config_path)
+    # Load config from the oriented_object_detection package (HEF + tensor mapping).
+    config_data = load_json_file(OBB_CONFIG_PATH)
 
     # Override score threshold if specified
     if score_threshold is not None:
         config_data.setdefault("oriented_postprocess", {})["scores_th"] = score_threshold
-
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, framerate)
 
     stop_event = threading.Event()
     fps_tracker = None
@@ -310,57 +273,66 @@ def run_inference_pipeline(
         config_data=config_data,
     )
 
-    hailo_inference = HailoInfer(net, batch_size, input_type="UINT8", output_type="FLOAT32")
+    hailo_inference = HailoInfer(net, input_context.batch_size, input_type="UINT8", output_type="FLOAT32")
     height, width, _ = hailo_inference.get_input_shape()
 
     counting_viz = CountingVisualizer(
-        labels, config_data, output_dir, json_output_path
+        labels, config_data, visualization_settings.output_dir, json_output_path
     )
 
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, framerate, batch_size, input_queue,
-              width, height, cap_processing_mode, preprocess_callback_fn, stop_event)
-    )
-
-    postprocess_thread = threading.Thread(
-        target=counting_visualize,
-        args=(output_queue, cap, save_output, output_dir,
-              counting_viz, fps_tracker, output_resolution,
-              framerate, stop_event, no_display)
+        args=(
+            input_context,
+            input_queue,
+            width,
+            height,
+            preprocess_callback_fn,
+            stop_event,
+        ),
+        name="preprocess-thread",
     )
 
     infer_thread = threading.Thread(
         target=infer,
-        args=(hailo_inference, input_queue, output_queue, stop_event)
+        args=(hailo_inference, input_queue, output_queue, stop_event),
+        name="infer-thread",
     )
 
     preprocess_thread.start()
-    postprocess_thread.start()
     infer_thread.start()
 
     if show_fps:
         fps_tracker.start()
 
     try:
-        preprocess_thread.join()
-        infer_thread.join()
-        postprocess_thread.join()
-
+        counting_visualize(
+            output_queue,
+            visualization_settings.save_stream_output,
+            visualization_settings.output_dir,
+            counting_viz,
+            fps_tracker,
+            visualization_settings.output_resolution,
+            stop_event,
+            visualization_settings.no_display,
+        )
     except KeyboardInterrupt:
         logger.info("Interrupted (Ctrl+C). Shutting down...")
         stop_event.set()
-
     finally:
-        if show_fps:
-            logger.info(fps_tracker.frame_rate_summary())
+        stop_event.set()
+        preprocess_thread.join()
+        infer_thread.join()
 
-        # Write the JSON count summary
-        counting_viz.write_json_summary()
+    if show_fps:
+        logger.info(fps_tracker.frame_rate_summary())
 
-        logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved annotated outputs to '{output_dir}'.")
+    # Write the JSON count summary
+    counting_viz.write_json_summary()
+
+    logger.success("Processing completed successfully.")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved annotated outputs to '{visualization_settings.output_dir}'.")
 
 
 def infer(hailo_inference, input_queue, output_queue, stop_event):
@@ -422,20 +394,32 @@ def main() -> None:
     args = parse_args()
     init_logging(level=level_from_args(args))
     handle_and_resolve_args(args, APP_NAME)
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
+    )
+
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+    )
+
     run_inference_pipeline(
-        args.hef_path,
-        args.input,
-        args.batch_size,
-        args.labels,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
+        net=args.hef_path,
+        labels_file=args.labels,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
         json_output_path=args.json_output,
         score_threshold=args.score_threshold,
-        save_output=args.save_output,
         show_fps=args.show_fps,
-        no_display=args.no_display
     )
 
 

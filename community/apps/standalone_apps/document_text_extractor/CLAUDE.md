@@ -18,9 +18,11 @@ Batch OCR application using PaddleOCR detection + recognition models on Hailo to
 ## How to Run
 ```bash
 source setup_env.sh
-python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor \
+python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor \
   --input /path/to/images/
 ```
+
+**Note:** `APP_NAME` is aliased to `"paddle_ocr"` for model resolution (this app is not registered separately in `resources_config.yaml`). OCR utilities are imported from the sibling `hailo_apps/python/standalone_apps/paddle_ocr` app.
 Optional: `--save-output`, `--save-json`, `--use-corrector`, `--no-display`.
 
 ## How to Extend

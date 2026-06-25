@@ -8,8 +8,9 @@ outputs structured JSON with bounding box coordinates and recognized text.
 Optionally saves annotated images with text overlay.
 
 Usage:
-    python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor --input /path/to/images/
-    python -m hailo_apps.python.standalone_apps.document_text_extractor.document_text_extractor --input /path/to/images/ --save-output --save-json
+    source setup_env.sh
+    python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor --input /path/to/images/
+    python -m community.apps.standalone_apps.document_text_extractor.document_text_extractor --input /path/to/images/ --save-output --save-json
 """
 import os
 import sys
@@ -22,19 +23,18 @@ import collections
 import uuid
 from collections import defaultdict
 
-try:
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+# Make the sibling paddle_ocr standalone app importable. paddle_ocr_utils does a
+# bare `from db_postprocess import ...`, so the real paddle_ocr directory must be
+# on sys.path for that transitive import to resolve. The OCR utilities are then
+# imported via their absolute package path below.
+_PADDLE_OCR_DIR = (
+    Path(__file__).resolve().parents[4]
+    / "hailo_apps" / "python" / "standalone_apps" / "paddle_ocr"
+)
+if str(_PADDLE_OCR_DIR) not in sys.path:
+    sys.path.insert(0, str(_PADDLE_OCR_DIR))
 
-# Check OCR dependencies before importing OCR-specific modules
+
 def check_ocr_dependencies():
     """
     Check if all required OCR dependencies are installed.
@@ -70,66 +70,51 @@ def check_ocr_dependencies():
         sys.exit(1)
 
 
-check_ocr_dependencies()
-
-# Import OCR utilities from the existing paddle_ocr standalone app
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "paddle_ocr"))
-from paddle_ocr_utils import (
-    det_postprocess,
-    resize_with_padding,
-    ocr_eval_postprocess,
+# Core framework imports (no OCR-specific dependencies).
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging, level_from_args
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
+from hailo_apps.python.core.common.toolbox import (
+    InputContext,
+    VisualizationSettings,
+    init_input_source,
+    preprocess,
+    visualize,
+    FrameRateTracker,
+    stop_after_timeout,
 )
+from hailo_apps.python.core.common.defines import (
+    MAX_INPUT_QUEUE_SIZE,
+    MAX_OUTPUT_QUEUE_SIZE,
+    MAX_ASYNC_INFER_JOBS,
+)
+from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
+from hailo_apps.python.core.common.parser import get_standalone_parser
 
-try:
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS,
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-except ImportError:
-    repo_root = None
-    for p in Path(__file__).resolve().parents:
-        if (p / "hailo_apps" / "config" / "config_manager.py").exists():
-            repo_root = p
-            break
-    if repo_root is not None:
-        sys.path.insert(0, str(repo_root))
-    from hailo_apps.python.core.common.hailo_inference import HailoInfer
-    from hailo_apps.python.core.common.toolbox import (
-        init_input_source,
-        preprocess,
-        visualize,
-        select_cap_processing_mode,
-        FrameRateTracker,
-    )
-    from hailo_apps.python.core.common.defines import (
-        MAX_INPUT_QUEUE_SIZE,
-        MAX_OUTPUT_QUEUE_SIZE,
-        MAX_ASYNC_INFER_JOBS,
-    )
-    from hailo_apps.python.core.common.core import configure_multi_model_hef_path, handle_and_resolve_args
-    from hailo_apps.python.core.common.parser import get_standalone_parser
-
-APP_NAME = Path(__file__).stem
+# This app reuses the paddle_ocr core app's model resolution (detection + OCR
+# HEFs). "document_text_extractor" is not a key in resources_config.yaml, so the
+# resource key is aliased to "paddle_ocr" (see README).
+APP_NAME = "paddle_ocr"
 logger = get_logger(__name__)
-
-# Per-frame OCR result accumulator: groups OCR crops by frame ID
-ocr_results_dict = defaultdict(lambda: {"frame": None, "results": [], "boxes": [], "count": 0, "image_path": None})
-ocr_expected_counts = {}
 
 # Global list to collect all JSON results across images
 all_json_results = []
 json_results_lock = threading.Lock()
+
+
+def _import_ocr_utils():
+    """
+    Import OCR utilities from the sibling paddle_ocr standalone app via the
+    absolute package path. The paddle_ocr directory is on sys.path (see top of
+    module) so paddle_ocr_utils' transitive `from db_postprocess import ...`
+    resolves. Imported lazily so --help works without the OCR dependencies.
+    """
+    from hailo_apps.python.standalone_apps.paddle_ocr.paddle_ocr_utils import (
+        get_cropped_text_images,
+        resize_with_padding,
+        ocr_eval_postprocess,
+        OcrCorrector,
+    )
+    return get_cropped_text_images, resize_with_padding, ocr_eval_postprocess, OcrCorrector
 
 
 def parse_args():
@@ -256,10 +241,18 @@ def detection_postprocess(
     model_height,
     model_width,
     stop_event,
+    get_cropped_text_images,
+    resize_with_padding,
+    ocr_results_dict,
+    ocr_expected_counts,
+    bin_thresh=0.3,
 ):
     """
     Worker thread: postprocesses detection results, crops text regions,
     and feeds them to the OCR recognition stage.
+
+    `bin_thresh` is the detection binarization threshold wired from the
+    `--confidence-threshold` CLI argument (lower keeps more candidate regions).
     """
     while True:
         item = det_postprocess_queue.get()
@@ -271,7 +264,11 @@ def detection_postprocess(
 
         input_frame, result = item
 
-        det_pp_res, boxes = det_postprocess(result, input_frame, model_height, model_width)
+        # result shape (1, H, W, C); take the DB heatmap channel.
+        heatmap = result[:, :, 0]
+        det_pp_res, boxes = get_cropped_text_images(
+            heatmap, input_frame, model_height, model_width, bin_thresh=bin_thresh
+        )
 
         frame_id = str(uuid.uuid4())
         ocr_expected_counts[frame_id] = len(det_pp_res)
@@ -283,6 +280,8 @@ def detection_postprocess(
         for idx, cropped in enumerate(det_pp_res):
             resized = resize_with_padding(cropped)
             ocr_input_queue.put((input_frame, [resized], (frame_id, boxes[idx])))
+
+    ocr_input_queue.put(None)
 
 
 def ocr_inference_callback(
@@ -307,6 +306,8 @@ def ocr_postprocess(
     ocr_postprocess_queue,
     vis_output_queue,
     stop_event,
+    ocr_results_dict,
+    ocr_expected_counts,
 ):
     """
     Worker thread: accumulates OCR recognition results per frame and emits
@@ -337,8 +338,10 @@ def ocr_postprocess(
             del ocr_results_dict[frame_id]
             del ocr_expected_counts[frame_id]
 
+    vis_output_queue.put(None)
 
-def document_result_handler(original_frame, infer_results, boxes, ocr_corrector, save_json):
+
+def document_result_handler(original_frame, infer_results, boxes, ocr_eval_postprocess, ocr_corrector, save_json):
     """
     Handles inference results: decodes OCR text and collects structured JSON output.
 
@@ -346,6 +349,7 @@ def document_result_handler(original_frame, infer_results, boxes, ocr_corrector,
         original_frame: The original image frame.
         infer_results: List of raw OCR model outputs.
         boxes: Detected text region bounding boxes.
+        ocr_eval_postprocess: CTC decoder from paddle_ocr_utils.
         ocr_corrector: Optional spell corrector.
         save_json: Whether to accumulate JSON results.
 
@@ -441,19 +445,14 @@ def _visualize_document_ocr(image, boxes, labels, ocr_corrector):
 def run_inference_pipeline(
     det_net,
     ocr_net,
-    input_src,
-    batch_size,
-    output_dir,
-    camera_resolution,
-    output_resolution,
-    frame_rate,
-    save_output=False,
-    show_fps=False,
-    use_corrector=False,
-    no_display=False,
-    save_json=False,
-    confidence_threshold=0.3,
-):
+    input_context: InputContext,
+    visualization_settings: VisualizationSettings,
+    show_fps: bool = False,
+    time_to_run: int | None = None,
+    use_corrector: bool = False,
+    save_json: bool = False,
+    confidence_threshold: float = 0.3,
+) -> None:
     """
     Run the full document text extraction pipeline with multi-threading.
 
@@ -463,23 +462,20 @@ def run_inference_pipeline(
     Args:
         det_net: HEF path for the text detection model.
         ocr_net: HEF path for the text recognition model.
-        input_src: Input source (image directory path).
-        batch_size: Inference batch size.
-        output_dir: Directory for saving outputs.
-        camera_resolution: Camera resolution setting.
-        output_resolution: Output display resolution.
-        frame_rate: Target frame rate.
-        save_output: Whether to save annotated images.
-        show_fps: Whether to display FPS counter.
+        input_context (InputContext): Configured input source and runtime metadata.
+        visualization_settings (VisualizationSettings): Display / save configuration.
+        show_fps: Whether to track and report FPS.
+        time_to_run: Optional timeout in seconds (stops the pipeline after).
         use_corrector: Whether to enable spell correction.
-        no_display: Run without display window.
         save_json: Whether to save JSON results.
-        confidence_threshold: Minimum detection confidence.
+        confidence_threshold: Detection binarization threshold (wired to bin_thresh).
     """
-    cap, images, input_type = init_input_source(input_src, batch_size, camera_resolution)
-    cap_processing_mode = None
-    if cap is not None:
-        cap_processing_mode = select_cap_processing_mode(input_type, save_output, frame_rate)
+    # Import OCR utilities (requires the OCR optional dependencies).
+    get_cropped_text_images, resize_with_padding, ocr_eval_postprocess, OcrCorrector = _import_ocr_utils()
+
+    # Per-run OCR result accumulators (kept local so state never leaks across runs).
+    ocr_results_dict = defaultdict(lambda: {"frame": None, "results": [], "boxes": [], "count": 0})
+    ocr_expected_counts = {}
 
     stop_event = threading.Event()
 
@@ -496,88 +492,97 @@ def run_inference_pipeline(
 
     ocr_corrector = None
     if use_corrector:
-        # Import from paddle_ocr utils
-        from paddle_ocr_utils import OcrCorrector
         ocr_corrector = OcrCorrector()
 
     # Post-process callback for visualization
     post_process_callback_fn = partial(
         document_result_handler,
+        ocr_eval_postprocess=ocr_eval_postprocess,
         ocr_corrector=ocr_corrector,
         save_json=save_json,
     )
 
     # Initialize Hailo inference engines
-    detector_hailo_inference = HailoInfer(det_net, batch_size)
-    ocr_hailo_inference = HailoInfer(ocr_net, batch_size, priority=1)
+    detector_hailo_inference = HailoInfer(det_net, input_context.batch_size)
+    ocr_hailo_inference = HailoInfer(ocr_net, input_context.batch_size, priority=1)
 
     height, width, _ = detector_hailo_inference.get_input_shape()
 
     # Create threads
     preprocess_thread = threading.Thread(
         target=preprocess,
-        args=(images, cap, frame_rate, batch_size, det_input_queue,
-              width, height, cap_processing_mode, None, stop_event),
+        args=(input_context, det_input_queue, width, height, None, stop_event),
+        name="preprocess-thread",
     )
     detection_postprocess_thread = threading.Thread(
         target=detection_postprocess,
         args=(det_postprocess_queue, ocr_input_queue, vis_output_queue,
-              height, width, stop_event),
+              height, width, stop_event, get_cropped_text_images,
+              resize_with_padding, ocr_results_dict, ocr_expected_counts,
+              confidence_threshold),
+        name="detection-postprocess-thread",
     )
     ocr_postprocess_thread = threading.Thread(
         target=ocr_postprocess,
-        args=(ocr_postprocess_queue, vis_output_queue, stop_event),
-    )
-    vis_postprocess_thread = threading.Thread(
-        target=visualize,
-        args=(vis_output_queue, cap, save_output, output_dir,
-              post_process_callback_fn, fps_tracker, output_resolution,
-              frame_rate, True, stop_event, no_display),
+        args=(ocr_postprocess_queue, vis_output_queue, stop_event,
+              ocr_results_dict, ocr_expected_counts),
+        name="ocr-postprocess-thread",
     )
     det_thread = threading.Thread(
         target=detector_hailo_infer,
         args=(detector_hailo_inference, det_input_queue, det_postprocess_queue, stop_event),
+        name="detector-infer-thread",
     )
     ocr_thread = threading.Thread(
         target=ocr_hailo_infer,
         args=(ocr_hailo_inference, ocr_input_queue, ocr_postprocess_queue, stop_event),
+        name="ocr-infer-thread",
     )
 
     if show_fps:
         fps_tracker.start()
 
-    # Start all threads
+    if time_to_run is not None:
+        timer_thread = threading.Thread(
+            target=stop_after_timeout,
+            args=(stop_event, time_to_run),
+            name="timer-thread",
+            daemon=True,
+        )
+        timer_thread.start()
+
+    # Start worker threads
     preprocess_thread.start()
     det_thread.start()
     detection_postprocess_thread.start()
     ocr_thread.start()
     ocr_postprocess_thread.start()
-    vis_postprocess_thread.start()
 
     try:
+        # Visualization runs in the main thread
+        visualize(
+            input_context,
+            visualization_settings,
+            vis_output_queue,
+            post_process_callback_fn,
+            fps_tracker,
+            stop_event,
+        )
+    finally:
+        stop_event.set()
         preprocess_thread.join()
         det_thread.join()
-        det_postprocess_queue.put(None)
         detection_postprocess_thread.join()
-        ocr_input_queue.put(None)
         ocr_thread.join()
-        ocr_postprocess_queue.put(None)
         ocr_postprocess_thread.join()
-        vis_output_queue.put(None)
-        vis_postprocess_thread.join()
 
-    except KeyboardInterrupt:
-        logger.info("Interrupted (Ctrl+C). Shutting down...")
-        stop_event.set()
-
-    finally:
         if show_fps:
             logger.info(fps_tracker.frame_rate_summary())
 
         # Save JSON results if requested
         if save_json:
-            json_output_path = os.path.join(output_dir, "ocr_results.json")
-            os.makedirs(output_dir, exist_ok=True)
+            json_output_path = os.path.join(visualization_settings.output_dir, "ocr_results.json")
+            os.makedirs(visualization_settings.output_dir, exist_ok=True)
             with open(json_output_path, "w") as f:
                 json.dump(
                     {"document_ocr_results": all_json_results},
@@ -587,33 +592,50 @@ def run_inference_pipeline(
                 )
             logger.info(f"Saved JSON results to '{json_output_path}'.")
 
-        logger.success("Processing completed successfully.")
-        if save_output or input_type == "images":
-            logger.info(f"Saved outputs to '{output_dir}'.")
+    logger.success("Processing completed successfully.")
+    if visualization_settings.save_stream_output or input_context.has_images:
+        logger.info(f"Saved outputs to '{visualization_settings.output_dir}'.")
 
 
 def main():
     """Main entry point for the document text extractor."""
     args = parse_args()
     init_logging(level=level_from_args(args))
+
+    # Validate OCR dependencies before running the pipeline (kept out of module
+    # import so --help works without paddlepaddle/shapely/pyclipper installed).
+    check_ocr_dependencies()
+
     handle_and_resolve_args(args, APP_NAME, multi_hef=True)
     args.det_net, args.ocr_net = [model for model in args.hef_path]
+
+    input_context = InputContext(
+        input_src=args.input,
+        batch_size=args.batch_size,
+        resolution=args.camera_resolution,
+        frame_rate=args.frame_rate,
+        video_unpaced=args.video_unpaced,
+    )
+    input_context = init_input_source(input_context)
+
+    visualization_settings = VisualizationSettings(
+        output_dir=args.output_dir,
+        save_stream_output=args.save_output,
+        output_resolution=args.output_resolution,
+        no_display=args.no_display,
+        side_by_side=True,  # original + annotated side-by-side
+    )
 
     run_inference_pipeline(
         args.det_net,
         args.ocr_net,
-        args.input,
-        args.batch_size,
-        args.output_dir,
-        args.camera_resolution,
-        args.output_resolution,
-        args.frame_rate,
-        args.save_output,
-        args.show_fps,
-        args.use_corrector,
-        args.no_display,
-        args.save_json,
-        args.confidence_threshold,
+        input_context=input_context,
+        visualization_settings=visualization_settings,
+        show_fps=args.show_fps,
+        time_to_run=args.time_to_run,
+        use_corrector=args.use_corrector,
+        save_json=args.save_json,
+        confidence_threshold=args.confidence_threshold,
     )
 
 

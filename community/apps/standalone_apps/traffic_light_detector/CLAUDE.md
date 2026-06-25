@@ -7,7 +7,7 @@ Detects traffic lights in dashcam video using YOLOv8 object detection and classi
 - **Type:** Standalone app
 - **Pattern:** HailoInfer + YOLOv8 detection + HSV color classification; 3-thread pipeline (preprocess → async inference → visualize)
 - **Models:** YOLOv8 (COCO; filters class 9 = traffic light)
-- **Hardware:** hailo8 (README)
+- **Hardware:** hailo8 / hailo8l / hailo10h (pure-Python postproc, any COCO YOLOv8 HEF)
 - **Postprocess:** Python — class filtering → HSV color-range matching → state classification → annotation
 
 ## Key Files
@@ -15,12 +15,12 @@ Detects traffic lights in dashcam video using YOLOv8 object detection and classi
 |------|---------|
 | `traffic_light_detector.py` | Main: preprocess → async inference → visualize threads; state tracking |
 | `traffic_light_post_process.py` | YOLOv8 postprocess, HSV color ranges, state classification, annotation |
-| `config.json` | Visualization params (score threshold, color map, tracker settings) |
+| `config.json` | Visualization params (score threshold, max boxes, traffic-light class id) |
 
 ## How to Run
 ```bash
 source setup_env.sh
-python -m hailo_apps.python.standalone_apps.traffic_light_detector.traffic_light_detector \
+python -m community.apps.standalone_apps.traffic_light_detector.traffic_light_detector \
   --input dashcam.mp4
 ```
 Optional: `--save-output`, `--json-summary`, `--output-dir results/`, `--confidence-threshold 0.4`, `--no-display`.
