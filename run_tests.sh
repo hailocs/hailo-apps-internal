@@ -37,6 +37,7 @@ RUN_PIPELINES=true
 RUN_STANDALONE=true
 RUN_GENAI=false
 RUN_CPP=false
+RUN_COMMUNITY=false
 DOWNLOAD_RESOURCES=true
 APPS_FILTER=""
 PYTEST_K_EXPR=""
@@ -99,6 +100,15 @@ while [[ $# -gt 0 ]]; do
             RUN_CPP=true
             shift
             ;;
+        --community)
+            if [ "$EXPLICIT_SUITE_SELECTION" = false ]; then
+                RUN_SANITY=false; RUN_INSTALL=false; RUN_PIPELINES=false
+                RUN_STANDALONE=false; RUN_GENAI=false; RUN_CPP=false
+                EXPLICIT_SUITE_SELECTION=true
+            fi
+            RUN_COMMUNITY=true
+            shift
+            ;;
         --no-download)
             DOWNLOAD_RESOURCES=false
             shift
@@ -128,6 +138,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --pipelines    Run only pipeline tests (functional tests)"
             echo "  --standalone   Run standalone app smoke tests"
             echo "  --genai        Run GenAI app tests"
+            echo "  --community    Run community app tests (community/apps/**/tests/)"
             echo "  --apps LIST    Run only selected pipeline + standalone apps (comma-separated)"
             echo "  --no-download  Skip resource download step"
             echo "  --help, -h     Show this help message"
@@ -311,6 +322,20 @@ if [ "$RUN_CPP" = true ]; then
         echo "✓ C++ tests passed"
     else
         echo "✗ C++ tests failed"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+fi
+
+# 7. Community App Tests — per-app unit tests under community/apps/**/tests/
+if [ "$RUN_COMMUNITY" = true ]; then
+    echo ""
+    echo "--- Running Community App Tests ---"
+    # Run on the community/apps root as its own suite (separate from the top-level
+    # tests/ package to avoid prepend-import-mode package-name clashes).
+    if python -m pytest "${SCRIPT_DIR}/community/apps" -v --log-cli-level=INFO; then
+        echo "✓ Community app tests passed"
+    else
+        echo "✗ Community app tests failed"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 fi
