@@ -276,7 +276,6 @@ class GStreamerPoseHandApp(GStreamerApp):
             post_process_so=palm_detection_post_so,
             batch_size=2,
             name="palm_detection",
-            letterbox=True,
         )
         palm_wrapper = INFERENCE_PIPELINE_WRAPPER(palm_infer, name="palm_wrapper")
 

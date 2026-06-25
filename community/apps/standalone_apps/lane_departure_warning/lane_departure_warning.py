@@ -22,7 +22,7 @@ import threading
 import argparse
 import collections
 
-from lane_departure_warning_utils import (
+from community.apps.standalone_apps.lane_departure_warning.lane_departure_warning_utils import (
     UFLDProcessing,
     DepartureDetector,
     compute_scaled_radius,

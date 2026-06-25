@@ -133,7 +133,6 @@ class GStreamerGestureCppApp(GStreamerApp):
             post_process_so=palm_detection_post_so,
             batch_size=1,
             name="palm_detection",
-            letterbox=True,
         )
         palm_detection_wrapper = INFERENCE_PIPELINE_WRAPPER(
             palm_detection_pipeline,
