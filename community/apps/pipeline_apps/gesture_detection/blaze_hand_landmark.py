@@ -22,15 +22,15 @@ from . import blaze_base
 class BlazeHandLandmark:
     """Hand landmark wrapper for hand_landmark_lite.hef (H8/8L/10H)."""
 
-    def __init__(self, hef_path, vdevice=None):
+    def __init__(self, hef_path):
         """Initialize hand landmark model.
 
         Args:
             hef_path: Path to hand_landmark_lite.hef.
-            vdevice: Deprecated/ignored. Kept for backwards compatibility.
-                HailoInfer manages its own VDevice in the shared scheduler
-                group ("SHARED"), so the palm and hand models automatically
-                share the physical device.
+
+        HailoInfer manages its own VDevice in the shared scheduler group
+        ("SHARED"), so the palm and hand models automatically share the
+        physical device.
         """
         self.resolution = blaze_base.HAND_LANDMARK_RESOLUTION
 

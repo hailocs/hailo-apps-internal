@@ -27,9 +27,8 @@ GStreamer pipeline apps (inference in a user callback, hailooverlay display):
 `vampire_mirror`, `workout_rep_counter`.
 
 > `yolo_world` is now an **official** app — see
-> `hailo_apps/python/pipeline_apps/yolo_world/`. `gesture_detection` (incl. the
-> Hailo-8 GStreamer variants `gesture_detection_h8.py` / `gesture_detection_gst.py`)
-> now lives entirely here in the community tree.
+> `hailo_apps/python/pipeline_apps/yolo_world/`. `gesture_detection` now lives
+> entirely here in the community tree.
 
 ## Standalone apps (`apps/standalone_apps/`)
 

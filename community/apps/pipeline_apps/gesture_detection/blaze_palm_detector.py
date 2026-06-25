@@ -23,15 +23,15 @@ from . import blaze_base
 class BlazePalmDetector:
     """Palm detection wrapper for palm_detection_lite.hef (H8/8L/10H)."""
 
-    def __init__(self, hef_path, vdevice=None):
+    def __init__(self, hef_path):
         """Initialize palm detector.
 
         Args:
             hef_path: Path to palm_detection_lite.hef.
-            vdevice: Deprecated/ignored. Kept for backwards compatibility.
-                HailoInfer manages its own VDevice in the shared scheduler
-                group ("SHARED"), so the palm and hand models automatically
-                share the physical device.
+
+        HailoInfer manages its own VDevice in the shared scheduler group
+        ("SHARED"), so the palm and hand models automatically share the
+        physical device.
         """
         self.config = blaze_base.PALM_MODEL_CONFIG
         self.anchors = blaze_base.generate_anchors(blaze_base.PALM_ANCHOR_OPTIONS)

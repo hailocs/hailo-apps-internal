@@ -66,12 +66,10 @@ python -m community.apps.pipeline_apps.gesture_detection.gesture_detection --inp
 ## Pipeline Variants
 
 > **Hardware note:** All four variants run on Hailo-8, Hailo-8L and Hailo-10H.
-> The Python-inference variants (#1 `gesture_detection.py`, #4
-> `gesture_detection_standalone.py`, and the legacy `gesture_detection_h8.py`)
-> run inference through the cross-platform `HailoInfer` async engine
-> (`create_infer_model` / `run_async` with a shared ROUND_ROBIN scheduler).
-> The earlier synchronous `InferVStreams` API was Hailo-8/8L only
-> (it raised `HAILO_NOT_IMPLEMENTED` on Hailo-10H); the wrappers no longer use it.
+> The Python-inference variants (#1 `gesture_detection.py` and #4
+> `gesture_detection_standalone.py`) run inference through the cross-platform
+> `HailoInfer` async engine (`create_infer_model` / `run_async` with a shared
+> ROUND_ROBIN scheduler).
 
 ### 1. Python Pipeline (`gesture_detection.py`)
 GStreamer source → Python callback (palm detection + hand landmark + gesture) → hailooverlay → display
@@ -91,20 +89,7 @@ All processing in C++ hailofilter elements. ~62 FPS on RPi 5 (vs ~50 FPS Python 
 Adds YOLOv8-Pose upstream for full-body skeleton. Associates detected hands with nearest person by wrist proximity.
 
 ### 4. Standalone (`gesture_detection_standalone.py`)
-Pure Python with OpenCV + HailoRT. No GStreamer dependency. Good for SSH/headless debugging. Supports `--debug` flag for per-stage visualization.
-
-### Older / Alternative Variants
-
-These predate the variants above and are kept for reference:
-
-- **`gesture_detection_h8.py`** — Standalone OpenCV variant (same approach as
-  `gesture_detection_standalone.py`) with a built-in benchmark report and `--debug`
-  per-stage visualization. Run: `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8`
-- **`gesture_detection_gst.py`** — Earlier GStreamer + Python-callback variant
-  (same approach as `gesture_detection.py`), attaches Hailo metadata and renders
-  via `hailooverlay`. Run: `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst`
-
-Both auto-detect the architecture and download the matching models on first run.
+Pure Python with OpenCV + HailoRT. No GStreamer dependency. Good for SSH/headless debugging. Supports `--debug` flag for per-stage visualization, plus a built-in benchmark report.
 
 ## Building the C++ Postprocess Libraries
 

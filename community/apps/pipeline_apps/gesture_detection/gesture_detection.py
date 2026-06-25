@@ -241,7 +241,7 @@ class GStreamerGestureApp(GStreamerApp):
 
         hailo_logger.info("Initializing GStreamer Gesture Detection App...")
         super().__init__(parser, user_data)
-        setproctitle.setproctitle("gesture_detection_gst")
+        setproctitle.setproctitle("gesture_detection")
 
         self.app_callback = app_callback
         self.create_pipeline()

@@ -2,15 +2,20 @@
 
 ## Working Pipelines (VERIFIED)
 
-### 1. GStreamer Pipeline: `gesture_detection_gst.py`
-- GStreamer source → Python callback (InferVStreams) → hailooverlay → display
+Python inference uses the cross-platform `HailoInfer` async engine
+(`create_infer_model` / `run_async`, shared ROUND_ROBIN scheduler group) — runs
+on Hailo-8/8L **and** Hailo-10H. The legacy synchronous `InferVStreams` API was
+H8/8L only (`HAILO_NOT_IMPLEMENTED` on H10) and is no longer used.
+
+### 1. GStreamer Pipeline: `gesture_detection.py`
+- GStreamer source → Python callback (HailoInfer) → hailooverlay → display
 - Attaches: HailoDetection("palm") + HailoLandmarks("hand_landmarks", 21pts) + HailoClassification("gesture")
 - **Landmarks must be normalized relative to the detection bbox** (not the frame) for hailooverlay
-- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst --input <source>`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection --input <source>`
 
-### 2. Standalone OpenCV: `gesture_detection_h8.py`
-- Pure Python (OpenCV + HailoRT InferVStreams), no GStreamer
-- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 --input <source>`
+### 2. Standalone OpenCV: `gesture_detection_standalone.py`
+- Pure Python (OpenCV + HailoInfer), no GStreamer; built-in benchmark + `--debug`
+- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_standalone --input <source>`
 
 ## Blaze Model Tensor Mapping (VERIFIED)
 ### Palm Detection (palm_detection_lite.hef, 192x192)
@@ -25,11 +30,13 @@
 
 ## Key Files (cleaned up)
 - `blaze_base.py` — anchors, NMS, ROI extraction, affine warp
-- `blaze_palm_detector.py` / `blaze_hand_landmark.py` — model wrappers
+- `blaze_palm_detector.py` / `blaze_hand_landmark.py` — model wrappers (HailoInfer async)
 - `gesture_recognition.py` — pure Python gesture classification
-- `gesture_detection_gst.py` — GStreamer pipeline (production)
-- `gesture_detection_h8.py` — standalone OpenCV (reference)
-- `download_blaze_models.py` — model downloader
+- `gesture_detection.py` — GStreamer pipeline (Python callback inference)
+- `gesture_detection_standalone.py` — standalone OpenCV (benchmark + debug)
+- `gesture_detection_cpp_pipeline.py` — full C++ pipeline (best performance)
+- `pose_hand_detection.py` — YOLOv8-pose + hand association pipeline
+- `download_models.py` — model downloader
 
 ## Hailo Metadata (hailooverlay expects)
 - Landmarks on HailoDetection are **relative to the detection bbox** [0,1]
@@ -42,9 +49,6 @@
 - **104+ FPS** uncapped (vs 68.8 Python, 44.3 native MediaPipe)
 - `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_cpp_pipeline --input <source>`
 
-### 4. Native MediaPipe CPU Baseline: `gesture_detection_native.py`
-- Pure CPU MediaPipe HandLandmarker (tasks API v0.10.32)
-- `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_native --input <source>`
 
 ## C++ Postprocess Libraries (all compiled, in /usr/local/hailo/resources/so/)
 - `libpalm_detection_postprocess.so` — SSD anchor decode + weighted NMS
@@ -88,11 +92,12 @@
 - **Fix**: `roi->clear_scaling_bbox()` at end of gesture_classification
 - See [tappas_coordinate_spaces.md](tappas_coordinate_spaces.md) for full analysis
 
-### 5. Missing Letterbox for Palm Detection
+### 5. Invalid `letterbox=True` kwarg on INFERENCE_PIPELINE (REVERTED — was a crash)
 - **Files**: `gesture_detection_cpp_pipeline.py`, `pose_hand_detection.py`
-- **Bug**: `INFERENCE_PIPELINE` videoscale stretched instead of letterboxing
-- **Fix**: Added `letterbox=True` param to `INFERENCE_PIPELINE()` helper;
-  passes `add-borders=true` to videoscale for aspect-ratio-preserving resize
+- **Bug**: these passed `letterbox=True` to `INFERENCE_PIPELINE()`, which does
+  NOT accept that param → `TypeError` at pipeline construction (fixed `382e2455`).
+- Resolution preservation is handled by `INFERENCE_PIPELINE_WRAPPER`, not a
+  `letterbox` kwarg. Do not reintroduce it.
 
 ## Critical: Aspect Ratio in palm_croppers
 - Python `blaze_base.detection2roi` works in **pixel coords** (after denormalize_detections)
@@ -106,7 +111,9 @@
 - Verify pose_hand_detection.py pipeline (two wrappers compound scaling_bbox)
 - Consider transforming palm_croppers to work in scaling_bbox-aware space for robustness
 
-## Removed Files (non-functional)
-- gesture_detection.py / gesture_detection_pipeline.py — hailo10h C++ SO pipeline (broken)
+## Removed Files (non-functional / superseded)
+- gesture_detection_pipeline.py — hailo10h C++ SO pipeline (broken)
 - gesture_detection_blaze.py / gesture_detection_blaze_pipeline.py — C++ blaze pipeline (abandoned)
 - test_hand_landmark_pipeline.py, test_blaze_on_photos.py — test scripts
+- gesture_detection_gst.py / gesture_detection_h8.py — legacy duplicates of
+  gesture_detection.py / gesture_detection_standalone.py (removed in the HailoInfer cleanup)
