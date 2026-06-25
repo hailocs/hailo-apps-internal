@@ -1647,6 +1647,8 @@ verify_installation() {
     echo -n "  📦 HailoRT Python binding: "
     if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo_platform'" 2>/dev/null; then
         echo -e "${GREEN}✅ OK${NC}"
+    else
+        echo -e "${RED}❌ Import failed${NC}"
         all_ok=false
     fi
 
@@ -1657,6 +1659,8 @@ verify_installation() {
     else
         if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
             echo -e "${GREEN}✅ OK${NC}"
+        else
+            echo -e "${RED}❌ Import failed${NC}"
             all_ok=false
         fi
     fi

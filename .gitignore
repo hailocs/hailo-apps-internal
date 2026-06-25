@@ -67,7 +67,9 @@ docs/superpowers/
 # Runtime logs
 access_log.csv
 
-# Model binaries kept locally per app (do not commit)
+# Model binaries kept locally per app (do not commit) — never commit HEFs anywhere
+*.hef
+*.task
 **/models/*.hef
 **/models/*.task
 
@@ -75,6 +77,9 @@ access_log.csv
 **/face_recognition/database/
 **/face_recognition/samples/
 **/face_recognition/train/
+
+# Per-app runtime databases (LanceDB etc.) written into the app tree
+**/database/
 
 # Gesture detection runtime artifacts
 **/gesture_detection/models/
