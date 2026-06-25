@@ -7,7 +7,8 @@ Architecture:
     → hand_landmark_lite.hef (HailoRT) → denormalize landmarks
     → gesture_recognition.py → OpenCV display
 
-Uses HailoRT Python API (InferVStreams) directly instead of GStreamer.
+Uses the cross-platform HailoInfer async engine (works on Hailo-8/8L/10H)
+directly instead of GStreamer.
 Based on AlbertaBeef/blaze_app_python (https://github.com/AlbertaBeef/blaze_app_python).
 
 Usage:
@@ -25,7 +26,6 @@ import time
 import cv2
 import numpy as np
 import psutil
-from hailo_platform import VDevice
 
 from community.apps.pipeline_apps.gesture_detection import blaze_base
 from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
@@ -465,11 +465,10 @@ def run(args):
     print(f"Loading palm detection model: {args.palm_model}")
     print(f"Loading hand landmark model: {args.hand_model}")
 
-    # Create shared VDevice for both models
-    vdevice = VDevice()
-
-    palm_detector = BlazePalmDetector(args.palm_model, vdevice=vdevice)
-    hand_landmark = BlazeHandLandmark(args.hand_model, vdevice=vdevice)
+    # Each blaze wrapper opens a HailoInfer in the shared scheduler group,
+    # so the palm and hand models share the physical device automatically.
+    palm_detector = BlazePalmDetector(args.palm_model)
+    hand_landmark = BlazeHandLandmark(args.hand_model)
     config = blaze_base.PALM_MODEL_CONFIG
 
     # Open video source

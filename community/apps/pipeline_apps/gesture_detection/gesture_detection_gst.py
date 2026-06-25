@@ -8,7 +8,7 @@ HailoClassification) to each buffer so downstream pipelines can consume results.
 Architecture:
   GStreamer source → Python callback (palm detection + hand landmark + gesture) → display
 
-The Python callback runs both models via HailoRT InferVStreams and attaches:
+The Python callback runs both models via the HailoInfer async engine and attaches:
   - HailoDetection("palm", bbox) for each detected palm
   - HailoLandmarks("hand_landmarks", 21 points) on each palm detection
   - HailoClassification("gesture", label) on each palm detection
@@ -30,7 +30,6 @@ gi.require_version("Gst", "1.0")
 import setproctitle
 import numpy as np
 import hailo
-from hailo_platform import VDevice
 
 from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad, get_numpy_from_buffer
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -64,16 +63,19 @@ HAND_FLAG_THRESHOLD = 0.5
 
 
 class GestureAppCallback(app_callback_class):
-    """Callback class holding the blaze models (shared VDevice)."""
+    """Callback class holding the blaze models.
+
+    Each blaze wrapper opens a HailoInfer instance in the shared scheduler
+    group, so the palm and hand models share the physical device automatically.
+    """
 
     def __init__(self, palm_model, hand_model):
         super().__init__()
         hailo_logger.info("Loading palm detection model: %s", palm_model)
         hailo_logger.info("Loading hand landmark model: %s", hand_model)
 
-        self.vdevice = VDevice()
-        self.palm_detector = BlazePalmDetector(palm_model, vdevice=self.vdevice)
-        self.hand_landmark = BlazeHandLandmark(hand_model, vdevice=self.vdevice)
+        self.palm_detector = BlazePalmDetector(palm_model)
+        self.hand_landmark = BlazeHandLandmark(hand_model)
         self.config = blaze_base.PALM_MODEL_CONFIG
 
         hailo_logger.info("Blaze models loaded successfully.")

@@ -1,5 +1,5 @@
 """
-Gesture detection app for Hailo-8 using MediaPipe Blaze models.
+Gesture detection app (Hailo-8/8L/10H) using MediaPipe Blaze models.
 
 Architecture:
   Camera (OpenCV) → resize_pad(192x192) → palm_detection_lite.hef (HailoRT)
@@ -7,7 +7,8 @@ Architecture:
     → hand_landmark_lite.hef (HailoRT) → denormalize landmarks
     → gesture_recognition.py → OpenCV display
 
-Uses HailoRT Python API (InferVStreams) directly instead of GStreamer.
+Uses the cross-platform HailoInfer async engine (works on Hailo-8/8L/10H)
+directly instead of GStreamer.
 Based on AlbertaBeef/blaze_app_python (https://github.com/AlbertaBeef/blaze_app_python).
 
 Usage:
@@ -25,7 +26,6 @@ import time
 import cv2
 import numpy as np
 import psutil
-from hailo_platform import VDevice
 
 from community.apps.pipeline_apps.gesture_detection import blaze_base
 from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
@@ -464,11 +464,10 @@ def run(args):
     print(f"Loading palm detection model: {args.palm_model}")
     print(f"Loading hand landmark model: {args.hand_model}")
 
-    # Create shared VDevice for both models
-    vdevice = VDevice()
-
-    palm_detector = BlazePalmDetector(args.palm_model, vdevice=vdevice)
-    hand_landmark = BlazeHandLandmark(args.hand_model, vdevice=vdevice)
+    # Each blaze wrapper opens a HailoInfer in the shared scheduler group,
+    # so the palm and hand models share the physical device automatically.
+    palm_detector = BlazePalmDetector(args.palm_model)
+    hand_landmark = BlazeHandLandmark(args.hand_model)
     config = blaze_base.PALM_MODEL_CONFIG
 
     # Open video source
@@ -495,7 +494,7 @@ def run(args):
         print(f"Total frames: {total_frames}")
     if headless:
         print("Running in headless mode (no display)")
-    print("Starting gesture detection — Hailo-8 (press 'q' to quit)...\n")
+    print("Starting gesture detection — Hailo (press 'q' to quit)...\n")
 
     debug_dir = os.path.abspath(args.debug_dir) if args.debug else None
     if debug_dir:
@@ -552,10 +551,10 @@ def run(args):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.putText(display, f"CPU: {cpu_pct:.0f}%", (10, 95),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(display, "HAILO-8", (10, src_h - 20),
+            cv2.putText(display, "HAILO", (10, src_h - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 0), 2)
 
-            cv2.imshow("Gesture Detection (H8)", display)
+            cv2.imshow("Gesture Detection", display)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
@@ -575,7 +574,7 @@ def run(args):
         cpu_stats = cpu_monitor.summary()
         print()
         print("=" * 55)
-        print("  BENCHMARK REPORT - Hailo-8 Accelerated")
+        print("  BENCHMARK REPORT - Hailo Accelerated")
         print("=" * 55)
         print()
         print("--- System ---")

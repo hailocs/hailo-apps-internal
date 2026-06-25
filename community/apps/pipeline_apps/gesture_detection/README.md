@@ -2,7 +2,7 @@
 
 Real-time hand gesture detection and recognition using MediaPipe Blaze models on Hailo accelerators. Two-stage cascaded inference: detect palms, then run hand landmark estimation on each palm crop to recognize gestures.
 
-**Supported hardware:** Hailo-8, Hailo-8L, Hailo-10H (architecture auto-detected; correct models downloaded automatically). On **Hailo-10H** use the C++ GStreamer or pose+hand variant — the Python `InferVStreams` variants are Hailo-8/8L only (see Pipeline Variants → Hardware note).
+**Supported hardware:** Hailo-8, Hailo-8L, Hailo-10H (architecture auto-detected; correct models downloaded automatically). All variants — including the pure-Python ones — run on every supported architecture: inference uses the cross-platform `HailoInfer` async engine (`create_infer_model` / `run_async`), which works on Hailo-8/8L and Hailo-10H alike.
 
 ## Supported Gestures
 
@@ -65,17 +65,18 @@ python -m community.apps.pipeline_apps.gesture_detection.gesture_detection --inp
 
 ## Pipeline Variants
 
-> **Hardware note:** The Python-inference variants (#1 `gesture_detection.py`, #4
-> `gesture_detection_standalone.py`, and the legacy `gesture_detection_h8.py`) use the
-> HailoRT `InferVStreams` **synchronous** API, which is implemented on **Hailo-8/8L only**
-> — on Hailo-10H `VDevice.configure()` raises `HAILO_NOT_IMPLEMENTED`. On **Hailo-10H**,
-> use the **C++ GStreamer pipeline** (#2 `gesture_detection_cpp_pipeline.py`) or the
-> pose+hand pipeline (#3 `pose_hand_detection.py`), both verified on H10.
+> **Hardware note:** All four variants run on Hailo-8, Hailo-8L and Hailo-10H.
+> The Python-inference variants (#1 `gesture_detection.py`, #4
+> `gesture_detection_standalone.py`, and the legacy `gesture_detection_h8.py`)
+> run inference through the cross-platform `HailoInfer` async engine
+> (`create_infer_model` / `run_async` with a shared ROUND_ROBIN scheduler).
+> The earlier synchronous `InferVStreams` API was Hailo-8/8L only
+> (it raised `HAILO_NOT_IMPLEMENTED` on Hailo-10H); the wrappers no longer use it.
 
-### 1. Python Pipeline (`gesture_detection.py`) — Hailo-8/8L only
+### 1. Python Pipeline (`gesture_detection.py`)
 GStreamer source → Python callback (palm detection + hand landmark + gesture) → hailooverlay → display
 
-All inference runs in the Python callback via HailoRT `InferVStreams` (Hailo-8/8L only — see hardware note above). Simplest to understand and modify.
+All inference runs in the Python callback via the `HailoInfer` async engine. Simplest to understand and modify.
 
 ### 2. C++ Pipeline (`gesture_detection_cpp_pipeline.py`) — Best Performance
 ```

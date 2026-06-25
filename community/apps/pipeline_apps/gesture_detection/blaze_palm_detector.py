@@ -1,7 +1,12 @@
 """
-Palm detection using MediaPipe palm_detection_lite HEF model on Hailo-8.
+Palm detection using MediaPipe palm_detection_lite HEF model.
 
-Loads the model via a shared VDevice and runs inference with InferVStreams.
+Loads the model via the cross-platform HailoInfer engine (async
+create_infer_model / run_async API with a shared ROUND_ROBIN scheduler) and
+runs inference. This works on Hailo-8, Hailo-8L and Hailo-10H — unlike the
+legacy synchronous InferVStreams API, which is Hailo-8/8L only
+(VDevice.configure raises HAILO_NOT_IMPLEMENTED on Hailo-10H).
+
 Output tensors are reshaped and concatenated into the format expected by
 the blaze decoding pipeline (2016 anchors for 192x192 input).
 
@@ -9,41 +14,34 @@ Based on AlbertaBeef/blaze_app_python (https://github.com/AlbertaBeef/blaze_app_
 """
 
 import numpy as np
-from hailo_platform import (HEF, VDevice, HailoStreamInterface,
-                            InferVStreams, ConfigureParams,
-                            InputVStreamParams, OutputVStreamParams,
-                            FormatType)
+
+from hailo_apps.python.core.common.hailo_inference import HailoInfer
 
 from . import blaze_base
 
 
 class BlazePalmDetector:
-    """Palm detection wrapper for palm_detection_lite.hef on Hailo-8."""
+    """Palm detection wrapper for palm_detection_lite.hef (H8/8L/10H)."""
 
     def __init__(self, hef_path, vdevice=None):
         """Initialize palm detector.
 
         Args:
             hef_path: Path to palm_detection_lite.hef.
-            vdevice: Optional shared VDevice. Created if not provided.
+            vdevice: Deprecated/ignored. Kept for backwards compatibility.
+                HailoInfer manages its own VDevice in the shared scheduler
+                group ("SHARED"), so the palm and hand models automatically
+                share the physical device.
         """
         self.config = blaze_base.PALM_MODEL_CONFIG
         self.anchors = blaze_base.generate_anchors(blaze_base.PALM_ANCHOR_OPTIONS)
 
-        self.hef = HEF(hef_path)
-        self._owns_vdevice = vdevice is None
-        self.vdevice = vdevice or VDevice()
+        # UINT8 image input, FLOAT32 outputs (decoded by the blaze pipeline).
+        self.hailo_infer = HailoInfer(
+            hef_path, batch_size=1, input_type="UINT8", output_type="FLOAT32")
 
-        self.network_group = self.vdevice.configure(self.hef)[0]
-        self.network_group_params = self.network_group.create_params()
-
-        self.input_vstreams_params = InputVStreamParams.make(
-            self.network_group, format_type=FormatType.UINT8)
-        self.output_vstreams_params = OutputVStreamParams.make(
-            self.network_group, format_type=FormatType.FLOAT32)
-
-        self.input_vstream_info = self.hef.get_input_vstream_infos()[0]
-        self.output_vstream_infos = self.hef.get_output_vstream_infos()
+        input_infos, self.output_vstream_infos = self.hailo_infer.get_vstream_info()
+        self.input_vstream_info = input_infos[0]
 
         # Sort outputs by name for deterministic mapping
         self._map_output_tensors()
@@ -83,6 +81,33 @@ class BlazePalmDetector:
         self._score_tensors = [(t[0].name, t[2]) for t in score_tensors]
         self._box_tensors = [(t[0].name, t[2]) for t in box_tensors]
 
+    def _infer(self, frame):
+        """Run a single async inference and block for the result.
+
+        Args:
+            frame: np.ndarray (H, W, 3) uint8 model input.
+
+        Returns:
+            dict mapping output layer name -> output buffer (np.ndarray).
+        """
+        holder = {}
+
+        def _callback(completion_info, bindings_list):
+            if completion_info.exception:
+                holder["error"] = completion_info.exception
+                return
+            bindings = bindings_list[0]
+            holder["outputs"] = {
+                name: bindings.output(name).get_buffer()
+                for name in bindings._output_names
+            }
+
+        job = self.hailo_infer.run([frame], _callback)
+        job.wait(10000)
+        if "error" in holder:
+            raise RuntimeError(f"Palm detection inference failed: {holder['error']}")
+        return holder["outputs"]
+
     def detect(self, img):
         """Run palm detection on a preprocessed image.
 
@@ -97,13 +122,7 @@ class BlazePalmDetector:
         if img.dtype != np.uint8:
             img = np.clip(img, 0, 255).astype(np.uint8)
 
-        input_data = {self.input_vstream_info.name: np.expand_dims(img, axis=0)}
-
-        with self.network_group.activate(self.network_group_params):
-            with InferVStreams(self.network_group, self.input_vstreams_params,
-                              self.output_vstreams_params) as pipeline:
-                infer_results = pipeline.infer(input_data)
-
+        infer_results = self._infer(img)
         return self._postprocess(infer_results)
 
     def _postprocess(self, infer_results):
@@ -154,3 +173,7 @@ class BlazePalmDetector:
         padded, scale, pad = blaze_base.resize_pad(img, (target_h, target_w))
         detections = self.detect(padded)
         return detections, scale, pad
+
+    def close(self):
+        """Release the underlying Hailo inference resources."""
+        self.hailo_infer.close()

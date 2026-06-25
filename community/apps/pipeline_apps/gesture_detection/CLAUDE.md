@@ -1,7 +1,7 @@
 # Gesture Detection
 
 ## What This App Does
-Real-time hand gesture detection and recognition using MediaPipe Blaze models (palm detection + hand landmark) on Hailo-8/8L. Two-stage cascaded inference: detect palms, then run hand landmark estimation on each palm crop to recognize gestures (fist, open hand, pointing, peace, thumbs up/down, counting 1-4).
+Real-time hand gesture detection and recognition using MediaPipe Blaze models (palm detection + hand landmark) on Hailo-8/8L/10H. Two-stage cascaded inference: detect palms, then run hand landmark estimation on each palm crop to recognize gestures (fist, open hand, pointing, peace, thumbs up/down, counting 1-4).
 
 ## Architecture
 - **Type:** Pipeline app (cascaded multi-model)
@@ -18,8 +18,8 @@ Real-time hand gesture detection and recognition using MediaPipe Blaze models (p
 | `gesture_detection_standalone.py` | Python standalone (OpenCV) — no GStreamer, good for debugging |
 | `pose_hand_detection.py` | Combined YOLOv8-Pose + hand gesture pipeline (person-crop palm detection) |
 | `blaze_base.py` | Core math: SSD anchors, box decoding, weighted NMS, affine warp ROI |
-| `blaze_palm_detector.py` | Palm detection model wrapper (HailoRT `InferVStreams`) |
-| `blaze_hand_landmark.py` | Hand landmark model wrapper (HailoRT `InferVStreams`) |
+| `blaze_palm_detector.py` | Palm detection model wrapper (`HailoInfer` async engine — H8/8L/10H) |
+| `blaze_hand_landmark.py` | Hand landmark model wrapper (`HailoInfer` async engine — H8/8L/10H) |
 | `gesture_recognition.py` | Gesture classification from 21 hand landmarks (pure Python, no Hailo deps) |
 | `download_models.py` | Downloads HEF model files to `models/` |
 
@@ -28,9 +28,9 @@ Real-time hand gesture detection and recognition using MediaPipe Blaze models (p
 ### 1. GStreamer + Python inference (`gesture_detection.py`)
 ```
 GStreamer source → Python callback:
-  resize_pad(192x192) → palm_detection_lite (HailoRT InferVStreams)
+  resize_pad(192x192) → palm_detection_lite (HailoInfer async)
   → anchor decode + NMS → detection2roi → affine warp (224x224)
-  → hand_landmark_lite (HailoRT InferVStreams) → gesture classify
+  → hand_landmark_lite (HailoInfer async) → gesture classify
   → attach HailoDetection/HailoLandmarks/HailoClassification to buffer
 → hailooverlay → display
 ```
