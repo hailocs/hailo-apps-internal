@@ -1,7 +1,7 @@
 # Gesture-Controlled Mouse
 
 ## What This App Does
-Controls the computer mouse with hand gestures. Tracks the index fingertip from MediaPipe hand landmarks to move the cursor (with exponential smoothing); a pinch gesture triggers clicks and drags via `pynput`.
+Controls the computer mouse with hand gestures. Tracks the palm center (wrist + 4 MCP joints) from MediaPipe hand landmarks to move the cursor (with exponential smoothing); a pinch gesture triggers clicks and drags via `pynput`.
 
 ## Architecture
 - **Type:** Pipeline app (cascaded multi-model)

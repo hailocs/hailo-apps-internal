@@ -150,6 +150,10 @@ class EnrollmentUI:
         # Clear old widgets
         for widget in self.unknown_gallery.winfo_children():
             widget.destroy()
+        # Drop stale PhotoImage refs from the previous frame; _make_face_card
+        # repopulates this list for the cards we rebuild below. Without this
+        # the list grows by one PhotoImage per visible face every poll tick.
+        self._photo_refs.clear()
 
         if not unknowns:
             self.no_unknown_label.pack(pady=5)
@@ -255,7 +259,8 @@ class EnrollmentUI:
             self._selected_track_id = None
             # Allow the seen_track_ids to re-log this person with new name
             if track_id is not None:
-                self.user_data.seen_track_ids.discard(track_id)
+                with self.user_data.lock:
+                    self.user_data.seen_track_ids.discard(track_id)
         else:
             self.status_var.set("Enrollment failed. Is a face visible?")
 
@@ -299,7 +304,8 @@ class EnrollmentUI:
         # Clear enrollable face cache
         with ud.enrollable_lock:
             ud.enrollable_faces.clear()
-        ud.seen_track_ids.clear()
+        with ud.lock:
+            ud.seen_track_ids.clear()
 
         # Reset pipeline tracking state so faces get re-processed
         if ud.pipeline_ref:

@@ -14,11 +14,19 @@ Voice-controlled mouse agent for Hailo-10H. Speak natural language commands into
 
 - Hailo-10H accelerator
 - Microphone (USB or built-in)
-- X11 display server (for pyautogui)
-- Python packages: `pyautogui`
+- An active display for `pyautogui`. **X11 is required** — `pyautogui` does not
+  drive native Wayland sessions. On a Wayland desktop, either log in to an "Xorg"
+  session or run under XWayland and force the X11 backend:
+  ```bash
+  export XDG_SESSION_TYPE=x11   # or run from an X11/XWayland session
+  ```
+  Without a usable display the tool stays importable but each action returns a
+  clear error instead of crashing.
+- Python packages: `pyautogui` (see `requirements.txt`)
 
 ```bash
-pip install pyautogui
+pip install -r community/apps/gen_ai_apps/voice_mouse_agent/requirements.txt
+# or simply: pip install pyautogui
 ```
 
 ## Usage
@@ -56,6 +64,15 @@ python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
 - Press **Ctrl+C** to quit
 - pyautogui failsafe: move mouse to any screen corner to abort
 - No TTS output (silent operation, terminal feedback only)
+
+## Tests
+
+These tests live outside the repo-wide `testpaths` (`tests/`), so a bare
+`pytest` from the repo root will not pick them up. Run them explicitly:
+
+```bash
+pytest community/apps/gen_ai_apps/voice_mouse_agent/tests/
+```
 
 ## Tool: mouse_control
 

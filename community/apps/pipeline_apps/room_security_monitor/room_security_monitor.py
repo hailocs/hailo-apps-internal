@@ -7,13 +7,10 @@ import threading
 import json
 import time
 import uuid
+from pathlib import Path
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 # Third-party imports
-import gi
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
-import numpy as np
 from PIL import Image
 
 # Local application-specific imports
@@ -28,9 +25,8 @@ hailo_logger = get_logger(__name__)
 # region Constants
 # Alarm cooldown in seconds to avoid repeated alarms for the same unknown person
 ALARM_COOLDOWN_SECONDS = 30
-ACCESS_LOG_FILE = "access_log.csv"
-# Maximum number of enrollable face snapshots to keep per track
-MAX_ENROLLABLE_PER_TRACK = 5
+# Access log lives alongside the app (not the process CWD).
+ACCESS_LOG_FILE = str(Path(__file__).parent / "access_log.csv")
 # endregion
 
 
@@ -212,7 +208,8 @@ class SecurityCallbackClass(app_callback_class):
         if self.pipeline_ref:
             self.pipeline_ref.force_reclassify(track_id)
         # Allow this track to be re-logged with the new name
-        self.seen_track_ids.discard(track_id)
+        with self.lock:
+            self.seen_track_ids.discard(track_id)
 
         # Remove from enrollable faces
         with self.enrollable_lock:
@@ -325,10 +322,13 @@ def app_callback(element, buffer, user_data):
                     person_name = classification.get_label()
                     person_confidence = classification.get_confidence()
 
-                    # Only process each track ID once to avoid duplicate prints
-                    if track_id in user_data.seen_track_ids:
-                        continue
-                    user_data.seen_track_ids.add(track_id)
+                    # Only process each track ID once to avoid duplicate prints.
+                    # Guard the check-then-act: enrollment threads also mutate
+                    # seen_track_ids (discard/clear).
+                    with user_data.lock:
+                        if track_id in user_data.seen_track_ids:
+                            continue
+                        user_data.seen_track_ids.add(track_id)
 
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -337,11 +337,17 @@ def app_callback(element, buffer, user_data):
                         if user_data.should_trigger_alarm(track_id):
                             user_data.trigger_alarm(track_id)
                             user_data.log_access_event(track_id, 'Unknown', person_confidence, 'unknown_alarm')
-                        print(f"[{timestamp}] UNKNOWN face detected (Track ID: {track_id}, Confidence: {detection_confidence:.1f})")
+                        hailo_logger.info(
+                            "[%s] UNKNOWN face detected (Track ID: %s, Confidence: %.1f)",
+                            timestamp, track_id, detection_confidence,
+                        )
                     else:
                         # Authorized person recognized
                         user_data.log_access_event(track_id, person_name, person_confidence, 'authorized')
-                        print(f"[{timestamp}] Authorized: {person_name} (Track ID: {track_id}, Confidence: {person_confidence:.1f})")
+                        hailo_logger.info(
+                            "[%s] Authorized: %s (Track ID: %s, Confidence: %.1f)",
+                            timestamp, person_name, track_id, person_confidence,
+                        )
     return
 
 
@@ -494,6 +500,13 @@ def main():
     hailo_logger.info("Starting Room Security Monitor App.")
     user_data = SecurityCallbackClass()
     pipeline = GStreamerRoomSecurityMonitorApp(app_callback, user_data)
+
+    # Apply tunables loaded from security_algo_params.json now that the
+    # pipeline has parsed them (SecurityCallbackClass is created before the
+    # pipeline, so wire the value in here rather than at construction).
+    user_data.alarm_cooldown = pipeline.algo_params.get(
+        'unknown_alarm_cooldown_seconds', user_data.alarm_cooldown
+    )
 
     if pipeline.options_menu.mode == 'delete':
         pipeline.db_handler.clear_table()

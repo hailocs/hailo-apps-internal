@@ -211,20 +211,21 @@ def app_callback(element, buffer, user_data):
     for tid in stale_ids:
         del user_data.tracks[tid]
 
-    # Print status periodically
+    # Log status periodically
     if frame_idx % 30 == 0:
         total = user_data.count_left_to_right + user_data.count_right_to_left
         in_zone_count = sum(
             1 for ts in user_data.tracks.values()
             if ts.entry_side is not None
         )
-        print(
-            f"Frame {frame_idx} | "
-            f"L->R: {user_data.count_left_to_right} | "
-            f"R->L: {user_data.count_right_to_left} | "
-            f"Total: {total} | "
-            f"In zone: {in_zone_count} | "
-            f"Tracked: {len(current_ids)}"
+        hailo_logger.info(
+            "Frame %d | L->R: %d | R->L: %d | Total: %d | In zone: %d | Tracked: %d",
+            frame_idx,
+            user_data.count_left_to_right,
+            user_data.count_right_to_left,
+            total,
+            in_zone_count,
+            len(current_ids),
         )
 
     # Draw overlay if --use-frame is enabled
@@ -280,7 +281,8 @@ def app_callback(element, buffer, user_data):
             cx_px = int(cx * width)
             cy_px = int(cy * height)
 
-            # Color based on state: green=in zone, white=outside, yellow=entering
+            # Color based on entry side: green=entered from left, orange=entered
+            # from right, gray=not engaged with the zone.
             if entry_side == "left":
                 color = (0, 255, 0)   # green — entered from left
             elif entry_side == "right":

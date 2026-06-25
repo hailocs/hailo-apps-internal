@@ -61,6 +61,45 @@ FINGERS = [
     (PINKY_TIP, PINKY_PIP),
 ]
 
+class GesturePoint:
+    """Adapter wrapping numpy landmark coordinates with .x()/.y()/.confidence().
+
+    Bridges the numpy-based blaze pipeline output and the gesture classifiers
+    here, which expect HailoPoint-like objects.
+    """
+
+    def __init__(self, x, y, confidence=1.0):
+        self._x = float(x)
+        self._y = float(y)
+        self._confidence = float(confidence)
+
+    def x(self):
+        return self._x
+
+    def y(self):
+        return self._y
+
+    def confidence(self):
+        return self._confidence
+
+
+def landmarks_to_gesture_points(landmarks_2d):
+    """Convert (21, 2+) numpy landmarks to a list of GesturePoint.
+
+    Args:
+        landmarks_2d: np.ndarray (21, 2) or (21, 3) with x, y[, z] in image pixels.
+
+    Returns:
+        List of 21 GesturePoint objects.
+    """
+    points = []
+    for i in range(21):
+        x = landmarks_2d[i, 0]
+        y = landmarks_2d[i, 1]
+        points.append(GesturePoint(x, y))
+    return points
+
+
 # Gesture labels
 GESTURE_FIST = "FIST"
 GESTURE_OPEN_HAND = "OPEN_HAND"

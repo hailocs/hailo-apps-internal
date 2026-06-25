@@ -132,8 +132,8 @@ room_security_monitor/
 ## Customization
 
 - **Alarm integration:** Override `SecurityCallbackClass.trigger_alarm()` to connect to GPIO, webhooks, or MQTT
-- **Confidence threshold:** Edit `security_algo_params.json` (`lance_db_vector_search_classificaiton_confidence_threshold`)
-- **Alarm cooldown:** Edit `security_algo_params.json` (`unknown_alarm_cooldown_seconds`) or pass at runtime
+- **Confidence threshold:** Edit `security_algo_params.json` (`lance_db_vector_search_classification_confidence_threshold`)
+- **Alarm cooldown:** Edit `security_algo_params.json` (`unknown_alarm_cooldown_seconds`)
 - **Skip frames:** Edit `security_algo_params.json` (`skip_frames`) to control how many frames to skip before first recognition attempt
 
 ## Based On

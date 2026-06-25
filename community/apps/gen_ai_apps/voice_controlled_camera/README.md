@@ -7,7 +7,7 @@ A hands-free smart camera application that responds to voice commands to detect 
 - **Hardware:** Hailo-10H accelerator
 - **Models:** Whisper-Base (STT), Qwen2.5-1.5B-Instruct (LLM), Qwen2-VL-2B-Instruct (VLM)
 - **Input:** USB camera + microphone
-- **Dependencies:** `pip install -e ".[gen-ai]"` (piper-tts, sounddevice, opencv-python)
+- **Dependencies:** `pip install -e ".[gen-ai]"` (piper-tts, sounddevice, opencv-python, webrtcvad)
 
 ## How to Run
 

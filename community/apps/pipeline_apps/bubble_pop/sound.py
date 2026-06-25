@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 _SAMPLE_RATE = 44100
 _WAV_NAME = "hailo_bubble_pop.wav"
 _CAST_WAV_NAME = "hailo_bubble_cast.wav"
-_MIN_INTERVAL_S = 0.05  # don't spawn more than ~20 players/sec
+_MIN_INTERVAL_S = 0.05  # don't spawn more than ~20 plays/sec
 
 
 def _write_wav(path: str, samples: np.ndarray) -> None:
@@ -96,10 +96,13 @@ class PopSound:
         if not self.enabled:
             return
         try:
+            # start_new_session detaches the player into its own session so it
+            # doesn't accumulate as a zombie over a long game (we never wait()).
             subprocess.Popen(
                 [self._player, wav_path],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                start_new_session=True,
             )
         except OSError as exc:
             logger.warning("Sound failed (%s) — disabling sound", exc)

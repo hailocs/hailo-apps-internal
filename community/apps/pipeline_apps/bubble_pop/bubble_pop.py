@@ -25,13 +25,17 @@ import os
 import sys
 import time
 
-# Make `community.*` importable when launched directly.
+# Direct-run fallback: make `community.*` importable when this file is run as a
+# path (`python bubble_pop.py`). The normal entry points — `run.sh` and
+# `python -m community.apps.pipeline_apps.bubble_pop.bubble_pop` — already put
+# the repo root on sys.path, so this is a no-op in those cases.
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
 )
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+# Disable the VA-API decode bin so the pipeline uses the default decoder rank.
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 import cv2

@@ -2,6 +2,7 @@
 # Standard library imports
 import os
 import sys
+import threading
 import time
 import uuid
 import setproctitle
@@ -29,7 +30,6 @@ from hailo_apps.python.core.common.installation_utils import detect_host_arch
 from hailo_apps.python.core.common.defines import (
     ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME,
     ARCFACE_MOBILEFACENET_POSTPROCESS_FUNCTION,
-    DETECTION_POSTPROCESS_SO_FILENAME,
     FACE_ALIGN_POSTPROCESS_SO_FILENAME,
     FACE_CROP_POSTPROCESS_SO_FILENAME,
     FACE_DETECTION_JSON_NAME,
@@ -39,7 +39,6 @@ from hailo_apps.python.core.common.defines import (
     REID_CLASSIFICATION_TYPE,
     REID_CROPPER_POSTPROCESS_FUNCTION,
     REID_POSTPROCESS_FUNCTION,
-    REID_POSTPROCESS_SO_FILENAME,
     RESOURCES_JSON_DIR_NAME,
     RESOURCES_SO_DIR_NAME,
     RESOURCES_VIDEOS_DIR_NAME,
@@ -87,7 +86,8 @@ class MultiEntranceTrackerApp(GStreamerApp):
             parser = get_pipeline_parser()
         parser.add_argument(
             "--sources", default='',
-            help="Comma-separated list of sources (e.g., /dev/video0,/dev/video1 or video1.mp4,video2.mp4)"
+            help="Comma-separated list of sources (e.g., usb,usb or video1.mp4,video2.mp4). "
+                 "Note: USB device order is system-dependent."
         )
         parser.add_argument(
             "--match-threshold", type=float, default=0.1,
@@ -116,14 +116,6 @@ class MultiEntranceTrackerApp(GStreamerApp):
         self.hef_path_arcface_recognition = models[1].path
 
         # Postprocess .so paths
-        self.post_process_so_yolo_detection = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=DETECTION_POSTPROCESS_SO_FILENAME
-        )
-        self.post_process_so_repvgg_reid = get_resource_path(
-            pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
-            arch=self.arch, model=REID_POSTPROCESS_SO_FILENAME
-        )
         self.post_process_so_cropper = get_resource_path(
             pipeline_name=None, resource_type=RESOURCES_SO_DIR_NAME,
             arch=self.arch, model=ALL_DETECTIONS_CROPPER_POSTPROCESS_SO_FILENAME
@@ -193,6 +185,9 @@ class MultiEntranceTrackerApp(GStreamerApp):
 
         self.tracker = HailoTracker.get_instance()
 
+        # Per-source ReID callbacks run on multiple GStreamer stream threads, so the
+        # shared entry/exit state below must be mutated under this lock.
+        self._log_lock = threading.Lock()
         # Entry/exit log: list of dicts with timestamp, person_id, entrance_id, event_type
         self.entry_exit_log = []
         # Track which entrance each person was last seen at
@@ -230,6 +225,11 @@ class MultiEntranceTrackerApp(GStreamerApp):
         router_string = ''
 
         tappas_post_process_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, '')
+        if not tappas_post_process_dir:
+            raise RuntimeError(
+                f"{TAPPAS_POSTPROC_PATH_KEY} is not set. Run 'source setup_env.sh' before "
+                "launching this app so the TAPPAS postprocess .so directory can be located."
+            )
         set_stream_id_so = os.path.join(tappas_post_process_dir, TAPPAS_STREAM_ID_TOOL_SO_FILENAME)
 
         for id in range(self.num_sources):
@@ -394,8 +394,8 @@ class MultiEntranceTrackerApp(GStreamerApp):
                 callback_function = getattr(self, f'src_{id}_callback', None)
                 identity.connect("handoff", callback_function, self.user_data)
 
-    def _log_event(self, person_label, entrance_id, event_type):
-        """Log an entry or exit event for a person at an entrance."""
+    def _append_event(self, person_label, entrance_id, event_type):
+        """Append an entry/exit event to the shared log. Caller must hold self._log_lock."""
         event = {
             'timestamp': time.time(),
             'person_id': person_label,
@@ -408,15 +408,30 @@ class MultiEntranceTrackerApp(GStreamerApp):
             event_type, person_label, entrance_id
         )
 
+    def _log_event(self, person_label, entrance_id, event_type):
+        """Log an entry or exit event for a person at an entrance (thread-safe)."""
+        with self._log_lock:
+            self._append_event(person_label, entrance_id, event_type)
+
     def _log_entrance_change(self, person_label, current_entrance_id):
-        """Log when a person is seen at a different entrance (cross-camera match)."""
-        last_entrance = self.person_last_entrance.get(person_label)
-        if last_entrance is not None and last_entrance != current_entrance_id:
-            self._log_event(person_label, last_entrance, 'exit')
-            self._log_event(person_label, current_entrance_id, 'entry')
-        self.person_last_entrance[person_label] = current_entrance_id
+        """Log when a person is seen at a different entrance (cross-camera match).
+
+        The read-modify-write on person_last_entrance and the paired exit/entry
+        appends are kept atomic under self._log_lock, since per-source callbacks
+        run concurrently on multiple GStreamer stream threads.
+        """
+        with self._log_lock:
+            last_entrance = self.person_last_entrance.get(person_label)
+            if last_entrance is not None and last_entrance != current_entrance_id:
+                self._append_event(person_label, last_entrance, 'exit')
+                self._append_event(person_label, current_entrance_id, 'entry')
+            self.person_last_entrance[person_label] = current_entrance_id
 
 
+# Smoke-test entry point only. The real entry point is multi_entrance_tracker.py
+# (run with: python -m community.apps.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker),
+# which wires up the stats-tracking MultiEntranceCallbackClass. This main() runs the
+# pipeline with a no-op callback purely to exercise the pipeline in isolation.
 def main():
     user_data = app_callback_class()
     app_callback = dummy_callback
@@ -425,5 +440,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting Multi-Entrance Tracker...")
+    print("Starting Multi-Entrance Tracker (smoke test)...")
     main()

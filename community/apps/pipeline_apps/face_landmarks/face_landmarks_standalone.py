@@ -32,12 +32,38 @@ if _REPO_ROOT not in sys.path:
 import cv2
 import numpy as np
 
-from mediapipe.tasks.python.components.containers import landmark as mp_landmark
-from mediapipe.tasks.python.vision import (
-    FaceLandmarksConnections,
-    drawing_styles,
-    drawing_utils,
-)
+# NOTE: mediapipe is a community extra required ONLY by this standalone demo
+# (the GStreamer pipeline app does not import it). It is imported lazily inside
+# main() so a missing dependency produces a clear, actionable message instead of
+# an ImportError at module load. Install with: pip install mediapipe
+mp_landmark = None
+FaceLandmarksConnections = None
+drawing_styles = None
+drawing_utils = None
+
+
+def _import_mediapipe() -> None:
+    """Import mediapipe lazily and emit a clear hint if it is not installed."""
+    global mp_landmark, FaceLandmarksConnections, drawing_styles, drawing_utils
+    try:
+        from mediapipe.tasks.python.components.containers import landmark as mp_landmark_mod
+        from mediapipe.tasks.python.vision import (
+            FaceLandmarksConnections as _FaceLandmarksConnections,
+            drawing_styles as _drawing_styles,
+            drawing_utils as _drawing_utils,
+        )
+    except ImportError as exc:
+        logger.error(
+            "mediapipe is required for the standalone demo but is not installed. "
+            "Install it with: pip install mediapipe"
+        )
+        raise SystemExit(1) from exc
+    mp_landmark = mp_landmark_mod
+    FaceLandmarksConnections = _FaceLandmarksConnections
+    drawing_styles = _drawing_styles
+    drawing_utils = _drawing_utils
+
+
 from hailo_platform import (
     HEF,
     VDevice,
@@ -323,6 +349,7 @@ def process_frame(
 
 
 def main():
+    _import_mediapipe()
     parser = argparse.ArgumentParser(
         description="Standalone face landmarks — SCRFD + face_landmarks_lite on Hailo + rotation alignment.",
     )
@@ -347,7 +374,11 @@ def main():
     args = parser.parse_args()
 
     resources = os.environ.get("HAILO_RESOURCES_PATH", "/usr/local/hailo/resources")
-    scrfd_hef = os.path.join(resources, "models", args.arch, "scrfd_10g.hef")
+    # SCRFD model is arch-specific: hailo8l runs the lighter scrfd_2.5g; hailo8
+    # and hailo10h run scrfd_10g. Mirrors the pipeline's per-arch selection in
+    # face_landmarks_pipeline.py (SCRFD_*_POSTPROCESS_FUNCTION).
+    scrfd_model = "scrfd_2.5g" if args.arch == "hailo8l" else "scrfd_10g"
+    scrfd_hef = os.path.join(resources, "models", args.arch, f"{scrfd_model}.hef")
     mesh_hef = os.path.join(resources, "models", args.arch, "face_landmarks_lite.hef")
     for path in (scrfd_hef, mesh_hef):
         if not os.path.isfile(path):
@@ -380,7 +411,10 @@ def main():
     elif args.camera is not None:
         cap = cv2.VideoCapture(args.camera)
     else:
-        default_video = "/usr/local/hailo/resources/videos/face_recognition.mp4"
+        default_video = os.path.join(
+            os.environ.get("HAILO_RESOURCES_PATH", "/usr/local/hailo/resources"),
+            "videos", "face_recognition.mp4",
+        )
         if not os.path.isfile(default_video):
             logger.error("No input. Use --video, --image, or --camera.")
             sys.exit(1)

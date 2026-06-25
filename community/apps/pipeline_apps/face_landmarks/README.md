@@ -46,6 +46,26 @@ python -m community.apps.pipeline_apps.face_landmarks.face_landmarks --show-fps
 bash community/apps/pipeline_apps/face_landmarks/run.sh --input usb
 ```
 
+## Standalone Reference Demo
+
+`face_landmarks_standalone.py` is a non-GStreamer reference (SCRFD + face_landmarks_lite
+on Hailo, MediaPipe-style rotation-aligned crop and drawing). It has one extra dependency
+not needed by the pipeline app:
+
+```bash
+pip install mediapipe   # required only by the standalone demo, for drawing utilities
+```
+
+```bash
+python -m community.apps.pipeline_apps.face_landmarks.face_landmarks_standalone --image face.jpg
+python -m community.apps.pipeline_apps.face_landmarks.face_landmarks_standalone --camera 0
+```
+
+The `mediapipe` import is deferred to runtime, so the GStreamer pipeline app
+(`face_landmarks.py`) runs without `mediapipe` installed. The standalone demo exits with a
+clear install hint if it is missing. On `hailo8l` it selects `scrfd_2.5g` automatically;
+`hailo8`/`hailo10h` use `scrfd_10g` (pass `--arch`).
+
 ## Models
 
 | Model | Runs on | Purpose | Input | FPS (Hailo-8) |
@@ -75,8 +95,8 @@ has lower CPU overhead and scales better with multiple faces.
 
 Color-coded face mesh regions on each detected face:
 - **Green** -- Face oval contour
-- **Cyan** -- Eye contours
-- **Yellow** -- Eyebrow lines
+- **Azure** (light blue) -- Eye contours
+- **Teal** -- Eyebrow lines
 - **Red** -- Lip contours
 - **Gray dots** -- Individual mesh points (468 total)
 

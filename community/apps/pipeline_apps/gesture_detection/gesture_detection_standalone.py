@@ -30,7 +30,11 @@ from hailo_platform import VDevice
 from community.apps.pipeline_apps.gesture_detection import blaze_base
 from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
 from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
-from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import (
+    classify_hand_gesture,
+    count_fingers,
+    landmarks_to_gesture_points,
+)
 
 
 # Hand skeleton connections for drawing (MediaPipe topology)
@@ -57,45 +61,6 @@ from community.apps.pipeline_apps.gesture_detection.download_models import ensur
 DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 DEFAULT_PALM_MODEL = None  # resolved in main()
 DEFAULT_HAND_MODEL = None  # resolved in main()
-
-
-class GesturePoint:
-    """Adapter to wrap numpy landmark coordinates with .x(), .y(), .confidence() interface.
-
-    This bridges the gap between the numpy-based blaze pipeline output and
-    gesture_recognition.py which expects HailoPoint-like objects.
-    """
-
-    def __init__(self, x, y, confidence=1.0):
-        self._x = float(x)
-        self._y = float(y)
-        self._confidence = float(confidence)
-
-    def x(self):
-        return self._x
-
-    def y(self):
-        return self._y
-
-    def confidence(self):
-        return self._confidence
-
-
-def landmarks_to_gesture_points(landmarks_2d):
-    """Convert (21, 2+) numpy landmarks to list of GesturePoint.
-
-    Args:
-        landmarks_2d: np.ndarray (21, 2) or (21, 3) with x, y[, z] in image pixels.
-
-    Returns:
-        List of 21 GesturePoint objects.
-    """
-    points = []
-    for i in range(21):
-        x = landmarks_2d[i, 0]
-        y = landmarks_2d[i, 1]
-        points.append(GesturePoint(x, y))
-    return points
 
 
 def draw_hand(frame, landmarks, gesture_label=None, finger_count=None, handedness=None):

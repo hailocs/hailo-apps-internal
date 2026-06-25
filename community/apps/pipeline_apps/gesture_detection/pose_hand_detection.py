@@ -59,7 +59,12 @@ _SYSTEM_SO_DIR = "/usr/local/hailo/resources/so"
 
 
 def _find_so(name):
-    """Find a postprocess .so: local build first, then system install."""
+    """Find a postprocess .so: local build first, then system install.
+
+    Called lazily (from get_pipeline_string) so that a missing .so only raises
+    when the pipeline actually starts — not at import time, which would break
+    even `--help`.
+    """
     local = os.path.join(_LOCAL_SO_DIR, name)
     if os.path.isfile(local):
         return local
@@ -70,13 +75,6 @@ def _find_so(name):
         f"{name} not found. Run postprocess/build.sh or install to {_SYSTEM_SO_DIR}"
     )
 
-
-# C++ postprocess shared libraries (gesture-specific, resolved at runtime)
-PALM_DETECTION_POST_SO = _find_so("libpalm_detection_postprocess.so")
-PALM_CROPPERS_SO = _find_so("libpalm_croppers.so")
-HAND_AFFINE_WARP_SO = _find_so("libhand_affine_warp.so")
-HAND_LANDMARK_POST_SO = _find_so("libhand_landmark_postprocess.so")
-GESTURE_CLASSIFICATION_SO = _find_so("libgesture_classification.so")
 
 # Pose keypoint indices (COCO format)
 LEFT_WRIST = 9
@@ -244,6 +242,14 @@ class GStreamerPoseHandApp(GStreamerApp):
             DISPLAY_PIPELINE,
         )
 
+        # Resolve postprocess .so paths lazily (raises only when the pipeline
+        # starts, never at import time — so `--help` always works).
+        palm_detection_post_so = _find_so("libpalm_detection_postprocess.so")
+        palm_croppers_so = _find_so("libpalm_croppers.so")
+        hand_affine_warp_so = _find_so("libhand_affine_warp.so")
+        hand_landmark_post_so = _find_so("libhand_landmark_postprocess.so")
+        gesture_classification_so = _find_so("libgesture_classification.so")
+
         # 1. Video source
         source_pipeline = SOURCE_PIPELINE(
             video_source=self.video_source,
@@ -267,7 +273,7 @@ class GStreamerPoseHandApp(GStreamerApp):
         # 3. Palm detection (wrapped to preserve original resolution)
         palm_infer = INFERENCE_PIPELINE(
             hef_path=self.palm_hef,
-            post_process_so=PALM_DETECTION_POST_SO,
+            post_process_so=palm_detection_post_so,
             batch_size=2,
             name="palm_detection",
             letterbox=True,
@@ -280,7 +286,7 @@ class GStreamerPoseHandApp(GStreamerApp):
             f"videoscale name=hand_videoscale n-threads=2 qos=false ! "
             f"video/x-raw, width=224, height=224, pixel-aspect-ratio=1/1 ! "
             f"videoconvert name=hand_videoconvert n-threads=2 ! "
-            f"hailofilter so-path={HAND_AFFINE_WARP_SO} "
+            f"hailofilter so-path={hand_affine_warp_so} "
             f"name=hand_affine_warp use-gst-buffer=true qos=false ! "
             f"{QUEUE(name='hand_hailonet_q')} ! "
             f"hailonet name=hand_landmark_hailonet "
@@ -294,7 +300,7 @@ class GStreamerPoseHandApp(GStreamerApp):
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "
             f"hailofilter name=hand_landmark_postproc "
-            f"so-path={HAND_LANDMARK_POST_SO} qos=false ! "
+            f"so-path={hand_landmark_post_so} qos=false ! "
             f"{QUEUE(name='hand_output_q')} "
         )
 
@@ -302,7 +308,7 @@ class GStreamerPoseHandApp(GStreamerApp):
         palm_cropper_pipeline = (
             f"{QUEUE(name='palm_cropper_input_q')} ! "
             f"hailocropper name=palm_cropper "
-            f"so-path={PALM_CROPPERS_SO} "
+            f"so-path={palm_croppers_so} "
             f"function-name=palm_to_hand_crop "
             f"use-letterbox=false "
             f"no-scaling-bbox=true "
@@ -317,7 +323,7 @@ class GStreamerPoseHandApp(GStreamerApp):
         # 6. Gesture classification
         gesture_filter = (
             f"{QUEUE(name='gesture_filter_q')} ! "
-            f"hailofilter so-path={GESTURE_CLASSIFICATION_SO} "
+            f"hailofilter so-path={gesture_classification_so} "
             f"name=gesture_classification qos=false "
         )
 

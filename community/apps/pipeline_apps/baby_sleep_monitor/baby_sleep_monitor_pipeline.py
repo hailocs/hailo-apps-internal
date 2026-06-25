@@ -124,12 +124,14 @@ class GStreamerBabySleepMonitorApp(GStreamerApp):
 
 
 def main():
-    hailo_logger.info("Starting Baby Sleep Monitor App main()...")
+    # Smoke-test only: runs the pipeline with a no-op callback (no sleep-position
+    # analysis or alerting). The real entry point is baby_sleep_monitor.py:main().
+    hailo_logger.info("Starting Baby Sleep Monitor App main() (smoke test)...")
     user_data = app_callback_class()
     app = GStreamerBabySleepMonitorApp(dummy_callback, user_data)
     app.run()
 
 
 if __name__ == "__main__":
-    hailo_logger.info("Launching Baby Sleep Monitor App...")
+    hailo_logger.info("Launching Baby Sleep Monitor App (smoke test)...")
     main()

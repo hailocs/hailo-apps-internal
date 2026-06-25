@@ -30,7 +30,12 @@ from hailo_platform import VDevice
 from community.apps.pipeline_apps.gesture_detection import blaze_base
 from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
 from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
-from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import (
+    classify_hand_gesture,
+    count_fingers,
+    landmarks_to_gesture_points,
+)
+from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
 
 # Hand skeleton connections for drawing (MediaPipe topology)
@@ -50,49 +55,13 @@ COLOR_SKELETON = (0, 200, 200)
 COLOR_GESTURE = (255, 255, 255)
 HAND_FLAG_THRESHOLD = 0.5
 
-# Default model paths
+# Default model paths.
+# Defaults are None and resolved at runtime against the arch-specific models
+# directory (models/<arch>/) — see __main__. The downloader writes models per
+# arch, so a flat models/ default would not exist after a successful download.
 DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
-DEFAULT_PALM_MODEL = os.path.join(DEFAULT_MODELS_DIR, "palm_detection_lite.hef")
-DEFAULT_HAND_MODEL = os.path.join(DEFAULT_MODELS_DIR, "hand_landmark_lite.hef")
-
-
-class GesturePoint:
-    """Adapter to wrap numpy landmark coordinates with .x(), .y(), .confidence() interface.
-
-    This bridges the gap between the numpy-based blaze pipeline output and
-    gesture_recognition.py which expects HailoPoint-like objects.
-    """
-
-    def __init__(self, x, y, confidence=1.0):
-        self._x = float(x)
-        self._y = float(y)
-        self._confidence = float(confidence)
-
-    def x(self):
-        return self._x
-
-    def y(self):
-        return self._y
-
-    def confidence(self):
-        return self._confidence
-
-
-def landmarks_to_gesture_points(landmarks_2d):
-    """Convert (21, 2+) numpy landmarks to list of GesturePoint.
-
-    Args:
-        landmarks_2d: np.ndarray (21, 2) or (21, 3) with x, y[, z] in image pixels.
-
-    Returns:
-        List of 21 GesturePoint objects.
-    """
-    points = []
-    for i in range(21):
-        x = landmarks_2d[i, 0]
-        y = landmarks_2d[i, 1]
-        points.append(GesturePoint(x, y))
-    return points
+DEFAULT_PALM_MODEL = None  # resolved in __main__
+DEFAULT_HAND_MODEL = None  # resolved in __main__
 
 
 def draw_hand(frame, landmarks, gesture_label=None, finger_count=None, handedness=None):
@@ -672,9 +641,9 @@ def parse_args():
     parser.add_argument("--input", type=str, default=None,
                         help="Video source: camera index (0) or video file path")
     parser.add_argument("--palm-model", type=str, default=DEFAULT_PALM_MODEL,
-                        help="Path to palm_detection_lite.hef")
+                        help="Path to palm_detection_lite.hef (auto-resolved per arch if omitted)")
     parser.add_argument("--hand-model", type=str, default=DEFAULT_HAND_MODEL,
-                        help="Path to hand_landmark_lite.hef")
+                        help="Path to hand_landmark_lite.hef (auto-resolved per arch if omitted)")
     parser.add_argument("--headless", action="store_true",
                         help="Run without display window (for benchmarking)")
     parser.add_argument("--debug", action="store_true",
@@ -686,4 +655,20 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+
+    # Resolve arch-specific model paths if not provided explicitly.
+    # The downloader writes models to models/<arch>/, so resolve against that.
+    if args.palm_model is None or args.hand_model is None:
+        from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+        arch = os.getenv("hailo_arch") or detect_hailo_arch()
+        if not arch:
+            print("ERROR: Could not detect Hailo architecture. "
+                  "Use --palm-model and --hand-model to provide HEF paths manually.")
+            sys.exit(1)
+        models_dir = ensure_models(arch)
+        if args.palm_model is None:
+            args.palm_model = os.path.join(models_dir, "palm_detection_lite.hef")
+        if args.hand_model is None:
+            args.hand_model = os.path.join(models_dir, "hand_landmark_lite.hef")
+
     run(args)

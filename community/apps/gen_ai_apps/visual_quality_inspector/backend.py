@@ -1,4 +1,5 @@
 import time
+import queue
 import multiprocessing as mp
 import numpy as np
 import cv2
@@ -145,7 +146,8 @@ class Backend:
         self._process.start()
         logger.info("VLM backend process started.")
 
-    def vlm_inference(self, image: np.ndarray, prompt: str, timeout: int = 60) -> dict:
+    def vlm_inference(self, image: np.ndarray, prompt: str, timeout: int = 60,
+                      is_bgr: bool = True) -> dict:
         """
         Run VLM inference on an image with a prompt.
 
@@ -153,12 +155,14 @@ class Backend:
             image (np.ndarray): Input image.
             prompt (str): User prompt/question.
             timeout (int, optional): Timeout in seconds. Defaults to 60.
+            is_bgr (bool, optional): Whether the input image is in BGR channel
+                order (OpenCV/USB). RPi picam2 frames are already RGB. Defaults to True.
 
         Returns:
             dict: Inference result containing answer and time.
         """
         request_data = {
-            'numpy_image': self.convert_resize_image(image),
+            'numpy_image': self.convert_resize_image(image, is_bgr=is_bgr),
             'prompts': {
                 'system_prompt': self.system_prompt,
                 'user_prompt': prompt,
@@ -184,12 +188,13 @@ class Backend:
                 logger.error(f"Backend inference error: {response['error']}")
                 return {'answer': f"Error: {response['error']}", 'time': 'error'}
             return response['result']
-        except mp.TimeoutError:
+        except queue.Empty:
             logger.warning(f"Inference timed out after {timeout} seconds.")
             self._cleanup_queues()
             return {'answer': f'Request timed out after {timeout} seconds', 'time': f'{timeout}+ seconds'}
         except Exception as e:
             logger.error(f"Queue error during inference: {e}")
+            self._cleanup_queues()
             return {'answer': f'Queue error: {str(e)}', 'time': 'error'}
 
     def _cleanup_queues(self) -> None:
@@ -206,19 +211,23 @@ class Backend:
                 break
 
     @staticmethod
-    def convert_resize_image(image_array: np.ndarray, target_size: tuple[int, int] = (336, 336)) -> np.ndarray:
+    def convert_resize_image(image_array: np.ndarray, target_size: tuple[int, int] = (336, 336),
+                             is_bgr: bool = True) -> np.ndarray:
         """
         Convert and resize image for VLM using central crop to maintain aspect ratio.
 
         Args:
-            image_array (np.ndarray): Input image (BGR).
+            image_array (np.ndarray): Input image.
             target_size (tuple[int, int], optional): Target size (width, height). Defaults to (336, 336).
+            is_bgr (bool, optional): Whether the input is BGR (OpenCV/USB) and needs
+                conversion to RGB. RPi picam2 RGB888 frames are already RGB and must
+                NOT be swapped. Defaults to True.
 
         Returns:
             np.ndarray: Resized RGB image.
         """
-        # Convert BGR to RGB if needed
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
+        # Convert BGR to RGB only for BGR sources (e.g. OpenCV/USB).
+        if is_bgr and len(image_array.shape) == 3 and image_array.shape[2] == 3:
             image_array = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
 
         h, w = image_array.shape[:2]

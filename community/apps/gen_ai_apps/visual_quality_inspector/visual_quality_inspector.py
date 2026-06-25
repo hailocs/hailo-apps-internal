@@ -60,19 +60,23 @@ class VisualQualityInspectorApp:
     in manufactured parts captured from a camera.
     """
 
-    def __init__(self, camera: Any, camera_type: str, log_file: Optional[str] = None):
+    def __init__(self, camera: Any, camera_type: str, hef_path: str,
+                 log_file: Optional[str] = None):
         """
         Initialize the Visual Quality Inspector Application.
 
         Args:
             camera (Any): Camera source (device index or connection object).
             camera_type (str): Type of camera ('usb' or 'rpi').
+            hef_path (str): Resolved path to the VLM HEF model file.
             log_file (Optional[str]): Path to log file for defect reports. None to disable.
         """
         self.camera = camera
         self.camera_type = camera_type
+        self.hef_path = hef_path
         self.log_file = log_file
         self.running = True
+        self._stopped = False
         self.executor = concurrent.futures.ThreadPoolExecutor()
         signal.signal(signal.SIGINT, self.signal_handler)
         self.frozen_frame = None
@@ -89,7 +93,10 @@ class VisualQualityInspectorApp:
         self.stop()
 
     def stop(self):
-        """Stop the application and clean up resources."""
+        """Stop the application and clean up resources (re-entrant safe)."""
+        if self._stopped:
+            return
+        self._stopped = True
         self.running = False
         if self.backend:
             self.backend.close()
@@ -193,7 +200,7 @@ class VisualQualityInspectorApp:
         # Initialize Backend
         try:
             self.backend = Backend(
-                hef_path=str(hef_path),
+                hef_path=str(self.hef_path),
                 max_tokens=MAX_TOKENS,
                 temperature=TEMPERATURE,
                 seed=SEED,
@@ -206,6 +213,9 @@ class VisualQualityInspectorApp:
             return
 
         vlm_future = None
+
+        # Source channel order: OpenCV/USB delivers BGR; picam2 RGB888 delivers RGB.
+        source_is_bgr = self.camera_type != RPI_NAME_I
 
         # Initial Prompt
         self._print_state_prompt()
@@ -221,13 +231,18 @@ class VisualQualityInspectorApp:
                         logger.error("Failed to read frame from camera")
                         break
 
-                    rgb_frame = Backend.convert_resize_image(raw_frame)
-                    frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+                    # Keep the captured frame in the camera's native channel order;
+                    # the source-format hint is passed through to the VLM at inference.
+                    frame = raw_frame
 
-                    cv2.imshow('Quality Inspector', frame)
+                    # cv2.imshow expects BGR; convert only RGB (picam2) frames for display.
+                    display_frame = frame if source_is_bgr else cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    cv2.imshow('Quality Inspector', display_frame)
                 elif self.current_state in [STATE_CAPTURED, STATE_PROCESSING, STATE_RESULT]:
                     if self.frozen_frame is not None:
-                        cv2.imshow('Quality Inspector', self.frozen_frame)
+                        frozen_display = (self.frozen_frame if source_is_bgr
+                                          else cv2.cvtColor(self.frozen_frame, cv2.COLOR_RGB2BGR))
+                        cv2.imshow('Quality Inspector', frozen_display)
 
                 # Key Handling (Window)
                 key = cv2.waitKey(25) & 0xFF
@@ -276,7 +291,8 @@ class VisualQualityInspectorApp:
                             self.backend.vlm_inference,
                             self.frozen_frame.copy(),
                             self.user_question,
-                            INFERENCE_TIMEOUT
+                            INFERENCE_TIMEOUT,
+                            source_is_bgr
                         )
 
                 elif self.current_state == STATE_PROCESSING:
@@ -294,6 +310,9 @@ class VisualQualityInspectorApp:
 
                 elif self.current_state == STATE_RESULT:
                     if user_input is not None:
+                        if user_input.strip().lower() in ['q', 'quit']:
+                            self.stop()
+                            break
                         self.current_state = STATE_STREAMING
                         self.frozen_frame = None
                         self._print_state_prompt()
@@ -364,6 +383,7 @@ if __name__ == "__main__":
     app = VisualQualityInspectorApp(
         camera=video_source,
         camera_type=source_type,
+        hef_path=hef_path,
         log_file=options_menu.results_file
     )
     app.run()

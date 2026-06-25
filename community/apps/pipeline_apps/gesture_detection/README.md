@@ -19,6 +19,7 @@ Real-time hand gesture detection and recognition using MediaPipe Blaze models on
 ## Prerequisites
 
 - Hailo-8, Hailo-8L, or Hailo-10H with `hailort` and `hailo-tappas-core` installed
+  (the C++ postprocess libraries require `hailo-tappas-core >= 3.30.0`)
 - Python 3.10+, GStreamer 1.0, OpenCV
 - hailo-apps core framework (`source setup_env.sh`)
 
@@ -83,6 +84,19 @@ Adds YOLOv8-Pose upstream for full-body skeleton. Associates detected hands with
 
 ### 4. Standalone (`gesture_detection_standalone.py`)
 Pure Python with OpenCV + HailoRT. No GStreamer dependency. Good for SSH/headless debugging. Supports `--debug` flag for per-stage visualization.
+
+### Older / Alternative Variants
+
+These predate the variants above and are kept for reference:
+
+- **`gesture_detection_h8.py`** — Standalone OpenCV variant (same approach as
+  `gesture_detection_standalone.py`) with a built-in benchmark report and `--debug`
+  per-stage visualization. Run: `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_h8`
+- **`gesture_detection_gst.py`** — Earlier GStreamer + Python-callback variant
+  (same approach as `gesture_detection.py`), attaches Hailo metadata and renders
+  via `hailooverlay`. Run: `python -m community.apps.pipeline_apps.gesture_detection.gesture_detection_gst`
+
+Both auto-detect the architecture and download the matching models on first run.
 
 ## Building the C++ Postprocess Libraries
 

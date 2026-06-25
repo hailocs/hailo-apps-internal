@@ -92,6 +92,16 @@ class GStreamerLineCrossingCounterApp(GStreamerApp):
             self.show_fps,
         )
 
+        # Validate file-based input sources up front so a missing video fails with
+        # a clear message instead of a cryptic GStreamer error mid-pipeline.
+        if self.source_type in ("file", "image") and not Path(self.video_source).exists():
+            hailo_logger.error("Input source not found: %s", self.video_source)
+            raise FileNotFoundError(
+                f"Input source not found: {self.video_source}.\n"
+                f"  - Run hailo-download-resources to fetch the default demo video, or\n"
+                f"  - pass --input <path-to-video|usb|rtsp://...>."
+            )
+
         # Override batch_size if not set via parser (default is 2 for detection)
         if self.batch_size == 1:
             self.batch_size = 2
@@ -189,6 +199,8 @@ class GStreamerLineCrossingCounterApp(GStreamerApp):
 
 
 def main():
+    # Smoke-test only: runs the pipeline with a no-op callback (no counting/overlay).
+    # The real entry point is line_crossing_counter.py:main().
     hailo_logger.info("Starting Hailo Line Crossing Counter App...")
     user_data = app_callback_class()
     app_callback = dummy_callback

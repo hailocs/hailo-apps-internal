@@ -164,7 +164,8 @@ class GStreamerDepthProximityAlertApp(GStreamerApp):
 
 
 def main():
-    # Create an instance of the user app callback class
+    # Smoke-test only: runs the pipeline with a no-op callback (no proximity
+    # analysis or alerting). The real entry point is depth_proximity_alert.py:main().
     user_data = app_callback_class()
     app_callback = dummy_callback
     app = GStreamerDepthProximityAlertApp(app_callback, user_data)
@@ -172,5 +173,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting Hailo Depth Proximity Alert App...")
+    hailo_logger.info("Starting Hailo Depth Proximity Alert App (smoke test)...")
     main()

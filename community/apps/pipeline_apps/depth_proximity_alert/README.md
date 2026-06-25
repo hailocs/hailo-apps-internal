@@ -1,6 +1,6 @@
 # Depth Proximity Alert
 
-Real-time depth-based proximity alerting using SCDepthV3 monocular depth estimation on Hailo-8. Monitors a configurable region of interest in the depth map and triggers visual/console alerts when objects enter a proximity threshold.
+Real-time depth-based proximity alerting using SCDepthV3 monocular depth estimation. Monitors a configurable region of interest in the depth map and raises console/log alerts when objects enter a proximity threshold. (Alerts are printed to the console and logged via the app logger; nothing is drawn onto the video frame.)
 
 ## Prerequisites
 
@@ -47,9 +47,9 @@ USB Camera / Video File
     |-- INFERENCE_PIPELINE (SCDepthV3 on Hailo)
     |-- Bypass (original resolution)
         |
-  USER_CALLBACK_PIPELINE  <-- Proximity alert logic here
+  USER_CALLBACK_PIPELINE  <-- Proximity alert logic here (console/log alerts only)
         |
-  DISPLAY_PIPELINE (depth map overlay + alert indicators)
+  DISPLAY_PIPELINE (depth map overlay)
 ```
 
 ## CLI Arguments

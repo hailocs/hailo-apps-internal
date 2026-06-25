@@ -1,8 +1,14 @@
 # region imports
 # Standard library imports
-import os
 import time
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+from collections import OrderedDict
+# Note: GST_PLUGIN_FEATURE_RANK is set in multi_entrance_tracker_pipeline.py (imported
+# below), which owns pipeline construction; no need to duplicate it here.
+
+# Cap on how many recent unique track IDs are retained per entrance. Track IDs are
+# only ever added (never removed), so an unbounded set would grow without limit over
+# a long-running session. We keep a bounded LRU window of recent IDs for the summary.
+MAX_TRACKED_IDS_PER_ENTRANCE = 1024
 
 # Third-party imports
 import gi
@@ -57,19 +63,27 @@ def app_callback(element, buffer, user_data):
         for classification in classifications:
             label = classification.get_label()
             confidence = classification.get_confidence()
+            # The per-source ReID callback assigns confidence=0 to brand-new (Unknown)
+            # identities and confidence = 1 - distance (> 0) when the embedding matched an
+            # existing DB record. So confidence > 0 means this face was re-identified
+            # against a previously seen identity (a cross-camera match).
             if confidence > 0:
-                # This is a cross-camera re-identification match
                 user_data.cross_camera_matches += 1
                 hailo_logger.info(
                     "Cross-camera match: stream=%s track=%d label=%s confidence=%.2f",
                     stream_id, track_id, label, confidence
                 )
 
-        # Track per-entrance counts
+        # Track per-entrance counts. Use a bounded LRU window (OrderedDict as an
+        # ordered set) so a long-running session does not retain every track_id forever.
         entrance = stream_id.replace("'", "")
         if entrance not in user_data.per_entrance_counts:
-            user_data.per_entrance_counts[entrance] = set()
-        user_data.per_entrance_counts[entrance].add(track_id)
+            user_data.per_entrance_counts[entrance] = OrderedDict()
+        tracks = user_data.per_entrance_counts[entrance]
+        tracks[track_id] = None
+        tracks.move_to_end(track_id)
+        while len(tracks) > MAX_TRACKED_IDS_PER_ENTRANCE:
+            tracks.popitem(last=False)
 
     # Periodically log summary
     current_time = time.time()
@@ -77,7 +91,7 @@ def app_callback(element, buffer, user_data):
         user_data.last_log_time = current_time
         summary_parts = []
         for entrance, tracks in user_data.per_entrance_counts.items():
-            summary_parts.append(f"{entrance}: {len(tracks)} unique faces")
+            summary_parts.append(f"{entrance}: {len(tracks)} recent unique faces")
         if summary_parts:
             hailo_logger.info(
                 "Summary | %s | Cross-camera matches: %d",

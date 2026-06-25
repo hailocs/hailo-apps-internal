@@ -71,7 +71,7 @@ def download_models(arch, output_dir=None):
 
     url = ARCH_MODEL_URLS[arch]
     print(f"Downloading blaze models for {arch} from:\n  {url}")
-    response = urllib.request.urlopen(url)
+    response = urllib.request.urlopen(url, timeout=60)
     zip_data = response.read()
     print(f"Downloaded {len(zip_data) / 1024 / 1024:.1f} MB")
 

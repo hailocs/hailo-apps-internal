@@ -150,13 +150,13 @@ class TestDrag:
     def test_drag_right(self):
         result = mouse_tool.run({"action": "drag", "direction": "right", "pixels": 300})
         assert result["ok"] is True
-        dx, dy = _fake_pyautogui.drag.call_args[0][:2]
+        dx, dy = _fake_pyautogui.dragRel.call_args[0][:2]
         assert (dx, dy) == (300, 0)
 
     def test_drag_invalid_direction(self):
         result = mouse_tool.run({"action": "drag", "direction": "diagonal", "pixels": 100})
         assert result["ok"] is False
-        _fake_pyautogui.drag.assert_not_called()
+        _fake_pyautogui.dragRel.assert_not_called()
 
 
 class TestFailsafe:

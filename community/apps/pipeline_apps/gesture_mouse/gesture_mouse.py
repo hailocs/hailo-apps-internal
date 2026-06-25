@@ -1,11 +1,11 @@
 """
-Gesture-controlled mouse using Hailo-8 hand tracking.
+Gesture-controlled mouse using Hailo (8 / 8L / 10H) hand tracking.
 
-Maps index fingertip position to screen cursor. Pinch (thumb+index) to click.
-Fist to drag. Open hand to release.
+Maps the palm center to the screen cursor. Pinch (thumb+index) to click.
+Fist while pinching to drag. Release the pinch to release the drag.
 
 Gestures:
-  - POINTING / ONE / TWO+ fingers: Move cursor (index fingertip position)
+  - POINTING / ONE / TWO+ fingers: Move cursor (palm-center position)
   - Pinch (thumb tip close to index tip): Left click
   - FIST while pinching: Drag (hold mouse button)
   - OPEN_HAND: Release drag
@@ -19,7 +19,18 @@ import math
 import time
 
 import hailo
-from pynput.mouse import Button, Controller as MouseController
+
+# pynput needs a display/input backend (X11 or Wayland) and fails to import on
+# a headless host. Defer the failure so the pipeline can still run with
+# --no-click (cursor metadata only), and so importing this module for tests or
+# inspection never hard-crashes. Button/MouseController are resolved lazily.
+try:
+    from pynput.mouse import Button, Controller as MouseController
+    _PYNPUT_IMPORT_ERROR = None
+except Exception as exc:  # ImportError, or backend/display errors on import
+    Button = None
+    MouseController = None
+    _PYNPUT_IMPORT_ERROR = exc
 
 from hailo_apps.python.core.common.buffer_utils import get_caps_from_pad
 from hailo_apps.python.core.common.hailo_logger import get_logger
@@ -51,7 +62,28 @@ class GestureMouseCallback(app_callback_class):
 
     def __init__(self):
         super().__init__()
-        self.mouse = MouseController()
+        # Create the pynput mouse controller lazily/defensively: it needs a
+        # display/input backend and can fail on headless or Wayland hosts.
+        # When it can't be created, mouse actions are skipped (with a one-time
+        # warning) instead of crashing the whole pipeline.
+        if MouseController is not None:
+            try:
+                self.mouse = MouseController()
+            except Exception as exc:  # backend/display errors at runtime
+                self.mouse = None
+                hailo_logger.warning(
+                    "Could not initialize the mouse controller (%s). Mouse "
+                    "actions are disabled. A display (X11/Wayland) is required.",
+                    exc,
+                )
+        else:
+            self.mouse = None
+            hailo_logger.warning(
+                "pynput is unavailable (%s). Mouse actions are disabled. "
+                "Install it with 'pip install pynput' and run with a display "
+                "(X11/Wayland) to enable cursor control.",
+                _PYNPUT_IMPORT_ERROR,
+            )
         # Defaults — overridden by CLI args in main()
         self.smoothing = 0.4
         self.pinch_threshold = 0.06
@@ -203,12 +235,17 @@ def app_callback(element, buffer, user_data):
         user_data.frames_without_hand += 1
         if user_data.frames_without_hand > user_data.max_frames_without_hand:
             # Release drag if hand is lost
-            if user_data.is_dragging:
+            if user_data.is_dragging and user_data.mouse is not None:
                 user_data.mouse.release(Button.left)
                 user_data.is_dragging = False
         return
 
     user_data.frames_without_hand = 0
+
+    # No usable mouse backend (headless/Wayland/missing pynput): skip all
+    # cursor and click actions. The pipeline still runs and logs gestures.
+    if user_data.mouse is None:
+        return
 
     # Anchor cursor on the palm center (rigid: wrist + 4 MCP joints) rather
     # than the index fingertip, so the pinch click doesn't pull the cursor.
@@ -249,25 +286,29 @@ def app_callback(element, buffer, user_data):
     now = time.monotonic()
 
     if is_pinching:
-        if gesture == "FIST" and not user_data.is_dragging:
+        if user_data.is_dragging:
+            # Already dragging and still pinching: hold the button down.
+            # (Do nothing — the press from a previous frame persists.)
+            pass
+        elif gesture == "FIST":
             # Start drag
             user_data.mouse.press(Button.left)
             user_data.is_dragging = True
             hailo_logger.debug("Drag started")
-        elif not user_data.is_dragging and (now - user_data.last_click_time) > user_data.click_cooldown:
+        elif (now - user_data.last_click_time) > user_data.click_cooldown:
             # Single click
             user_data.mouse.click(Button.left)
             user_data.last_click_time = now
             hailo_logger.debug("Click at (%d, %d)", int(user_data.smooth_x), int(user_data.smooth_y))
     else:
         if user_data.is_dragging:
-            # Release drag
+            # Released the pinch: release drag
             user_data.mouse.release(Button.left)
             user_data.is_dragging = False
             hailo_logger.debug("Drag released")
 
-    # Throttled status logging
-    if user_data.frame_count % 60 == 0:
+    # Throttled status logging (skip frame 0)
+    if user_data.frame_count > 0 and user_data.frame_count % 60 == 0:
         hailo_logger.info(
             "Cursor: (%d, %d) | Gesture: %s | Pinch: %.3f",
             int(user_data.smooth_x), int(user_data.smooth_y),

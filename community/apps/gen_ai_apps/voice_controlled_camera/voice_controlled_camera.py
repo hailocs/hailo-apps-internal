@@ -35,7 +35,11 @@ from typing import Optional
 import cv2
 import numpy as np
 
-os.environ["QT_QPA_PLATFORM"] = "xcb"
+# Prefer the X11 (xcb) Qt backend only on an X session. Forcing xcb on a
+# Wayland-native or headless setup breaks OpenCV's HighGUI window creation,
+# so leave QT_QPA_PLATFORM untouched in those cases.
+if os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 from hailo_platform import VDevice
 from hailo_platform.genai import LLM
@@ -50,13 +54,11 @@ from hailo_apps.python.core.common.defines import (
     VOICE_ASSISTANT_APP,
     VOICE_ASSISTANT_MODEL_NAME,
 )
-from hailo_apps.python.core.common.core import (
-    get_logger,
-    resolve_hef_path,
-)
+from hailo_apps.python.core.common.core import resolve_hef_path
 from hailo_apps.python.core.common.camera_utils import get_usb_video_devices
 from hailo_apps.python.core.common.hailo_logger import (
     add_logging_cli_args,
+    get_logger,
     init_logging,
     level_from_args,
 )
@@ -136,6 +138,7 @@ class VoiceControlledCameraApp:
         self.abort_event = threading.Event()
         self.running = True
         self.interaction = None
+        self._closed = False
 
         # Latest camera frame (shared between threads)
         self._frame_lock = threading.Lock()
@@ -144,37 +147,38 @@ class VoiceControlledCameraApp:
 
         print("Initializing AI components... (This might take a moment)")
 
-        # Suppress noisy ALSA messages during initialization
-        with redirect_stderr(StringIO()):
-            # 1. VDevice (shared across models)
-            params = VDevice.create_params()
-            params.group_id = SHARED_VDEVICE_GROUP_ID
-            self.vdevice = VDevice(params)
+        # 1. VDevice (shared across models). NOT wrapped in redirect_stderr so
+        #    genuine HailoRT init failures (e.g. device busy) surface to the user.
+        params = VDevice.create_params()
+        params.group_id = SHARED_VDEVICE_GROUP_ID
+        self.vdevice = VDevice(params)
 
-            # 2. Speech to Text (Whisper)
-            self.s2t = SpeechToTextProcessor(self.vdevice)
+        # 2. Speech to Text (Whisper)
+        self.s2t = SpeechToTextProcessor(self.vdevice)
 
-            # 3. LLM for intent classification and chat responses
-            llm_model_path = resolve_hef_path(
-                hef_path=VOICE_ASSISTANT_MODEL_NAME,
-                app_name=VOICE_ASSISTANT_APP,
-                arch=HAILO10H_ARCH,
+        # 3. LLM for intent classification and chat responses
+        llm_model_path = resolve_hef_path(
+            hef_path=VOICE_ASSISTANT_MODEL_NAME,
+            app_name=VOICE_ASSISTANT_APP,
+            arch=HAILO10H_ARCH,
+        )
+        if llm_model_path is None:
+            raise RuntimeError(
+                "Failed to resolve HEF path for LLM model. "
+                "Please ensure the model is available."
             )
-            if llm_model_path is None:
-                raise RuntimeError(
-                    "Failed to resolve HEF path for LLM model. "
-                    "Please ensure the model is available."
-                )
-            self.llm = LLM(self.vdevice, str(llm_model_path))
+        self.llm = LLM(self.vdevice, str(llm_model_path))
 
-            # 4. TTS (Piper)
-            self.tts = None
-            if not no_tts:
-                try:
+        # 4. TTS (Piper). Only the TTS/audio backend init is genuinely noisy
+        #    (ALSA chatter), so narrow the stderr suppression to just this block.
+        self.tts = None
+        if not no_tts:
+            try:
+                with redirect_stderr(StringIO()):
                     self.tts = TextToSpeechProcessor()
-                except PiperModelNotFoundError:
-                    logger.warning("Piper TTS model not found. Running without TTS.")
-                    self.tts = None
+            except PiperModelNotFoundError:
+                logger.warning("Piper TTS model not found. Running without TTS.")
+                self.tts = None
 
         # 5. VLM Backend (runs in separate process)
         vlm_model_path = resolve_hef_path(
@@ -320,8 +324,8 @@ class VoiceControlledCameraApp:
         if self.interaction:
             try:
                 self.interaction.restart_after_tts()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to restart listening after TTS: %s", e)
 
     def _handle_visual_command(self, intent: CommandIntent, user_text: str):
         """
@@ -482,7 +486,11 @@ class VoiceControlledCameraApp:
             cv2.destroyAllWindows()
 
     def close(self):
-        """Clean up all resources."""
+        """Clean up all resources. Idempotent: safe to call more than once."""
+        if self._closed:
+            return
+        self._closed = True
+
         self.running = False
 
         if self.tts:
@@ -491,16 +499,38 @@ class VoiceControlledCameraApp:
             except Exception:
                 pass
 
-        if self.vlm_backend:
+        # Release Hailo resources in dependency order: models first
+        # (LLM + VLM backend), then Whisper (s2t), then the shared VDevice.
+        # The VDevice MUST be released, otherwise it stays claimed and the
+        # next launch fails with "device busy" / OUT_OF_PHYSICAL_DEVICES.
+        if getattr(self, "vlm_backend", None):
             try:
                 self.vlm_backend.close()
             except Exception:
                 pass
 
-        try:
-            self.llm.release()
-        except Exception:
-            pass
+        if getattr(self, "llm", None):
+            try:
+                self.llm.release()
+            except Exception:
+                pass
+
+        # SpeechToTextProcessor does not expose a teardown method; release the
+        # underlying Speech2Text genai object directly if present.
+        s2t = getattr(self, "s2t", None)
+        if s2t is not None:
+            speech2text = getattr(s2t, "speech2text", None)
+            if speech2text is not None and hasattr(speech2text, "release"):
+                try:
+                    speech2text.release()
+                except Exception:
+                    pass
+
+        if getattr(self, "vdevice", None):
+            try:
+                self.vdevice.release()
+            except Exception:
+                pass
 
 
 def main():
@@ -582,6 +612,17 @@ def main():
 
     # Inject interaction into app for handshake control
     app.interaction = interaction
+
+    # Bail out early if no microphone was detected. Otherwise run() would enter
+    # the loop and the first SPACE/VAD recording attempt raises a PortAudioError.
+    if interaction.recorder.device_id is None:
+        print(
+            "\nError: No audio input device detected. A microphone is required.\n"
+            "Run 'hailo-audio-troubleshoot' to diagnose audio issues."
+        )
+        app.close()
+        camera_thread.join(timeout=2)
+        sys.exit(1)
 
     # Run the voice interaction loop (blocks until shutdown)
     interaction.run()

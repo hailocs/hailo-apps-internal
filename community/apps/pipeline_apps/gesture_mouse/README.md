@@ -1,8 +1,8 @@
 # Gesture Mouse
 
-Control your computer mouse with hand gestures using Hailo-8 accelerated hand tracking.
+Control your computer mouse with hand gestures using Hailo-accelerated hand tracking (Hailo-8 / 8L / 10H).
 
-Uses the MediaPipe Blaze palm detection + hand landmark models running on Hailo to track your index fingertip and map it to cursor position. Pinch your thumb and index finger together to click.
+Uses the MediaPipe Blaze palm detection + hand landmark models running on Hailo to track your palm center and map it to cursor position. Pinch your thumb and index finger together to click.
 
 **Supported hardware:** Hailo-8, Hailo-8L, Hailo-10H (architecture auto-detected; correct models downloaded automatically)
 
@@ -34,10 +34,10 @@ python community/apps/pipeline_apps/gesture_mouse/gesture_mouse.py --input path/
 
 | Gesture | Action |
 |---------|--------|
-| Point / any fingers up | Move cursor (index fingertip tracks position) |
+| Point / any fingers up | Move cursor (palm center tracks position) |
 | Pinch (thumb + index close) | Left click |
 | Fist while pinching | Start drag (hold left button) |
-| Open hand after drag | Release drag |
+| Release the pinch (open fingers) | Release drag |
 
 ## Architecture
 
@@ -58,7 +58,7 @@ Gesture Classification (C++)
     |
     v
 Python Callback:
-  - Extract index fingertip (keypoint 8)
+  - Compute palm center (wrist + 4 MCP joints: keypoints 0,5,9,13,17)
   - Map to screen coordinates (mirrored, speed-scaled)
   - Exponential smoothing for stable cursor
   - Pinch detection (thumb-index distance)
@@ -68,7 +68,7 @@ Python Callback:
 Display (with overlay showing hand skeleton)
 ```
 
-All inference and pre/post processing runs in C++ on the Hailo-8 NPU. The Python callback only reads the metadata and controls the mouse — it adds negligible latency.
+All inference and pre/post processing runs in C++ on the Hailo NPU. The Python callback only reads the metadata and controls the mouse — it adds negligible latency.
 
 ## CLI Arguments
 

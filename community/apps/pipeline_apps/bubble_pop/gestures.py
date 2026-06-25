@@ -47,7 +47,10 @@ class PersonPose:
     def mirrored(self, width: int) -> "PersonPose":
         def flip(p):
             return (width - p[0], p[1]) if p else None
-        return PersonPose(flip(self.left_wrist), flip(self.right_wrist),
+        # A horizontal flip swaps the sides: the anatomically-right wrist now
+        # appears on the left of the mirrored frame, so swap the L/R slots to
+        # keep the labels matching the on-screen side (per-hand cooldown keys).
+        return PersonPose(flip(self.right_wrist), flip(self.left_wrist),
                           flip(self.nose), self.shoulder_width)
 
     @property

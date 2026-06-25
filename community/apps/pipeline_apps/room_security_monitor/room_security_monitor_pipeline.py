@@ -111,8 +111,8 @@ class GStreamerRoomSecurityMonitorApp(GStreamerApp):
             self.algo_params = json.load(json_file)
 
         self.skip_frames = self.algo_params['skip_frames']
-        self.lance_db_vector_search_classificaiton_confidence_threshold = (
-            self.algo_params['lance_db_vector_search_classificaiton_confidence_threshold']
+        self.lance_db_vector_search_classification_confidence_threshold = (
+            self.algo_params['lance_db_vector_search_classification_confidence_threshold']
         )
         self.batch_size = self.algo_params['batch_size']
 
@@ -129,7 +129,7 @@ class GStreamerRoomSecurityMonitorApp(GStreamerApp):
             db_name='persons.db',
             table_name='persons',
             schema=Record,
-            threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
+            threshold=self.lance_db_vector_search_classification_confidence_threshold,
             database_dir=self.database_dir,
             samples_dir=self.samples_dir,
         )
@@ -225,6 +225,23 @@ class GStreamerRoomSecurityMonitorApp(GStreamerApp):
             t.start()
             self.threads.append(t)
         # endregion
+
+    def shutdown(self, signum=None, frame=None):
+        """Tear down the pipeline, then drain and join the image-saving workers.
+
+        The worker threads block on ``task_queue.get()``; without a sentinel
+        the base-class join loop would hang and in-flight JPEG saves could be
+        interrupted mid-write. Enqueue one ``None`` per worker and wait for the
+        queue to drain so all pending images are written cleanly.
+        """
+        already_shutting_down = getattr(self, '_shutting_down', False)
+        super().shutdown(signum, frame)
+        if already_shutting_down:
+            return
+        # Let workers finish any queued saves, then signal them to exit.
+        self.task_queue.join()
+        for _ in range(self.num_worker_threads):
+            self.task_queue.put(None)
 
     def get_pipeline_string(self):
         """Build the GStreamer pipeline string for room security monitoring."""

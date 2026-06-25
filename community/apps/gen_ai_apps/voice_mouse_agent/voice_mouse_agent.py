@@ -17,7 +17,6 @@ Usage:
 
 import argparse
 import json
-import signal
 import sys
 import traceback
 from io import StringIO
@@ -100,7 +99,7 @@ class VoiceMouseAgent:
         self.tools_lookup = {tool["name"]: tool}
         self.interaction = None
 
-        print("Initializing AI components...")
+        logger.info("Initializing AI components...")
 
         # Suppress ALSA noise during initialization
         with redirect_stderr(StringIO()):
@@ -118,7 +117,7 @@ class VoiceMouseAgent:
         # 4. Initialize LLM context with system prompt and few-shot examples
         self._init_context()
 
-        print("AI components ready!")
+        logger.info("AI components ready!")
 
     def _init_context(self) -> None:
         """Initialize the LLM context with system prompt and few-shot examples."""
@@ -240,7 +239,6 @@ class VoiceMouseAgent:
         except Exception as e:
             logger.error("LLM generation failed: %s", e)
             logger.debug("Traceback: %s", traceback.format_exc())
-            print(f"[Error] LLM generation failed: {e}")
             return
 
         # Parse tool call from response
@@ -267,7 +265,6 @@ class VoiceMouseAgent:
             tool_execution.print_tool_result(result)
         except Exception as e:
             logger.error("Tool execution failed: %s", e)
-            print(f"[Error] Tool execution failed: {e}")
 
     def on_processing_start(self) -> None:
         """Callback when processing starts."""
@@ -327,9 +324,11 @@ def create_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     """Main entry point."""
-    # Graceful shutdown on Ctrl+C
-    signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-
+    # Note: do NOT override SIGINT here. The previous sys.exit(0) handler raised
+    # SystemExit, which VoiceInteractionManager.run() does not catch (it handles
+    # KeyboardInterrupt / Ctrl+C itself), so app.close() never ran and the
+    # VDevice/LLM leaked. We let the default Ctrl+C handling flow through and
+    # guarantee cleanup via the try/finally below.
     parser = create_parser()
     handle_list_models_flag(parser, AGENT_APP)
     args = parser.parse_args()
@@ -382,6 +381,7 @@ def main() -> None:
     print("Examples: 'move left 200 pixels', 'click', 'scroll down', 'drag right 300'")
     print("Press Ctrl+C to quit.\n")
 
+    app = None
     try:
         app = VoiceMouseAgent(
             llm_hef_path=llm_hef_path,
@@ -398,6 +398,12 @@ def main() -> None:
         logger.error("Agent failed: %s", e)
         logger.debug(traceback.format_exc())
         sys.exit(1)
+    finally:
+        # Guarantee VDevice/LLM release even if run() raised or was interrupted.
+        # close() is idempotent (each release is guarded), so a second call after
+        # VoiceInteractionManager's on_shutdown is harmless.
+        if app is not None:
+            app.close()
 
 
 if __name__ == "__main__":

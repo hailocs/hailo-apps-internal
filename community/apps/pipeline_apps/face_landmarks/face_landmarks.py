@@ -185,6 +185,10 @@ class FaceLandmarksCallback(app_callback_class):
 
     def __init__(self):
         super().__init__()
+        # Deliberately replace the base class's frame_queue (maxsize=3, drop-newest
+        # via set_frame's `if not full`) with a slightly deeper queue. Combined with
+        # the overridden set_frame below, this gives drop-OLDEST (always-latest-frame)
+        # semantics so the display never lags behind live landmark drawing.
         self.frame_queue = multiprocessing.Queue(maxsize=5)
         self.landmark_model: FaceLandmarkInference | None = None
         self.pipeline_mode: str = "gstreamer"

@@ -53,6 +53,9 @@ KEYPOINTS = {
     "right_ankle": 16,
 }
 
+# Minimum per-keypoint confidence to treat a landmark as detected/visible.
+KEYPOINT_CONF_THRESHOLD = 0.5
+
 # Sleep position status levels
 STATUS_SAFE = "SAFE"
 STATUS_WARNING = "WARNING"
@@ -94,6 +97,13 @@ def analyze_sleep_position(landmarks, bbox, frame_width, frame_height):
         pt = points[idx]
         return get_keypoint_pixel_coords(pt, bbox, frame_width, frame_height)
 
+    def visible(name):
+        # Prefer the keypoint's own confidence score over the old "is it at the
+        # origin?" heuristic, which gave false negatives for keypoints that
+        # legitimately landed near (0, 0).
+        idx = KEYPOINTS[name]
+        return points[idx].confidence() >= KEYPOINT_CONF_THRESHOLD
+
     nose_x, nose_y = kp("nose")
     left_eye_x, left_eye_y = kp("left_eye")
     right_eye_x, right_eye_y = kp("right_eye")
@@ -102,15 +112,10 @@ def analyze_sleep_position(landmarks, bbox, frame_width, frame_height):
     left_hip_x, left_hip_y = kp("left_hip")
     right_hip_x, right_hip_y = kp("right_hip")
 
-    # Check if keypoints have valid (non-zero) confidence by checking if they
-    # are not at the origin. A point at (0, 0) likely means it was not detected.
-    nose_visible = not (nose_x == 0 and nose_y == 0)
-    left_eye_visible = not (left_eye_x == 0 and left_eye_y == 0)
-    right_eye_visible = not (right_eye_x == 0 and right_eye_y == 0)
-    shoulders_visible = not (
-        (left_shoulder_x == 0 and left_shoulder_y == 0)
-        or (right_shoulder_x == 0 and right_shoulder_y == 0)
-    )
+    nose_visible = visible("nose")
+    left_eye_visible = visible("left_eye")
+    right_eye_visible = visible("right_eye")
+    shoulders_visible = visible("left_shoulder") and visible("right_shoulder")
 
     # DANGER: Face-down detection
     # If the nose is not visible but shoulders are, the baby may be face-down
@@ -194,13 +199,10 @@ class BabySleepCallbackData(app_callback_class):
             return  # Alert already playing
 
         def _play_alert():
+            # A terminal bell ("\a") is silent under most desktop/GUI environments,
+            # so emit a clear log WARNING instead. For an actual audible alert,
+            # wire in real audio playback here (see README "Audio alerts").
             hailo_logger.warning("ALERT: Unsafe sleeping position detected!")
-            # Use system bell as a simple audio alert
-            # In production, replace with a proper audio file playback
-            print("\a")  # Terminal bell
-            for _ in range(3):
-                print("\a")
-                time.sleep(0.5)
 
         self._alert_thread = threading.Thread(target=_play_alert, daemon=True)
         self._alert_thread.start()
@@ -295,13 +297,14 @@ def app_callback(element, buffer, user_data):
                         3,
                     )
 
-                # Draw keypoints for debugging
+                # Draw keypoints for debugging (only those above the confidence threshold)
                 points = landmarks[0].get_points()
                 for name, idx in KEYPOINTS.items():
                     pt = points[idx]
+                    if pt.confidence() < KEYPOINT_CONF_THRESHOLD:
+                        continue
                     px, py = get_keypoint_pixel_coords(pt, bbox, width, height)
-                    if not (px == 0 and py == 0):
-                        cv2.circle(frame, (px, py), 4, (0, 255, 0), -1)
+                    cv2.circle(frame, (px, py), 4, (0, 255, 0), -1)
         else:
             user_data.update_status(STATUS_WARNING, "No landmarks detected")
     else:
@@ -311,11 +314,15 @@ def app_callback(element, buffer, user_data):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         user_data.set_frame(frame)
 
-    # Print status periodically (every 30 frames)
-    if user_data.get_count() % 30 == 0:
-        print(
-            f"[Frame {user_data.get_count()}] "
-            f"Status: {user_data.current_status} - {user_data.current_reason}"
+    # Log status periodically (every 30 frames; skip frame 0 so the very first
+    # frame — before any meaningful state — does not emit a status line).
+    frame_count = user_data.get_count()
+    if frame_count > 0 and frame_count % 30 == 0:
+        hailo_logger.info(
+            "[Frame %d] Status: %s - %s",
+            frame_count,
+            user_data.current_status,
+            user_data.current_reason,
         )
 
     return

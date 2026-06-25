@@ -2,6 +2,7 @@
 # Standard library imports
 import os
 import time
+from collections import deque
 
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
@@ -47,8 +48,10 @@ class ProximityAlertCallback(app_callback_class):
         self.alert_region = alert_region
         self.last_alert_time = 0.0
         self.alert_active = False
-        self.min_depth_history = []
         self.history_max_len = 10  # Smoothing window
+        # Bounded ring buffer: appending past maxlen drops the oldest sample,
+        # so no manual pop(0) is needed.
+        self.min_depth_history = deque(maxlen=self.history_max_len)
 
     def get_region_depth(self, depth_data):
         """Extract depth values from the region of interest.
@@ -109,10 +112,8 @@ class ProximityAlertCallback(app_callback_class):
             hailo_logger.exception("Percentile computation failed.")
             return False, 0.0, 0.0
 
-        # Smooth over recent frames
+        # Smooth over recent frames (deque drops the oldest sample automatically)
         self.min_depth_history.append(current_min_depth)
-        if len(self.min_depth_history) > self.history_max_len:
-            self.min_depth_history.pop(0)
 
         smoothed_min_depth = float(np.mean(self.min_depth_history))
 
@@ -162,8 +163,8 @@ def app_callback(element, buffer, user_data):
     # Get depth values in the region of interest
     region_depth = user_data.get_region_depth(depth_data)
 
-    # Check proximity
-    is_alert, smoothed_depth, current_depth = user_data.check_proximity(region_depth)
+    # Check proximity (current per-frame min is unused here — only the smoothed value drives alerts)
+    is_alert, smoothed_depth, _ = user_data.check_proximity(region_depth)
 
     # Calculate overall average depth for display
     average_depth = user_data.calculate_average_depth(depth_data)
@@ -177,11 +178,12 @@ def app_callback(element, buffer, user_data):
         f"Threshold: {user_data.proximity_threshold:.3f}",
     ]
 
-    # Alert logic with cooldown
+    # Alert logic with cooldown. Fire the alert immediately when proximity is
+    # first detected (and after each cooldown window) rather than waiting for the
+    # periodic status print, so there is no perceptible delay before the warning.
     now = time.monotonic()
     if is_alert:
         if not user_data.alert_active or (now - user_data.last_alert_time) >= ALERT_COOLDOWN_SECONDS:
-            status_lines.append("** PROXIMITY ALERT! Object too close! **")
             user_data.last_alert_time = now
             user_data.alert_active = True
             hailo_logger.warning(
@@ -190,10 +192,11 @@ def app_callback(element, buffer, user_data):
                 smoothed_depth,
                 user_data.proximity_threshold,
             )
+            print("** PROXIMITY ALERT! Object too close! **", flush=True)
     else:
         if user_data.alert_active:
-            status_lines.append("Alert cleared.")
             hailo_logger.info("Proximity alert cleared at frame %d", frame_count)
+            print("Proximity alert cleared.", flush=True)
         user_data.alert_active = False
 
     if frame_count % 30 == 0:
@@ -229,6 +232,24 @@ def main():
 
     # Pre-parse to get our custom args
     args, _ = parser.parse_known_args()
+
+    # Validate normalized [0, 1] ranges before building the pipeline.
+    if not 0.0 <= args.proximity_threshold <= 1.0:
+        parser.error(
+            f"--proximity-threshold must be in [0.0, 1.0] (got {args.proximity_threshold})"
+        )
+    if args.alert_region is not None:
+        rx, ry, rw, rh = args.alert_region
+        if not all(0.0 <= v <= 1.0 for v in args.alert_region):
+            parser.error(
+                "--alert-region values (x y w h) must each be in [0.0, 1.0] "
+                f"(got {args.alert_region})"
+            )
+        if rx + rw > 1.0 or ry + rh > 1.0:
+            parser.error(
+                "--alert-region must stay within the frame: x+w and y+h must be <= 1.0 "
+                f"(got x+w={rx + rw:.3f}, y+h={ry + rh:.3f})"
+            )
 
     user_data = ProximityAlertCallback(
         proximity_threshold=args.proximity_threshold,

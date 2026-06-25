@@ -2,6 +2,13 @@
 
 Real-time people counting application that detects when persons cross a virtual vertical line in the video frame. Uses a zone-based approach: a narrow band around the counting line tracks when a person enters from one side and exits from the other. This means a person only needs to pass through the zone, not be visible across the entire frame.
 
+## Line Crossing Counter vs. Crowd Counting
+
+This repo ships two people-counting apps — pick the one that matches your scene:
+
+- **Line Crossing Counter (this app)**: a **vertical** line with a zone-hysteresis state machine. A crossing is counted only after a tracked person *enters* the counting band from one side and *exits* it on the opposite side. The hysteresis makes it robust to jitter near the line, so it is the better choice when people loiter, pause, or hover around the threshold.
+- **crowd_counting**: a **horizontal** line using a simple per-frame delta — it counts a crossing the instant a tracked center moves across the line between consecutive frames. Lighter weight and ideal for clean, one-directional flow, but more sensitive to jitter at the line.
+
 ## How It Works
 
 1. **Detection**: YOLOv8 detects persons in each frame via the Hailo accelerator.

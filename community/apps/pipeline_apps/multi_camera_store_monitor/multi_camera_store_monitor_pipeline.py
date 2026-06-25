@@ -64,8 +64,8 @@ class GStreamerStoreMonitorApp(GStreamerApp):
             default="",
             help=(
                 "Comma-separated list of video sources for the 3 store cameras. "
-                "e.g., /dev/video0,/dev/video2,/dev/video4 or "
-                "entrance.mp4,checkout.mp4,stockroom.mp4"
+                "e.g., usb,usb,usb (auto-detect USB cameras; device order is "
+                "system-dependent) or entrance.mp4,checkout.mp4,stockroom.mp4"
             ),
         )
         parser.add_argument(
@@ -141,6 +141,12 @@ class GStreamerStoreMonitorApp(GStreamerApp):
         router_string = ""
 
         tappas_post_process_dir = os.environ.get(TAPPAS_POSTPROC_PATH_KEY, "")
+        if not tappas_post_process_dir:
+            raise RuntimeError(
+                f"{TAPPAS_POSTPROC_PATH_KEY} is not set. Run 'source setup_env.sh' "
+                "before launching the app so the TAPPAS post-process .so directory "
+                "(needed for the per-source stream-id tool) can be located."
+            )
         set_stream_id_so = os.path.join(
             tappas_post_process_dir, TAPPAS_STREAM_ID_TOOL_SO_FILENAME
         )
@@ -202,6 +208,15 @@ class GStreamerStoreMonitorApp(GStreamerApp):
 
 
 def main():
+    """Smoke-test entry point only.
+
+    The real application entry point is
+    multi_camera_store_monitor.multi_camera_store_monitor:main, which wires up
+    the StoreMonitorCallback (per-camera counts, zone alerts, summaries). This
+    main() runs the pipeline with a no-op dummy_callback so the pipeline graph
+    can be exercised standalone, e.g.:
+        python -m community.apps.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor_pipeline
+    """
     # Create an instance of the user app callback class
     user_data = app_callback_class()
     app_callback_fn = dummy_callback
@@ -210,5 +225,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting Hailo Multi-Camera Store Monitor...")
+    print("Starting Hailo Multi-Camera Store Monitor (pipeline smoke test)...")
     main()

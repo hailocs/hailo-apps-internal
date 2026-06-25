@@ -1,10 +1,11 @@
 # region imports
 # Standard library imports
-import os
+import threading
 import time
 from collections import defaultdict
 
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+# Note: GST_PLUGIN_FEATURE_RANK is set once in multi_camera_store_monitor_pipeline.py
+# (imported below), so it does not need to be repeated here.
 
 # Third-party imports
 import gi
@@ -57,6 +58,11 @@ class StoreMonitorCallback(app_callback_class):
         self.alert_active = defaultdict(bool)
         # Summary timing
         self.last_summary_time = time.time()
+        # app_callback runs concurrently on multiple GStreamer stream threads;
+        # this lock guards the check-then-write on last_summary_time (and the
+        # summary print) to prevent a TOCTOU race that produces repeated or
+        # garbled summary output.
+        self.summary_lock = threading.Lock()
 
 
 def app_callback(element, buffer, user_data):
@@ -119,33 +125,37 @@ def app_callback(element, buffer, user_data):
             )
             user_data.alert_active[stream_id] = False
 
-    # Periodic summary
+    # Periodic summary. This callback runs on multiple stream threads at once,
+    # so guard the check-then-write on last_summary_time with a lock: exactly
+    # one thread crosses the interval boundary and prints the summary.
     now = time.time()
-    if now - user_data.last_summary_time >= SUMMARY_INTERVAL:
-        user_data.last_summary_time = now
-        print("\n--- Store Monitor Summary ---")
-        for sid in sorted(user_data.current_counts.keys()):
-            cam = CAMERA_NAMES.get(sid, sid)
-            current = user_data.current_counts[sid]
-            maximum = user_data.max_counts[sid]
-            frames = user_data.frame_counts_per_camera[sid]
-            avg = user_data.total_counts[sid] / frames if frames > 0 else 0.0
-            alert_status = " [ALERT]" if user_data.alert_active[sid] else ""
-            print(
-                f"  {cam:12s}: current={current:3d}, max={maximum:3d}, avg={avg:.1f}{alert_status}"
-            )
-        print("-----------------------------\n")
+    with user_data.summary_lock:
+        do_summary = now - user_data.last_summary_time >= SUMMARY_INTERVAL
+        if do_summary:
+            user_data.last_summary_time = now
+            print("\n--- Store Monitor Summary ---")
+            for sid in sorted(user_data.current_counts.keys()):
+                cam = CAMERA_NAMES.get(sid, sid)
+                current = user_data.current_counts[sid]
+                maximum = user_data.max_counts[sid]
+                frames = user_data.frame_counts_per_camera[sid]
+                avg = user_data.total_counts[sid] / frames if frames > 0 else 0.0
+                alert_status = " [ALERT]" if user_data.alert_active[sid] else ""
+                print(
+                    f"  {cam:12s}: current={current:3d}, max={maximum:3d}, avg={avg:.1f}{alert_status}"
+                )
+            print("-----------------------------\n")
 
     return
 
 
 def main():
     hailo_logger.info("Starting Multi-Camera Store Monitor.")
-    user_data = StoreMonitorCallback(person_threshold=0.5)
+    user_data = StoreMonitorCallback()
     app = GStreamerStoreMonitorApp(app_callback, user_data)
-    # Override person_threshold from CLI if provided
-    if hasattr(app, 'person_threshold'):
-        user_data.person_threshold = app.person_threshold
+    # The pipeline parses --person-threshold during construction, so propagate
+    # the resolved CLI value into the callback state (overriding the default).
+    user_data.person_threshold = app.person_threshold
     app.run()
 
 

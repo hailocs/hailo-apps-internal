@@ -44,7 +44,6 @@ sys.modules.setdefault(
 
 from community.apps.pipeline_apps.room_security_monitor.room_security_monitor import (
     ALARM_COOLDOWN_SECONDS,
-    MAX_ENROLLABLE_PER_TRACK,
     SecurityCallbackClass,
 )
 
@@ -64,7 +63,7 @@ class TestAlgoParamsSchema:
         "blurriness_tolerance",
         "procrustes_distance_threshold",
         "skip_frames",
-        "lance_db_vector_search_classificaiton_confidence_threshold",
+        "lance_db_vector_search_classification_confidence_threshold",
         "batch_size",
         "unknown_alarm_cooldown_seconds",
     }
@@ -86,7 +85,7 @@ class TestAlgoParamsSchema:
 
     def test_confidence_threshold_in_unit_range(self):
         params = json.loads(ALGO_PARAMS_PATH.read_text())
-        t = params["lance_db_vector_search_classificaiton_confidence_threshold"]
+        t = params["lance_db_vector_search_classification_confidence_threshold"]
         assert 0.0 <= t <= 1.0
 
     def test_procrustes_distance_threshold_reasonable(self):
@@ -194,6 +193,3 @@ class TestAccessLog:
 class TestConstants:
     def test_alarm_cooldown_positive(self):
         assert ALARM_COOLDOWN_SECONDS > 0
-
-    def test_max_enrollable_positive(self):
-        assert MAX_ENROLLABLE_PER_TRACK > 0

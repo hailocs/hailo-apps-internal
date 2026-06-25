@@ -7,11 +7,19 @@ All actions execute on the local machine's display.
 
 from typing import Any
 
-import pyautogui
+# pyautogui imports a display backend at import time and raises on a headless
+# host (no DISPLAY / Wayland). Defer the hard failure to run() so this module
+# can be imported (and its tool schema discovered) without a display.
+try:
+    import pyautogui
 
-# Disable pyautogui's built-in pause and failsafe for responsiveness
-pyautogui.PAUSE = 0.05
-pyautogui.FAILSAFE = True  # Move mouse to corner to abort
+    # Disable pyautogui's built-in pause and failsafe for responsiveness
+    pyautogui.PAUSE = 0.05
+    pyautogui.FAILSAFE = True  # Move mouse to corner to abort
+    _PYAUTOGUI_IMPORT_ERROR: Exception | None = None
+except Exception as e:  # ImportError, KeyError, or backend errors on headless
+    pyautogui = None
+    _PYAUTOGUI_IMPORT_ERROR = e
 
 name: str = "mouse_control"
 
@@ -95,6 +103,16 @@ def run(input_data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dictionary with 'ok' and 'result' or 'error'.
     """
+    if pyautogui is None:
+        return {
+            "ok": False,
+            "error": (
+                "pyautogui is unavailable. Install it (`pip install pyautogui`) and "
+                "run on a machine with an active display (X11 / XWayland). "
+                f"Import error: {_PYAUTOGUI_IMPORT_ERROR}"
+            ),
+        }
+
     action = input_data.get("action", "").strip().lower()
 
     if not action:
@@ -208,7 +226,9 @@ def _handle_drag(data: dict[str, Any]) -> dict[str, Any]:
     dy = dy_mult * pixels
 
     start_pos = pyautogui.position()
-    pyautogui.drag(dx, dy, duration=0.3)
+    # Use dragRel for an explicitly relative drag; pyautogui.drag() is absolute
+    # on some versions.
+    pyautogui.dragRel(dx, dy, duration=0.3)
     end_pos = pyautogui.position()
     return {
         "ok": True,

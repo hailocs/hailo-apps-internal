@@ -40,16 +40,15 @@ from hailo_apps.python.core.common.core import get_pipeline_parser
 from community.apps.pipeline_apps.gesture_detection import blaze_base
 from community.apps.pipeline_apps.gesture_detection.blaze_palm_detector import BlazePalmDetector
 from community.apps.pipeline_apps.gesture_detection.blaze_hand_landmark import BlazeHandLandmark
-from community.apps.pipeline_apps.gesture_detection.gesture_recognition import classify_hand_gesture, count_fingers
-from community.apps.pipeline_apps.gesture_detection.gesture_detection_h8 import landmarks_to_gesture_points
+from community.apps.pipeline_apps.gesture_detection.gesture_recognition import (
+    classify_hand_gesture,
+    count_fingers,
+    landmarks_to_gesture_points,
+)
+from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
 hailo_logger = get_logger(__name__)
 # endregion imports
-
-# Model paths
-MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
-DEFAULT_PALM_MODEL = os.path.join(MODELS_DIR, "palm_detection_lite.hef")
-DEFAULT_HAND_MODEL = os.path.join(MODELS_DIR, "hand_landmark_lite.hef")
 
 # Hand skeleton connections for hailooverlay drawing
 HAND_CONNECTIONS = [
@@ -67,14 +66,14 @@ HAND_FLAG_THRESHOLD = 0.5
 class GestureAppCallback(app_callback_class):
     """Callback class holding the blaze models (shared VDevice)."""
 
-    def __init__(self):
+    def __init__(self, palm_model, hand_model):
         super().__init__()
-        hailo_logger.info("Loading palm detection model: %s", DEFAULT_PALM_MODEL)
-        hailo_logger.info("Loading hand landmark model: %s", DEFAULT_HAND_MODEL)
+        hailo_logger.info("Loading palm detection model: %s", palm_model)
+        hailo_logger.info("Loading hand landmark model: %s", hand_model)
 
         self.vdevice = VDevice()
-        self.palm_detector = BlazePalmDetector(DEFAULT_PALM_MODEL, vdevice=self.vdevice)
-        self.hand_landmark = BlazeHandLandmark(DEFAULT_HAND_MODEL, vdevice=self.vdevice)
+        self.palm_detector = BlazePalmDetector(palm_model, vdevice=self.vdevice)
+        self.hand_landmark = BlazeHandLandmark(hand_model, vdevice=self.vdevice)
         self.config = blaze_base.PALM_MODEL_CONFIG
 
         hailo_logger.info("Blaze models loaded successfully.")
@@ -259,7 +258,22 @@ class GStreamerGestureApp(GStreamerApp):
 
 def main():
     hailo_logger.info("Starting GStreamer Gesture Detection App.")
-    user_data = GestureAppCallback()
+
+    # Resolve arch-specific model paths. The downloader writes models to
+    # models/<arch>/, so resolve against the detected architecture.
+    from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
+    arch = os.getenv("hailo_arch") or detect_hailo_arch()
+    if not arch:
+        hailo_logger.error(
+            "Could not detect Hailo architecture. "
+            "Set the hailo_arch environment variable to run this app."
+        )
+        raise RuntimeError("Hailo architecture detection failed")
+    models_dir = ensure_models(arch)
+    palm_model = os.path.join(models_dir, "palm_detection_lite.hef")
+    hand_model = os.path.join(models_dir, "hand_landmark_lite.hef")
+
+    user_data = GestureAppCallback(palm_model, hand_model)
     app = GStreamerGestureApp(app_callback, user_data)
     app.run()
 

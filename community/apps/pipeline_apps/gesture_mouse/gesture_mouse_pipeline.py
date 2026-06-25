@@ -35,15 +35,30 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
 hailo_logger = get_logger(__name__)
 
 # Reuse the community gesture_detection download/model infrastructure
+import community.apps.pipeline_apps.gesture_detection.download_models as _gd_download
 from community.apps.pipeline_apps.gesture_detection.download_models import ensure_models
 
-# Post-process shared libraries
-SO_DIR = "/usr/local/hailo/resources/so"
-PALM_DETECTION_POST_SO = os.path.join(SO_DIR, "libpalm_detection_postprocess.so")
-PALM_CROPPERS_SO = os.path.join(SO_DIR, "libpalm_croppers.so")
-HAND_AFFINE_WARP_SO = os.path.join(SO_DIR, "libhand_affine_warp.so")
-HAND_LANDMARK_POST_SO = os.path.join(SO_DIR, "libhand_landmark_postprocess.so")
-GESTURE_CLASSIFICATION_SO = os.path.join(SO_DIR, "libgesture_classification.so")
+# Post-process shared libraries. They are built by the sibling gesture_detection
+# app (this app reuses its C++ filters), so prefer that local build dir, then
+# fall back to the system install. Resolved lazily so a missing build/install
+# doesn't crash at import time (e.g. when only running unit tests).
+_GD_DIR = os.path.dirname(os.path.abspath(_gd_download.__file__))
+_LOCAL_SO_DIR = os.path.join(_GD_DIR, "postprocess", "build")
+_SYSTEM_SO_DIR = "/usr/local/hailo/resources/so"
+
+
+def _find_so(name):
+    """Find a postprocess .so: local build first, then system install."""
+    local = os.path.join(_LOCAL_SO_DIR, name)
+    if os.path.isfile(local):
+        return local
+    system = os.path.join(_SYSTEM_SO_DIR, name)
+    if os.path.isfile(system):
+        return system
+    raise FileNotFoundError(
+        f"{name} not found. Build it in the gesture_detection app "
+        f"(postprocess/build.sh) or install it to {_SYSTEM_SO_DIR}"
+    )
 
 
 class GStreamerGestureMouseApp(GStreamerApp):
@@ -82,7 +97,11 @@ class GStreamerGestureMouseApp(GStreamerApp):
         super().__init__(parser, user_data)
         setproctitle.setproctitle("gesture_mouse")
 
-        # Resolve arch-specific gesture model paths
+        # Resolve arch-specific gesture model paths.
+        # NOTE: these MediaPipe Blaze HEFs are community models managed by the
+        # sibling gesture_detection app's ensure_models(), not the standard
+        # hailo_apps model store, so they are joined directly rather than via
+        # resolve_hef_path().
         models_dir = ensure_models(self.arch)
         self.palm_hef = self.options_menu.palm_hef or os.path.join(
             models_dir, "palm_detection_lite.hef")
@@ -94,6 +113,13 @@ class GStreamerGestureMouseApp(GStreamerApp):
         hailo_logger.info("Gesture mouse pipeline created.")
 
     def get_pipeline_string(self):
+        # Resolve postprocess .so paths lazily (deferred from import time).
+        palm_detection_post_so = _find_so("libpalm_detection_postprocess.so")
+        palm_croppers_so = _find_so("libpalm_croppers.so")
+        hand_affine_warp_so = _find_so("libhand_affine_warp.so")
+        hand_landmark_post_so = _find_so("libhand_landmark_postprocess.so")
+        gesture_classification_so = _find_so("libgesture_classification.so")
+
         source_pipeline = SOURCE_PIPELINE(
             video_source=self.video_source,
             video_width=self.video_width,
@@ -104,7 +130,7 @@ class GStreamerGestureMouseApp(GStreamerApp):
 
         palm_detection_pipeline = INFERENCE_PIPELINE(
             hef_path=self.palm_hef,
-            post_process_so=PALM_DETECTION_POST_SO,
+            post_process_so=palm_detection_post_so,
             batch_size=1,
             name="palm_detection",
             letterbox=True,
@@ -119,7 +145,7 @@ class GStreamerGestureMouseApp(GStreamerApp):
             f"videoscale name=hand_videoscale n-threads=2 qos=false ! "
             f"video/x-raw, width=224, height=224, pixel-aspect-ratio=1/1 ! "
             f"videoconvert name=hand_videoconvert n-threads=2 ! "
-            f"hailofilter so-path={HAND_AFFINE_WARP_SO} "
+            f"hailofilter so-path={hand_affine_warp_so} "
             f"name=hand_affine_warp use-gst-buffer=true qos=false ! "
             f"{QUEUE(name='hand_hailonet_q')} ! "
             f"hailonet name=hand_landmark_hailonet "
@@ -132,14 +158,14 @@ class GStreamerGestureMouseApp(GStreamerApp):
             f"force-writable=true ! "
             f"{QUEUE(name='hand_postproc_q')} ! "
             f"hailofilter name=hand_landmark_postproc "
-            f"so-path={HAND_LANDMARK_POST_SO} qos=false ! "
+            f"so-path={hand_landmark_post_so} qos=false ! "
             f"{QUEUE(name='hand_output_q')} "
         )
 
         palm_cropper_pipeline = (
             f"{QUEUE(name='palm_cropper_input_q')} ! "
             f"hailocropper name=palm_cropper "
-            f"so-path={PALM_CROPPERS_SO} "
+            f"so-path={palm_croppers_so} "
             f"function-name=palm_to_hand_crop "
             f"use-letterbox=false "
             f"no-scaling-bbox=true "
@@ -153,7 +179,7 @@ class GStreamerGestureMouseApp(GStreamerApp):
 
         gesture_filter = (
             f"{QUEUE(name='gesture_filter_q')} ! "
-            f"hailofilter so-path={GESTURE_CLASSIFICATION_SO} "
+            f"hailofilter so-path={gesture_classification_so} "
             f"name=gesture_classification qos=false "
         )
 
