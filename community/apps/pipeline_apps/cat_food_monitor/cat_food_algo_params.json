@@ -3,6 +3,6 @@
     "blurriness_tolerance": 150,
     "procrustes_distance_threshold": 0.3,
     "skip_frames": 15,
-    "lance_db_vector_search_classificaiton_confidence_threshold": 0.45,
+    "lance_db_vector_search_classification_confidence_threshold": 0.45,
     "batch_size": 1
 }

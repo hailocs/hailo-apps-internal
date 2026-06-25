@@ -37,7 +37,6 @@ class CatFoodMonitorCallbackClass(app_callback_class):
 
     def __init__(self):
         super().__init__()
-        self.latest_track_id = -1
         # Track active feeding sessions: {cat_name: {"start": datetime, "track_id": int}}
         self.active_sessions = {}
         # Last log time per cat to avoid spamming
@@ -137,9 +136,7 @@ def app_callback(element, buffer, user_data):
                         # Start or continue a feeding session
                         user_data.start_session(cat_name, track_id, cat_confidence)
 
-                    if track_id > user_data.latest_track_id:
-                        user_data.latest_track_id = track_id
-                        print(string_to_print)
+                    hailo_logger.info(string_to_print)
 
     # Check for cats that left the frame (session ended)
     ended_cats = [

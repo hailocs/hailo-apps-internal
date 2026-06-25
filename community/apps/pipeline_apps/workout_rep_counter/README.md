@@ -1,6 +1,6 @@
 # Workout Rep Counter
 
-Real-time exercise repetition counter using YOLOv8 pose estimation on the Hailo-8 accelerator. The app detects body keypoints, computes joint angles for the selected exercise, and counts reps by tracking the up/down phases of each movement.
+Real-time exercise repetition counter using YOLOv8 pose estimation on Hailo accelerators (Hailo-8, Hailo-8L, Hailo-10H). The app detects body keypoints, computes joint angles for the selected exercise, and counts reps by tracking the up/down phases of each movement.
 
 ## Supported Exercises
 
@@ -12,7 +12,7 @@ Real-time exercise repetition counter using YOLOv8 pose estimation on the Hailo-
 
 ## Prerequisites
 
-- Hailo-8 accelerator
+- Hailo accelerator (Hailo-8, Hailo-8L, or Hailo-10H)
 - YOLOv8 pose model HEF (downloaded via `hailo-download-resources`)
 - Pose estimation postprocess plugin (compiled via `hailo-compile-postprocess`)
 - USB camera or video file
@@ -31,6 +31,9 @@ python community/apps/pipeline_apps/workout_rep_counter/workout_rep_counter.py -
 
 # Run with frame overlay (shows angle + rep count on OpenCV window)
 python community/apps/pipeline_apps/workout_rep_counter/workout_rep_counter.py --input usb --use-frame
+
+# Select a specific exercise (squat | pushup | bicep_curl)
+python -m community.apps.pipeline_apps.workout_rep_counter.workout_rep_counter --input usb --exercise bicep_curl
 ```
 
 ## Architecture

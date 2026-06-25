@@ -167,6 +167,9 @@ def app_callback(element, buffer, user_data):
     # Determine if "down" means smaller angle (like bicep curl) or larger
     down_is_smaller = down_angle < up_angle
 
+    # Track which IDs we see this frame so we can prune stale state afterwards.
+    seen_track_ids = set()
+
     for detection in detections:
         label = detection.get_label()
         if label != "person":
@@ -175,11 +178,13 @@ def app_callback(element, buffer, user_data):
         bbox = detection.get_bbox()
         confidence = detection.get_confidence()
 
-        # Get track ID
-        track_id = 0
+        # Get track ID. Skip untracked detections rather than collapsing them
+        # all onto track_id=0, which would merge multiple people's rep counts.
         track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
-        if len(track) == 1:
-            track_id = track[0].get_id()
+        if len(track) != 1:
+            continue
+        track_id = track[0].get_id()
+        seen_track_ids.add(track_id)
 
         # Get or create rep state for this tracked person
         if track_id not in user_data.track_states:
@@ -213,10 +218,11 @@ def app_callback(element, buffer, user_data):
                 state.phase = "up"
                 state.rep_count += 1
         else:
-            # For exercises like squat/pushup: down phase = small angle
-            if state.phase == "up" and angle <= down_angle:
+            # For inverted exercises like bicep curl: down phase = large angle
+            # (arm extended), up phase = small angle (arm curled).
+            if state.phase == "up" and angle >= down_angle:
                 state.phase = "down"
-            elif state.phase == "down" and angle >= up_angle:
+            elif state.phase == "down" and angle <= up_angle:
                 state.phase = "up"
                 state.rep_count += 1
 
@@ -279,13 +285,19 @@ def app_callback(element, buffer, user_data):
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         user_data.set_frame(frame)
 
-    # Periodic console output (every 30 frames)
+    # Prune state for track IDs not seen in this frame to avoid unbounded
+    # growth of track_states over a long session.
+    stale_ids = [tid for tid in user_data.track_states if tid not in seen_track_ids]
+    for tid in stale_ids:
+        del user_data.track_states[tid]
+
+    # Periodic status output (every 30 frames)
     frame_count = user_data.get_count()
     if frame_count % 30 == 0:
         status = f"Frame {frame_count} | Exercise: {user_data.exercise.upper()} | Tracked people: {len(user_data.track_states)}"
         for tid, st in user_data.track_states.items():
             status += f"\n  Person {tid}: {st.rep_count} reps ({st.phase}, angle={st.current_angle:.0f})"
-        print(status)
+        hailo_logger.info(status)
 
     return
 

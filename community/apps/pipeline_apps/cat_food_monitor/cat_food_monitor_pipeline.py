@@ -98,8 +98,8 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
             self.algo_params = json.load(json_file)
 
         self.skip_frames = self.algo_params['skip_frames']
-        self.lance_db_vector_search_classificaiton_confidence_threshold = (
-            self.algo_params['lance_db_vector_search_classificaiton_confidence_threshold']
+        self.lance_db_vector_search_classification_confidence_threshold = (
+            self.algo_params['lance_db_vector_search_classification_confidence_threshold']
         )
         self.batch_size = self.algo_params['batch_size']
 
@@ -116,7 +116,7 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
             db_name='cats.db',
             table_name='cats',
             schema=Record,
-            threshold=self.lance_db_vector_search_classificaiton_confidence_threshold,
+            threshold=self.lance_db_vector_search_classification_confidence_threshold,
             database_dir=self.database_dir,
             samples_dir=self.samples_dir,
         )
@@ -131,7 +131,7 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
             )
 
         self.current_file = None  # for train mode
-        self.processed_names = set()
+        self.processed_names = {}
         self.processed_files = set()
 
         # Resolve HEF paths for multi-model app (face detection + face recognition)
@@ -334,6 +334,12 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
                 finally:
                     if self.pipeline:
                         self.pipeline.set_state(Gst.State.NULL)
+        # Drain the worker queue so the last training images are saved before exit
+        self.task_queue.join()
+        for _ in self.threads:
+            self.task_queue.put(None)
+        for t in self.threads:
+            t.join()
         print("Training completed")
 
     def connect_vector_db_callback(self):
@@ -372,16 +378,10 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
         self.task_queue.put(task)
 
     def get_processed_names_by_name(self, key):
-        for k, v in self.processed_names:
-            if k == key:
-                return v
-        return None
+        return self.processed_names.get(key)
 
     def is_name_processed(self, key):
-        for k, _ in self.processed_names:
-            if k == key:
-                return True
-        return False
+        return key in self.processed_names
 
     def vector_db_callback(self, pad, info, user_data):
         tracker_name = self.tracker.get_trackers_list()[0]
@@ -400,6 +400,8 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
                 if detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
                 else None
             )
+            if track_id is None:
+                continue
 
             if self.track_id_frame_count.get(track_id, 0) < self.skip_frames:
                 self.track_id_frame_count[track_id] = (
@@ -412,9 +414,9 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
             if len(embedding) == 0:
                 continue
             if len(embedding) > 1:
-                print(
-                    f"Warning: Multiple embeddings found for track ID {track_id}. "
-                    f"Using the first one."
+                hailo_logger.warning(
+                    "Multiple embeddings found for track ID %s. "
+                    "Skipping this detection.", track_id
                 )
                 detection.remove_object(embedding[0])
                 continue
@@ -462,9 +464,9 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
             embedding = detection.get_objects_typed(hailo.HAILO_MATRIX)
             if len(embedding) != 1:
                 continue
+            embedding_vector = np.array(embedding[0].get_data())
             detection.remove_object(embedding[0])
             cropped_frame = self.crop_frame(frame, detection.get_bbox(), width, height)
-            embedding_vector = np.array(embedding[0].get_data())
             image_path = os.path.join(self.samples_dir, f"{uuid.uuid4()}.jpeg")
             self.add_task('save_image', frame=cropped_frame, image_path=image_path)
             name = os.path.basename(os.path.dirname(self.current_file))
@@ -486,7 +488,7 @@ class GStreamerCatFoodMonitorApp(GStreamerApp):
                     label=name,
                 )
                 print(f"New cat added with ID: {cat_record['global_id']}")
-                self.processed_names.add((name, cat_record['global_id']))
+                self.processed_names[name] = cat_record['global_id']
             self.processed_files.add(self.current_file)
             return Gst.PadProbeReturn.OK
         return Gst.PadProbeReturn.OK

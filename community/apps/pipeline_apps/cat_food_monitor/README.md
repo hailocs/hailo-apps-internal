@@ -73,7 +73,7 @@ Edit `cat_food_algo_params.json` to tune:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `skip_frames` | 15 | Frames to skip before first recognition attempt |
-| `lance_db_vector_search_classificaiton_confidence_threshold` | 0.45 | Minimum confidence for identity match |
+| `lance_db_vector_search_classification_confidence_threshold` | 0.45 | Minimum confidence for identity match |
 | `batch_size` | 1 | Inference batch size |
 
 ## Customization
