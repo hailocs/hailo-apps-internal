@@ -34,7 +34,7 @@ pip install pyautogui
 ./run.sh --debug
 
 # Or run directly
-python3 -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
+python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
 ```
 
 ## Voice Commands

@@ -15,14 +15,14 @@ Run `hailo-download-resources` and `hailo-compile-postprocess` before first use.
 
 ```bash
 # With video files
-python -m hailo_apps.python.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker \
+python -m community.apps.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker \
     --sources entrance_cam1.mp4,entrance_cam2.mp4
 
 # Default (uses face_recognition demo video on 2 streams)
-python -m hailo_apps.python.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker
+python -m community.apps.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker
 
 # Adjust matching sensitivity (lower = stricter)
-python -m hailo_apps.python.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker \
+python -m community.apps.pipeline_apps.multi_entrance_tracker.multi_entrance_tracker \
     --sources entrance_cam1.mp4,entrance_cam2.mp4 --match-threshold 0.3
 ```
 

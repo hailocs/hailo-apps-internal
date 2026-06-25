@@ -21,18 +21,18 @@ Real-time retail store monitoring using 3 cameras (entrance, checkout, stockroom
 
 ```bash
 # With 3 video files
-python -m hailo_apps.python.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor \
+python -m community.apps.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor \
     --sources entrance.mp4,checkout.mp4,stockroom.mp4
 
 # Default (uses the sample detection video for all 3 streams)
-python -m hailo_apps.python.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor
+python -m community.apps.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor
 
 # With custom person detection threshold
-python -m hailo_apps.python.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor \
+python -m community.apps.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor \
     --sources entrance.mp4,checkout.mp4,stockroom.mp4 --person-threshold 0.6
 
 # Show FPS overlay
-python -m hailo_apps.python.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor --show-fps
+python -m community.apps.pipeline_apps.multi_camera_store_monitor.multi_camera_store_monitor --show-fps
 ```
 
 ## Pipeline Architecture

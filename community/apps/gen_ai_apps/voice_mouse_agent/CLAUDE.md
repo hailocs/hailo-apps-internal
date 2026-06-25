@@ -21,7 +21,7 @@ A voice-controlled mouse agent for Hailo-10H. It listens continuously on the mic
 ```bash
 source setup_env.sh
 ./community/apps/gen_ai_apps/voice_mouse_agent/run.sh
-# or: python -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
+# or: python -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
 ```
 Optional: `--vad`, `--debug`.
 

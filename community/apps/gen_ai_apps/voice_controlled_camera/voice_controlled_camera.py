@@ -11,7 +11,7 @@ Voice commands:
 - "Read that sign" -> OCR/text reading via VLM
 
 Usage:
-    python -m hailo_apps.python.gen_ai_apps.voice_controlled_camera.voice_controlled_camera
+    python -m community.apps.gen_ai_apps.voice_controlled_camera.voice_controlled_camera
 
     # With USB camera
     python voice_controlled_camera.py --input usb

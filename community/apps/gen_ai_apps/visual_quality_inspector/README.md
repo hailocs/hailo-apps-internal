@@ -37,13 +37,13 @@ The app uses a state machine with four states:
 
 ```bash
 # Basic usage with USB camera
-python -m hailo_apps.python.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb
+python -m community.apps.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb
 
 # With Raspberry Pi camera
-python -m hailo_apps.python.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input rpi
+python -m community.apps.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input rpi
 
 # With inspection logging to file
-python -m hailo_apps.python.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb --log-file inspections.jsonl
+python -m community.apps.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb --results-file inspections.jsonl
 ```
 
 ## Interactive Mode
@@ -69,7 +69,7 @@ Modify constants in `visual_quality_inspector.py`:
 
 ## Log File Format
 
-When `--log-file` is specified, each inspection is appended as a JSON line:
+When `--results-file` is specified, each inspection is appended as a JSON line:
 
 ```json
 {"inspection_id": 1, "timestamp": "2026-03-17T10:30:00", "prompt": "Inspect this manufactured part...", "result": "FAIL. The part shows...", "inference_time": "3.45 seconds"}

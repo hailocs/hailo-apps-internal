@@ -19,9 +19,9 @@ A Vision Language Model (VLM) app for manufacturing quality inspection. Captures
 ## How to Run
 ```bash
 source setup_env.sh
-python -m hailo_apps.python.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb
+python -m community.apps.gen_ai_apps.visual_quality_inspector.visual_quality_inspector --input usb
 ```
-Optional: `--input rpi`, `--log-file inspections.jsonl`.
+Optional: `--input rpi`, `--results-file inspections.jsonl`.
 
 ## How to Extend
 - Customize the inspection system prompt for your part type, or add defect-category classification.

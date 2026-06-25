@@ -6,13 +6,13 @@ on Hailo-10H, sends to LLM on Hailo-10H for interpretation, and executes mouse
 actions using pyautogui.
 
 Usage:
-    python3 -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
+    python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent
 
     # With VAD for better speech detection
-    python3 -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent --vad
+    python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent --vad
 
     # Debug mode (shows raw LLM output and tool calls)
-    python3 -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent --debug
+    python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent --debug
 """
 
 import argparse

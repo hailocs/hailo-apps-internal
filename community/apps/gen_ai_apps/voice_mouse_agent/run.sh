@@ -14,4 +14,4 @@ if [ -f "$REPO_ROOT/setup_env.sh" ]; then
     source "$REPO_ROOT/setup_env.sh"
 fi
 
-python3 -m hailo_apps.python.gen_ai_apps.voice_mouse_agent.voice_mouse_agent "$@"
+python3 -m community.apps.gen_ai_apps.voice_mouse_agent.voice_mouse_agent "$@"

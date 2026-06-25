@@ -317,10 +317,10 @@ class VisualQualityInspectorApp:
 if __name__ == "__main__":
     parser = get_standalone_parser()
     parser.add_argument(
-        "--log-file",
+        "--results-file",
         type=str,
         default=None,
-        help="Path to a JSONL file to log inspection results. Each line is a JSON object with inspection_id, timestamp, prompt, result, and inference_time."
+        help="Path to a JSONL file to log inspection results. Each line is a JSON object with inspection_id, timestamp, prompt, result, and inference_time. (Note: --log-file is reserved for framework logging.)"
     )
 
     # Handle --list-models flag before full initialization
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     app = VisualQualityInspectorApp(
         camera=video_source,
         camera_type=source_type,
-        log_file=options_menu.log_file
+        log_file=options_menu.results_file
     )
     app.run()
     sys.exit(0)

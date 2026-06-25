@@ -19,11 +19,11 @@ An interactive Easter Egg and Afikoman catching game using Hailo pose estimation
 ## Usage
 
 ```bash
-python3 easter_game.py --input usb
+python -m community.apps.pipeline_apps.easter_game.easter_game --input usb
 
 or:
 
-python3 easter_game.py --input usb --background /path/to/background.png
+python -m community.apps.pipeline_apps.easter_game.easter_game --input usb --background /path/to/background.png
 ```
 
 ## Controls
