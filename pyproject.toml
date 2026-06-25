@@ -131,8 +131,12 @@ exclude = [
 
 [tool.pytest.ini_options]
 # Core suite is `tests/`. Community per-app tests live under community/apps/**/tests/
-# and are run as a separate suite (`pytest community/apps` or `./run_tests.sh community`)
-# to avoid prepend-import-mode package-name clashes with the top-level `tests/` package.
+# and are run as a separate suite via `./run_tests.sh --community`, which runs EACH
+# app's tests in its own pytest process. That isolation is required: the community
+# tests stub native modules (gi/hailo/cv2) in sys.modules to run headless, and in a
+# single shared process those stubs leak across files and segfault a later test. It
+# also avoids prepend-import-mode package-name clashes with the top-level `tests/`.
+# (Run a single app directly with `pytest community/apps/<cat>/<app>`.)
 testpaths = ["tests"]
 # Put the repo root on sys.path for every test run regardless of CWD, so both
 # `from tests.conftest import ...` and `from community.apps... import ...` resolve

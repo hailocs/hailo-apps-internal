@@ -330,12 +330,28 @@ fi
 if [ "$RUN_COMMUNITY" = true ]; then
     echo ""
     echo "--- Running Community App Tests ---"
-    # Run on the community/apps root as its own suite (separate from the top-level
-    # tests/ package to avoid prepend-import-mode package-name clashes).
-    if python -m pytest "${SCRIPT_DIR}/community/apps" -v --log-cli-level=INFO; then
-        echo "✓ Community app tests passed"
+    # Run EACH app's tests in its OWN pytest process. The community app tests stub
+    # native modules (gi/hailo/cv2) in sys.modules to run headless; in a single
+    # shared process those stubs leak across test files and segfault a later test.
+    # Per-app processes isolate them (and also dodge the top-level `tests/` package
+    # name clash). Each app suite passes cleanly on its own.
+    COMMUNITY_FAIL=0
+    COMMUNITY_RAN=0
+    for app_dir in "${SCRIPT_DIR}"/community/apps/*/*/; do
+        [ -d "${app_dir}tests" ] || continue
+        app_name="$(basename "$app_dir")"
+        if python -m pytest "$app_dir" -q; then
+            echo "  ✓ ${app_name}"
+        else
+            echo "  ✗ ${app_name}"
+            COMMUNITY_FAIL=$((COMMUNITY_FAIL + 1))
+        fi
+        COMMUNITY_RAN=$((COMMUNITY_RAN + 1))
+    done
+    if [ "$COMMUNITY_FAIL" -eq 0 ]; then
+        echo "✓ Community app tests passed (${COMMUNITY_RAN} app suites)"
     else
-        echo "✗ Community app tests failed"
+        echo "✗ Community app tests failed (${COMMUNITY_FAIL}/${COMMUNITY_RAN} app suites)"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 fi
