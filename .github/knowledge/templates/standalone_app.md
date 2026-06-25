@@ -2,7 +2,7 @@
 
 ## Overview
 
-Standalone apps are lightweight Python scripts that use the HailoRT API directly for inference -- no GStreamer or TAPPAS required. They use a 3-thread architecture (preprocess, infer, visualize) with queue-based data flow and `HailoAsyncInference` for efficient async inference on Hailo accelerators.
+Standalone apps are lightweight Python scripts that use the HailoRT API directly for inference -- no GStreamer or TAPPAS required. They use a 3-thread architecture (preprocess, infer, visualize) with queue-based data flow and `HailoInfer` (the framework's async inference wrapper) for efficient inference on Hailo accelerators.
 
 **When to use this type:**
 - Batch processing of images or video files

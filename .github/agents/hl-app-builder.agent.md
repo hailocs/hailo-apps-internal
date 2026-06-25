@@ -158,3 +158,17 @@ If the user says "change something", ask what to modify and loop back to Step 3.
 - If user mentions **voice**, **speech**, **talk**, **whisper**, **microphone** → Voice
 - If user mentions **OpenCV**, **batch**, **standalone**, **HailoInfer** → Standalone
 - If unclear → ask (Step 1)
+
+## Knowledge Base
+
+Before recommending a template or routing, **consult the canonical knowledge base** in `.github/knowledge/` instead of guessing from memory:
+
+| File | Use it for |
+|---|---|
+| `.github/knowledge/app_catalog.yaml` | Catalog of all apps (core + community) — models per arch (h8/h8l/h10h), postprocess `.so`, pipeline pattern, features, input types. Match the user's need to an existing app. |
+| `.github/knowledge/decision_tree.yaml` | Question-flow + keyword shortcuts mapping requirements → recommended template. Use in Step 1–2 to classify. |
+| `.github/knowledge/pipeline_patterns.yaml` | Named GStreamer pipeline patterns + helper functions for the chosen architecture. |
+| `.github/knowledge/code_snippets.yaml` | Reusable callback recipes (pose angles, joint angles, rep counting, line crossing, zone polygon/overlay, proximity alert, detection-filter-and-track, per-track state, custom CLI args, frame overlay, signal stabilization). |
+| `.github/knowledge/templates/` | Annotated boilerplate per app type (`pipeline_app.md`, `standalone_app.md`, `genai_app.md`) — pass to the specialist builder as the scaffold reference. |
+
+When you hand off to a specialist builder (hl-vlm/pipeline/standalone/llm/agent/voice-builder), include the matched catalog entry and the relevant template + snippets so the specialist scaffolds from canonical patterns rather than from scratch.

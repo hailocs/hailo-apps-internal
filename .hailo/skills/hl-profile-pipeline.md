@@ -480,7 +480,11 @@ After the session wrap-up, if the user discovered something useful (a successful
 >
 > Interested?"
 
-If yes, construct a JSON payload from the session data and invoke `/contribute-insights` with it. Include: `title`, `category`, `source_agent` (set to `profile-pipeline`), `app`, `hailo_arch`, `tags`, `summary`, `context`, `finding`, `solution`, `results_table`, `applicability`.
+If yes, format the finding as a structured Markdown contribution and submit it yourself — there is no separate contribution skill. Steps:
+1. **Sanitize** — redact absolute `/home/<user>` paths, internal IPs/hostnames, and any private data; keep generic patterns, element names, and timing numbers.
+2. **Compose** the file with: `title`, `category`, `app`, `hailo_arch`, `tags`, `summary`, `context`, `finding`, `solution`, `results_table`, `applicability`, and the contributor's name in the YAML frontmatter (`author:`).
+3. **Get explicit user approval of the exact content** — never submit without it (cannot be auto-approved).
+4. **Write** it to `community/contributions/<category>/<YYYY-MM-DD>_<app>_<slug>.md` and open a PR to the dev branch, crediting the contributor by name.
 
 ## Phase Special: Find Best Frame Rate (Operating Point Analysis)
 

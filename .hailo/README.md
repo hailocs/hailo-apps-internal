@@ -91,6 +91,12 @@ Structured knowledge bases in YAML format for agent decision-making.
 | File | Description |
 |---|---|
 | `knowledge_base.yaml` | Operational knowledge: tuning recipes, bottleneck patterns, gen AI recipes |
+| `profile_pipeline_kb.yaml` | Profiling/optimization knowledge base for the `hl-profile-pipeline` skill |
+| `app_catalog.yaml` | Catalog of all apps (core + community): models per arch, postprocess, pipeline pattern, features, inputs. Consumed by the `hl-app-builder` agent. |
+| `decision_tree.yaml` | Requirement question-flow + keyword shortcuts → recommended template |
+| `pipeline_patterns.yaml` | Named GStreamer pipeline patterns + helper functions |
+| `code_snippets.yaml` | Reusable callback recipes (pose angles, line crossing, zones, alerts, tracking state, …) |
+| `templates/{pipeline,standalone,genai}_app.md` | Annotated per-type app scaffolding the specialist builders reference |
 
 ## Memory (`memory/`)
 

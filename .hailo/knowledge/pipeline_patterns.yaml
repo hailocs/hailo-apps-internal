@@ -1,0 +1,405 @@
+# ============================================================================
+# PIPELINE PATTERNS - Architectural patterns used by pipeline apps
+# ============================================================================
+# Each pattern documents the GStreamer pipeline structure, helper functions
+# used, and which apps implement it.
+
+patterns:
+
+  # --------------------------------------------------------------------------
+  # Pattern 1: Simple single-model pipeline (no wrapper, no tracker)
+  # --------------------------------------------------------------------------
+  source_infer_display:
+    description: "Simplest single-model pipeline. Direct inference without resolution preservation or tracking."
+    structure: "SOURCE_PIPELINE -> INFERENCE_PIPELINE -> USER_CALLBACK_PIPELINE -> DISPLAY_PIPELINE"
+    gstreamer_flow: |
+      source ! videoconvert ! videoscale ! hailonet ! hailofilter ! identity_callback ! hailooverlay ! videoconvert ! autovideosink
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+    used_by: [detection_simple]
+    notes: |
+      Simplest pattern. Good default for learning.
+      No inference wrapper means the model runs at the source resolution (640x640 in detection_simple).
+      No tracker means no object IDs across frames.
+      Uses no_webcam_compression=True for direct uncompressed camera frames.
+    code_example: |
+      source_pipeline = SOURCE_PIPELINE(video_source=self.video_source, video_width=640, video_height=640)
+      detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path, post_process_so=self.post_process_so, post_function_name=self.post_function_name, batch_size=2)
+      user_callback_pipeline = USER_CALLBACK_PIPELINE()
+      display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+      pipeline_string = f"{source_pipeline} ! {detection_pipeline} ! {user_callback_pipeline} ! {display_pipeline}"
+
+  # --------------------------------------------------------------------------
+  # Pattern 2: Single model with inference wrapper (no tracker)
+  # --------------------------------------------------------------------------
+  source_infer_wrapper_display:
+    description: "Single-model pipeline with inference wrapper for resolution preservation. No tracking."
+    structure: "SOURCE_PIPELINE -> INFERENCE_PIPELINE_WRAPPER(INFERENCE_PIPELINE) -> USER_CALLBACK_PIPELINE -> DISPLAY_PIPELINE"
+    gstreamer_flow: |
+      source ! hailocropper(wrapper) -> [inference pipeline] + [bypass queue] -> hailoaggregator ! identity_callback ! hailooverlay ! autovideosink
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - INFERENCE_PIPELINE_WRAPPER
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+    used_by: [depth]
+    notes: |
+      The INFERENCE_PIPELINE_WRAPPER wraps inference in a hailocropper+hailoaggregator pair.
+      This preserves the original video resolution and color format while running inference
+      at the model's native resolution. The wrapper routes the original frame through a bypass
+      queue while a scaled copy goes through inference. Results are aggregated back onto the
+      original frame.
+      Used when you want resolution preservation but don't need object tracking.
+    code_example: |
+      source_pipeline = SOURCE_PIPELINE(video_source=self.video_source)
+      depth_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path, post_process_so=self.post_process_so, post_function_name=self.post_function_name)
+      depth_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(depth_pipeline)
+      user_callback_pipeline = USER_CALLBACK_PIPELINE()
+      display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+      pipeline_string = f"{source_pipeline} ! {depth_pipeline_wrapper} ! {user_callback_pipeline} ! {display_pipeline}"
+
+  # --------------------------------------------------------------------------
+  # Pattern 3: Single model with wrapper and tracker
+  # --------------------------------------------------------------------------
+  source_infer_wrapper_track_display:
+    description: "Standard single-model pipeline with inference wrapper and object tracking. Most common pattern."
+    structure: "SOURCE_PIPELINE -> INFERENCE_PIPELINE_WRAPPER(INFERENCE_PIPELINE) -> TRACKER_PIPELINE -> USER_CALLBACK_PIPELINE -> DISPLAY_PIPELINE"
+    gstreamer_flow: |
+      source ! hailocropper(wrapper) -> [hailonet + hailofilter] + [bypass] -> hailoaggregator ! hailotracker ! identity_callback ! hailooverlay ! autovideosink
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - INFERENCE_PIPELINE_WRAPPER
+      - TRACKER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+    used_by: [detection, pose_estimation, instance_segmentation]
+    notes: |
+      The most common pipeline pattern for single-model apps.
+      Combines resolution preservation (wrapper) with object tracking.
+
+      Key tracker parameters vary by app:
+      - detection: class_id=1 (track person class only)
+      - pose_estimation: class_id=0 (track all classes)
+      - instance_segmentation: class_id=1 (track person class)
+
+      All three apps use batch_size=2 by default for better throughput.
+    code_example: |
+      source_pipeline = SOURCE_PIPELINE(video_source=self.video_source, video_width=self.video_width, video_height=self.video_height)
+      detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path, post_process_so=self.post_process_so, post_function_name=self.post_function_name, batch_size=2)
+      detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
+      tracker_pipeline = TRACKER_PIPELINE(class_id=1)
+      user_callback_pipeline = USER_CALLBACK_PIPELINE()
+      display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+      pipeline_string = f"{source_pipeline} ! {detection_pipeline_wrapper} ! {tracker_pipeline} ! {user_callback_pipeline} ! {display_pipeline}"
+
+  # --------------------------------------------------------------------------
+  # Pattern 4: Cascaded multi-model with cropper
+  # --------------------------------------------------------------------------
+  source_infer_wrapper_track_cropper_infer_display:
+    description: "Cascaded multi-model pipeline: first model detects, tracker assigns IDs, cropper extracts detections, second model processes crops."
+    structure: "SOURCE_PIPELINE -> INFERENCE_PIPELINE_WRAPPER(detection) -> TRACKER_PIPELINE -> CROPPER_PIPELINE(INFERENCE_PIPELINE(secondary)) -> USER_CALLBACK_PIPELINE -> DISPLAY_PIPELINE"
+    gstreamer_flow: |
+      source ! [detection wrapper] ! hailotracker ! hailocropper -> [secondary inference] + [bypass] -> hailoaggregator ! identity_callback ! hailooverlay ! autovideosink
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - INFERENCE_PIPELINE_WRAPPER
+      - TRACKER_PIPELINE
+      - CROPPER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+      - QUEUE
+    used_by: [face_recognition, paddle_ocr]
+    notes: |
+      Used when you need to detect objects first, then run a second model on each detection.
+
+      The CROPPER_PIPELINE wraps a secondary inference pipeline with hailocropper + hailoaggregator.
+      The cropper crops each detection region, sends it through the inner pipeline, and aggregates
+      results back onto the original frame.
+
+      face_recognition adds extra steps inside the cropper:
+        hailofilter(face_align) -> queue -> INFERENCE_PIPELINE(arcface)
+
+      paddle_ocr uses:
+        CROPPER_PIPELINE(INFERENCE_PIPELINE(ocr_rec), so_path=libocr_postprocess.so, function_name=paddleocr_cropper)
+
+      face_recognition also has a second USER_CALLBACK_PIPELINE for vector_db matching.
+    code_example: |
+      # Face recognition example
+      detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_detection, post_process_so=self.post_process_so_scrfd, post_function_name=self.detection_func, batch_size=self.batch_size, config_json=json_path)
+      detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
+      tracker_pipeline = TRACKER_PIPELINE(class_id=-1, keep_past_metadata=True)
+      recognition_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_recognition, post_process_so=self.post_process_so_face_recognition, post_function_name='filter')
+      cropper_pipeline = CROPPER_PIPELINE(
+          inner_pipeline=f'hailofilter so-path={face_align_so} ! queue ! {recognition_pipeline}',
+          so_path=self.post_process_so_cropper, function_name='face_recognition')
+      pipeline_string = f"{source} ! {detection_pipeline_wrapper} ! {tracker_pipeline} ! {cropper_pipeline} ! {user_callback} ! {display}"
+
+  # --------------------------------------------------------------------------
+  # Pattern 5: Tiled inference
+  # --------------------------------------------------------------------------
+  source_tilecropper_infer_display:
+    description: "Tiling pipeline for high-resolution images with small objects. Splits frame into tiles, runs inference on each, aggregates results."
+    structure: "SOURCE_PIPELINE -> TILE_CROPPER_PIPELINE(INFERENCE_PIPELINE) -> USER_CALLBACK_PIPELINE -> DISPLAY_PIPELINE"
+    gstreamer_flow: |
+      source ! hailotilecropper -> [hailonet + hailofilter per tile] + [bypass] -> hailotileaggregator ! identity_callback ! hailooverlay ! autovideosink
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - TILE_CROPPER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+    used_by: [tiling]
+    notes: |
+      The TILE_CROPPER_PIPELINE wraps inference with hailotilecropper + hailotileaggregator.
+
+      Key parameters:
+      - tiles_along_x_axis / tiles_along_y_axis: Number of tiles in each direction
+      - overlap_x_axis / overlap_y_axis: Overlap ratio between tiles (0.0-0.5)
+      - tiling_mode: 0=single-scale, 1=multi-scale
+      - scale_level: For multi-scale, 1={1x1}, 2={1x1+2x2}, 3={1x1+2x2+3x3}
+      - iou_threshold: NMS threshold for combining detections across tiles
+      - border_threshold: Threshold for handling detections near tile borders
+
+      The tiling app has auto-tile calculation via TilingConfiguration class
+      that automatically determines optimal tile count based on input resolution
+      and model input size.
+    code_example: |
+      source_pipeline = SOURCE_PIPELINE(video_source=self.video_source, video_width=self.video_width, video_height=self.video_height)
+      detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path, post_process_so=self.post_process_so, post_function_name=self.post_function, batch_size=self.batch_size)
+      tile_cropper_pipeline = TILE_CROPPER_PIPELINE(
+          detection_pipeline,
+          tiles_along_x_axis=self.tiles_x, tiles_along_y_axis=self.tiles_y,
+          overlap_x_axis=self.overlap_x, overlap_y_axis=self.overlap_y,
+          tiling_mode=tiling_mode, scale_level=scale_level,
+          iou_threshold=self.iou_threshold, border_threshold=self.border_threshold)
+      user_callback_pipeline = USER_CALLBACK_PIPELINE()
+      display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+      pipeline_string = f"{source_pipeline} ! {tile_cropper_pipeline} ! {user_callback_pipeline} ! {display_pipeline}"
+
+  # --------------------------------------------------------------------------
+  # Pattern 6: Multi-source round-robin with stream routing
+  # --------------------------------------------------------------------------
+  multi_source_roundrobin_infer_router:
+    description: "Multiple camera streams multiplexed through a single inference pipeline with round-robin scheduling and per-stream routing."
+    structure: "SOURCE_PIPELINE x N -> hailoroundrobin -> INFERENCE_PIPELINE -> TRACKER_PIPELINE -> hailostreamrouter -> DISPLAY_PIPELINE x N"
+    gstreamer_flow: |
+      source_0 ! hailofilter(set_stream_id) ! queue ! robin.sink_0
+      source_1 ! hailofilter(set_stream_id) ! queue ! robin.sink_1
+      ...
+      hailoroundrobin name=robin ! [inference] ! hailotracker ! identity_callback ! queue ! hailostreamrouter name=router
+      router.src_0 ! identity_callback_0 ! queue ! display_0
+      router.src_1 ! identity_callback_1 ! queue ! display_1
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - TRACKER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+      - QUEUE
+      - get_source_type
+    used_by: [multisource]
+    notes: |
+      Key elements:
+      - hailoroundrobin: Multiplexes N input streams into one output in round-robin fashion
+      - hailostreamrouter: Routes processed frames back to per-stream outputs
+      - hailofilter with set_stream_id: Tags each frame with its source stream ID
+      - set_stream_id uses TAPPAS_STREAM_ID_TOOL_SO_FILENAME from the TAPPAS postprocess dir
+
+      Each source gets:
+      - Its own SOURCE_PIPELINE
+      - A stream ID tag via hailofilter
+      - Its own display via DISPLAY_PIPELINE
+      - Its own USER_CALLBACK_PIPELINE on the output side
+
+      The inference runs once on multiplexed frames, saving accelerator resources.
+    code_example: |
+      for id in range(self.num_sources):
+          sources_string += SOURCE_PIPELINE(video_source=self.video_sources_types[id][0], frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}")
+          sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path=src_{id} "
+          sources_string += f"! {QUEUE(name=f'src_q_{id}', max_size_buffers=30)} ! robin.sink_{id} "
+          router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}')} ! {DISPLAY_PIPELINE(name=f'hailo_display_{id}')} "
+      inference_string = f"hailoroundrobin mode=1 name=robin ! {detection_pipeline} ! {TRACKER_PIPELINE(class_id=-1)} ! {USER_CALLBACK_PIPELINE()} ! {QUEUE(name='call_q')} ! hailostreamrouter name=router "
+      pipeline_string = sources_string + inference_string + router_string
+
+  # --------------------------------------------------------------------------
+  # Pattern 7: Multi-source with cascaded inference
+  # --------------------------------------------------------------------------
+  multi_source_roundrobin_cascaded_infer_router:
+    description: "Multi-source pipeline with cascaded detection + re-identification. Combines multi-source routing with cascaded cropper pipeline."
+    structure: "SOURCE x N -> roundrobin -> INFERENCE_WRAPPER(detection) -> TRACKER -> CROPPER(recognition) -> router -> DISPLAY x N"
+    gstreamer_flow: |
+      source_0 ! hailofilter(set_stream_id) ! robin.sink_0
+      source_1 ! hailofilter(set_stream_id) ! robin.sink_1
+      hailoroundrobin name=robin ! [detection wrapper] ! hailotracker ! [cropper(face_align + recognition)] ! identity_callback ! queue ! hailostreamrouter name=router
+      router.src_0 ! src_0_callback ! display_0
+      router.src_1 ! src_1_callback ! display_1
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - INFERENCE_PIPELINE_WRAPPER
+      - TRACKER_PIPELINE
+      - CROPPER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+      - QUEUE
+      - get_source_type
+    used_by: [reid_multisource]
+    notes: |
+      The most complex pipeline pattern. Combines:
+      1. Multi-source round-robin (from Pattern 6)
+      2. Cascaded inference with cropper (from Pattern 4)
+      3. Per-source callbacks with vector database matching
+
+      The reid_multisource per-source callbacks perform:
+      - Extract face embeddings from HAILO_MATRIX
+      - Search vector database for matching identities
+      - Add HAILO_CLASSIFICATION with re-ID results
+      - Update tracker with cross-camera identity info
+
+      Per-source callbacks are dynamically generated and connected via handoff signals.
+    code_example: |
+      # Main pipeline (between roundrobin and streamrouter)
+      detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_scrfd_detection, ...)
+      detection_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(detection_pipeline)
+      tracker_pipeline = TRACKER_PIPELINE(class_id=-1)
+      id_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_arcface, ...)
+      cropper_pipeline = CROPPER_PIPELINE(
+          inner_pipeline=f'hailofilter so-path={face_align_so} ! queue ! {id_pipeline}',
+          so_path=self.post_process_so_vms_cropper, function_name='face_recognition')
+      main_pipeline = f'{detection_pipeline_wrapper} ! {tracker_pipeline} ! {cropper_pipeline} ! {USER_CALLBACK_PIPELINE()} ! '
+      inference_string = f"hailoroundrobin mode=1 name=robin ! {main_pipeline} {QUEUE(name='call_q')} ! hailostreamrouter name=router "
+
+  # --------------------------------------------------------------------------
+  # Pattern 8: CLIP parallel model pipeline
+  # --------------------------------------------------------------------------
+  source_clip_muxer_display:
+    description: "CLIP pipeline with parallel detection and CLIP encoding via muxer, or standalone CLIP on full frames."
+    structure: "(detector mode) SOURCE -> detection_wrapper -> tracker -> clip_cropper -> matching_callback -> display | (no-detector mode) SOURCE -> tee -> [bypass + CLIP via muxer] -> matching_callback -> display"
+    gstreamer_flow: |
+      # With detector:
+      source ! [detection wrapper] ! hailotracker ! hailocropper([clip inference]) ! matching_callback ! user_callback ! display
+      # Without detector (none mode):
+      source ! tee name=clip_t ! hailomuxer name=clip_hmux
+        clip_t. ! bypass_queue ! clip_hmux.sink_0
+        clip_t. ! queue ! videoscale ! [clip inference] ! clip_hmux.sink_1
+      clip_hmux. ! queue ! matching_callback ! user_callback ! display
+    helper_functions:
+      - SOURCE_PIPELINE
+      - INFERENCE_PIPELINE
+      - INFERENCE_PIPELINE_WRAPPER
+      - TRACKER_PIPELINE
+      - CROPPER_PIPELINE
+      - USER_CALLBACK_PIPELINE
+      - DISPLAY_PIPELINE
+      - QUEUE
+    used_by: [clip]
+    notes: |
+      CLIP has two pipeline modes depending on --detector flag:
+
+      1. detector=none: Uses tee + hailomuxer to run CLIP on full frames
+         - tee splits frame into bypass and CLIP inference branches
+         - hailomuxer combines original frame with CLIP embeddings
+
+      2. detector=person/vehicle/face/license-plate: Uses detection + cropper
+         - Detection finds objects, tracker assigns IDs
+         - Cropper extracts detections, CLIP encodes each crop
+         - Uses multi_process_service=true on h8/h8l for shared device
+         - scheduler_priority and scheduler_timeout_ms tune multi-model scheduling
+
+      The matching_identity_callback matches CLIP embeddings against text prompts
+      using the TextImageMatcher and adds HAILO_CLASSIFICATION results.
+
+      Uses separate batch sizes: detection_batch_size=8, clip_batch_size=8.
+    code_example: |
+      # No-detector mode (CLIP on full frames)
+      clip_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_clip, post_process_so=self.post_process_so_clip, post_function_name='filter', batch_size=8)
+      clip_pipeline_wrapper = f'tee name=clip_t hailomuxer name=clip_hmux '
+          f'clip_t. ! {QUEUE(name="clip_bypass_q", max_size_buffers=20)} ! clip_hmux.sink_0 '
+          f'clip_t. ! {QUEUE(name="clip_muxer_queue")} ! videoscale qos=false ! {clip_pipeline} ! clip_hmux.sink_1 '
+          f'clip_hmux. ! {QUEUE(name="clip_hmux_queue")} '
+
+# ============================================================================
+# HELPER FUNCTION REFERENCE (quick lookup)
+# ============================================================================
+
+helper_functions:
+  SOURCE_PIPELINE:
+    purpose: "Creates video source pipeline for camera, file, RTSP, or screen capture"
+    key_params: [video_source, video_width, video_height, frame_rate, sync, no_webcam_compression, mirror_image]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  INFERENCE_PIPELINE:
+    purpose: "Creates hailonet + hailofilter pipeline for model inference and postprocessing"
+    key_params: [hef_path, post_process_so, post_function_name, batch_size, config_json, additional_params, scheduler_timeout_ms, scheduler_priority, vdevice_group_id, multi_process_service]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  INFERENCE_PIPELINE_WRAPPER:
+    purpose: "Wraps inference in hailocropper+hailoaggregator for resolution preservation"
+    key_params: [inner_pipeline, bypass_max_size_buffers, name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  DISPLAY_PIPELINE:
+    purpose: "Creates hailooverlay + video sink for visualization"
+    key_params: [video_sink, sync, show_fps, name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  TRACKER_PIPELINE:
+    purpose: "Creates hailotracker element for object tracking across frames"
+    key_params: [class_id, kalman_dist_thr, iou_thr, init_iou_thr, keep_new_frames, keep_tracked_frames, keep_lost_frames, keep_past_metadata, name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  CROPPER_PIPELINE:
+    purpose: "Wraps inference in hailocropper+hailoaggregator for cascaded detection-then-classify"
+    key_params: [inner_pipeline, so_path, function_name, use_letterbox, no_scaling_bbox, internal_offset, bypass_max_size_buffers, name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  TILE_CROPPER_PIPELINE:
+    purpose: "Wraps inference in hailotilecropper+hailotileaggregator for tiled processing"
+    key_params: [inner_pipeline, tiles_along_x_axis, tiles_along_y_axis, overlap_x_axis, overlap_y_axis, tiling_mode, scale_level, iou_threshold, border_threshold, name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  USER_CALLBACK_PIPELINE:
+    purpose: "Creates identity element for Python callback invocation"
+    key_params: [name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  QUEUE:
+    purpose: "Creates a GStreamer queue element for buffering"
+    key_params: [name, max_size_buffers, max_size_bytes, max_size_time, leaky]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  OVERLAY_PIPELINE:
+    purpose: "Creates hailooverlay element for drawing bounding boxes and labels"
+    key_params: [name]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  FILE_SINK_PIPELINE:
+    purpose: "Creates pipeline for saving video to .mkv file"
+    key_params: [output_file, name, bitrate]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  VIDEO_STREAM_PIPELINE:
+    purpose: "Creates pipeline for UDP video streaming"
+    key_params: [port, host, bitrate]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  VIDEO_SHMSINK_PIPELINE:
+    purpose: "Creates shared memory video sink pipeline"
+    key_params: [socket_path]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  VIDEO_SHMSRC_PIPELINE:
+    purpose: "Creates shared memory video source pipeline"
+    key_params: [socket_path]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
+
+  get_source_type:
+    purpose: "Determines source type (usb, rpi, rtsp, file, etc.) from input string"
+    key_params: [input_source]
+    source_file: hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py
