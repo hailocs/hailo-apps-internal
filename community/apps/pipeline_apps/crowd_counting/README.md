@@ -61,6 +61,7 @@ SOURCE_PIPELINE (USB camera / video file)
 - **Change the counting line**: Use `--line-y` to move the virtual line. Values close to 0.0 place it near the top; close to 1.0 near the bottom.
 - **Swap model**: Use `--hef-path` or `--list-models` to see available detection models.
 - **Count other objects**: Modify the `label != "person"` filter in `app_callback()` to track vehicles, animals, etc.
+- **Detection sensitivity (NMS)**: The NMS score/IoU thresholds are hardcoded in `crowd_counting_pipeline.py` (`nms_score_threshold = 0.3`, `nms_iou_threshold = 0.45`). Edit those values to tune how confidently/aggressively detections are filtered.
 - **Add alerts**: Extend `CrowdCountingCallbackData` to trigger alerts when counts exceed thresholds.
 - **Export data**: Add CSV/JSON logging in the callback for analytics.
 

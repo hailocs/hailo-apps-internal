@@ -75,10 +75,24 @@ class DepthAnythingCallback(app_callback_class):
             )
             # Apply pre-run calibration if provided
             if calibrate_ref:
-                rel_str, met_str = calibrate_ref.split(":")
+                parts = calibrate_ref.split(":")
+                if len(parts) != 2:
+                    raise ValueError(
+                        f"--calibrate-ref must be 'RELATIVE:METERS' (e.g. '15.3:2.5'), "
+                        f"got: {calibrate_ref!r}"
+                    )
+                rel_str, met_str = parts
+                try:
+                    rel_val = float(rel_str)
+                    met_val = float(met_str)
+                except ValueError as e:
+                    raise ValueError(
+                        f"--calibrate-ref values must be numbers 'RELATIVE:METERS' "
+                        f"(e.g. '15.3:2.5'), got: {calibrate_ref!r}"
+                    ) from e
                 self.metric_converter.calibrate_from_reference(
-                    relative_values=np.array([float(rel_str)]),
-                    metric_values=np.array([float(met_str)]),
+                    relative_values=np.array([rel_val]),
+                    metric_values=np.array([met_val]),
                 )
 
         # Export directory
@@ -340,7 +354,7 @@ def main():
     parser.add_argument(
         "--display-mode",
         type=str,
-        choices=["depth", "raw", "side-by-side", "overlay", "metric"],
+        choices=["depth", "side-by-side", "overlay", "metric"],
         default="depth",
         help="Display mode (default: depth)",
     )
@@ -399,7 +413,9 @@ def main():
         "--max-clip",
         type=float,
         default=10.0,
-        help="Clip depth values beyond this distance in meters (removes far-end outliers, default: 10.0). Set to 0 to disable.",
+        help="Enable far-end outlier clipping at the 95th percentile of depth "
+             "(removes noise spikes). Any value > 0 enables it; 0 disables it. "
+             "The numeric value itself is not used as a threshold (default: 10.0).",
     )
 
     # Pre-parse to get custom args for callback setup

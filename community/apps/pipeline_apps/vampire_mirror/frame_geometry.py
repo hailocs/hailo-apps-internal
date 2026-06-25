@@ -14,6 +14,35 @@ from __future__ import annotations
 import numpy as np
 
 
+def parse_mirror_ratio(ratio_str: str) -> tuple[int, int]:
+    """Parse a ``"W:H"`` mirror-ratio string into a ``(width, height)`` int tuple.
+
+    Raises
+    ------
+    ValueError
+        If the string is not exactly two ``:``-separated positive integers.
+    """
+    parts = ratio_str.split(":")
+    if len(parts) != 2:
+        raise ValueError(
+            f"Invalid --mirror-ratio {ratio_str!r}: expected 'W:H' "
+            f"(two integers separated by ':'), e.g. '3:4'."
+        )
+    try:
+        w, h = int(parts[0]), int(parts[1])
+    except ValueError:
+        raise ValueError(
+            f"Invalid --mirror-ratio {ratio_str!r}: both parts must be integers, "
+            f"e.g. '3:4'."
+        ) from None
+    if w <= 0 or h <= 0:
+        raise ValueError(
+            f"Invalid --mirror-ratio {ratio_str!r}: both parts must be positive, "
+            f"e.g. '3:4'."
+        )
+    return w, h
+
+
 class FrameGeometry:
     """Pre-compute crop coordinates for a landscape frame → portrait mirror view.
 

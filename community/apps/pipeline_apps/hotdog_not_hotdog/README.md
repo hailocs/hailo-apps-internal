@@ -1,6 +1,6 @@
 # Hotdog Not Hotdog
 
-A real-time "hotdog or not hotdog" classifier using CLIP zero-shot classification on Hailo-8. Point your camera at anything and get an instant verdict: **HOTDOG!** or **NOT HOTDOG!**
+A real-time "hotdog or not hotdog" classifier using CLIP zero-shot classification on Hailo-8, Hailo-8L, or Hailo-10H. Point your camera at anything and get an instant verdict: **HOTDOG!** or **NOT HOTDOG!**
 
 Inspired by the [Silicon Valley TV show](https://www.hbo.com/silicon-valley) — but running entirely on edge hardware.
 
@@ -14,7 +14,7 @@ Background classes are used instead of a "not hotdog" prompt because CLIP doesn'
 
 ## Prerequisites
 
-- Hailo-8 or Hailo-8L accelerator
+- Hailo-8, Hailo-8L, or Hailo-10H accelerator
 - USB camera (or video file)
 - CLIP model resources downloaded (`hailo-download-resources`)
 

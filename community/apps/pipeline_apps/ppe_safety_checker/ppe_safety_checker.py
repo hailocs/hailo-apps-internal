@@ -34,7 +34,6 @@ def app_callback(element, buffer, user_data):
         classifications = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)
         for classification in classifications:
             label = classification.get_label()
-            confidence = classification.get_confidence()
 
             if PPE_STATUS_SAFE in label:
                 user_data.safe_count += 1

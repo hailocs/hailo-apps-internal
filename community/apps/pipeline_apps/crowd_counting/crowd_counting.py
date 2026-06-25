@@ -1,6 +1,9 @@
 # region imports
 # Standard library imports
 import os
+# Demote vaapidecodebin so GStreamer's autoplugger does not pick the VA-API
+# decoder (it can fail to negotiate / hang on some systems); fall back to
+# software decoders instead. Must be set before the GStreamer registry loads.
 os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
 
 # Third-party imports
@@ -58,6 +61,15 @@ class CrowdCountingCallbackData(app_callback_class):
         self.count_right_to_left = 0  # crossing line upward (bottom -> top)
         # Set of track IDs that have already been counted (avoid double-counting)
         self.counted_ids = set()
+        # Frames since each counted ID was last seen. Used to forget an ID only
+        # after it has been absent for FORGET_AFTER_FRAMES consecutive frames,
+        # so a briefly occluded/lost person reappearing with the SAME tracker ID
+        # is not re-counted. Pruning every frame (the previous behavior) defeated
+        # the double-counting guard above.
+        self.frames_since_seen = {}
+        # ~3s at 30 fps; long enough to bridge typical short occlusions while
+        # still eventually reclaiming the ID set for genuinely departed tracks.
+        self.forget_after_frames = 90
 
 
 # -----------------------------------------------------------------------------------------------
@@ -146,19 +158,32 @@ def app_callback(element, buffer, user_data):
     # Update previous positions for the next frame
     user_data.prev_positions = current_positions
 
-    # Clean up counted IDs for tracks that are no longer visible
+    # Age-out counted IDs: forget an ID only after it has been absent for
+    # forget_after_frames consecutive frames. This preserves the double-counting
+    # guard across brief occlusions (where the tracker keeps the same ID) while
+    # still eventually releasing IDs of people who have genuinely left the scene.
     active_ids = set(current_positions.keys())
-    user_data.counted_ids = user_data.counted_ids.intersection(active_ids)
+    for track_id in list(user_data.counted_ids):
+        if track_id in active_ids:
+            user_data.frames_since_seen[track_id] = 0
+        else:
+            missing = user_data.frames_since_seen.get(track_id, 0) + 1
+            if missing >= user_data.forget_after_frames:
+                user_data.counted_ids.discard(track_id)
+                user_data.frames_since_seen.pop(track_id, None)
+            else:
+                user_data.frames_since_seen[track_id] = missing
 
-    # Print status periodically
+    # Log status periodically
     if frame_idx % 30 == 0:
         total = user_data.count_left_to_right + user_data.count_right_to_left
-        print(
-            f"Frame {frame_idx} | "
-            f"L->R: {user_data.count_left_to_right} | "
-            f"R->L: {user_data.count_right_to_left} | "
-            f"Total: {total} | "
-            f"Active tracks: {len(current_positions)}"
+        hailo_logger.info(
+            "Frame %d | L->R: %d | R->L: %d | Total: %d | Active tracks: %d",
+            frame_idx,
+            user_data.count_left_to_right,
+            user_data.count_right_to_left,
+            total,
+            len(current_positions),
         )
 
     # Draw overlay if --use-frame is enabled
@@ -225,11 +250,14 @@ def app_callback(element, buffer, user_data):
 
 def main():
     hailo_logger.info("Starting Crowd Counting App.")
-    # Create user_data with default line_y; will be updated after arg parsing
+    # Construct user_data with the placeholder default line_y; the real value
+    # from --line-y is only known after the app parses args, so we set it below.
     user_data = CrowdCountingCallbackData()
-    # GStreamerCrowdCountingApp owns --labels-json and --line-y arg definitions
+    # GStreamerCrowdCountingApp owns the --labels-json and --line-y arg definitions
+    # and parses them during construction.
     app = GStreamerCrowdCountingApp(app_callback, user_data)
-    # Update line_y from the parsed arguments
+    # Apply the parsed --line-y value before run(); the callback reads
+    # user_data.line_y on every frame.
     user_data.line_y = app.options_menu.line_y
     app.run()
 

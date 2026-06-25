@@ -122,9 +122,17 @@ class GStreamerParkingLotApp(GStreamerApp):
         # Validate resource paths
         if self.hef_path is None or not Path(self.hef_path).exists():
             hailo_logger.error("HEF path is invalid or missing: %s", self.hef_path)
+            raise FileNotFoundError(
+                f"HEF path is invalid or missing: {self.hef_path}. "
+                "Run 'hailo-download-resources' to fetch model resources."
+            )
         if self.post_process_so is None or not Path(self.post_process_so).exists():
             hailo_logger.error(
                 "Post-process .so path is invalid or missing: %s", self.post_process_so
+            )
+            raise FileNotFoundError(
+                f"Post-process .so path is invalid or missing: {self.post_process_so}. "
+                "Run 'hailo-compile-postprocess' to build the postprocess library."
             )
 
         self.app_callback = app_callback

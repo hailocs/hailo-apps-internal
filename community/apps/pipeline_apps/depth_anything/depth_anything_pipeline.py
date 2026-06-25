@@ -87,12 +87,21 @@ def get_hef_path(model_version, arch, user_hef_path=None):
 
     url = MODEL_URLS[url_key]
     hailo_logger.info("Downloading HEF from %s ...", url)
-    print(f"Downloading {model_name}.hef for {arch}...")
+    hailo_logger.info("Downloading %s.hef for %s...", model_name, arch)
+    # Download to a temporary path first, then atomically move into place.
+    # A partial/interrupted download must never be left at the final path,
+    # or the next-run hef_path.exists() check would accept a truncated HEF.
+    tmp_path = hef_path.with_suffix(hef_path.suffix + ".tmp")
     try:
-        urllib.request.urlretrieve(url, str(hef_path))
+        urllib.request.urlretrieve(url, str(tmp_path))
+        os.replace(str(tmp_path), str(hef_path))
         hailo_logger.info("Downloaded HEF to %s", hef_path)
-        print(f"Downloaded to {hef_path}")
     except Exception as e:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
         raise RuntimeError(
             f"Failed to download HEF from {url}: {e}\n"
             f"Please download manually and pass via --hef-path"
@@ -168,12 +177,13 @@ class GStreamerDepthAnythingApp(GStreamerApp):
         self.post_function_name = POSTPROCESS_FUNCTION
 
         if self.hef_path is None or not Path(self.hef_path).exists():
-            hailo_logger.error("HEF path is invalid or missing: %s", self.hef_path)
+            raise RuntimeError(f"HEF path is invalid or missing: {self.hef_path}")
         if not Path(self.post_process_so).exists():
-            hailo_logger.error(
-                "Post-process .so not found: %s — run 'meson setup build.release && ninja -C build.release' "
-                "in postprocess/ directory",
-                self.post_process_so,
+            raise RuntimeError(
+                f"Post-process library not found: {self.post_process_so}\n"
+                f"Build it before running this app:\n"
+                f"    bash {Path(__file__).parent / 'postprocess' / 'build.sh'}\n"
+                f"This produces libdepth_anything_postprocess.so in postprocess/build.release/."
             )
 
         hailo_logger.info(
@@ -243,5 +253,5 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Starting Hailo Depth Anything App...")
+    hailo_logger.info("Starting Hailo Depth Anything App...")
     main()

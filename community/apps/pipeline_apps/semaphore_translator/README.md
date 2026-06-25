@@ -12,13 +12,13 @@ Real-time semaphore flag signal translation using body pose estimation. The app 
 
 ```bash
 # With USB camera
-python community/apps/pipeline_apps/semaphore_translator/semaphore_translator.py --input usb
+python -m community.apps.pipeline_apps.semaphore_translator.semaphore_translator --input usb
 
 # With video file
-python community/apps/pipeline_apps/semaphore_translator/semaphore_translator.py --input path/to/video.mp4
+python -m community.apps.pipeline_apps.semaphore_translator.semaphore_translator --input path/to/video.mp4
 
 # With frame overlay (draws arm lines and detected letters on video)
-python community/apps/pipeline_apps/semaphore_translator/semaphore_translator.py --input usb --use-frame
+python -m community.apps.pipeline_apps.semaphore_translator.semaphore_translator --input usb --use-frame
 ```
 
 ## Architecture
@@ -56,12 +56,12 @@ DISPLAY_PIPELINE (video output with overlay)
 3. **Discretization:** Snap to nearest 45-degree increment (0, 45, 90, 135, 180, 225, 270, 315)
 4. **Lookup:** Match (right_arm_angle, left_arm_angle) tuple against semaphore alphabet table
 5. **Stabilization:** Same letter must hold for 10 consecutive frames before being accepted
-6. **REST signal:** Both arms down (0, 0) resets but does not add a letter
+6. **REST signal:** Both arms down (0, 0) clears the accumulated word and does not add a letter
 
 ## Customization
 
 - **Adjust sensitivity:** Change `stable_threshold` in `user_app_callback_class` (higher = more stable, slower)
 - **Angle tolerance:** Modify `ANGLE_TOLERANCE` constant (default 30 degrees)
 - **Add signals:** Extend `SEMAPHORE_ALPHABET` dict with new (right_angle, left_angle) -> letter mappings
-- **Clear word:** Currently accumulates indefinitely; add a "cancel" gesture or timeout to reset `decoded_word`
+- **Clear word:** The REST signal (both arms down) clears `decoded_word`; for an automatic reset add a timeout-based clear in the callback
 - **Swap model:** Use `--hef-path` or `--list-models` to try yolov8s_pose (faster) vs yolov8m_pose (more accurate)

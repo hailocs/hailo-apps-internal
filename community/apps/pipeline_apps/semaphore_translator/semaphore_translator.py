@@ -2,8 +2,9 @@
 # Standard library imports
 import math
 import os
+from collections import defaultdict
 
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+os.environ.setdefault("GST_PLUGIN_FEATURE_RANK", "vaapidecodebin:NONE")
 
 # Third-party imports
 import gi
@@ -183,10 +184,14 @@ def get_keypoint_pixel_coords(points, keypoint_name, bbox, width, height):
 class user_app_callback_class(app_callback_class):
     def __init__(self):
         super().__init__()
+        # Single accumulated word (single-signer assumption: the decoded word
+        # is shared, but each tracked person stabilizes their own letters so a
+        # second person in frame cannot reset another person's stable count).
         self.decoded_word = ""
-        self.last_letter = ""
-        self.stable_count = 0
         self.stable_threshold = 10  # frames before accepting a letter
+        # Per-track stabilization state, keyed by track_id:
+        #   {track_id: {"last_letter": str, "stable_count": int}}
+        self.stable_state = defaultdict(lambda: {"last_letter": "", "stable_count": 0})
 
 
 # -----------------------------------------------------------------------------------------------
@@ -255,15 +260,21 @@ def app_callback(element, buffer, user_data):
         # Decode the semaphore letter
         letter = decode_semaphore(right_discrete, left_discrete)
 
-        # Stabilization: require the same letter for several consecutive frames
-        if letter == user_data.last_letter:
-            user_data.stable_count += 1
+        # Stabilization: require the same letter for several consecutive frames.
+        # State is keyed per track_id so a second person in frame cannot reset
+        # another person's stable count.
+        state = user_data.stable_state[track_id]
+        if letter == state["last_letter"]:
+            state["stable_count"] += 1
         else:
-            user_data.last_letter = letter
-            user_data.stable_count = 1
+            state["last_letter"] = letter
+            state["stable_count"] = 1
 
-        if user_data.stable_count == user_data.stable_threshold:
-            if letter != "REST" and letter != "?":
+        if state["stable_count"] == user_data.stable_threshold:
+            if letter == "REST":
+                # Both arms down resets the accumulated word (does not add a letter).
+                user_data.decoded_word = ""
+            elif letter != "?":
                 user_data.decoded_word += letter
 
         string_to_print += (
@@ -293,7 +304,8 @@ def app_callback(element, buffer, user_data):
 
             # Draw detected letter
             text_x = int(bbox.xmin() * width)
-            text_y = int(bbox.ymin() * height) - 10
+            # Clamp so the label never goes off the top of the frame.
+            text_y = max(int(bbox.ymin() * height) - 10, 20)
             cv2.putText(
                 frame,
                 f"Signal: {letter}",
@@ -320,7 +332,7 @@ def app_callback(element, buffer, user_data):
         user_data.set_frame(frame)
 
     if user_data.get_count() % 30 == 0:
-        print(string_to_print)
+        hailo_logger.info(string_to_print)
     return
 
 

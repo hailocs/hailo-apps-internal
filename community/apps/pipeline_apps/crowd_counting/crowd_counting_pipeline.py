@@ -60,6 +60,11 @@ class GStreamerCrowdCountingApp(GStreamerApp):
             help="Y-position of the virtual counting line in normalized coordinates [0.0-1.0]. Default: 0.5 (middle of frame).",
         )
 
+        # Detection benefits from batch_size=2. Override the shared parser's
+        # default (1) here so it applies only when the user does NOT pass
+        # --batch-size; an explicit "--batch-size 1" is still respected.
+        parser.set_defaults(batch_size=2)
+
         # Handle --list-models flag before full initialization
         handle_list_models_flag(parser, DETECTION_PIPELINE)
 
@@ -76,9 +81,6 @@ class GStreamerCrowdCountingApp(GStreamerApp):
             self.show_fps,
         )
 
-        # Override batch_size if not set via parser (default is 2 for detection)
-        if self.batch_size == 1:
-            self.batch_size = 2
         nms_score_threshold = 0.3
         nms_iou_threshold = 0.45
 
@@ -173,7 +175,15 @@ class GStreamerCrowdCountingApp(GStreamerApp):
 
 
 def main():
-    hailo_logger.info("Starting Hailo Crowd Counting App...")
+    """Smoke-test entry point only.
+
+    Runs the pipeline with a no-op (dummy) callback to verify the pipeline
+    builds and plays. The real application entry point is in
+    ``crowd_counting.py`` (run via
+    ``python -m community.apps.pipeline_apps.crowd_counting.crowd_counting``),
+    which wires up the line-crossing callback and ``--line-y`` handling.
+    """
+    hailo_logger.info("Starting Hailo Crowd Counting App (pipeline smoke test)...")
     user_data = app_callback_class()
     app_callback = dummy_callback
     app = GStreamerCrowdCountingApp(app_callback, user_data)

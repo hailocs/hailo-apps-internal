@@ -51,6 +51,7 @@ class TestEmbeddingsSchema:
         assert 0.0 <= threshold <= 1.0
 
     def test_hotdog_is_first_prompt(self, embeddings_data):
-        # The pipeline's verdict logic relies on entries[0] being the hotdog
-        # class label after softmax — sanity check on order.
+        # The verdict logic matches on the label name ("hotdog"), not on entry
+        # order, so this is a sanity check that the hotdog prompt is still
+        # present and conventionally listed first.
         assert embeddings_data["entries"][0]["text"] == "hotdog"

@@ -59,6 +59,22 @@ python community/apps/pipeline_apps/depth_anything/depth_anything.py \
 - Hailo-8, Hailo-8L, or Hailo-10H accelerator
 - USB camera or video file
 - No manual model download needed (auto-download on first run)
+- **The C++ post-process library must be built first** (see below)
+
+### Build the C++ post-process
+
+This app requires a custom C++ post-process shared library
+(`libdepth_anything_postprocess.so`). It does not ship pre-built — build it once
+before running the app:
+
+```bash
+source setup_env.sh   # ensures TAPPAS / meson are on PATH
+bash community/apps/pipeline_apps/depth_anything/postprocess/build.sh
+```
+
+This compiles the library into `postprocess/build.release/`, where the app loads
+it from by absolute path (it is not installed system-wide). If the library is
+missing, the app raises a clear error telling you to run this build step.
 
 ## How to Run
 
@@ -102,9 +118,9 @@ USB Camera / Video File
         |
   SOURCE_PIPELINE
         |
-  INFERENCE_PIPELINE_WRAPPER
-    |-- INFERENCE_PIPELINE (Depth Anything on Hailo + C++ post-process → HailoDepthMask)
-    |-- Bypass (original resolution)
+  (center-crop to square)
+        |
+  INFERENCE_PIPELINE (Depth Anything on Hailo + C++ post-process → HailoDepthMask)
         |
   USER_CALLBACK_PIPELINE  <-- Invert + clip + smooth + colormap + display
         |
@@ -139,7 +155,7 @@ The app uses a **C++ post-process** (`libdepth_anything_postprocess.so`) to extr
 | `--calibrate-ref` | off           | Calibrate with reference: `"RELATIVE:METERS"` (e.g., `"15.3:2.5"`) |
 | `--export-depth`  | off           | Export depth frames as .npy to specified directory                 |
 | `--temporal-alpha` | `0.4`        | Temporal smoothing factor (0.0=off, 0.9=very smooth)               |
-| `--max-clip`      | `10.0`        | Clip far-end outliers beyond 95th percentile (0=disable)           |
+| `--max-clip`      | `10.0`        | Enable 95th-percentile far-end outlier clipping (>0 on, 0 off; value unused) |
 
 
 ## Model Comparison

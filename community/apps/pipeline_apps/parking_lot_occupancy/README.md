@@ -1,10 +1,10 @@
 # Parking Lot Occupancy
 
-Real-time parking lot occupancy monitoring using YOLOv8 object detection on Hailo-8. Detects vehicles (car, truck, bus, motorcycle) and tracks them across user-defined parking zones. Each zone displays occupied/free status with color-coded overlays.
+Real-time parking lot occupancy monitoring using YOLOv8 object detection on Hailo-8/8L/10H. Detects vehicles (car, truck, bus, motorcycle) and tracks them across user-defined parking zones. Each zone displays occupied/free status with color-coded overlays.
 
 ## Prerequisites
 
-- Hailo-8 accelerator
+- Hailo-8 / Hailo-8L / Hailo-10H accelerator
 - TAPPAS runtime installed
 - Environment activated: `source setup_env.sh`
 - Resources downloaded: `hailo-download-resources`

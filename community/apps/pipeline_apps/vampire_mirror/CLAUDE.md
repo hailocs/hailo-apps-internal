@@ -29,5 +29,5 @@ python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py --input usb
 Optional: `--mirror-ratio 9:16`, `--show-overlay` (debug), `--no-bg-process` (in-process mode), `--dilate-radius`.
 
 ## How to Extend
-- Wire SCRFD+ArcFace face embeddings into `VampireEngine.decide()` to actually identify vampires (currently all persons stay visible).
+- Wire SCRFD+ArcFace face embeddings into `VampireEngine.decide()` to actually identify vampires (currently `VampireEngine` runs in auto-alternate mode: every other tracked person is made invisible, in arrival order).
 - Tune `--dilate-radius` / `--dilate-iterations` to control the invisibility "halo" around vampire bodies.

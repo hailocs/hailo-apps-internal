@@ -19,6 +19,7 @@ An interactive Easter Egg and Afikoman catching game using Hailo pose estimation
 ## Usage
 
 ```bash
+source setup_env.sh
 python -m community.apps.pipeline_apps.easter_game.easter_game --input usb
 
 or:
@@ -32,24 +33,8 @@ python -m community.apps.pipeline_apps.easter_game.easter_game --input usb --bac
 - Leaderboard and scores are displayed on screen
 - Game ends after 90 seconds, shows final scores, and restarts automatically
 
-## This app was autonomously generated using the HL App Builder custom agent with the following prompt:
+## Notes
 
-Build Easter game:
-
-Easter eggs (colorful ovals, 20 pts) and Afikoman matzahs (golden rectangles, 10 pts) appear one at a time at random spots. 
-
-Players catch them with their hands. 
-
-Missed after 3 seconds - next one spawns. 
-
-Eggs appear more often than Afikoman.
-
-Background: pass any image with `--background <path>` (e.g. `~/Pictures/room.png`); without it, the bundled `room.png` resource is used. 
-
-Leaderboard on the right - auto-name new players. 
-
-Show "+20"/"+10" pop-ups on catch.
-
-90-second countdown timer at top. 
-
-Game over - show final scores, then auto-restart.
+- Per-player scoring relies on the pose pipeline's tracker assigning a unique ID to
+  each person. If tracking is unavailable, all untracked detections share a single
+  player entry and their scores are merged.

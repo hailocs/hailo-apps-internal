@@ -27,8 +27,6 @@ from hailo_apps.python.core.common.defines import (
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import (
     GStreamerApp,
-    app_callback_class,
-    dummy_callback,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
@@ -38,7 +36,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     USER_CALLBACK_PIPELINE,
     CROPPER_PIPELINE,
     TRACKER_PIPELINE,
-    QUEUE,
 )
 
 hailo_logger = get_logger(__name__)
@@ -127,7 +124,13 @@ class GStreamerLicensePlateReaderApp(GStreamerApp):
                 arch=self.arch,
                 model=OCR_VIDEO_NAME,
             )
-            self.video_source = str(video_path) if video_path else None
+            if video_path is None or not Path(video_path).exists():
+                raise FileNotFoundError(
+                    f"Default OCR demo video not found: {video_path}.\n"
+                    f"  - Run hailo-download-resources to fetch it, or\n"
+                    f"  - pass --input <path-to-video|usb|rtsp://...>."
+                )
+            self.video_source = str(video_path)
 
         hailo_logger.info(
             "Resources | ocr_det_hef=%s | ocr_rec_hef=%s | post_so=%s | det_fn=%s | rec_fn=%s | cropper_fn=%s",
@@ -254,16 +257,3 @@ class GStreamerLicensePlateReaderApp(GStreamerApp):
         )
 
         return pipeline_string
-
-
-def main():
-    # Create an instance of the user app callback class
-    hailo_logger.info("Starting Hailo License Plate Reader App...")
-    user_data = app_callback_class()
-    app_callback = dummy_callback
-    app = GStreamerLicensePlateReaderApp(app_callback, user_data)
-    app.run()
-
-
-if __name__ == "__main__":
-    main()

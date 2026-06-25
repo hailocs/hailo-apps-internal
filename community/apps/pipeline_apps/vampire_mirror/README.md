@@ -8,7 +8,7 @@ A real-time "mirror" where vampires are invisible. Uses instance segmentation wi
 2. **Dynamic background**: After capture, the background continuously updates via EMA (exponential moving average) for all pixels not covered by a vampire. This handles lighting changes and moving objects.
 3. **Instance segmentation**: Each frame is processed by a YOLO segmentation model on the Hailo accelerator, producing per-person pixel masks.
 4. **Tracking**: ByteTrack assigns persistent track IDs to each detected person across frames.
-5. **Vampire logic**: The VampireEngine decides who is a vampire based on face recognition (when available). Vampires have their pixels replaced with the background.
+5. **Vampire logic**: Face recognition is not yet wired. In its place, the VampireEngine runs in auto-alternate mode: tracked persons are assigned human / vampire in arrival order (1st visible, 2nd invisible, 3rd visible, ...), so every other person is rendered invisible. Vampires have their pixels replaced with the background.
 6. **Portrait display**: The camera captures in landscape mode. Only a portrait center crop is displayed as the "mirror view". The extra width on each side is a buffer zone.
 7. **Safe entry**: If a person enters the mirror view before being identified as a vampire, they are permanently marked as human to prevent sudden disappearance.
 
@@ -55,7 +55,6 @@ All standard pipeline arguments are supported (`--input`, `--arch`, `--show-fps`
 | `--show-overlay` / `--no-show-overlay` | off | Draw the `hailooverlay` bounding-box / segmentation overlay on the displayed frame. Off by default so the mirror has no debug graphics; enable for debugging |
 | `--dilate-radius` | `25` | Dilation kernel radius (px) applied to each vampire mask before background compositing. Bigger = wider invisibility halo around the body |
 | `--dilate-iterations` | `3` | Dilation iterations for the vampire mask. Combine with `--dilate-radius` to control halo size |
-| `--no-face-recognition` | off | Disable face recognition (everyone visible) |
 
 ## Tips
 

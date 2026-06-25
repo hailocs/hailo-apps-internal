@@ -1,7 +1,5 @@
 # region imports
 # Standard library imports
-import os
-import signal
 import setproctitle
 
 # Third-party imports
@@ -68,10 +66,9 @@ DEFAULT_PPE_PROMPTS = [
     "a person without a safety vest",
 ]
 
-# Indices into DEFAULT_PPE_PROMPTS that indicate safe (compliant) status
-SAFE_PROMPT_INDICES = {0, 1, 2}
-# Indices that indicate violation (non-compliant) status
-VIOLATION_PROMPT_INDICES = {3, 4, 5}
+# Safe/violation split is derived dynamically at runtime: the first half of
+# the prompt list is treated as "safe" (compliant) and the second half as
+# "violation" (non-compliant). See _setup_ppe_prompts().
 
 
 class PPESafetyCallback(app_callback_class):
@@ -135,6 +132,9 @@ class GStreamerPPESafetyCheckerApp(GStreamerApp):
         self.detection_batch_size = 8
         self.clip_batch_size = 8
 
+        # Person-detection NMS score threshold, fed to the detection hailonet.
+        self.detection_nms_score_threshold = self.options_menu.detection_threshold
+
         if BASIC_PIPELINES_VIDEO_EXAMPLE_NAME in self.video_source:
             self.video_source = get_resource_path(
                 pipeline_name=None,
@@ -192,8 +192,24 @@ class GStreamerPPESafetyCheckerApp(GStreamerApp):
         self._connect_matching_callback()
 
     def _setup_ppe_prompts(self):
-        """Load default PPE prompts into the text_image_matcher."""
+        """Load PPE prompts into the text_image_matcher.
+
+        The first half of the prompt list is treated as "safe" (compliant)
+        and the second half as "violation" (non-compliant / negative). The
+        split is derived from ``len(prompts) // 2`` so any even-length prompt
+        list works, not just the default 6-prompt layout.
+        """
         prompts = self.options_menu.prompts or DEFAULT_PPE_PROMPTS
+        if len(prompts) % 2 != 0:
+            hailo_logger.warning(
+                "Prompt count (%d) is odd; expected an even split of "
+                "safe/violation prompts. The first %d will be treated as safe "
+                "and the rest as violation.",
+                len(prompts),
+                len(prompts) // 2,
+            )
+        # First half = safe, second half = violation (negative).
+        split = len(prompts) // 2
         for i, prompt in enumerate(prompts):
             if i >= self.text_image_matcher.max_entries:
                 hailo_logger.warning(
@@ -202,8 +218,8 @@ class GStreamerPPESafetyCheckerApp(GStreamerApp):
                     self.text_image_matcher.max_entries,
                 )
                 break
-            # Mark violation prompts as negative
-            is_negative = i in VIOLATION_PROMPT_INDICES
+            # Mark violation prompts (second half) as negative
+            is_negative = i >= split
             self.text_image_matcher.add_text(prompt, index=i, negative=is_negative)
 
     def _connect_matching_callback(self):
@@ -237,6 +253,9 @@ class GStreamerPPESafetyCheckerApp(GStreamerApp):
             post_process_so=self.post_process_so_detection,
             post_function_name=self.detection_post_process_function_name,
             batch_size=self.detection_batch_size,
+            additional_params=(
+                f"nms-score-threshold={self.detection_nms_score_threshold} "
+            ),
             scheduler_priority=31,
             scheduler_timeout_ms=100,
             name="detection_inference",
@@ -322,25 +341,30 @@ class GStreamerPPESafetyCheckerApp(GStreamerApp):
             for match in matches:
                 detection = used_detection[match.row_idx]
 
-                # Remove old classifications before adding new
+                # Get old classifications BEFORE adding a new one (mirrors the
+                # parent clip_pipeline.py). We only ever replace the prior label
+                # for a confident SAFE/VIOLATION match; an UNKNOWN frame leaves
+                # the previous label intact so a low-confidence frame can't flip
+                # a worker's bbox color back to neutral.
+                if not match.passed_threshold:
+                    continue
+
                 old_classifications = detection.get_objects_typed(
                     hailo.HAILO_CLASSIFICATION
                 )
 
-                # Determine PPE compliance status
-                if match.passed_threshold and not match.negative:
+                # Determine PPE compliance status (threshold already passed)
+                if not match.negative:
                     status = PPE_STATUS_SAFE
-                    label = f"{status}: {match.text}"
-                elif match.passed_threshold and match.negative:
-                    status = PPE_STATUS_VIOLATION
-                    label = f"{status}: {match.text}"
                 else:
-                    status = PPE_STATUS_UNKNOWN
-                    label = status
+                    status = PPE_STATUS_VIOLATION
+                label = f"{status}: {match.text}"
 
                 classification = hailo.HailoClassification(
                     "ppe_status", label, match.similarity
                 )
+                # Add new before removing old so the detection is never left
+                # without a classification mid-update.
                 detection.add_object(classification)
 
                 for old in old_classifications:

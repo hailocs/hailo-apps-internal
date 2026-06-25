@@ -93,6 +93,9 @@ class GStreamerHotdogApp(GStreamerApp):
         # so we use diverse background classes and classify as "not hotdog" when any wins.
         self.embeddings_json = os.path.join(os.path.dirname(os.path.abspath(__file__)), "embeddings.json")
         self._load_or_generate_embeddings()
+        # load_embeddings() overwrites the threshold from the cached JSON, so
+        # re-apply the user's --threshold afterwards regardless of cache hit.
+        self.text_image_matcher.set_threshold(self.options_menu.threshold)
 
         self.matching_callback_name = "matching_identity_callback"
 

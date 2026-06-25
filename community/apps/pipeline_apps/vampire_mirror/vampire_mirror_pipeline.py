@@ -13,7 +13,7 @@ from hailo_apps.python.core.common.parser import get_pipeline_parser
 from hailo_apps.python.pipeline_apps.instance_segmentation.instance_segmentation_pipeline import (
     GStreamerInstanceSegmentationApp,
 )
-from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry
+from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry, parse_mirror_ratio
 
 logger = get_logger(__name__)
 
@@ -73,34 +73,6 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
             help="Number of initial frames for background capture (default: 30).",
         )
 
-        # Face recognition (placeholder for future)
-        parser.add_argument(
-            "--no-face-recognition",
-            action="store_true",
-            help="Disable face recognition (everyone visible, just a mirror with effects).",
-        )
-        parser.add_argument(
-            "--face-threshold",
-            type=float,
-            default=0.5,
-            help="Face recognition confidence threshold (default: 0.5).",
-        )
-        parser.add_argument(
-            "--vampires-dir",
-            type=str,
-            default=None,
-            help=(
-                "Directory containing vampire face images for enrollment. "
-                "Structure: vampires_dir/<name>/image1.jpg."
-            ),
-        )
-        parser.add_argument(
-            "--database-dir",
-            type=str,
-            default=None,
-            help="Directory for the vampire face database. Default: <app_dir>/database.",
-        )
-
         parser.add_argument(
             "--bg-process",
             action=argparse.BooleanOptionalAction,
@@ -148,8 +120,7 @@ class VampireMirrorPipeline(GStreamerInstanceSegmentationApp):
         # is_in_mirror() check but no longer drives the displayed crop.
         width = self.options_menu.width if self.options_menu.width else 1280
         height = self.options_menu.height if self.options_menu.height else 720
-        ratio_parts = self.options_menu.mirror_ratio.split(":")
-        mirror_ratio = (int(ratio_parts[0]), int(ratio_parts[1]))
+        mirror_ratio = parse_mirror_ratio(self.options_menu.mirror_ratio)
         geometry = FrameGeometry(
             width, height,
             mirror_ratio=mirror_ratio,

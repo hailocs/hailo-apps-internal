@@ -126,6 +126,9 @@ class GStreamerSemaphoreTranslatorApp(GStreamerApp):
 
 
 def main():
+    # Smoke-test entry point only: runs the pipeline with a no-op callback to
+    # verify the GStreamer graph builds and plays. The real app entry point with
+    # the semaphore-decoding callback lives in semaphore_translator.py.
     hailo_logger.info("Starting Semaphore Translator App main()...")
     user_data = app_callback_class()
     app = GStreamerSemaphoreTranslatorApp(dummy_callback, user_data)

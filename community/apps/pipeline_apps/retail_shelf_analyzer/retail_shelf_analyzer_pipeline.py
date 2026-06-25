@@ -156,6 +156,29 @@ class GStreamerRetailShelfAnalyzerApp(GStreamerApp):
         print(f"  Confidence:         {self.confidence_threshold:.2f}")
         print("=" * 70 + "\n")
 
+        self._warn_if_demo_model()
+
+    def _warn_if_demo_model(self) -> None:
+        """Warn (once, at startup) when running on the bundled demo detection model.
+
+        The default HEF resolved by the tiling pipeline is
+        ``hailo_yolov8n_4_classes_vga`` -- a VisDrone-derived 4-class detector
+        (person / vehicle / face / license_plate). It contains NO retail product
+        classes, so out of the box this app detects ZERO products on a shelf.
+        Production use requires a product/SKU detector or a COCO-trained YOLOv8
+        model supplied via ``--hef-path`` (with matching ``--labels-json``).
+        """
+        hef_name = Path(self.hef_path).name.lower()
+        if "4_classes" in hef_name or "visdrone" in hef_name:
+            hailo_logger.warning(
+                "Running on the DEMO detection model '%s' (VisDrone-derived: "
+                "person/vehicle/face/license_plate). It has NO retail product "
+                "classes, so empty-shelf counts will be meaningless on real "
+                "shelves. For production, pass --hef-path to a product/SKU or "
+                "COCO-trained YOLOv8 HEF (with a matching --labels-json).",
+                Path(self.hef_path).name,
+            )
+
     def get_pipeline_string(self) -> str:
         """
         Build the GStreamer pipeline string with tiled detection for retail shelf analysis.
@@ -216,6 +239,13 @@ class GStreamerRetailShelfAnalyzerApp(GStreamerApp):
 
 
 def main() -> None:
+    """Smoke-test entry point only.
+
+    This wires the pipeline to a no-op ``dummy_callback`` so the GStreamer graph
+    can be built and run in isolation (e.g. to check the pipeline string / device
+    bring-up). It does NOT perform any retail shelf analysis -- the real entry
+    point with the zone-counting callback is ``retail_shelf_analyzer.py``.
+    """
     user_data = app_callback_class()
     app_callback = dummy_callback
     app = GStreamerRetailShelfAnalyzerApp(app_callback, user_data)
@@ -223,5 +253,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    print("Starting Retail Shelf Analyzer Pipeline...")
+    # Smoke-test only; use retail_shelf_analyzer.py for the real application.
+    print("Starting Retail Shelf Analyzer Pipeline (smoke-test, dummy callback)...")
     main()

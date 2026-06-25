@@ -6,7 +6,10 @@ continuously adapts. The display is a portrait center crop from a wider
 landscape capture, providing a buffer zone for identifying people before
 they enter the visible mirror area.
 
-Face recognition is not yet wired — all persons are currently visible.
+Face recognition is not yet wired. In its place, VampireEngine runs in
+auto-alternate mode: tracked persons are assigned HUMAN / VAMPIRE in
+arrival order (1st visible, 2nd invisible, 3rd visible, ...), so every
+other person is rendered invisible.
 
 Usage:
     python community/apps/pipeline_apps/vampire_mirror/vampire_mirror.py --input usb --width 1280 --height 720
@@ -39,7 +42,11 @@ from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
 
 from community.apps.pipeline_apps.vampire_mirror.vampire_mirror_pipeline import VampireMirrorPipeline
-from community.apps.pipeline_apps.vampire_mirror.frame_geometry import FrameGeometry, detect_vertical_padding
+from community.apps.pipeline_apps.vampire_mirror.frame_geometry import (
+    FrameGeometry,
+    detect_vertical_padding,
+    parse_mirror_ratio,
+)
 from community.apps.pipeline_apps.vampire_mirror.background_manager import BackgroundManager
 from community.apps.pipeline_apps.vampire_mirror.vampire_engine import VampireEngine, TrackState
 
@@ -128,8 +135,7 @@ def app_callback(element, buffer, user_data: VampireMirrorCallback):
 
     # --- Deferred geometry init (need actual frame dimensions) ---
     if geometry is None:
-        ratio_parts = user_data.mirror_ratio_str.split(":")
-        mirror_ratio = (int(ratio_parts[0]), int(ratio_parts[1]))
+        mirror_ratio = parse_mirror_ratio(user_data.mirror_ratio_str)
         vertical_pad = detect_vertical_padding(frame)
         geometry = FrameGeometry(
             width, height,

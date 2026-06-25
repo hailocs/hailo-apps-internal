@@ -6,7 +6,7 @@ High-resolution shelf analysis using tiled detection to find small products. Spl
 ## Architecture
 - **Type:** Pipeline app (tiled detection)
 - **Pattern:** Tile cropper (`hailotilecropper`) → per-tile YOLOv8 detection → tile aggregator (`hailotileaggregator`) → callback (per-zone counting) → display
-- **Models:** YOLOv8 detection (COCO object classes; configurable labels)
+- **Models:** YOLOv8 detection. **Default demo HEF is `hailo_yolov8n_4_classes_vga`** — a VisDrone-derived 4-class detector (person / vehicle / face / license_plate), NOT a product/retail model. Out of the box it detects ZERO shelf products. Production use requires a product/SKU or COCO-trained YOLOv8 HEF via `--hef-path` (with a matching `--labels-json`).
 - **Hardware:** hailo8, hailo8l, hailo10h
 - **Postprocess:** C++ `libtiling_postprocess.so` (tile aggregation with NMS)
 
@@ -19,9 +19,10 @@ High-resolution shelf analysis using tiled detection to find small products. Spl
 ## How to Run
 ```bash
 source setup_env.sh
-python community/apps/pipeline_apps/retail_shelf_analyzer/retail_shelf_analyzer.py --input usb
+python -m community.apps.pipeline_apps.retail_shelf_analyzer.retail_shelf_analyzer --input usb
 ```
 Optional: `--num-zones 3`, `--empty-threshold 2`, `--tiles-x 4 --tiles-y 3`.
+Production: add `--hef-path <product_detector.hef> --labels-json <labels.json>` (the default `hailo_yolov8n_4_classes_vga` detects no products).
 
 ## How to Extend
 - Swap in a custom product-detection model to count exact SKUs per shelf.

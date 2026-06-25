@@ -1,7 +1,9 @@
 # region imports
 # Standard library imports
 import os
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+# Disable the VA-API decode bin so the pipeline uses the standard software/Hailo
+# decode path. Use setdefault so an explicit user-supplied rank is not clobbered.
+os.environ.setdefault("GST_PLUGIN_FEATURE_RANK", "vaapidecodebin:NONE")
 
 # Third-party imports
 import gi
@@ -19,7 +21,15 @@ from community.apps.pipeline_apps.retail_shelf_analyzer.retail_shelf_analyzer_pi
 hailo_logger = get_logger(__name__)
 # endregion imports
 
-# Labels to exclude from product counts (e.g., people walking past the shelf)
+# Labels to exclude from product counts (e.g., people walking past the shelf).
+#
+# NOTE: This list is MODEL-DEPENDENT. The class names below are COCO labels and
+# are only meaningful when the app is run with a COCO-trained YOLOv8 model
+# (via --hef-path). The default demo model (hailo_yolov8n_4_classes_vga) is a
+# VisDrone-derived 4-class detector whose labels are: person, vehicle, face,
+# license_plate. With the default model only "person" matches an entry here;
+# the other labels are inert. If you swap in a product/SKU detector, update this
+# set (or set it empty) to match that model's label space.
 EXCLUDED_LABELS = {"person", "cat", "dog", "bird", "horse", "sheep", "cow",
                    "elephant", "bear", "zebra", "giraffe"}
 
@@ -119,9 +129,9 @@ def app_callback(element, buffer, user_data):
         output_lines.append(f"  -> {len(empty_zones)} zone(s) below threshold "
                             f"(total alerts: {user_data.empty_zone_alerts})")
 
-    # Print every 30 frames to avoid flooding the console
+    # Log every 30 frames to avoid flooding the console
     if frame_count % 30 == 0 or empty_zones:
-        print("\n".join(output_lines))
+        hailo_logger.info("\n".join(output_lines))
 
     return
 

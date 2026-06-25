@@ -2,9 +2,17 @@
 # Standard library imports
 import os
 import csv
+import threading
 from datetime import datetime
 
-os.environ["GST_PLUGIN_FEATURE_RANK"] = "vaapidecodebin:NONE"
+# Disable the VA-API decode bin so file/RTSP sources decode in software,
+# avoiding driver-dependent hardware-decode paths. Preserve any rank the
+# environment already set (append) rather than clobbering it.
+_existing_gst_rank = os.environ.get("GST_PLUGIN_FEATURE_RANK", "")
+_lpr_gst_rank = "vaapidecodebin:NONE"
+os.environ["GST_PLUGIN_FEATURE_RANK"] = (
+    f"{_existing_gst_rank},{_lpr_gst_rank}" if _existing_gst_rank else _lpr_gst_rank
+)
 
 # Third-party imports
 import gi
@@ -23,6 +31,7 @@ from hailo_apps.python.core.common.buffer_utils import (
     get_caps_from_pad,
     get_numpy_from_buffer,
 )
+from hailo_apps.python.core.common.core import get_pipeline_parser
 
 from hailo_apps.python.core.common.hailo_logger import get_logger
 from hailo_apps.python.core.gstreamer.gstreamer_app import app_callback_class
@@ -41,13 +50,17 @@ class PlateReaderCallbackData(app_callback_class):
     a per-frame list of plate readings for optional OpenCV overlay.
     """
 
-    def __init__(self, log_file=None):
+    def __init__(self, log_file=None, confidence_threshold=0.12):
         super().__init__()
         self.plate_results = []  # Current frame plate results
         self.plate_log = []  # Running log of all recognized plates
         self.log_file = log_file
+        self.confidence_threshold = confidence_threshold
         self._csv_writer = None
         self._csv_file = None
+        # Guards the CSV file/writer: the GStreamer callback thread may be
+        # mid-write while the main thread calls close() at shutdown.
+        self._csv_lock = threading.Lock()
 
         # Initialize CSV log file if requested
         if self.log_file:
@@ -76,12 +89,13 @@ class PlateReaderCallbackData(app_callback_class):
         self.plate_results.append(entry)
         self.plate_log.append(entry)
 
-        # Write to CSV if logging is enabled
-        if self._csv_writer is not None:
-            self._csv_writer.writerow(
-                [entry["timestamp"], plate_text, f"{confidence:.4f}"]
-            )
-            self._csv_file.flush()
+        # Write to CSV if logging is enabled (lock-guarded against close())
+        with self._csv_lock:
+            if self._csv_writer is not None:
+                self._csv_writer.writerow(
+                    [entry["timestamp"], plate_text, f"{confidence:.4f}"]
+                )
+                self._csv_file.flush()
 
     def clear_plate_results(self):
         """Clear the per-frame plate results (called at the start of each frame)."""
@@ -92,11 +106,12 @@ class PlateReaderCallbackData(app_callback_class):
         return self.plate_log
 
     def close(self):
-        """Clean up the CSV log file handle."""
-        if self._csv_file is not None:
-            self._csv_file.close()
-            self._csv_file = None
-            self._csv_writer = None
+        """Clean up the CSV log file handle (lock-guarded against writes)."""
+        with self._csv_lock:
+            if self._csv_file is not None:
+                self._csv_file.close()
+                self._csv_file = None
+                self._csv_writer = None
 
 
 # -----------------------------------------------------------------------------------------------
@@ -134,7 +149,7 @@ def app_callback(element, buffer, user_data):
         confidence = detection.get_confidence()
 
         # OCR detection uses "text_region" label; filter by confidence
-        if label == "text_region" and confidence > 0.12:
+        if label == "text_region" and confidence > user_data.confidence_threshold:
             # Get recognized text from the recognition stage
             plate_text = ""
             ocr_objects = detection.get_objects_typed(hailo.HAILO_CLASSIFICATION)
@@ -205,33 +220,46 @@ def app_callback(element, buffer, user_data):
         else:
             hailo_logger.warning("Failed to extract frame from buffer.")
 
-    # Print immediately when new plates are detected, otherwise throttle to every 30 frames
+    # Log immediately when new plates are detected, otherwise throttle to every 30 frames
     if plate_count > 0 or frame_idx % 30 == 0:
-        print(string_to_print)
+        hailo_logger.info(string_to_print)
     return
 
 
 def main():
-    import argparse
-
     hailo_logger.info("Starting License Plate Reader App.")
 
-    # Parse app-specific arguments
-    parser = argparse.ArgumentParser(
-        description="License Plate Reader - Detect and read license plates in video",
-        add_help=False,  # Let the pipeline parser handle --help
-    )
+    # Single parser: the standard pipeline parser plus this app's extra args,
+    # so --plate-log / --confidence-threshold show up in --help. The same
+    # parser is handed to the app so it doesn't build a second one.
+    parser = get_pipeline_parser()
     parser.add_argument(
         "--plate-log",
         type=str,
         default=None,
         help="Path to CSV file for logging recognized plates with timestamps",
     )
-    args, remaining = parser.parse_known_args()
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.12,
+        help=(
+            "Minimum detection confidence for a text region to be read as a "
+            "plate (default: 0.12 — low because the OCR detector emits many "
+            "low-confidence text regions; raise it to suppress noise)."
+        ),
+    )
+    # Use parse_known_args here: --hef-path is added to this same parser later
+    # (in the app's __init__ via configure_multi_model_hef_path) and the base
+    # class re-parses the full set, so it still ends up validated and in --help.
+    args, _ = parser.parse_known_args()
 
-    user_data = PlateReaderCallbackData(log_file=args.plate_log)
+    user_data = PlateReaderCallbackData(
+        log_file=args.plate_log,
+        confidence_threshold=args.confidence_threshold,
+    )
     try:
-        app = GStreamerLicensePlateReaderApp(app_callback, user_data)
+        app = GStreamerLicensePlateReaderApp(app_callback, user_data, parser=parser)
         app.run()
     finally:
         user_data.close()

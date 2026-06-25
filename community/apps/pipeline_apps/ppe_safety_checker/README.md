@@ -24,7 +24,8 @@ python community/apps/pipeline_apps/ppe_safety_checker/ppe_safety_checker.py --i
 # Adjust detection and CLIP thresholds
 python community/apps/pipeline_apps/ppe_safety_checker/ppe_safety_checker.py --input usb --detection-threshold 0.6 --clip-threshold 0.35
 
-# Custom PPE prompts (first 3 = safe, next 3 = violation)
+# Custom PPE prompts (first half = safe, second half = violation).
+# Use an even number of prompts; the list is split down the middle.
 python community/apps/pipeline_apps/ppe_safety_checker/ppe_safety_checker.py --input usb \
     --prompts "person wearing hard hat and vest" "person with helmet" "person with safety gear" \
               "person without helmet" "person without vest" "person without safety gear"
@@ -73,9 +74,9 @@ DISPLAY_PIPELINE (show video with color-coded bounding boxes)
 
 ## Customization
 
-- **Prompts:** Override default prompts via `--prompts` CLI argument or modify `DEFAULT_PPE_PROMPTS` in the pipeline file
-- **Thresholds:** Tune `--detection-threshold` (person detection confidence) and `--clip-threshold` (CLIP matching threshold)
-- **Safe/Violation mapping:** Adjust `SAFE_PROMPT_INDICES` and `VIOLATION_PROMPT_INDICES` in the pipeline file to change which prompts map to which status
+- **Prompts:** Override default prompts via `--prompts` CLI argument or modify `DEFAULT_PPE_PROMPTS` in the pipeline file. Provide an even number of prompts: the first half are treated as "safe" and the second half as "violation"
+- **Thresholds:** Tune `--detection-threshold` (person detection NMS score threshold, fed to the detection hailonet) and `--clip-threshold` (CLIP matching threshold)
+- **Safe/Violation mapping:** The split is derived automatically from the prompt order (first half safe, second half violation) — reorder your prompts to change which map to which status
 
 ## Based On
 

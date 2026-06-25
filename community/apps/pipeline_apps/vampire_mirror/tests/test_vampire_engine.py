@@ -1,10 +1,5 @@
 """Tests for VampireEngine — safe-entry logic and auto-alternation."""
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from vampire_engine import TrackState, VampireEngine
+from community.apps.pipeline_apps.vampire_mirror.vampire_engine import TrackState, VampireEngine
 
 
 class TestNewTrackInBufferZone:

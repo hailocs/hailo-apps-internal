@@ -67,12 +67,15 @@ def app_callback(element, buffer, user_data):
             _draw_verdict(frame, user_data.last_label, user_data.last_confidence)
             user_data.set_frame(frame)
 
-    # Periodic console output (every 30 frames)
-    if user_data.get_count() % 30 == 0:
+    # Periodic console output (every 30 frames, skipping frame 0)
+    if user_data.get_count() > 0 and user_data.get_count() % 30 == 0:
         verdict = user_data.last_label.upper()
         clip_class = user_data.last_clip_class
         conf = user_data.last_confidence
-        print(f"Frame {user_data.get_count()} | {verdict} (clip_class={clip_class}, {conf:.0%})")
+        hailo_logger.info(
+            "Frame %d | %s (clip_class=%s, %.0f%%)",
+            user_data.get_count(), verdict, clip_class, conf * 100,
+        )
 
 
 def _draw_verdict(frame, label, confidence):

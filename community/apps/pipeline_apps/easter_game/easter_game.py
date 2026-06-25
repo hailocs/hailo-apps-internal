@@ -173,6 +173,7 @@ class EasterGameCallback(app_callback_class):
         # Player state  {track_id: {"name": str, "score": int}}
         self.players = {}
         self._name_idx = 0
+        self._warned_no_tracking = False  # one-time warning if tracker is absent
 
         # Current item
         self.current_item = None
@@ -308,6 +309,12 @@ def app_callback(element, buffer, user_data):
         track_objs = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
         if len(track_objs) == 1:
             track_id = track_objs[0].get_id()
+        elif not user_data._warned_no_tracking:
+            user_data._warned_no_tracking = True
+            logger.warning(
+                "No tracking ID on person detection — all untracked players "
+                "will share a single score entry (track_id=0)."
+            )
 
         player = user_data._get_or_create_player(track_id)
 
@@ -504,7 +511,7 @@ def _draw_game_over(img, user_data):
     # Restart countdown
     if user_data.game_over_time:
         left = max(0, RESTART_DELAY - (time.time() - user_data.game_over_time))
-        cv2.putText(img, f"Restarting in {int(left) + 1}s ...",
+        cv2.putText(img, f"Restarting in {math.ceil(left)}s ...",
                     (w // 2 - 140, h - 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 180, 255), 2, cv2.LINE_AA)
 

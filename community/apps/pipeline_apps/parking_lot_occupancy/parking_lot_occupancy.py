@@ -90,17 +90,20 @@ def load_zones_from_json(json_path):
         ...
     ]
     """
-    with open(json_path, "r") as f:
-        data = json.load(f)
-    zones = []
-    for entry in data:
-        zone = ParkingZone(
-            name=entry["name"],
-            polygon=entry["polygon"],
-            capacity=entry.get("capacity", 1),
-        )
-        zones.append(zone)
-    return zones
+    try:
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        zones = []
+        for entry in data:
+            zone = ParkingZone(
+                name=entry["name"],
+                polygon=entry["polygon"],
+                capacity=entry.get("capacity", 1),
+            )
+            zones.append(zone)
+        return zones
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+        raise ValueError(f"Invalid zones JSON at {json_path}: {e}")
 
 
 def get_default_zones():
@@ -200,8 +203,9 @@ def app_callback(element, buffer, user_data):
     # Print occupancy summary periodically (every 30 frames)
     if frame_idx % 30 == 0:
         summary = user_data.get_occupancy_summary()
-        print(f"\n--- Frame {frame_idx} | Vehicles: {vehicle_count} ---")
-        print(summary)
+        hailo_logger.info(
+            "Frame %d | Vehicles: %d\n%s", frame_idx, vehicle_count, summary
+        )
 
     # Draw zone overlays on the frame if --use-frame is enabled
     if user_data.use_frame and frame is not None and width is not None and height is not None:
@@ -223,7 +227,9 @@ def app_callback(element, buffer, user_data):
             occupied = zone.occupied_count
             capacity = zone.capacity
             is_full = occupied >= capacity
-            color = (0, 0, 255) if is_full else (0, 255, 0)  # Red if full, green if available
+            # NOTE: drawing happens on the RGB frame (before RGB->BGR conversion below),
+            # so colors must be specified as RGB tuples.
+            color = (255, 0, 0) if is_full else (0, 255, 0)  # Red if full, green if available
             text = f"{zone.name}: {occupied}/{capacity}"
             cv2.putText(
                 frame,
@@ -255,15 +261,17 @@ def _draw_zones_on_frame(frame, zones, frame_width, frame_height):
         pts[:, 1] *= frame_height
         pts = pts.astype(np.int32)
 
+        # NOTE: drawing happens on the RGB frame (converted to BGR by the caller
+        # afterwards), so colors must be specified as RGB tuples.
         # Draw filled polygon with transparency
         overlay = frame.copy()
-        color = (0, 0, 255) if is_full else (0, 255, 0)  # Red if full, green if available
+        color = (255, 0, 0) if is_full else (0, 255, 0)  # Red if full, green if available
         cv2.fillPoly(overlay, [pts], color)
         alpha = 0.15
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
         # Draw polygon border
-        border_color = (0, 0, 200) if is_full else (0, 200, 0)
+        border_color = (200, 0, 0) if is_full else (0, 200, 0)
         cv2.polylines(frame, [pts], isClosed=True, color=border_color, thickness=2)
 
         # Draw zone label at the centroid
