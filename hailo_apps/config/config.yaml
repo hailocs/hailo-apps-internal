@@ -134,6 +134,8 @@ system_packages:
   - "libelf-dev"
   - "libunwind-dev"
   - "libdw-dev"
+  # Needed by hailo_apps/cpp/build.sh to build the bundled curl with OpenSSL (front-loaded here to avoid a second sudo prompt)
+  - "libssl-dev"
 
 #-------------------------------------------------------------------------------
 # Logging
