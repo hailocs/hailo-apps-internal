@@ -86,11 +86,17 @@ def validate_routing_table(result: ValidationResult) -> None:
             # Skip glob patterns
             if "*" in ref:
                 continue
-            full = GITHUB_DIR / ref
+            # .hailo/... paths are absolute from repo root (single source of truth).
+            # Everything else in this table is relative to .github/.
+            if ref.startswith(".hailo/"):
+                full = REPO_ROOT / ref
+            else:
+                full = GITHUB_DIR / ref
             if full.exists():
                 result.ok(f"routing: {ref}")
             else:
-                result.fail(f"routing: {ref} → file not found at .github/{ref}")
+                base = REPO_ROOT if ref.startswith(".hailo/") else GITHUB_DIR
+                result.fail(f"routing: {ref} → file not found at {base.relative_to(REPO_ROOT) / ref if base != REPO_ROOT else ref}")
 
 
 def validate_file_tree(result: ValidationResult) -> None:
@@ -186,6 +192,10 @@ def validate_no_hailo_leaks(result: ValidationResult) -> None:
         # Memory/context notes about local docs
         "`.hailo/` docs",
         "`.hailo/` documentation",
+        # AUTO-GENERATED mirror header in .github/memory/*.md — back-pointers
+        # to the canonical editorial source in .hailo/memory/.
+        "AUTO-GENERATED mirror of .hailo/memory/",
+        "Edit the canonical file in .hailo/memory/",
     ]
 
     for md_file in sorted(GITHUB_DIR.rglob("*.md")):
@@ -269,7 +279,8 @@ def validate_claude_platform(result: ValidationResult) -> None:
         result.fail("CLAUDE.md not found at repo root")
 
     # Check expected subdirectories
-    expected_dirs = ["agents", "skills", "rules", "toolsets", "instructions", "prompts", "memory"]
+    # Note: memory/ is intentionally absent from .claude/ — single source of truth is .hailo/memory/.
+    expected_dirs = ["agents", "skills", "rules", "toolsets", "instructions", "prompts"]
     for d in expected_dirs:
         dp = CLAUDE_DIR / d
         if dp.is_dir():

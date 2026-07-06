@@ -1,0 +1,3 @@
+# Extra runtime dependency for the voice mouse agent.
+# pyautogui drives the host mouse; it needs an active display (X11 / XWayland).
+pyautogui

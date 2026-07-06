@@ -322,6 +322,7 @@ class AgentApp:
             self.system_text = system_prompt.create_system_prompt(
                 [self.selected_tool],
                 yaml_config=self.yaml_config,
+                tool_call_format=config.TOOL_CALL_FORMAT,
             )
             logger.debug("System prompt: %d chars", len(self.system_text))
             # Log system prompt in readable format (with newlines)
@@ -357,7 +358,8 @@ class AgentApp:
             if self.yaml_config and self.yaml_config.few_shot_examples:
                 logger.info("Adding %d few-shot examples to context", len(self.yaml_config.few_shot_examples))
                 few_shot_messages = system_prompt.prepare_few_shot_examples_messages(
-                    self.yaml_config.few_shot_examples
+                    self.yaml_config.few_shot_examples,
+                    tool_call_format=config.TOOL_CALL_FORMAT,
                 )
                 messages.extend(few_shot_messages)
 
@@ -632,8 +634,10 @@ class AgentApp:
                 raw_response=raw_response,
             )
 
-        # Log tool call for debugging
-        logger.debug("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
+        # Surface the tool call to the user (not just debug logs). This is a
+        # significant agent event — the LLM parsed correctly and the tool is
+        # about to execute — and the regression test asserts on this line.
+        logger.info("Tool call detected: %s with args: %s", tool_call.get("name"), tool_call.get("arguments"))
         if self.debug:
             logger.debug("Parsed tool call: %s", json.dumps(tool_call, indent=2))
 

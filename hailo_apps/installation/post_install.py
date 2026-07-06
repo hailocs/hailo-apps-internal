@@ -17,10 +17,11 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 from pathlib import Path
 
-from hailo_apps.python.core.common.hailo_logger import get_logger
+from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging
 from hailo_apps.python.core.common.core import load_environment
 from hailo_apps.python.core.common.defines import (
     DEFAULT_CONFIG_PATH,
@@ -160,6 +161,12 @@ Examples:
     )
     
     args = parser.parse_args()
+
+    init_logging(level="INFO")
+    # init_logging() silences hailo_apps.installation.* by default to keep
+    # other CLIs quiet; for THIS CLI those logs ARE the user-facing output.
+    logging.getLogger("hailo_apps.installation").setLevel(logging.INFO)
+
     hailo_logger.debug(f"Arguments parsed: {args}")
     
     post_install(

@@ -90,6 +90,10 @@ videos:
     tag:
       - clip
       - classifier
+  - name: office_example.mp4
+    source: s3
+    tag:
+      - yolo_world
   - name: full_mov_slow.mp4
     source: s3
     tag:
@@ -117,6 +121,16 @@ videos:
       - depth
       - depth_estimation_mono
       - depth_estimation_stereo
+  - name: clip1.mp4
+    source: s3
+    subdir: lpr
+    tag:
+      - lpr
+  - name: clip2.mp4
+    source: s3
+    subdir: lpr
+    tag:
+      - lpr
 
 # Shared images for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -223,6 +237,7 @@ json:
     source: s3
     tag:
       - clip
+      - yolo_world
 
 # Shared npy files for all apps
 # Tags use app names only (no _p/_s suffixes)
@@ -231,10 +246,17 @@ npy:
     source: s3
     tag:
       - clip
+      - yolo_world
   - name: text_projection.npy
     source: s3
     tag:
       - clip
+      - yolo_world
+  # YOLO World pure-NumPy CLIP text-encoder body weights (~67 MB)
+  - name: clip_text_vitb32_body_fp16.npz
+    source: s3
+    tag:
+      - yolo_world
   # Whisper decoder tokenization assets (whisper_h8)
   - name: token_embedding_weight_base.npy
     url: https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/npy%20files/whisper/decoder_assets/base/decoder_tokenization/token_embedding_weight_base.npy
@@ -614,19 +636,82 @@ face_recognition: &face_recognition_app
         - name: arcface_mobilefacenet
           source: mz
 
+lpr: &lpr_app
+  # Default backbone is yolov8n: a single 4-class yolov8n_384_640 detector
+  # paired with the locally-retrained 37-class lprnet_intl OCR. These two
+  # HEFs are what a plain `sudo ./install.sh` (download_group: default)
+  # pulls per arch — enough to run `hailo-lpr` out of the box.
+  #
+  # The LPR-specific artifacts live under hefs/<arch>/LPR/ on S3 (the
+  # `subdir: LPR` field below tells the downloader to insert that prefix
+  # between the arch directory and the filename). They land at the
+  # standard install path /usr/local/hailo/resources/models/<arch>/ on
+  # disk regardless — only the S3 source location differs from the legacy
+  # flat layout.
+  #
+  # The LPR app's `--ocr paddle` path uses the PaddleOCR-v5 build that
+  # was published under hefs/<arch>/LPR/ocr.hef on S3. To avoid colliding
+  # with the legacy `paddle_ocr` group's v3/v4 build at the flat
+  # hefs/<arch>/ocr.hef path, the v5 build is renamed locally to
+  # `paddle_ocr_v5.hef` via `local_name`. Both can coexist on disk; the
+  # LPR app prefers v5 when present, falling back to v3/v4 with a
+  # warning when only the legacy file is installed.
+  # The PaddleOCR-v5 character dictionary rides along as a sidecar of
+  # the `ocr` entry — same S3 subdirectory, same download path.
+  models:
+    hailo8:
+      default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+          subdir: LPR
+        - name: lprnet_intl
+          source: s3
+          subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
+          extras:
+            - ppocrv5_char_dict.npz
+    hailo8l:
+      default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+          subdir: LPR
+        - name: lprnet_intl
+          source: s3
+          subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
+          extras:
+            - ppocrv5_char_dict.npz
+    hailo10h:
+      default:
+        - name: hailo_yolov8n_384_640
+          source: s3
+          subdir: LPR
+        - name: lprnet_intl
+          source: s3
+          subdir: LPR
+        - name: ocr
+          source: s3
+          subdir: LPR
+          local_name: paddle_ocr_v5
+          extras:
+            - ppocrv5_char_dict.npz
+
 instance_segmentation: &instance_segmentation_app
   models:
     hailo8:
       default:
+        - name: yolov5m_seg
+          source: mz
+          app_type: [pipeline, standalone]
+      extra:
         - name: yolov5m_seg_with_nms
           source: s3
-          app_type: [standalone]
-        - name: yolov5m_seg
-          source: mz
-          app_type: [pipeline]
-      extra:
-        - name: yolov5m_seg
-          source: mz
           app_type: [standalone]
         - name: yolov5l_seg
           source: mz
@@ -675,21 +760,18 @@ instance_segmentation: &instance_segmentation_app
           app_type: [standalone]
     hailo10h:
       default:
+        - name: yolov5m_seg
+          source: mz
+          app_type: [pipeline, standalone]
+      extra:
         - name: yolov5m_seg_with_nms
           source: s3
           app_type: [standalone]
-        - name: yolov5m_seg
-          source: mz
-          app_type: [pipeline]
-      extra:
         - name: yolov5n_seg_with_nms
           source: s3
           app_type: [standalone]
         - name: yolov5s_seg_with_nms
           source: s3
-          app_type: [standalone]
-        - name: yolov5m_seg
-          source: mz
           app_type: [standalone]
         - name: yolov5l_seg
           source: mz
@@ -838,6 +920,10 @@ tiling: &tiling_app
           source: s3
 
 paddle_ocr: &paddle_ocr_app
+  # Standalone paddle_ocr app continues to fetch from the legacy flat
+  # path hefs/<arch>/, which still serves the v3/v4 build. The v5 build
+  # used by the LPR app lives under hefs/<arch>/LPR/ and is wired in
+  # via the `lpr` group above (with its char-dict sidecar).
   models:
     hailo8:
       default:
@@ -1055,6 +1141,19 @@ v2a_demo:
         - name: Qwen2.5-Coder-1.5B-Instruct
           source: gen-ai-mz
         - name: all_minilm_l6_v2
+          source: s3
+
+yolo_world: &yolo_world_app
+  # HEFs compiled with DFC 3.33 from model-zoo v5.3.0.
+  # Only hailo8 and hailo10h: the app rejects hailo8l (see yolo_world_pipeline.py).
+  models:
+    hailo8:
+      default:
+        - name: yolo_world_v2s
+          source: s3
+    hailo10h:
+      default:
+        - name: yolo_world_v2s
           source: s3
 
 clip: &clip_app

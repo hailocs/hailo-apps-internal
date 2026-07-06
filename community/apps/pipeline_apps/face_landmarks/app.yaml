@@ -1,0 +1,8 @@
+name: face_landmarks
+type: pipeline
+description: >
+  Real-time 468-point face mesh landmark detection using SCRFD (face detection)
+  and face_landmarks_lite (MediaPipe face mesh) on Hailo accelerator.
+models:
+  - scrfd_10g
+  - face_landmarks_lite

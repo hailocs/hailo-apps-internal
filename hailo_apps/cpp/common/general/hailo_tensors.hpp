@@ -111,19 +111,26 @@ public:
     }
 
     /**
-     * @brief Gets a specific cell of this tensor in full percision (dequantized).
+     * @brief Gets a specific cell of this tensor in full precision (dequantized).
      *
      * @param row The row of the cell
      * @param col The column of the cell
      * @param channel The channel of the cell
      * @return float value of this tensor at the specified place (dequantized).
      */
-    float get_full_percision(uint row, uint col, uint channel, bool is_uint16)
+    float get_full_precision(uint row, uint col, uint channel, bool is_uint16)
     {
         if (is_uint16)
             return fix_scale(get_uint16(row, col, channel));
         else
             return fix_scale(get(row, col, channel));
+    }
+
+    // Deprecated misspelling kept for source/ABI compatibility with pre-5.3 callers.
+    [[deprecated("use get_full_precision")]]
+    float get_full_percision(uint row, uint col, uint channel, bool is_uint16)
+    {
+        return get_full_precision(row, col, channel, is_uint16);
     }
 };
 

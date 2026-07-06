@@ -156,6 +156,33 @@ log_dry_run() {
     log_to_file "DRY-RUN" "$*"
 }
 
+# Hint shown when a required HailoRT/TAPPAS deb or wheel is missing or its
+# version does not match. Points to the public, md5-verified manifest-based
+# downloader. Worded to be useful in ANY environment: a plain shell command
+# anyone can run, plus a note that AI coding assistants (Claude Code, Cursor,
+# Copilot, Gemini, …) expose the same thing as the `hl-artifacts-downloader`
+# skill — so the guidance is not Claude-specific.
+suggest_artifacts_downloader() {
+    local version="${1:-latest}"
+    local device="H10" arch="x86_64"
+    case "${HAILO_ARCH:-}" in
+        hailo8|hailo8l) device="H8" ;;
+        hailo10h)       device="H10" ;;
+    esac
+    case "$(uname -m)" in
+        aarch64|arm64) arch="aarch64" ;;
+    esac
+    [[ "$version" == "-1" || -z "$version" ]] && version="latest"
+
+    log_info "Need matching deb/wheel artifacts? Fetch them from Hailo's public,"
+    log_info "md5-verified manifest downloader (works on any machine):"
+    echo -e "    ${CYAN}curl -fsSL https://dev-public.hailo.ai/scripts/common/artifacts_downloader.sh -o /tmp/artifacts_downloader.sh${NC}"
+    echo -e "    ${CYAN}bash /tmp/artifacts_downloader.sh -d ${device} -v ${version} -a ${arch} -o /tmp/hailo_artifacts${NC}"
+    log_info "Install the downloaded .deb packages, then re-run install.sh with the wheels:"
+    echo -e "    ${CYAN}sudo ./install.sh --pyhailort /tmp/hailo_artifacts/hailort-*.whl --pytappas /tmp/hailo_artifacts/hailo_tappas_core_python_binding-*.whl${NC}"
+    log_info "Using an AI coding assistant (Claude Code, Cursor, Copilot, Gemini, …)? Ask it to run the 'hl-artifacts-downloader' skill."
+}
+
 # Step header logging
 log_step() {
     local step_num="$1"
@@ -489,9 +516,9 @@ yaml_get_list() {
             /^  ${subkey}:/,/^  [a-zA-Z_]/{
                 /^    - /{
                     s/^    - //
+                    s/[ \t]*#.*$//
                     s/^[\"\x27]//
                     s/[\"\x27]$//
-                    s/[ \t]*#.*$//
                     p
                 }
             }
@@ -501,9 +528,9 @@ yaml_get_list() {
         result=$(sed -n "/^${key}:/,/^[a-zA-Z_]/{
             /^  - /{
                 s/^  - //
+                s/[ \t]*#.*$//
                 s/^[\"\x27]//
                 s/[\"\x27]$//
-                s/[ \t]*#.*$//
                 p
             }
         }" "$file" | tr '\n' ' ')
@@ -783,7 +810,13 @@ check_prerequisites() {
     fi
 
     # --- Get installed driver versions from dpkg (always available) ---
-    local pcie_driver_version="-1"
+    # H10 and H8 PCIe drivers can coexist on the same host (different package names).
+    # - h10-hailort-pcie-driver: always H10 (RPi all 5.x, x86 from 5.4)
+    # - hailort-pcie-driver: H8/H8L (4.x) OR older H10 on x86 (5.1-5.3)
+    # Use infer_arch_from_version() on the version to determine actual device.
+    local h10_pcie_driver_version="-1"  # from package: h10-hailort-pcie-driver
+    local std_pcie_driver_version="-1"  # from package: hailort-pcie-driver (H8 or old H10)
+    local pcie_driver_version="-1"      # combined: any PCIe driver present
     local usb_driver_version="-1"
     local hailort_version="-1"
     local pyhailort_version="-1"
@@ -791,16 +824,33 @@ check_prerequisites() {
     local tappas_python_version="-1"
 
     local _v
+    # Check for h10-hailort-pcie-driver (always H10)
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort-pcie-driver 2>/dev/null) || true
+    [[ "$_v" == install\ ok\ installed\ * ]] && h10_pcie_driver_version="${_v##* }"
+    # Check for hailort-pcie-driver (H8/H8L with 4.x, or older H10 on x86 with 5.1-5.3)
     _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-pcie-driver 2>/dev/null) || true
-    [[ "$_v" == install\ ok\ installed\ * ]] && pcie_driver_version="${_v##* }"
+    [[ "$_v" == install\ ok\ installed\ * ]] && std_pcie_driver_version="${_v##* }"
+    # Set combined pcie_driver_version for general "is any PCIe driver installed?" checks
+    if [[ "$h10_pcie_driver_version" != "-1" ]]; then
+        pcie_driver_version="$h10_pcie_driver_version"
+    elif [[ "$std_pcie_driver_version" != "-1" ]]; then
+        pcie_driver_version="$std_pcie_driver_version"
+    fi
 
     _v=$(dpkg-query -W -f='${Status} ${Version}' hailort-usb-driver 2>/dev/null) || true
     [[ "$_v" == install\ ok\ installed\ * ]] && usb_driver_version="${_v##* }"
 
-    _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+    # Check for HailoRT runtime: try h10-hailort first (RPi + H10), then hailort
+    _v=$(dpkg-query -W -f='${Status} ${Version}' h10-hailort 2>/dev/null) || true
     if [[ "$_v" == install\ ok\ installed\ * ]]; then
         hailort_version="${_v##* }"
         HAILORT_VERSION="$hailort_version"
+    else
+        _v=$(dpkg-query -W -f='${Status} ${Version}' hailort 2>/dev/null) || true
+        if [[ "$_v" == install\ ok\ installed\ * ]]; then
+            hailort_version="${_v##* }"
+            HAILORT_VERSION="$hailort_version"
+        fi
     fi
 
     # --- Check 1: hailortcli scan — is any Hailo device physically present? ---
@@ -848,12 +898,15 @@ check_prerequisites() {
         if [[ "$HAILO_ARCH" == "hailo10h" ]]; then
             if [[ "$usb_driver_version" != "-1" ]]; then
                 driver_type="USB"; driver_version="$usb_driver_version"
-            elif [[ "$pcie_driver_version" != "-1" ]]; then
-                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            elif [[ "$h10_pcie_driver_version" != "-1" ]]; then
+                driver_type="PCIe"; driver_version="$h10_pcie_driver_version"
+            elif [[ "$std_pcie_driver_version" != "-1" && "$std_pcie_driver_version" == 5.* ]]; then
+                # Old H10 on x86 (5.1-5.3) uses hailort-pcie-driver
+                driver_type="PCIe"; driver_version="$std_pcie_driver_version"
             fi
         else
-            if [[ "$pcie_driver_version" != "-1" ]]; then
-                driver_type="PCIe"; driver_version="$pcie_driver_version"
+            if [[ "$std_pcie_driver_version" != "-1" && "$std_pcie_driver_version" == 4.* ]]; then
+                driver_type="PCIe"; driver_version="$std_pcie_driver_version"
             elif [[ "$usb_driver_version" != "-1" ]]; then
                 driver_type="USB"; driver_version="$usb_driver_version"
             fi
@@ -861,6 +914,63 @@ check_prerequisites() {
 
         log_success "Hailo device detected (scan: ${scan_usb_device:-$scan_pci_device})"
         log_success "HailoRT ${hailort_version} identified device successfully"
+
+        # If custom wheels were provided, validate then install them now (system-wide)
+        # so the version checks below read what is actually installed — not stale state.
+        local _wheels_to_install=()
+        [[ -n "${PYHAILORT_PATH:-}" ]] && _wheels_to_install+=("HailoRT:${PYHAILORT_PATH}")
+        [[ -n "${PYTAPPAS_PATH:-}" && "${NO_TAPPAS_REQUIRED}" != true ]] && _wheels_to_install+=("TAPPAS:${PYTAPPAS_PATH}")
+
+        for _entry in "${_wheels_to_install[@]}"; do
+            local _label="${_entry%%:*}"
+            local _path="${_entry#*:}"
+
+            # Validate: file must exist
+            if [[ ! -f "${_path}" ]]; then
+                log_error "${_label} wheel file not found: ${_path}"
+                record_step_result "FAILED" "${_label} wheel not found"
+                return 1
+            fi
+
+            # Validate: must have .whl extension
+            if [[ "${_path}" != *.whl ]]; then
+                log_error "${_label} wheel path does not end with .whl: ${_path}"
+                log_error "Please provide the full filename including the .whl extension."
+                record_step_result "FAILED" "${_label} invalid wheel path"
+                return 1
+            fi
+
+            log_info "Installing provided ${_label} wheel: $(basename "${_path}")"
+            # Install to the user's local site-packages (~/.local/) so it takes
+            # priority over any stale system-wide version in pip lookups.
+            # pip skips automatically if the same version is already installed.
+            # PEP 668 (Ubuntu 24.04 / Debian Trixie / py3.12+) marks the system
+            # environment "externally managed" and rejects --user without
+            # --break-system-packages; try that flag first and fall back for
+            # older pip that doesn't recognize it.
+            if ! as_original_user pip3 install --quiet --user --break-system-packages "${_path}" 2>/dev/null \
+               && ! as_original_user pip3 install --quiet --user "${_path}" 2>/dev/null; then
+                log_error "Failed to install ${_label} wheel: ${_path}"
+                record_step_result "FAILED" "${_label} wheel install failed"
+                return 1
+            fi
+
+            # Verify: read back the installed version directly from the user's pip
+            # to catch any path shadowing from stale system packages
+            local _installed_ver
+            _installed_ver=$(as_original_user pip3 show "$(basename "${_path}" | cut -d- -f1)" 2>/dev/null \
+                             | grep '^Version:' | awk '{print $2}')
+            if [[ -z "${_installed_ver}" ]]; then
+                log_warning "Could not verify installed version for ${_label} wheel"
+            else
+                log_success "${_label} wheel installed (version: ${_installed_ver})"
+                # Pre-populate version variables so the check script results are not needed
+                case "${_label}" in
+                    HailoRT) pyhailort_version="${_installed_ver}" ;;
+                    TAPPAS)  tappas_python_version="${_installed_ver}" ;;
+                esac
+            fi
+        done
 
         # Get TAPPAS and Python binding versions from check script
         local summary_line
@@ -933,6 +1043,10 @@ check_prerequisites() {
         fi
 
         if [[ "$failed" == true ]]; then
+            # A required HailoRT/TAPPAS deb or wheel is missing or mismatched —
+            # point the user at the manifest-based downloader to obtain matching
+            # artifacts (helpful for any IDE/assistant, not just Claude Code).
+            suggest_artifacts_downloader "$hailort_version"
             record_step_result "FAILED" "Version validation failed"
             return 1
         fi
@@ -978,7 +1092,17 @@ check_prerequisites() {
     local inferred_arch="" inferred_device_name=""
 
     # Show driver status and infer arch
-    if [[ "$pcie_driver_version" != "-1" && "$usb_driver_version" != "-1" ]]; then
+    # Report both drivers when coexisting; use version to infer actual arch
+    if [[ "$h10_pcie_driver_version" != "-1" && "$std_pcie_driver_version" != "-1" ]]; then
+        log_info "Driver: h10-hailort-pcie-driver ${h10_pcie_driver_version}, hailort-pcie-driver ${std_pcie_driver_version}"
+        any_driver_installed=true
+        # Both present: infer from HailoRT version (which device the user intends to use)
+        if [[ "$hailort_version" != "-1" ]]; then
+            inferred_arch=$(infer_arch_from_version "$hailort_version")
+        else
+            inferred_arch=$(infer_arch_from_version "$h10_pcie_driver_version")
+        fi
+    elif [[ "$pcie_driver_version" != "-1" && "$usb_driver_version" != "-1" ]]; then
         log_info "Driver: PCIe ${pcie_driver_version}, USB ${usb_driver_version}"
         any_driver_installed=true
         if [[ "$usb_driver_version" == "$hailort_version" ]]; then
@@ -1006,11 +1130,14 @@ check_prerequisites() {
     esac
 
     # Show HailoRT status and check version match against the matching driver
+    # Check all driver sources: USB, h10-hailort-pcie-driver, hailort-pcie-driver
     local matched_driver_type="" matched_driver_ver="-1"
     if [[ "$usb_driver_version" != "-1" && "$hailort_version" == "$usb_driver_version" ]]; then
         matched_driver_type="USB"; matched_driver_ver="$usb_driver_version"
-    elif [[ "$pcie_driver_version" != "-1" && "$hailort_version" == "$pcie_driver_version" ]]; then
-        matched_driver_type="PCIe"; matched_driver_ver="$pcie_driver_version"
+    elif [[ "$h10_pcie_driver_version" != "-1" && "$hailort_version" == "$h10_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe (H10)"; matched_driver_ver="$h10_pcie_driver_version"
+    elif [[ "$std_pcie_driver_version" != "-1" && "$hailort_version" == "$std_pcie_driver_version" ]]; then
+        matched_driver_type="PCIe"; matched_driver_ver="$std_pcie_driver_version"
     fi
 
     if [[ "$hailort_version" != "-1" ]]; then
@@ -1028,7 +1155,7 @@ check_prerequisites() {
     # Final error message — include connection type if known
     local connection_type=""
     [[ "$matched_driver_type" == "USB" ]] && connection_type=" USB"
-    [[ "$matched_driver_type" == "PCIe" ]] && connection_type=" PCIe"
+    [[ "$matched_driver_type" == PCIe* ]] && connection_type=" PCIe"
 
     if [[ -n "$inferred_device_name" ]]; then
         log_error "No ${inferred_device_name}${connection_type} device detected — reconnect device or reboot and retry"
@@ -1272,9 +1399,11 @@ install_python_packages() {
         log_warning "pip upgrade had issues (continuing anyway)"
     fi
 
-    # Install the hailo_apps package in editable mode
-    log_info "Installing hailo_apps package (editable mode)..."
-    if ! run_as_user bash -c "source '${venv_activate}' && pip install -e '${SCRIPT_DIR}'"; then
+    # Install the hailo_apps package in editable mode, including the dev extra
+    # (pytest + pytest-timeout + ruff/pre-commit) so the test suite runs on a
+    # fresh box without a manual `pip install pytest` step.
+    log_info "Installing hailo_apps package (editable mode, with dev extras)..."
+    if ! run_as_user bash -c "source '${venv_activate}' && pip install -e '${SCRIPT_DIR}[dev]'"; then
         log_error "Failed to install hailo_apps package"
         log_info "Troubleshooting:"
         log_info "  • Check setup.py or pyproject.toml exists"
@@ -1518,6 +1647,8 @@ verify_installation() {
     echo -n "  📦 HailoRT Python binding: "
     if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo_platform'" 2>/dev/null; then
         echo -e "${GREEN}✅ OK${NC}"
+    else
+        echo -e "${RED}❌ Import failed${NC}"
         all_ok=false
     fi
 
@@ -1528,6 +1659,8 @@ verify_installation() {
     else
         if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
             echo -e "${GREEN}✅ OK${NC}"
+        else
+            echo -e "${RED}❌ Import failed${NC}"
             all_ok=false
         fi
     fi

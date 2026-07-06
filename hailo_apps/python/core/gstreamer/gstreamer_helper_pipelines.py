@@ -358,6 +358,8 @@ def OVERLAY_PIPELINE(name="hailo_overlay", community=False, **extra_props):
     Args:
         name (str, optional): The prefix name for the pipeline elements. Defaults to 'hailo_overlay'.
         community (bool, optional): Use hailooverlay_community plugin instead. Defaults to False.
+            NOTE: hailooverlay_community is an opt-in community plugin — build/install it
+            first via community/plugins/build.sh (see community/plugins/README.md).
         **extra_props: Additional GStreamer properties to set on the overlay element.
             Only applied when community=True. Example: use_custom_colors=True,
             style_config="/path/to/style.yaml", sprite_config="/path/to/sprites.yaml".

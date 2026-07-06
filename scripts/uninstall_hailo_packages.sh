@@ -16,9 +16,15 @@ fi
 echo "Trying to remove pip packages as root..."
 pip uninstall -y --break-system-packages hailo-apps-core-python-binding hailo-tappas-core-python-binding hailort 2>/dev/null || true
 
-# Uninstall apt packages
+# Uninstall apt packages (meta-packages first to unblock reverse-deps)
 echo "Removing apt packages..."
-sudo apt purge -y hailo-apps-core hailo-tappas-core hailort hailort-pcie-driver 2>/dev/null || true
+sudo apt purge -y \
+    hailo-h10-all hailo-all \
+    hailo-apps-core hailo-tappas-core \
+    h10-hailort hailort \
+    h10-hailort-pcie-driver hailort-pcie-driver \
+    || true
+sudo apt autoremove -y || true
 
 # Remove kernel modules
 echo "Removing kernel modules..."

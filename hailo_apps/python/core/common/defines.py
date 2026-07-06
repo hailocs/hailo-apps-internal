@@ -240,6 +240,12 @@ CLIP_DETECTOR_TYPE_VEHICLE = 'vehicle'
 CLIP_DETECTOR_TYPE_FACE = 'face'
 CLIP_DETECTOR_TYPE_LICENSE_PLATE = 'license-plate'
 
+# YOLO World pipeline defaults
+YOLO_WORLD_PIPELINE = "yolo_world"
+YOLO_WORLD_APP_TITLE = "Hailo YOLO World App"
+YOLO_WORLD_MAX_CLASSES = 80
+YOLO_WORLD_EMBEDDING_DIM = 512
+
 # Multisource pipeline defaults
 MULTI_SOURCE_APP_TITLE = "Hailo Multisource App"
 TAPPAS_STREAM_ID_TOOL_SO_FILENAME = 'libstream_id_tool.so'
@@ -356,5 +362,6 @@ OCR_DETECTION_POSTPROCESS_FUNCTION = "paddleocr_det"
 OCR_RECOGNITION_POSTPROCESS_FUNCTION = "paddleocr_recognize"
 OCR_CROPPER_FUNCTION = "crop_text_regions"
 OCR_VIDEO_NAME = "ocr.mp4"
+LPR_VIDEO_NAME = "clip1.mp4"
 
 DEFAULT_COCO_LABELS_PATH = str(REPO_ROOT / "local_resources" / "coco.txt")

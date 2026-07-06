@@ -59,3 +59,44 @@ resources
 .cursor/
 .vscode/
 docs/superpowers/
+
+# Office/document working files
+*.pptx
+.~lock.*#
+
+# Runtime logs
+access_log.csv
+
+# Model binaries kept locally per app (do not commit) — never commit HEFs anywhere
+*.hef
+*.task
+**/models/*.hef
+**/models/*.task
+
+# Face recognition user data (databases, samples, training images)
+**/face_recognition/database/
+**/face_recognition/samples/
+**/face_recognition/train/
+
+# Per-app runtime databases (LanceDB etc.) written into the app tree
+**/database/
+
+# Gesture detection runtime artifacts
+**/gesture_detection/models/
+**/gesture_detection/*.log
+
+# YOLO World cached text embeddings (regenerated on demand)
+**/yolo_world/embeddings.json
+
+# Local-only LPR regression workspace (lives outside the app repo)
+tests/lpr_regression/
+
+# gst-shark traces
+gstshark_*/
+
+# s3_staging is a local-only staging area for binaries pushed to S3
+# out-of-band; never commit its contents.
+s3_staging/
+
+# Claude Code local auto-memory (canonical KB lives in .hailo/memory/)
+.claude/memory/

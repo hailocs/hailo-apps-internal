@@ -13,6 +13,58 @@ from hailo_platform.genai import LLM
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# Matches the start of a bare-JSON tool call (no <tool_call> wrapper), e.g.
+# {"name": "elevator", ...} — emitted by models like Qwen2.5-Coder >= 5.3.
+_BARE_JSON_TOOL_HEAD = re.compile(r'\{\s*["\']name["\']\s*:')
+
+
+def _safe_flush_len(buf: str) -> int:
+    """Length of the leading text that is safe to emit now.
+
+    Holds back from the first character that could begin a suppressed section we can't
+    yet decide on: a '<' (potential XML tag) or a '{' that could be the start of a bare
+    JSON tool call (a prefix of `{"name":`). A '{' that cannot become that head is emitted.
+    """
+    head = '{"name":'
+    for i, ch in enumerate(buf):
+        if ch == "<":
+            return i
+        if ch == "{":
+            tail = buf[i:]
+            if tail.startswith(head) or head.startswith(tail):
+                return i
+    return len(buf)
+
+
+def _bare_json_object_end(text: str) -> int:
+    """Index just past the balanced closing brace of the JSON object at text[0] == '{'.
+
+    Returns -1 if the object is not yet complete (more tokens needed). Braces inside
+    double-quoted strings are ignored.
+    """
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return -1
+
 
 class StreamingTextFilter:
     """
@@ -35,6 +87,7 @@ class StreamingTextFilter:
         self.inside_tool_call_tag = False
         self.inside_tool_response_tag = False
         self.inside_raw_json_tool_call = False  # For >...> format
+        self.inside_bare_json_tool_call = False  # For unwrapped {"name":...} format
         self.debug_mode = debug_mode
 
     def process_token(self, token: str) -> str:
@@ -54,9 +107,10 @@ class StreamingTextFilter:
 
         self.buffer += token
 
-        # Remove <|im_end|> tokens immediately
-        if "<|im_end|>" in self.buffer:
-            self.buffer = self.buffer.replace("<|im_end|>", "")
+        # Remove chat-template special tokens immediately so they're never spoken/printed.
+        for special in ("<|im_end|>", "<|im_start|>", "<|endoftext|>"):
+            if special in self.buffer:
+                self.buffer = self.buffer.replace(special, "")
 
         output = ""
 
@@ -153,29 +207,44 @@ class StreamingTextFilter:
                     changed = True
                     continue
 
+            # Check for bare JSON tool call start: {"name": ...} with no <tool_call> wrapper.
+            # Newer HEFs (e.g. Qwen2.5-Coder >= 5.3) emit this; without suppression the JSON
+            # would be spoken by TTS (e.g. reading "name ...").
+            if not self.inside_bare_json_tool_call and not self.inside_tool_call_tag:
+                bare_match = _BARE_JSON_TOOL_HEAD.search(self.buffer)
+                if bare_match:
+                    start_pos = bare_match.start()
+                    if start_pos > 0:
+                        output += self.buffer[:start_pos]
+                    self.buffer = self.buffer[start_pos:]  # keep from '{' onwards
+                    self.inside_bare_json_tool_call = True
+                    changed = True
+                    continue
+
+            # Check for end of bare JSON tool call (balanced closing brace)
+            if self.inside_bare_json_tool_call:
+                end_pos = _bare_json_object_end(self.buffer)
+                if end_pos != -1:
+                    # Suppress the whole JSON object
+                    self.buffer = self.buffer[end_pos:]
+                    self.inside_bare_json_tool_call = False
+                    changed = True
+                    continue
+                # Object not complete yet — keep buffering, emit nothing
+                break
+
         # If we're inside <text> tag and not inside any suppressed section, output remaining buffer
-        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call and self.buffer:
+        if self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call and not self.inside_bare_json_tool_call and self.buffer:
             # Avoid splitting potential tags even inside <text>
-            next_tag_start = self.buffer.find('<')
-            if next_tag_start != -1:
-                output += self.buffer[:next_tag_start]
-                self.buffer = self.buffer[next_tag_start:]
-            else:
-                output += self.buffer
-                self.buffer = ""
-        elif not self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call:
-            # If not inside any tag, the text is still valid for streaming.
-            # To avoid printing partial tags, we find the last complete chunk of text.
-            # A simple heuristic: find the start of the next potential tag.
-            next_tag_start = self.buffer.find('<')
-            if next_tag_start != -1:
-                # Output text up to the potential start of a tag
-                output += self.buffer[:next_tag_start]
-                self.buffer = self.buffer[next_tag_start:]
-            else:
-                # No partial tag found, output the whole buffer
-                output += self.buffer
-                self.buffer = ""
+            flush = _safe_flush_len(self.buffer)
+            output += self.buffer[:flush]
+            self.buffer = self.buffer[flush:]
+        elif not self.inside_text_tag and not self.inside_tool_call_tag and not self.inside_tool_response_tag and not self.inside_raw_json_tool_call and not self.inside_bare_json_tool_call:
+            # If not inside any tag, stream out text up to the first character that could
+            # begin a tag ('<') or a bare JSON tool call ('{"name":...'); hold the rest.
+            flush = _safe_flush_len(self.buffer)
+            output += self.buffer[:flush]
+            self.buffer = self.buffer[flush:]
 
         return output
 
@@ -190,8 +259,8 @@ class StreamingTextFilter:
         if self.debug_mode:
             return ""
 
-        # If we're inside a raw JSON tool call, suppress the remaining buffer
-        if self.inside_raw_json_tool_call:
+        # If we're inside a raw/bare JSON tool call, suppress the remaining buffer
+        if self.inside_raw_json_tool_call or self.inside_bare_json_tool_call:
             return ""
 
         # Clean up any remaining partial tags or buffer content

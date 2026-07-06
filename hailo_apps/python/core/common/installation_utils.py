@@ -226,7 +226,7 @@ def get_hailort_package_name() -> str:
 
     if host_arch == RPI_NAME_I:
         if detect_hailo_arch() == HAILO10H_ARCH:
-            # Old hailort version used h10-hailort
+            # RPi + Hailo-10H uses h10-hailort (dedicated package)
             if detect_system_pkg_version(HAILORT_PACKAGE_NAME_RPI):
                 hailo_logger.debug(
                     f"Using RPI-specific HailoRT package: {HAILORT_PACKAGE_NAME_RPI}"

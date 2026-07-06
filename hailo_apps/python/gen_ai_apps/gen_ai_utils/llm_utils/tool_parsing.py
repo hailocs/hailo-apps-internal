@@ -51,14 +51,88 @@ def validate_and_fix_call(call: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return call
 
 
+_BARE_JSON_CALL_HEAD = re.compile(r"\{\s*['\"]name['\"]\s*:")
+
+
+def _parse_bare_json_call(response: str) -> Optional[Dict[str, Any]]:
+    """Fallback: extract a bare JSON tool-call object (no <tool_call> wrapper).
+
+    Accepts any of:
+      * Raw `{"name": ..., "arguments": {...}}` (Qwen2.5-Coder sometimes emits
+        this between chat-template tokens like <|im_start|> / <|endoftext|>).
+      * Pretty-printed / indented JSON, e.g. `{\\n  "name": ...}`.
+      * JSON wrapped in a Markdown code fence (```json ... ```).
+      * Single-quoted JSON-ish (auto-converted to double quotes downstream).
+
+    Finds the first `{` that's followed by a `"name":` field (with any
+    whitespace in between), brace-matches to the closing `}` (skipping
+    contents of any string), and JSON-decodes the slice. Returns None if
+    the slice doesn't validate as a tool call.
+    """
+    match = _BARE_JSON_CALL_HEAD.search(response)
+    if not match:
+        return None
+    start = match.start()
+
+    brace_count = 0
+    in_string = False
+    escape = False
+    json_end = -1
+    for i in range(start, len(response)):
+        char = response[i]
+        if escape:
+            escape = False
+            continue
+        if char == '\\':
+            escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == '{':
+            brace_count += 1
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0:
+                json_end = i + 1
+                break
+
+    if json_end < 0:
+        return None
+
+    json_str = response[start:json_end]
+    if "'" in json_str and '"' not in json_str:
+        json_str = json_str.replace("'", '"')
+    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+
+    try:
+        call = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        logger.debug("Bare-JSON decode failed: %s", e)
+        return None
+    validated = validate_and_fix_call(call)
+    if validated:
+        logger.debug("Parsed bare-JSON tool call (no <tool_call> wrapper)")
+    return validated
+
+
 def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
     """
     Parse function call from LLM response.
 
-    ONLY supports XML-wrapped format:
-    <tool_call>
-    {"name": "...", "arguments": {...}}
-    </tool_call>
+    Two accepted formats:
+
+    1) Preferred — XML-wrapped (what the system prompt requests):
+       <tool_call>
+       {"name": "...", "arguments": {...}}
+       </tool_call>
+
+    2) Fallback — bare JSON (some models like Qwen2.5-Coder skip the wrapper
+       and emit only the JSON object, often surrounded by chat-template tokens
+       like <|im_start|> / <|endoftext|>):
+       {"name": "...", "arguments": {...}}
 
     Also handles edge case where response might be a stringified Python list/dict format:
     [{'type': 'text', 'text': '<tool_call>...</tool_call>'}]
@@ -108,9 +182,10 @@ def parse_function_call(response: str) -> Optional[Dict[str, Any]]:
                 logger.warning("Could not extract text from message format: %s", original_response[:200])
                 response = original_response  # Fall back to original
 
-    # Check for XML tag
+    # Check for XML tag. If absent, fall back to bare-JSON parsing — some
+    # models emit only the JSON object without the <tool_call> wrapper.
     if "<tool_call>" not in response:
-        return None
+        return _parse_bare_json_call(response)
 
     try:
         # Extract content between tags

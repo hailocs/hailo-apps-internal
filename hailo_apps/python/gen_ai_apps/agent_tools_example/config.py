@@ -13,6 +13,15 @@ TEMPERATURE: float = 0.1
 SEED: int = 42
 MAX_GENERATED_TOKENS: int = 200
 
+# Tool-call format used in the system prompt and few-shot examples.
+#   "bare"    -> {"name": ..., "arguments": {...}}              (Qwen2.5-Coder >= 5.3 native)
+#   "wrapped" -> <tool_call>{"name": ..., "arguments": {...}}</tool_call>  (HEFs <= 5.1.x)
+# IMPORTANT: this MUST match the model's native tool-call format. Injecting a format
+# the model doesn't use (e.g. <tool_call> wrappers into a 5.3 HEF that emits bare JSON)
+# corrupts the KV-cache state and makes generation collapse to an immediate end-of-text
+# (empty responses). The response parser accepts both formats either way.
+TOOL_CALL_FORMAT: str = "bare"
+
 # Context Management
 CONTEXT_THRESHOLD: float = 0.95  # Clear context when usage reaches this percentage
 
@@ -71,3 +80,7 @@ def validate_config() -> None:
     # Validate Context Threshold
     if not (0.1 <= CONTEXT_THRESHOLD <= 1.0):
         raise ValueError(f"Invalid CONTEXT_THRESHOLD {CONTEXT_THRESHOLD}. Must be between 0.1 and 1.0.")
+
+    # Validate Tool-Call Format
+    if TOOL_CALL_FORMAT not in ("bare", "wrapped"):
+        raise ValueError(f"Invalid TOOL_CALL_FORMAT '{TOOL_CALL_FORMAT}'. Must be 'bare' or 'wrapped'.")

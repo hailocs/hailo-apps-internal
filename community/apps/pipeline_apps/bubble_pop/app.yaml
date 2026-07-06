@@ -1,0 +1,22 @@
+name: bubble_pop
+title: "Bubble Pop"
+description: >
+  Pose-based mirror game for kids: bubble hearts float up from the bottom of
+  the screen and pop when touched with the wrists. Arm gestures cast magic —
+  hands together fires a shockwave, arms up summons glitter rain, and a fast
+  hand flick shoots a magic bolt — all of which blow up hearts too. Each pop
+  bursts into particles, plays a pop sound, and scores a point. No skeleton
+  overlay — instead each wrist leaves a glittery sparkle trail. Multi-player:
+  every detected person's hands can pop and cast.
+type: pipeline
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h
+tags:
+  - pose-estimation
+  - tracking
+  - interactive
+  - game
+  - kids
+status: ready

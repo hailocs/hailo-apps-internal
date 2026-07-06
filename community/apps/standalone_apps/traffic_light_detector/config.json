@@ -1,0 +1,7 @@
+{
+  "visualization_params": {
+    "score_thres": 0.3,
+    "max_boxes_to_draw": 100,
+    "traffic_light_class_id": 9
+  }
+}

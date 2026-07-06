@@ -1,0 +1,20 @@
+name: rhythm_royale
+title: "Rhythm Royale"
+description: >
+  Multi-player dance battle. Tracks dancers via pose estimation, analyzes the
+  music's beat in real time via FFT on the audio envelope, scores each dancer
+  by how well their movement frequency and phase align with the beat, and
+  crowns the current "rockstar" on-screen.
+type: pipeline
+hailo_arch:
+  - hailo8
+  - hailo8l
+  - hailo10h
+tags:
+  - pose-estimation
+  - tracking
+  - audio
+  - dsp
+  - interactive
+  - game
+status: ready

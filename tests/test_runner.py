@@ -469,10 +469,23 @@ def get_log_file_path_new(
 
 logger.info("Initializing test runner...")
 load_env_file()
-_host_arch, _hailo_arch = detect_and_set_environment()
+# detect_hailo_arch() hard-asserts when no Hailo device is connected. Guard the
+# module-level detection so the test module still imports/collects on a host with
+# no device — the parametrized tests are then skipped (empty case list) rather
+# than erroring the whole collection. Mirrors the skipif pattern in test_gen_ai.py.
+try:
+    _host_arch, _hailo_arch = detect_and_set_environment()
+except (AssertionError, Exception) as _e:  # noqa: BLE001 — degrade gracefully
+    logger.warning(f"No Hailo device detected ({_e}); pipeline runner tests will be skipped.")
+    _host_arch, _hailo_arch = None, None
 
-# Generate test cases
-_test_cases = generate_test_cases(_hailo_arch, _host_arch)
+# Generate test cases (empty when no Hailo arch detected → tests skip)
+_test_cases = generate_test_cases(_hailo_arch, _host_arch) if _hailo_arch else []
+
+pytestmark = pytest.mark.skipif(
+    not _hailo_arch,
+    reason="No Hailo device detected — pipeline app runner tests require connected hardware.",
+)
 
 
 # ============================================================================

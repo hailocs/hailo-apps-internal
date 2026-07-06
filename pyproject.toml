@@ -94,7 +94,9 @@ hailo-tiling =              "hailo_apps.python.pipeline_apps.tiling.tiling:main"
 hailo-multisource =         "hailo_apps.python.pipeline_apps.multisource.multisource:main"
 hailo-reid =                "hailo_apps.python.pipeline_apps.reid_multisource.reid_multisource:main"
 hailo-clip =                "hailo_apps.python.pipeline_apps.clip.clip:main"
+hailo-yolo-world =          "hailo_apps.python.pipeline_apps.yolo_world.yolo_world:main"
 hailo-ocr  =                "hailo_apps.python.pipeline_apps.paddle_ocr.paddle_ocr:main"
+hailo-lpr  =                "hailo_apps.python.pipeline_apps.lpr.lpr:main"
 hailo-audio-troubleshoot =  "hailo_apps.python.gen_ai_apps.gen_ai_utils.voice_processing.audio_troubleshoot:main"
 
 [tool.setuptools]
@@ -128,7 +130,18 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
+# Core suite is `tests/`. Community per-app tests live under community/apps/**/tests/
+# and are run as a separate suite via `./run_tests.sh --community`, which runs EACH
+# app's tests in its own pytest process. That isolation is required: the community
+# tests stub native modules (gi/hailo/cv2) in sys.modules to run headless, and in a
+# single shared process those stubs leak across files and segfault a later test. It
+# also avoids prepend-import-mode package-name clashes with the top-level `tests/`.
+# (Run a single app directly with `pytest community/apps/<cat>/<app>`.)
 testpaths = ["tests"]
+# Put the repo root on sys.path for every test run regardless of CWD, so both
+# `from tests.conftest import ...` and `from community.apps... import ...` resolve
+# on a clean checkout without requiring `source setup_env.sh` first.
+pythonpath = ["."]
 addopts = "-ra --tb=short"
 markers = [
     "sanity: Quick environment sanity checks",
@@ -140,6 +153,7 @@ markers = [
     "standalone: Standalone app smoke tests",
     "genai: Generative AI app tests",
     "cpp: C++ application tests",
+    "community: Community-contributed app tests",
 ]
 
 [tool.ruff.format]

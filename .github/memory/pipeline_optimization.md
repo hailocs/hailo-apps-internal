@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/pipeline_optimization.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Pipeline Optimization — Memory
 
 ## Key Defaults (reference these before tuning)

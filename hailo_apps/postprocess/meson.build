@@ -73,20 +73,39 @@ if postprocess_dep.found()
     
     # Determine if we should use static libraries (5.2.0+) or dynamic (5.1.0 and earlier)
     use_static = false
+    # Encoded TAPPAS version (major*100 + minor) for source-level API guards, e.g.
+    # the overlay_community hailomat compat shim. 0 means unknown.
+    tappas_ver_int = 0
     if tappas_version != 'unknown'
         version_parts = tappas_version.split('.')
         if version_parts.length() >= 2
             major = version_parts[0].to_int()
             minor = version_parts[1].to_int()
+            tappas_ver_int = major * 100 + minor
             # Use static for 5.2.0+, dynamic for 5.1.0 and earlier
             use_static = (major > 5) or (major == 5 and minor >= 2)
         endif
     endif
     
-    # Check if libhailo_opencv_utils.so exists (it may be missing on community installs)
-    cc = meson.get_compiler('c')
-    libhailo_opencv_utils_exists = cc.find_library('hailo_opencv_utils', required: false).found()
-    
+    # Check if libhailo_opencv_utils.so exists (it may be missing on some systems like RPi).
+    # Use the C++ compiler's library search so the check is architecture-portable —
+    # the previous hardcoded /usr/lib/aarch64-linux-gnu path falsely reported the lib
+    # missing on x86_64 even when present at /usr/lib/x86_64-linux-gnu.
+    cpp_compiler = meson.get_compiler('cpp')
+    libhailo_opencv_utils_dep = cpp_compiler.find_library('hailo_opencv_utils', required: false)
+    libhailo_opencv_utils_exists = libhailo_opencv_utils_dep.found()
+
+    # When present, attach libhailo_opencv_utils to postprocess_dep so every downstream
+    # target inherits the link. TAPPAS 5.3 moved HailoMat::width/height/native_width/
+    # native_height definitions into this library; without an explicit link, targets
+    # like vms_croppers and ocr_postprocess fail with undefined references even though
+    # pkg-config advertises -lhailo_opencv_utils (meson's dep resolution drops it).
+    if libhailo_opencv_utils_exists
+        postprocess_dep = declare_dependency(
+            dependencies: [postprocess_dep, libhailo_opencv_utils_dep]
+        )
+    endif
+
     if not libhailo_opencv_utils_exists
         message('⚠️  libhailo_opencv_utils.so not found, filtering it out from linker command')
         # Extract libraries from pkg-config and filter out libhailo_opencv_utils.so
@@ -137,27 +156,32 @@ if postprocess_dep.found()
         endif
     endif
 
-    # TAPPAS 5.3.0 removed common:: utility functions (get_xtensor, softmax_2D,
-    # vector_normalization, iou_calc, etc.) from libhailo_opencv_utils.so.
-    # The implementations are now shipped as source files alongside the headers.
-    # Build them into a static convenience library for downstream targets.
+    # TAPPAS 5.3.x dropped the common:: utilities (get_xtensor, get_xtensor_uint16,
+    # softmax_2D, iou_calc, ...) from libhailo_opencv_utils.so and instead ships
+    # their implementations as source files next to the headers. Build them into a
+    # static convenience lib and fold it into postprocess_dep so every cpp target
+    # resolves those symbols. On TAPPAS < 5.3 the sources are absent and the
+    # symbols still live in libhailo_opencv_utils.so, so this is a no-op.
     fs = import('fs')
     common_impl_dir = '/usr/include/hailo/tappas/common'
-    common_tensors_cpp = common_impl_dir / 'tensors.cpp'
-
-    if fs.is_file(common_tensors_cpp)
+    if fs.is_file(common_impl_dir / 'tensors.cpp')
+        common_compat_srcs = [common_impl_dir / 'tensors.cpp']
+        foreach extra : ['math.cpp', 'nms.cpp']
+            if fs.is_file(common_impl_dir / extra)
+                common_compat_srcs += common_impl_dir / extra
+            endif
+        endforeach
         hailo_common_compat_lib = static_library('hailo_common_compat',
-            [common_impl_dir / 'tensors.cpp',
-             common_impl_dir / 'math.cpp',
-             common_impl_dir / 'nms.cpp'],
+            common_compat_srcs,
             dependencies : postprocess_dep,
         )
-        hailo_common_compat_dep = declare_dependency(link_with : hailo_common_compat_lib)
-        message('Built hailo_common_compat from TAPPAS source files (5.3.0+ compat)')
+        postprocess_dep = declare_dependency(
+            dependencies : [postprocess_dep],
+            link_with : hailo_common_compat_lib,
+        )
+        message('Built hailo_common_compat from TAPPAS common/ sources (5.3.x compat)')
     else
-        # TAPPAS < 5.3.0 — symbols are in libhailo_opencv_utils.so, no extra lib needed
-        hailo_common_compat_dep = declare_dependency()
-        message('common:: sources not found — symbols in libhailo_opencv_utils.so (< 5.3.0)')
+        message('common:: sources not found — symbols expected in libhailo_opencv_utils.so (< 5.3)')
     endif
 
     subdir('cpp')

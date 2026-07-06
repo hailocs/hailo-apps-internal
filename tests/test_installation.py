@@ -138,23 +138,38 @@ def is_valid_json_file(filepath: Path) -> bool:
         return False
 
 def is_valid_npy_file(filepath: Path) -> bool:
-    """Check if a file is valid NPY.
-    
+    """Check if a file is loadable by numpy.
+
+    Covers both .npy (single-array) and .npz (multi-array zip archive) —
+    the shared `npy:` section in resources_config.yaml mixes both. We rely
+    on numpy itself to validate: ``np.load`` parses the file header (for
+    .npy) or the ZIP central directory + per-array NPY headers (for .npz),
+    raising on any structural problem. This catches truncated downloads,
+    corruption, and "right-magic-bytes-but-not-actually-numpy" failure
+    modes that a magic-byte check would miss.
+
+    ``allow_pickle=False`` is deliberate: numpy resources shipped with the
+    app must not require unpickling at load time (security + repro).
+
     Args:
         filepath: Path to the file to check
-        
+
     Returns:
-        True if the file is valid NPY
+        True iff ``np.load(filepath)`` returns without raising.
     """
+    import numpy as np
+
     if not filepath.exists() or filepath.stat().st_size == 0:
         return False
 
     try:
-        with open(filepath, 'rb') as f:
-            # Check NPY magic number
-            magic = f.read(6)
-            return magic == b'\x93NUMPY'
-    except Exception:
+        result = np.load(filepath, allow_pickle=False)
+        # NpzFile (the .npz case) keeps a file handle open — close it.
+        if hasattr(result, "close"):
+            result.close()
+        return True
+    except Exception as e:
+        logger.warning("np.load(%s) failed: %s: %s", filepath, type(e).__name__, e)
         return False
 
 def is_valid_video_file(filepath: Path) -> bool:
@@ -800,6 +815,76 @@ class TestNpyConfigFiles:
             pytest.fail(f"Invalid NPY files found: {invalid_npy}")
 
         logger.info("All NPY files are valid")
+
+
+# ============================================================================
+# SECTION 10: DOWNLOAD CLI BEHAVIOR
+# ============================================================================
+
+@pytest.mark.installation
+@pytest.mark.resources
+class TestDownloadCliBehavior:
+    """Tests guarding regressions in the download CLI's user-visible behavior.
+
+    Bugs these tests guard against:
+    1. The CLI used to silently no-op for everything but the HEF because the
+       root logger stayed at WARNING and all per-task progress was logged at
+       INFO. Users saw only the HEF URL probe (a print()) and concluded
+       "nothing else downloaded".
+    2. The legacy `download_group_resources(group, cfg, arch)` API silently
+       dropped any caller intent to force re-download — it didn't accept
+       force/dry_run/parallel and built a default DownloadConfig.
+    """
+
+    def test_download_group_resources_accepts_force_and_dry_run(self):
+        """Legacy group-download API must thread force/dry_run/parallel."""
+        import inspect
+        from hailo_apps.installation.download_resources import download_group_resources
+
+        sig = inspect.signature(download_group_resources)
+        for required in ("force", "dry_run", "parallel"):
+            assert required in sig.parameters, (
+                f"download_group_resources is missing the '{required}' parameter — "
+                f"install.sh-driven group downloads can't force re-download without it"
+            )
+
+    def test_cli_main_unsilences_installation_logger(self):
+        """Invoking the download CLI must leave installation INFO logs enabled.
+
+        Regression guard: init_logging() suppresses hailo_apps.installation.*
+        to keep other CLIs quiet, but for THIS CLI those logs ARE the
+        user-facing progress. main() must override the suppression.
+        """
+        import logging as _logging
+        import sys
+        import hailo_apps.installation.download_resources as dr
+
+        # Pre-set the installation logger to WARNING to simulate the
+        # exact failure mode (silenced by init_logging's default policy).
+        installation_logger = _logging.getLogger("hailo_apps.installation")
+        installation_logger.setLevel(_logging.WARNING)
+
+        old_argv = sys.argv
+        sys.argv = [
+            "hailo-download-resources",
+            "--group", "yolo_world",
+            "--arch", "hailo10h",
+            "--dry-run",
+            "--no-parallel",
+        ]
+        try:
+            dr.main()
+        finally:
+            sys.argv = old_argv
+
+        # After main() runs, INFO records under hailo_apps.installation must
+        # be enabled. effective_level must be <= INFO.
+        eff = installation_logger.getEffectiveLevel()
+        assert eff <= _logging.INFO, (
+            f"hailo_apps.installation effective log level is {eff} "
+            f"(> INFO={_logging.INFO}). Per-resource progress lines will be "
+            f"silenced — users will see only the HEF URL probe."
+        )
 
 
 # ============================================================================

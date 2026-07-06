@@ -37,6 +37,7 @@ RUN_PIPELINES=true
 RUN_STANDALONE=true
 RUN_GENAI=false
 RUN_CPP=false
+RUN_COMMUNITY=false
 DOWNLOAD_RESOURCES=true
 APPS_FILTER=""
 PYTEST_K_EXPR=""
@@ -99,6 +100,15 @@ while [[ $# -gt 0 ]]; do
             RUN_CPP=true
             shift
             ;;
+        --community)
+            if [ "$EXPLICIT_SUITE_SELECTION" = false ]; then
+                RUN_SANITY=false; RUN_INSTALL=false; RUN_PIPELINES=false
+                RUN_STANDALONE=false; RUN_GENAI=false; RUN_CPP=false
+                EXPLICIT_SUITE_SELECTION=true
+            fi
+            RUN_COMMUNITY=true
+            shift
+            ;;
         --no-download)
             DOWNLOAD_RESOURCES=false
             shift
@@ -128,6 +138,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --pipelines    Run only pipeline tests (functional tests)"
             echo "  --standalone   Run standalone app smoke tests"
             echo "  --genai        Run GenAI app tests"
+            echo "  --community    Run community app tests (community/apps/**/tests/)"
             echo "  --apps LIST    Run only selected pipeline + standalone apps (comma-separated)"
             echo "  --no-download  Skip resource download step"
             echo "  --help, -h     Show this help message"
@@ -275,7 +286,21 @@ fi
 if [ "$RUN_GENAI" = true ]; then
     echo ""
     echo "--- Running GenAI Tests ---"
-    if python -m pytest "${TESTS_DIR}/test_gen_ai.py" "${TESTS_DIR}/voice_assistant_unit_tests.py" -v --log-cli-level=INFO; then
+    # Pre-flight: gen-AI tests require the [gen-ai] extras (webrtcvad-wheels,
+    # PyAudio, piper-tts, sounddevice, ...). install.sh deliberately does NOT
+    # install these because they're heavy and platform-specific. If the user
+    # asked for --genai without that step, skip cleanly with an actionable hint
+    # rather than emitting a wall of ModuleNotFoundError stack traces.
+    if ! python -c "import webrtcvad, sounddevice, pyaudio, piper" >/dev/null 2>&1; then
+        echo "✗ GenAI tests skipped — gen-ai Python dependencies are not installed"
+        echo ""
+        echo "  Install them with:"
+        echo "    source setup_env.sh"
+        echo "    pip install -e \".[gen-ai]\""
+        echo ""
+        echo "  See doc/user_guide/installation.md → 'Optional: Gen-AI Application Dependencies'"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    elif python -m pytest "${TESTS_DIR}/test_gen_ai.py" "${TESTS_DIR}/voice_assistant_unit_tests.py" -v --log-cli-level=INFO; then
         echo "✓ GenAI tests passed"
     else
         echo "✗ GenAI tests failed"
@@ -297,6 +322,36 @@ if [ "$RUN_CPP" = true ]; then
         echo "✓ C++ tests passed"
     else
         echo "✗ C++ tests failed"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+fi
+
+# 7. Community App Tests — per-app unit tests under community/apps/**/tests/
+if [ "$RUN_COMMUNITY" = true ]; then
+    echo ""
+    echo "--- Running Community App Tests ---"
+    # Run EACH app's tests in its OWN pytest process. The community app tests stub
+    # native modules (gi/hailo/cv2) in sys.modules to run headless; in a single
+    # shared process those stubs leak across test files and segfault a later test.
+    # Per-app processes isolate them (and also dodge the top-level `tests/` package
+    # name clash). Each app suite passes cleanly on its own.
+    COMMUNITY_FAIL=0
+    COMMUNITY_RAN=0
+    for app_dir in "${SCRIPT_DIR}"/community/apps/*/*/; do
+        [ -d "${app_dir}tests" ] || continue
+        app_name="$(basename "$app_dir")"
+        if python -m pytest "$app_dir" -q; then
+            echo "  ✓ ${app_name}"
+        else
+            echo "  ✗ ${app_name}"
+            COMMUNITY_FAIL=$((COMMUNITY_FAIL + 1))
+        fi
+        COMMUNITY_RAN=$((COMMUNITY_RAN + 1))
+    done
+    if [ "$COMMUNITY_FAIL" -eq 0 ]; then
+        echo "✓ Community app tests passed (${COMMUNITY_RAN} app suites)"
+    else
+        echo "✗ Community app tests failed (${COMMUNITY_FAIL}/${COMMUNITY_RAN} app suites)"
         FAILED_TESTS=$((FAILED_TESTS + 1))
     fi
 fi

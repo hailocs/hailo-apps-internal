@@ -25,9 +25,27 @@ except ImportError:
     from yaml_config import ToolYamlConfig, FewShotExample
 
 
+def format_tool_call(tool_call_json: str, tool_call_format: str = "bare") -> str:
+    """
+    Render a tool-call JSON string in the requested wire format.
+
+    Args:
+        tool_call_json: Compact JSON string, e.g. '{"name":...,"arguments":{...}}'.
+        tool_call_format: "bare" -> the JSON as-is (model emits bare JSON, e.g. Qwen2.5-Coder
+            >= 5.3); "wrapped" -> the JSON inside <tool_call></tool_call> tags (HEFs <= 5.1.x).
+
+    Returns:
+        The formatted tool-call string for embedding in the prompt / few-shot examples.
+    """
+    if tool_call_format == "wrapped":
+        return f"<tool_call>\n{tool_call_json}\n</tool_call>"
+    return tool_call_json
+
+
 def create_system_prompt(
     tools: List[Dict[str, Any]],
     yaml_config: Optional[ToolYamlConfig] = None,
+    tool_call_format: str = "bare",
 ) -> str:
     """
     Create system prompt with tool definitions.
@@ -38,6 +56,8 @@ def create_system_prompt(
     Args:
         tools: List of tool metadata dictionaries containing a ready-to-use tool definition
         yaml_config: Optional ToolYamlConfig with persona, capabilities, etc.
+        tool_call_format: "bare" or "wrapped" — must match the model's native tool-call
+            format (see config.TOOL_CALL_FORMAT). The how-to-call instructions adapt to it.
 
     Returns:
         System prompt string for the LLM
@@ -81,25 +101,32 @@ Available tools: {tool_names_list}"""
             tool_instructions_section = f"\n# Tool Instructions\n{tools[0]['description']}\n"
 
     # Build tool usage rules section
+    call_phrase = "CALL IT using <tool_call>" if tool_call_format == "wrapped" else "CALL IT"
     tool_usage_rules_section = f"""# Tool Usage Rules
-- DEFAULT: If a tool can handle the request, CALL IT using <tool_call>
+- DEFAULT: If a tool can handle the request, {call_phrase}
 - ONLY these tools exist: {tool_names_list}. NEVER invent or call tools with different names
 - When unsure, CALL THE TOOL (better to use it than skip it)
 - Skip tools ONLY for: greetings, small talk, meta questions about capabilities, or clearly conversational requests with no tool match"""
 
-    # Build how to call a tool section
+    # Build how to call a tool section (format must match the model's native tool-call format)
+    example_call = format_tool_call(
+        '{"name": "<function-name>", "arguments": <args-json-object>}', tool_call_format
+    )
+    wrap_rule = (
+        "- Wrap JSON in <tool_call></tool_call> tags"
+        if tool_call_format == "wrapped"
+        else "- Output ONLY the JSON object — no <tool_call> tags, no extra text"
+    )
     how_to_call_section = f"""# How to Call a Tool
 When you need to use a tool, output ONLY this format:
-<tool_call>
-{{"name": "<function-name>", "arguments": <args-json-object>}}
-</tool_call>
+{example_call}
 
 Rules:
 - Use double quotes (") in JSON, not single quotes
 - Arguments must be a JSON object, not a string
-- Wrap JSON in <tool_call></tool_call> tags
+{wrap_rule}
 - Use only these tool names: {tool_names_list}
-- After calling, wait for the system to send you <tool_response>"""
+- After calling, wait for the system to send you the tool result"""
 
     # Build tool results section
     tool_results_section = """# Tool Results
@@ -135,6 +162,7 @@ BEFORE each response, think about whether to use a tool:
 
 def prepare_few_shot_examples_messages(
     examples: List[FewShotExample],
+    tool_call_format: str = "bare",
 ) -> List[Dict[str, Any]]:
     """
     Prepare few-shot example messages for context.
@@ -144,6 +172,9 @@ def prepare_few_shot_examples_messages(
 
     Args:
         examples: List of FewShotExample objects from YAML config.
+        tool_call_format: "bare" or "wrapped" — must match the model's native tool-call
+            format (see config.TOOL_CALL_FORMAT). Using a mismatched format here is what
+            triggers the empty-response (immediate end-of-text) failure on newer HEFs.
 
     Returns:
         List of formatted message dictionaries ready to be added to context.
@@ -172,8 +203,8 @@ def prepare_few_shot_examples_messages(
                 },
                 separators=(",", ":"),
             )
-            tool_call_xml = f"<tool_call>\n{tool_call_json}\n</tool_call>"
-            messages.append(message_formatter.messages_assistant(tool_call_xml))
+            assistant_text = format_tool_call(tool_call_json, tool_call_format)
+            messages.append(message_formatter.messages_assistant(assistant_text))
 
     return messages
 
@@ -182,6 +213,7 @@ def add_few_shot_examples_to_context(
     llm: "LLM",
     examples: List[FewShotExample],
     logger: Optional[Any] = None,
+    tool_call_format: str = "bare",
 ) -> None:
     """
     Add few-shot examples to LLM context for priming.
@@ -205,7 +237,7 @@ def add_few_shot_examples_to_context(
             logger.warning("Could not import context_manager, skipping few-shot examples")
         return
 
-    messages = prepare_few_shot_examples_messages(examples)
+    messages = prepare_few_shot_examples_messages(examples, tool_call_format=tool_call_format)
 
     # Add all messages to context
     if messages:

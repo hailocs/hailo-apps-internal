@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Builds the official Hailo postprocess shared libraries.
+# NOTE: the opt-in community GStreamer plugins (hailooverlay_community,
+# hailotilecropper_dynamic) are NOT built here — build them separately via
+# community/plugins/build.sh (see community/plugins/README.md).
+
 # Set the project directory name
 PROJECT_DIR="."
 
@@ -53,8 +58,17 @@ fi
 echo "Building project with Ninja..."
 ninja -j$(nproc)
 
-# Install the project (optional)
+# Install the project
+# Try without sudo first; if it fails (e.g. GStreamer plugin dir is root-owned),
+# prompt the user and retry with sudo. Use --preserve-env to keep the build
+# environment, and sudo does not change ownership of existing files.
 echo "Installing project..."
-ninja install
-
-echo "Build completed successfully!"
+if ninja install 2>/dev/null; then
+    echo "Build completed successfully!"
+else
+    echo ""
+    echo "Installation requires elevated permissions (GStreamer plugin directory is system-owned)."
+    echo "Re-running install with sudo..."
+    sudo ninja install
+    echo "Build completed successfully!"
+fi

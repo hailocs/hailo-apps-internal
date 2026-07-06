@@ -1,3 +1,6 @@
+<!-- AUTO-GENERATED mirror of .hailo/memory/gen_ai_patterns.md — DO NOT EDIT DIRECTLY -->
+<!-- Edit the canonical file in .hailo/memory/ and run: python3 .hailo/scripts/generate_platforms.py --generate -->
+
 # Gen AI App Patterns — Memory
 
 ## VLM Application Architecture

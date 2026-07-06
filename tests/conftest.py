@@ -63,6 +63,49 @@ except ImportError:
 
 
 # ============================================================================
+# DEVICE / ARCH GATE
+# ============================================================================
+# Single, never-raising gate used across the version matrix so every cell
+# collects cleanly and skips (with a reason) what the current device/arch can't
+# run. detect_hailo_arch() hard-asserts when no device is attached, so it must
+# never be called at import/collection scope without this guard.
+
+def device_present() -> bool:
+    """True iff at least one Hailo device is attached. Never raises."""
+    try:
+        from hailo_platform import Device
+        return len(Device.scan()) > 0
+    except Exception:
+        return False
+
+
+def current_arch():
+    """Detected Hailo arch (hailo8/hailo8l/hailo10h) or None. Never raises."""
+    if detect_hailo_arch is None:
+        return None
+    try:
+        return detect_hailo_arch() or None
+    except Exception:
+        return None
+
+
+# Skip marker for device-dependent tests; evaluated once at import.
+requires_device = pytest.mark.skipif(
+    not device_present(), reason="no Hailo device attached"
+)
+
+_CURRENT_ARCH = current_arch()
+
+
+def requires_arch(*archs):
+    """Skip marker requiring one of the given Hailo archs to be attached."""
+    return pytest.mark.skipif(
+        _CURRENT_ARCH not in archs,
+        reason=f"requires Hailo arch {archs}, detected {_CURRENT_ARCH}",
+    )
+
+
+# ============================================================================
 # CONFIGURATION PATHS (using unified ConfigPaths when available)
 # ============================================================================
 
