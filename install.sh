@@ -19,6 +19,20 @@
 
 set -uo pipefail
 
+# Self-elevate via 'sudo -E' if not already root, preserving PATH/VIRTUAL_ENV
+# so an active virtual environment (e.g. Suite Docker) stays visible.
+# Skip elevation for --help/-h, which doesn't need root.
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    _skip_elevation=false
+    for _arg in "$@"; do
+        [[ "$_arg" == "-h" || "$_arg" == "--help" ]] && _skip_elevation=true && break
+    done
+    if [[ "${_skip_elevation}" != true ]]; then
+        exec sudo -E -- "$0" "$@"
+    fi
+    unset _skip_elevation _arg
+fi
+
 #===============================================================================
 # CONSTANTS
 #===============================================================================
@@ -27,6 +41,13 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 readonly TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 readonly CONFIG_FILE="${SCRIPT_DIR}/hailo_apps/config/config.yaml"
+
+# TAPPAS Core GStreamer resources (auto-downloaded when missing, unless --skip-gstreamer)
+readonly TAPPAS_RESOURCES_VERSION="5.4.0"
+readonly TAPPAS_DEB_URL_AMD64="https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/installation_files/v${TAPPAS_RESOURCES_VERSION}/hailo-tappas-core_${TAPPAS_RESOURCES_VERSION}_amd64.deb"
+readonly TAPPAS_DEB_URL_ARM64="https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/installation_files/v${TAPPAS_RESOURCES_VERSION}/hailo-tappas-core_${TAPPAS_RESOURCES_VERSION}_arm64.deb"
+readonly TAPPAS_WHL_URL="https://hailo-csdata.s3.eu-west-2.amazonaws.com/resources/installation_files/v${TAPPAS_RESOURCES_VERSION}/hailo_tappas_core_python_binding-${TAPPAS_RESOURCES_VERSION}-py3-none-any.whl"
+readonly TAPPAS_DOWNLOAD_DIR="/tmp/hailo_tappas_download"
 
 # Log file path (not readonly - may be updated if log dir not writable)
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -55,9 +76,15 @@ DRY_RUN=false
 FORCE_CLEANUP=false
 NO_INSTALL=false
 NO_SYSTEM_PYTHON=false
-NO_TAPPAS_REQUIRED=false
+SKIP_GSTREAMER=false
 PYHAILORT_PATH=""
 PYTAPPAS_PATH=""
+
+# Reuse PyHailoRT from the HailoRT Docker image when available.
+# The HailoRT release container installs hailo_platform in this dedicated venv.
+CONTAINER_PYHAILORT_VENV="${CONTAINER_PYHAILORT_VENV:-/local/workspace/hailo_platform_venv}"
+CONTAINER_PYHAILORT_SITE_PACKAGES=""
+CONTAINER_PYHAILORT_VERSION=""
 
 # Configuration variables (populated from config.yaml)
 VENV_NAME=""
@@ -219,13 +246,34 @@ disable_error_trap() {
 # UTILITY FUNCTIONS
 #===============================================================================
 
-# Execute command as the original user (not root)
+# Execute command as the original user (not root).
+# Preserves PATH/VIRTUAL_ENV so an active virtual environment (e.g. Suite
+# Docker) stays visible. Also re-injects VIRTUAL_ENV/bin into PATH via `env`,
+# since sudo's secure_path default overrides --preserve-env=PATH otherwise.
 as_original_user() {
     if [[ ${EUID:-$(id -u)} -eq 0 && -n "${SUDO_USER:-}" ]]; then
         log_debug "Running as user ${SUDO_USER}: $*"
-        sudo -n -u "$SUDO_USER" -H -- "$@"
+        if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+            sudo -n -u "$SUDO_USER" -H --preserve-env=PATH,VIRTUAL_ENV -- \
+                env "PATH=${VIRTUAL_ENV}/bin:${PATH}" "VIRTUAL_ENV=${VIRTUAL_ENV}" "$@"
+        else
+            sudo -n -u "$SUDO_USER" -H -- "$@"
+        fi
     else
         "$@"
+    fi
+}
+
+# Extract the version number (e.g. 4.24.0) from a wheel filename such as
+# hailort-4.24.0-cp312-cp312-linux_x86_64.whl
+extract_wheel_version() {
+    local whl="$1"
+    local name
+    name="$(basename "$whl")"
+    if [[ "$name" =~ -([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo ""
     fi
 }
 
@@ -261,6 +309,70 @@ run_as_user() {
 # Check if a command exists
 command_exists() {
     command -v "$1" &>/dev/null
+}
+
+# Detect PyHailoRT preinstalled in a HailoRT/Suite Docker image: either in a
+# dedicated venv, or already importable in the active environment.
+detect_container_pyhailort() {
+    CONTAINER_PYHAILORT_SITE_PACKAGES=""
+    CONTAINER_PYHAILORT_VERSION=""
+
+    local candidate_python=""
+
+    # 1) Known dedicated venv locations for the PyHailoRT binding.
+    local venv_candidates=(
+        "${CONTAINER_PYHAILORT_VENV}"
+        "/local/workspace/hailo_platform_venv"
+        "/opt/hailo_platform_venv"
+        "/root/hailo_platform_venv"
+    )
+    local venv_dir
+    for venv_dir in "${venv_candidates[@]}"; do
+        [[ -n "$venv_dir" && -x "${venv_dir}/bin/python3" ]] || continue
+        if "${venv_dir}/bin/python3" -c 'import hailo_platform' >/dev/null 2>&1; then
+            candidate_python="${venv_dir}/bin/python3"
+            break
+        fi
+    done
+
+    # 2) Search a shallow depth under common container roots as a fallback.
+    if [[ -z "$candidate_python" ]]; then
+        local found_dir
+        found_dir=$(find /local/workspace /opt /root -maxdepth 3 -type d -iname "hailo_platform_venv" 2>/dev/null | head -1) || true
+        if [[ -n "$found_dir" && -x "${found_dir}/bin/python3" ]] \
+           && "${found_dir}/bin/python3" -c 'import hailo_platform' >/dev/null 2>&1; then
+            candidate_python="${found_dir}/bin/python3"
+        fi
+    fi
+
+    # 3) Fall back to "python3" for the original user (covers an already-active
+    # venv, e.g. Suite Docker, or the container's system python3).
+    if [[ -z "$candidate_python" ]] && as_original_user python3 -c 'import hailo_platform' >/dev/null 2>&1; then
+        candidate_python="python3"
+    fi
+
+    if [[ -z "$candidate_python" ]]; then
+        return 1
+    fi
+
+    CONTAINER_PYHAILORT_SITE_PACKAGES=$(
+        as_original_user "${candidate_python}" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null
+    ) || true
+
+    if [[ -z "${CONTAINER_PYHAILORT_SITE_PACKAGES}" \
+       || ! -d "${CONTAINER_PYHAILORT_SITE_PACKAGES}" ]]; then
+        CONTAINER_PYHAILORT_SITE_PACKAGES=""
+        return 1
+    fi
+
+    # Fall back to the detected HailoRT .deb version if metadata is unavailable.
+    CONTAINER_PYHAILORT_VERSION=$(
+        as_original_user "${candidate_python}" -c \
+            'import importlib.metadata as m; print(m.version("hailort"))' \
+            2>/dev/null
+    ) || true
+
+    return 0
 }
 
 # Validate detected versions against config
@@ -614,7 +726,11 @@ show_help() {
 ${BOLD}Hailo Apps Infrastructure - Single-File Installer${NC}
 
 ${BOLD}USAGE:${NC}
-    sudo $SCRIPT_NAME [OPTIONS]
+    ./$SCRIPT_NAME [OPTIONS]
+
+    The script self-elevates with 'sudo -E' if not already run as root,
+    preserving your environment (e.g. an active virtual environment).
+    Running it directly with 'sudo $SCRIPT_NAME' also works.
 
 ${BOLD}OPTIONS:${NC}
     -n, --venv-name NAME        Virtual environment name (default: from config or venv_hailo_apps)
@@ -623,7 +739,7 @@ ${BOLD}OPTIONS:${NC}
     --all                       Download all available models/resources
     -x, --no-install            Skip Python package installation
     --no-system-python          Don't use system site-packages in venv
-    --no-tappas-required        Skip TAPPAS checks, Python TAPPAS install, compile, and post_install
+    --skip-gstreamer             Skip TAPPAS checks, Python TAPPAS install, compile, and post_install
                                 (downloads resources directly, no C++ compilation)
     --dry-run                   Show what would be done without executing
     --force-cleanup             Run cleanup script before installation (removes venv,
@@ -635,12 +751,12 @@ ${BOLD}CONFIGURATION:${NC}
     CLI arguments override config file values.
 
 ${BOLD}EXAMPLES:${NC}
-    sudo $SCRIPT_NAME                          # Standard installation
-    sudo $SCRIPT_NAME --dry-run                # Preview what would be done
-    sudo $SCRIPT_NAME --all                    # Install with all models
-    sudo $SCRIPT_NAME -x                       # Skip Python package installation
-    sudo $SCRIPT_NAME -n my_venv --all         # Custom venv name + all models
-    sudo $SCRIPT_NAME --force-cleanup          # Clean stale artifacts then install
+    ./$SCRIPT_NAME                              # Standard installation
+    ./$SCRIPT_NAME --dry-run                    # Preview what would be done
+    ./$SCRIPT_NAME --all                        # Install with all models
+    ./$SCRIPT_NAME -x                           # Skip Python package installation
+    ./$SCRIPT_NAME -n my_venv --all             # Custom venv name + all models
+    ./$SCRIPT_NAME --force-cleanup              # Clean stale artifacts then install
 
 ${BOLD}LOG FILES:${NC}
     Installation logs: ${LOG_DIR}/
@@ -650,11 +766,14 @@ ${BOLD}REQUIREMENTS:${NC}
     - Must be run with sudo (not as root directly)
     - Hailo PCI driver must be installed (.deb)
     - HailoRT must be installed (.deb)
-    - TAPPAS Core must be installed (.deb) — unless --no-tappas-required
-    - HailoRT Python binding must be installed (.whl)
-    - TAPPAS Core Python binding must be installed (.whl) — unless --no-tappas-required
+    - HailoRT Python binding must be available either from the HailoRT container
+      environment (${CONTAINER_PYHAILORT_VENV}) or from a supplied .whl
 
-    Download all required packages from the Hailo Developer Zone:
+    Unless --skip-gstreamer is passed, TAPPAS Core (.deb) and its Python
+    binding (.whl) are downloaded and installed automatically (v${TAPPAS_RESOURCES_VERSION})
+    if not already present. Use --pytappas to supply a custom wheel instead.
+
+    Download the Hailo driver and HailoRT packages from the Hailo Developer Zone:
     https://hailo.ai/developer-zone/
 
 EOF
@@ -692,8 +811,8 @@ parse_arguments() {
                 USE_SYSTEM_SITE_PACKAGES=false
                 shift
                 ;;
-            --no-tappas-required)
-                NO_TAPPAS_REQUIRED=true
+            --skip-gstreamer)
+                SKIP_GSTREAMER=true
                 shift
                 ;;
             --force-cleanup)
@@ -733,14 +852,17 @@ detect_user_and_group() {
         return 1
     fi
 
-    # Check if running as root directly (not via sudo)
+    # No SUDO_USER means root was invoked directly, e.g. in a container with
+    # no unprivileged user (like the HailoRT Docker container). Proceed as
+    # root instead of failing, since there's no other user to drop to.
     if [[ -z "${SUDO_USER:-}" ]]; then
-        log_error "This script must be run with sudo, not as root directly"
-        echo ""
-        echo "Please run with: sudo $SCRIPT_NAME"
-        echo "Do not use: su -c or login as root"
-        record_step_result "FAILED" "Running as root directly"
-        return 1
+        log_warning "Running as root with no SUDO_USER (e.g. a container with only a root user)"
+        log_warning "Proceeding as root for the rest of the installation"
+        ORIGINAL_USER="root"
+        ORIGINAL_GROUP="$(id -gn root 2>/dev/null || echo root)"
+        export ORIGINAL_USER ORIGINAL_GROUP
+        record_step_result "SUCCESS" "User: ${ORIGINAL_USER} (root-only environment), Group: ${ORIGINAL_GROUP}"
+        return 0
     fi
 
     ORIGINAL_USER="${SUDO_USER}"
@@ -757,6 +879,127 @@ detect_user_and_group() {
 
     export ORIGINAL_USER ORIGINAL_GROUP
     record_step_result "SUCCESS" "User: ${ORIGINAL_USER}, Group: ${ORIGINAL_GROUP}"
+    return 0
+}
+
+#===============================================================================
+# TAPPAS GSTREAMER RESOURCES (auto-download)
+#===============================================================================
+
+# Download a file from a URL to a destination path using curl or wget
+download_file() {
+    local url="$1"
+    local dest="$2"
+
+    if command_exists curl; then
+        curl -fsSL --retry 3 --connect-timeout 15 -o "$dest" "$url"
+    elif command_exists wget; then
+        wget -q --tries=3 --timeout=15 -O "$dest" "$url"
+    else
+        log_error "Neither curl nor wget is available to download files"
+        return 1
+    fi
+}
+
+# Download and install the TAPPAS Core .deb (matching host architecture) and
+# the TAPPAS Core Python binding .whl, unless already installed/provided.
+ensure_gstreamer_resources() {
+    if [[ "${SKIP_GSTREAMER}" == true ]]; then
+        log_debug "Skipping TAPPAS GStreamer resources (--skip-gstreamer)"
+        return 0
+    fi
+
+    log_info "Checking TAPPAS GStreamer resources (v${TAPPAS_RESOURCES_VERSION})..."
+
+    # Detect architecture (amd64/arm64) for the correct .deb
+    local arch
+    arch="$(dpkg --print-architecture 2>/dev/null || true)"
+    if [[ -z "$arch" ]]; then
+        case "$(uname -m)" in
+            x86_64) arch="amd64" ;;
+            aarch64|arm64) arch="arm64" ;;
+            *) arch="$(uname -m)" ;;
+        esac
+    fi
+
+    # --- TAPPAS Core .deb ---
+    # Check dpkg first (native .deb install), then fall back to pkg-config
+    # (e.g. the Hailo AI Software Suite Docker builds/registers TAPPAS Core
+    # without a dpkg entry).
+    local tappas_found=false
+    if dpkg -l 2>/dev/null | grep -qE "^ii\s+(hailo-apps-core|hailo-tappas-core|hailo-tappas|tappas-core|tappas)\b"; then
+        tappas_found=true
+    elif command_exists pkg-config; then
+        for pc in hailo-apps-core hailo-tappas-core hailo_tappas tappas-core tappas; do
+            if pkg-config --exists "$pc" 2>/dev/null; then
+                tappas_found=true
+                break
+            fi
+        done
+    fi
+
+    if [[ "${tappas_found}" == true ]]; then
+        log_success "TAPPAS Core already installed, skipping download"
+    else
+        local deb_url=""
+        case "$arch" in
+            amd64) deb_url="${TAPPAS_DEB_URL_AMD64}" ;;
+            arm64) deb_url="${TAPPAS_DEB_URL_ARM64}" ;;
+            *)
+                log_error "No TAPPAS Core package available for architecture: ${arch}"
+                log_error "Install hailo-tappas-core manually or use --skip-gstreamer"
+                return 1
+                ;;
+        esac
+
+        local deb_path="${TAPPAS_DOWNLOAD_DIR}/$(basename "$deb_url")"
+        mkdir -p "${TAPPAS_DOWNLOAD_DIR}"
+
+        log_info "Downloading TAPPAS Core (.deb, ${arch})..."
+        if ! download_file "$deb_url" "$deb_path"; then
+            log_error "Failed to download TAPPAS Core package: ${deb_url}"
+            return 1
+        fi
+
+        log_info "Installing TAPPAS Core package"
+        apt-get update -qq 2>/dev/null || log_warning "apt-get update had warnings (continuing anyway)"
+        if ! apt-get install -y "${deb_path}"; then
+            log_error "Failed to install TAPPAS Core package: ${deb_path}"
+            return 1
+        fi
+        log_success "TAPPAS Core installed"
+    fi
+
+    # --- TAPPAS Core Python binding .whl ---
+    if [[ -n "${PYTAPPAS_PATH}" ]]; then
+        log_debug "Custom PyTappas wheel provided (--pytappas ${PYTAPPAS_PATH}), skipping auto-download"
+        return 0
+    fi
+
+    # Skip the download if already importable (e.g. pre-installed in the
+    # Suite Docker's active venv), to avoid a version mismatch against the
+    # already-installed TAPPAS Core package.
+    # NOTE: The TAPPAS Core Python binding module is `hailo` (not `hailo_platform`,
+    # which is the PyHailoRT/HailoRT binding module).
+    if as_original_user python3 -c 'import hailo' >/dev/null 2>&1; then
+        log_success "TAPPAS Core Python binding already importable (hailo), skipping download"
+        return 0
+    fi
+
+    local whl_path="${TAPPAS_DOWNLOAD_DIR}/$(basename "${TAPPAS_WHL_URL}")"
+    mkdir -p "${TAPPAS_DOWNLOAD_DIR}"
+
+    log_info "Downloading TAPPAS Core Python binding (.whl)..."
+    if ! download_file "${TAPPAS_WHL_URL}" "$whl_path"; then
+        log_error "Failed to download TAPPAS Core Python binding: ${TAPPAS_WHL_URL}"
+        return 1
+    fi
+
+    # Make readable by the original (non-root) user for the later pip install
+    chown "${ORIGINAL_USER}:${ORIGINAL_GROUP}" "$whl_path" 2>/dev/null || true
+    PYTAPPAS_PATH="$whl_path"
+    log_success "TAPPAS Core Python binding downloaded to ${whl_path}"
+
     return 0
 }
 
@@ -778,8 +1021,16 @@ check_prerequisites() {
     if [[ "${DRY_RUN}" == true ]]; then
         log_dry_run "Running: ${check_script}"
         log_info "Would check: Hailo driver, HailoRT, TAPPAS, Python bindings"
+        log_dry_run "Would download/install TAPPAS Core .deb and Python binding .whl if missing (v${TAPPAS_RESOURCES_VERSION})"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
+    fi
+
+    # Auto-download and install TAPPAS Core (.deb) and Python binding (.whl)
+    # if not already present, before checking installed versions below.
+    if ! ensure_gstreamer_resources; then
+        record_step_result "FAILED" "TAPPAS GStreamer resources setup failed"
+        return 1
     fi
 
     # --- Get installed driver versions from dpkg (always available) ---
@@ -876,6 +1127,26 @@ check_prerequisites() {
             esac
         done
 
+        # If the user supplied an explicit wheel via --pyhailort/--pytappas, that
+        # wheel is what will actually be installed later (Step 6), so its version
+        # takes precedence over whatever pyhailort/tappas-python happens to be
+        # detected right now (which may be stale or absent since the venv/wheel
+        # install hasn't happened yet at this point in the flow).
+        if [[ -n "${PYHAILORT_PATH}" ]]; then
+            local whl_ver
+            whl_ver="$(extract_wheel_version "${PYHAILORT_PATH}")"
+            if [[ -n "$whl_ver" ]]; then
+                pyhailort_version="$whl_ver"
+            fi
+        fi
+        if [[ -n "${PYTAPPAS_PATH}" ]]; then
+            local whl_ver
+            whl_ver="$(extract_wheel_version "${PYTAPPAS_PATH}")"
+            if [[ -n "$whl_ver" ]]; then
+                tappas_python_version="$whl_ver"
+            fi
+        fi
+
         # Load valid combinations for detected arch
         MODEL_ZOO_VER=$(get_model_zoo_version "${HAILO_ARCH}")
         case "${HAILO_ARCH}" in
@@ -888,8 +1159,8 @@ check_prerequisites() {
         log_info "Detected versions:"
         log_info "  Driver: ${driver_type} ${driver_version}"
         log_info "  HailoRT: ${hailort_version}"
-        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-            log_info "  TAPPAS: skipped (--no-tappas-required)"
+        if [[ "${SKIP_GSTREAMER}" == true ]]; then
+            log_info "  TAPPAS: skipped (--skip-gstreamer)"
         else
             log_info "  TAPPAS: ${tappas_version}"
         fi
@@ -897,17 +1168,36 @@ check_prerequisites() {
 
         # Validate TAPPAS combo
         local failed=false
-        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
+        if [[ "${SKIP_GSTREAMER}" == true ]]; then
             validate_versions "$hailort_version" "-1" "${HAILO_ARCH}" || failed=true
         else
             validate_versions "$hailort_version" "$tappas_version" "${HAILO_ARCH}" || failed=true
         fi
         [[ -n "${MODEL_ZOO_VER}" ]] && validate_model_zoo_version "${HAILO_ARCH}" "${MODEL_ZOO_VER}" || true
 
+        # Reuse PyHailoRT from the HailoRT Docker image when no explicit wheel
+        # was supplied. The release image keeps hailo_platform in a dedicated
+        # venv, so --system-site-packages alone cannot expose it to our new venv.
+        if [[ -z "${PYHAILORT_PATH}" ]] && detect_container_pyhailort; then
+            log_success "Found existing PyHailoRT in ${CONTAINER_PYHAILORT_VENV}"
+            log_debug "PyHailoRT site-packages: ${CONTAINER_PYHAILORT_SITE_PACKAGES}"
+
+            if [[ "$pyhailort_version" == "-1" ]]; then
+                if [[ -n "${CONTAINER_PYHAILORT_VERSION}" ]]; then
+                    pyhailort_version="${CONTAINER_PYHAILORT_VERSION}"
+                else
+                    # The container is a versioned HailoRT release image, so if
+                    # the Python distribution metadata is unavailable, use the
+                    # detected HailoRT package version for compatibility checks.
+                    pyhailort_version="${hailort_version}"
+                fi
+            fi
+        fi
+
         # Check required components
         local missing_components=()
-        [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]] && missing_components+=("HailoRT Python binding (.whl)")
-        if [[ "${NO_TAPPAS_REQUIRED}" != true ]]; then
+        [[ "$pyhailort_version" == "-1" && -z "${PYHAILORT_PATH}" ]] && missing_components+=("HailoRT Python binding")
+        if [[ "${SKIP_GSTREAMER}" != true ]]; then
             [[ "$tappas_version" == "-1" ]] && missing_components+=("TAPPAS Core (.deb)")
             [[ "$tappas_python_version" == "-1" && -z "${PYTAPPAS_PATH}" ]] && missing_components+=("TAPPAS Core Python binding (.whl)")
         fi
@@ -924,7 +1214,7 @@ check_prerequisites() {
             log_warning "The HailoRT deb and Python binding should have matching versions."
             failed=true
         fi
-        if [[ "${NO_TAPPAS_REQUIRED}" != true \
+        if [[ "${SKIP_GSTREAMER}" != true \
            && "$tappas_version" != "-1" && "$tappas_python_version" != "-1" \
            && "$tappas_version" != "$tappas_python_version" ]]; then
             log_warning "TAPPAS version mismatch: system package=$tappas_version, Python wheel=$tappas_python_version"
@@ -1166,6 +1456,21 @@ setup_virtual_environment() {
     enable_error_trap
     log_debug "Build artifacts cleaned"
 
+    # If a virtualenv is already active (e.g. Suite Docker), build the new
+    # venv from the base/system interpreter instead of nesting it inside.
+    local python_bin="python3"
+    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+        log_warning "An active virtual environment was detected: ${VIRTUAL_ENV}"
+        local base_prefix
+        base_prefix=$(python3 -c 'import sys; print(getattr(sys, "base_prefix", sys.prefix))' 2>/dev/null) || base_prefix=""
+        if [[ -n "$base_prefix" && -x "${base_prefix}/bin/python3" ]]; then
+            python_bin="${base_prefix}/bin/python3"
+            log_info "Using the base system interpreter instead: ${python_bin}"
+        else
+            log_warning "Could not resolve a base system interpreter; proceeding with 'python3' (may create a nested venv)"
+        fi
+    fi
+
     # Create virtual environment
     local venv_args=""
     if [[ "${USE_SYSTEM_SITE_PACKAGES}" == true && "${NO_SYSTEM_PYTHON}" != true ]]; then
@@ -1176,12 +1481,12 @@ setup_virtual_environment() {
     fi
 
     if [[ "${DRY_RUN}" == true ]]; then
-        log_dry_run "python3 -m venv ${venv_args} '${venv_path}'"
+        log_dry_run "${python_bin} -m venv ${venv_args} '${venv_path}'"
         record_step_result "SKIPPED" "Dry-run mode"
         return 0
     fi
 
-    if ! run_as_user python3 -m venv ${venv_args} "${venv_path}"; then
+    if ! run_as_user "${python_bin}" -m venv ${venv_args} "${venv_path}"; then
         log_error "Failed to create virtual environment"
         log_info "Troubleshooting:"
         log_info "  • Ensure python3-venv is installed: sudo apt install python3-venv"
@@ -1197,6 +1502,45 @@ setup_virtual_environment() {
         log_error "Expected: ${venv_path}/bin/activate"
         record_step_result "FAILED" "activate script missing"
         return 1
+    fi
+
+    # If PyHailoRT is provided by the HailoRT release container's dedicated
+    # venv, expose that site-packages directory to venv_hailo_apps using a .pth
+    # file. This reuses the existing hailo_platform installation without
+    # copying or reinstalling the wheel.
+    if [[ -n "${CONTAINER_PYHAILORT_SITE_PACKAGES}" && -z "${PYHAILORT_PATH}" ]]; then
+        local venv_python="${venv_path}/bin/python3"
+        local venv_site_packages=""
+        local pyhailort_pth=""
+
+        venv_site_packages=$(
+            run_as_user "${venv_python}" -c 'import site; print(site.getsitepackages()[0])'
+        ) || true
+
+        if [[ -z "${venv_site_packages}" || ! -d "${venv_site_packages}" ]]; then
+            log_error "Could not determine site-packages for ${VENV_NAME}"
+            record_step_result "FAILED" "venv site-packages detection failed"
+            return 1
+        fi
+
+        pyhailort_pth="${venv_site_packages}/hailo_platform_container.pth"
+        log_info "Reusing container PyHailoRT from ${CONTAINER_PYHAILORT_SITE_PACKAGES}"
+
+        if ! run_as_user bash -c \
+            "printf '%s\n' '${CONTAINER_PYHAILORT_SITE_PACKAGES}' > '${pyhailort_pth}'"; then
+            log_error "Failed to expose container PyHailoRT to ${VENV_NAME}"
+            record_step_result "FAILED" "PyHailoRT path setup failed"
+            return 1
+        fi
+
+        if ! run_as_user "${venv_python}" -c 'import hailo_platform' >/dev/null 2>&1; then
+            log_error "Container PyHailoRT is not importable from ${VENV_NAME}"
+            log_error "Source site-packages: ${CONTAINER_PYHAILORT_SITE_PACKAGES}"
+            record_step_result "FAILED" "PyHailoRT import failed in venv"
+            return 1
+        fi
+
+        log_success "Container PyHailoRT available in ${VENV_NAME}"
     fi
 
     log_success "Virtual environment created at ${venv_path}"
@@ -1218,7 +1562,7 @@ install_python_packages() {
         log_dry_run "source ${venv_activate}"
         log_dry_run "pip install --upgrade pip setuptools wheel"
         [[ -n "$PYHAILORT_PATH" ]] && log_dry_run "pip install '${PYHAILORT_PATH}'"
-        if [[ -n "$PYTAPPAS_PATH" && "${NO_TAPPAS_REQUIRED}" != true ]]; then
+        if [[ -n "$PYTAPPAS_PATH" && "${SKIP_GSTREAMER}" != true ]]; then
             log_dry_run "pip install '${PYTAPPAS_PATH}'"
         fi
         log_dry_run "pip install -e ."
@@ -1242,8 +1586,8 @@ install_python_packages() {
     fi
 
     if [[ -n "$PYTAPPAS_PATH" ]]; then
-        if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-            log_warning "Ignoring PyTappas wheel (--no-tappas-required): ${PYTAPPAS_PATH}"
+        if [[ "${SKIP_GSTREAMER}" == true ]]; then
+            log_warning "Ignoring PyTappas wheel (--skip-gstreamer): ${PYTAPPAS_PATH}"
             PYTAPPAS_PATH=""
         fi
     fi
@@ -1262,9 +1606,9 @@ install_python_packages() {
         fi
     fi
 
-    # Install Hailo Python packages into venv (only from user-provided wheels)
-    # Note: If no --pyhailort/--pytappas provided, wheels must already be
-    # installed system-wide as prerequisites.
+    # Install Hailo Python packages into venv (only from user-provided wheels).
+    # Without --pyhailort, PyHailoRT may come from system site-packages or from
+    # the HailoRT release container venv exposed in Step 5 via a .pth file.
 
     # Upgrade pip/setuptools/wheel
     log_info "Upgrading pip, setuptools, and wheel..."
@@ -1342,8 +1686,8 @@ run_post_install() {
     fix_ownership "${SCRIPT_DIR}"
     fix_ownership "${RESOURCES_ROOT}"
 
-    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        log_info "Running minimal post-installation (--no-tappas-required)"
+    if [[ "${SKIP_GSTREAMER}" == true ]]; then
+        log_info "Running minimal post-installation (--skip-gstreamer)"
         
         # Create resources symlink
         if ! setup_resources_symlink; then
@@ -1523,8 +1867,8 @@ verify_installation() {
 
     # Check TAPPAS binding
     echo -n "  📦 TAPPAS Core Python binding: "
-    if [[ "${NO_TAPPAS_REQUIRED}" == true ]]; then
-        echo -e "${YELLOW}⚠️  Skipped (--no-tappas-required)${NC}"
+    if [[ "${SKIP_GSTREAMER}" == true ]]; then
+        echo -e "${YELLOW}⚠️  Skipped (--skip-gstreamer)${NC}"
     else
         if run_as_user bash -c "source '${venv_activate}' && python3 -c 'import hailo'" 2>/dev/null; then
             echo -e "${GREEN}✅ OK${NC}"
